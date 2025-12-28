@@ -6,5 +6,6 @@
     fileSystems."/home/serpentian/Drives/network" = {
         device = "192.0.2.219:/home/serpentian/media";
         fsType = "nfs";
+        options = ["nofail"];
     };
 }
