@@ -101,5 +101,9 @@
             url = "github:noctalia-dev/noctalia";
             inputs.nixpkgs.follows = "nixpkgs";
         };
+        late = {
+            url = "github:mpiorowski/late-sh";
+            inputs.nixpkgs.follows = "nixpkgs";
+        };
     };
 }

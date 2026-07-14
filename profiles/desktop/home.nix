@@ -94,6 +94,9 @@
         android-tools
 
         jq
+
+        # inputs.late.packages.${pkgs.system}.late-sh
+        inputs.late.packages.${pkgs.system}.late
     ];
 
     xdg.enable = true;
