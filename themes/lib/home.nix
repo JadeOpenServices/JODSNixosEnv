@@ -18,5 +18,6 @@ in {
         targets.btop.enable =
             lib.mkIf (settings.themeDetails.btopTheme != null) false;
         targets.sway.useWallpaper = false;
+        targets.noctalia.enable = false;
     };
 }
