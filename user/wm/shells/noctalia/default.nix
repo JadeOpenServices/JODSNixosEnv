@@ -110,7 +110,7 @@ in {
             };
             osd = {
                 orientation = "horizontal";
-                position = "bottom_center";
+                position = "top_center";
                 kinds = {
                     keyboard_layout = false;
                 };
