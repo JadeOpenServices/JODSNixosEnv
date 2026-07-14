@@ -65,6 +65,8 @@
         stdenv.cc.cc
     ];
 
+    services.emacs.enable = true;
+
     # List of globally installed packages.
     environment.systemPackages = with pkgs; [
         usbutils
