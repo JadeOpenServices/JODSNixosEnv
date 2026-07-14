@@ -30,6 +30,7 @@
           lua51Packages.penlight
           unzip
           pkg-config
+          zip
 
           cpulimit
           yq
