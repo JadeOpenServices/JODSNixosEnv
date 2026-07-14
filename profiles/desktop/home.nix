@@ -8,7 +8,7 @@
         ../../user/apps/superfile.nix
         ../../user/apps/zathura.nix
         ../../user/apps/cava.nix
-        ../../user/apps/github.nix
+        # ../../user/apps/github.nix
         # ../../user/apps/neofetch
         ../../user/apps/mangohud.nix
         ../../user/apps/kdeconnect.nix

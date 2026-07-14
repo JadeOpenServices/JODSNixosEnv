@@ -19,7 +19,7 @@
         ../../system/apps/ollama.nix
         ../../system/apps/platformio.nix
         ../../system/gaming/steam.nix
-        ../../system/gaming/aagl.nix
+        # ../../system/gaming/aagl.nix
         ../../system/gaming/nethack.nix
         ../../themes/lib/common.nix
     ] ++ (map (wm: ../../system/wm/${wm}) settings.wms);
