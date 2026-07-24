@@ -86,6 +86,9 @@ in {
                 keyboard_layout = {
                     show_icon = false;
                 };
+                media = {
+                    hide_album_art = true;
+                };
                 volume = {
                     show_label = false;
                     scroll_step = 2;
@@ -125,7 +128,7 @@ in {
                 start = [
                     "launcher"
                     "spacer_default"
-                    "weather"
+                    "media"
                 ];
                 center = [
                     "audio_visualizer"
