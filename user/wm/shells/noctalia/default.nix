@@ -63,8 +63,10 @@ in {
                 source = "custom";
                 custom_palette = "stylix";
             };
-            shell = {
+            accessibility = {
                 ui_scale = 1.4;
+            };
+            shell = {
                 font_family = themeDetails.font;
                 avatar_path = themeDetails.avatar;
                 screenshot = {
@@ -93,7 +95,7 @@ in {
                     lenght = 15;
                 };
                 workspaces = {
-                    minimal = true;
+                    style = "minimal";
                     occupied_color = "on_surface";
                     scale = 1.2;
                 };
