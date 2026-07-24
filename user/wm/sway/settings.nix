@@ -13,6 +13,9 @@
                 xkb_layout = "us,ru";
                 xkb_options = "grp:win_space_toggle";
             };
+            "type:pointer" = {
+                pointer_accel = "-1.0";
+            };
         };
     };
 }
