@@ -43,3 +43,5 @@ qemu command line:
 ```
 
 https://wiki.qemu.org/Features/GuestAgent
+
+WoeUSB-ng
