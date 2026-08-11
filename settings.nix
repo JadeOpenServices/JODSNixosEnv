@@ -1,0 +1,28 @@
+{pkgs, inputs, ...}:
+rec {
+    # Basic configuration.
+    system = "x86_64-linux";
+    profile = "desktop"; # Select from profiles directory
+    hostname = "alfheim"; # Hostname
+    username = "serpentian"; # Username
+    timezone = "Europe/Moscow"; # Select timezone
+    locale = "en_US.UTF-8"; # Select locale
+    name = "Nikita Zheleztsov"; # Name (git config)
+    email = "n.zheleztsov@proton.me"; # Email (git config)
+    dotfilesDir = "/home/${username}/.dotfiles"; # Absolute path of the repo;
+
+    # App configurations.
+    shell = "zsh"; # See user/shells directory.
+    editors = ["neovim"]; # See user/editors directory.
+    browsers = ["librewolf" "qutebrowser" "zen-browser"]; # See user/browsers directory.
+    preferredEditor = "nvim"; # Session variable $TERM.
+    preferredBrowser = "librewolf"; # Session variable $BROWSER.
+
+    # WM and theming.
+    wms = ["hyprland" "sway"]; # See user/wm/ and system/wm directories.
+    theme = "morpho"; # Selected theme from themes directory (./themes/)
+
+    # Do not change these!
+    profileDetails = import (./. + "/profiles/${profile}/details.nix") {};
+    themeDetails = import (./. + "/themes/${theme}.nix") {inherit pkgs;};
+}
