@@ -1,15 +1,22 @@
 #!/usr/bin/env bash
-# Interactive AlfheimOS configuration and installation wizard.
+# Interactive GjallarOS configuration and installation wizard.
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 FUNCTIONS_DIR="$SCRIPT_DIR/functions"
 
-for function_file in "$FUNCTIONS_DIR"/*.sh; do
+for bootstrap_command in find sort; do
+    command -v "$bootstrap_command" >/dev/null 2>&1 || {
+        printf 'Error: required command not found: %s\n' "$bootstrap_command" >&2
+        exit 1
+    }
+done
+
+while IFS= read -r -d '' function_file; do
     # shellcheck source=/dev/null
     source "$function_file"
-done
+done < <(find "$FUNCTIONS_DIR" -type f -name '*.sh' -print0 | sort -z)
 
 skip_hardware=0
 skip_rebuild=0
@@ -33,7 +40,7 @@ is_nixos || die "This installer must be run from a NixOS system."
 check_nixos_release
 bootstrap_prerequisites
 
-say "AlfheimOS installer"
+say "GjallarOS installer"
 say "This wizard writes settings.nix and can generate the selected profile's hardware configuration."
 
 mapfile -t profiles < <(discover_options "$REPO_ROOT/profiles" directory)
@@ -56,7 +63,10 @@ done
 (( ${#themes[@]} )) || die "No themes found."
 
 collect_settings "$REPO_ROOT" profiles shells editors browsers wms themes
-detect_hardware
+configure_docker
+detect_graphics
+detect_network
+select_ai_profile
 configure_framework
 configure_scrobbling "$REPO_ROOT" "$cfg_username"
 configure_nemu

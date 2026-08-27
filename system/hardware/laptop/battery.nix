@@ -14,8 +14,8 @@
         };
     };
 
-    systemd.services.alfheim-battery-charge-threshold = {
-        description = "Apply AlfheimOS battery charge thresholds";
+    systemd.services.gjallar-battery-charge-threshold = {
+        description = "Apply GjallarOS battery charge thresholds";
         wantedBy = [ "multi-user.target" ];
         after = [ "local-fs.target" ];
         serviceConfig.Type = "oneshot";

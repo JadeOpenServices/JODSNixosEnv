@@ -4,6 +4,7 @@ lib.mkIf settings.workUserEnable {
     isNormalUser = true;
     description = "${settings.username} work account";
     shell = pkgs.${settings.shell};
-    extraGroups = [ "audio" "video" "networkmanager" ];
+    # Podman is rootless; KVM/Nemu are granted for approved work VMs.
+    extraGroups = [ "audio" "video" "networkmanager" "kvm" ];
   };
 }

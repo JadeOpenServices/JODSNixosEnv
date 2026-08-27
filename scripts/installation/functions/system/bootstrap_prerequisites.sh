@@ -27,7 +27,7 @@ bootstrap_prerequisites() {
         return 0
     }
     [[ -f "$config_file" ]] || die "$config_file does not exist; install the standard NixOS configuration first."
-    backup="${config_file}.alfheim-backup.$(date +%Y%m%d%H%M%S)"
+    backup="${config_file}.gjallar-backup.$(date +%Y%m%d%H%M%S)"
     sudo cp -a -- "$config_file" "$backup"
     sudo awk -v packages="${packages[*]}" '
         BEGIN { inserted = 0 }

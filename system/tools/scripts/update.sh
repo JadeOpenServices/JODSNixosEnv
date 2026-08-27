@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
-repo="${ALFHEIMOS_REPO:-__REPO_ROOT__}"
-host="${ALFHEIMOS_HOST:-__HOSTNAME__}"
+repo="${GJALLAROS_REPO:-__REPO_ROOT__}"
+host="${GJALLAROS_HOST:-__HOSTNAME__}"
 cd "$repo"
 case "${1:-}" in
     --rebuild|-r) nix flake update; exec sudo nixos-rebuild switch --flake "$repo#$host" ;;

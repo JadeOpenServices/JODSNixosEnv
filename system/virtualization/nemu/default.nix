@@ -1,4 +1,4 @@
-{ config, pkgs, settings, ... }:
+{ config, lib, pkgs, settings, ... }:
 
 let
   nixpkgs = import <nixpkgs> { config = config.nixpkgs.config; };
@@ -26,6 +26,11 @@ in {
                 autoAddVeth = true;
                 autoStartDaemon = true;
                 # autoStartVMs = [ "Win11" ];
+            };
+        } // lib.optionalAttrs settings.workUserEnable {
+            ${settings.workUsername} = {
+                autoAddVeth = false;
+                autoStartDaemon = false;
             };
         };
     };
