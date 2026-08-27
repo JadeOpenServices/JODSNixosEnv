@@ -1,56 +1,56 @@
 protect_local_configs() {
     local repo_root="$1"
-    local profile="$2"
-    local settings_file hardware_file
-
-    settings_file="$repo_root/settings.nix"
-    hardware_file="$repo_root/profiles/$profile/hardware-configuration.nix"
-
-    command -v git >/dev/null 2>&1 || {
-        say '[WARN] git is unavailable; local configs will remain visible to Git.'
-        return 0
-    }
+    local hardware_file="$2"
+    local git_dir exclude_file relative_hardware
 
     [[ -d "$repo_root/.git" ]] || {
-        say '[WARN] Repository metadata not found; local configs will remain visible to Git.'
+        say '[NOTE] Git repository metadata not found; skipping local config protection.'
         return 0
     }
 
-    protect_file() {
-        local file="$1"
-        local relative
-
-        relative="${file#"$repo_root"/}"
-
-        [[ -f "$file" ]] || {
-            say "[WARN] Cannot protect missing local config: $relative"
-            return 0
-        }
-
-        # The file must already be tracked. This is intentional:
-        # tracked files remain visible to the Nix flake while their local
-        # modifications are hidden from normal Git status/commits.
-        if ! git -C "$repo_root" ls-files --error-unmatch -- "$relative" \
-            >/dev/null 2>&1; then
-            say "[WARN] $relative is not tracked by Git; cannot use skip-worktree."
-            say "[WARN] Leaving it visible to Git."
-            return 0
-        fi
-
-        # Clear assume-unchanged first in case another Git mechanism
-        # previously marked the file.
-        git -C "$repo_root" update-index \
-            --no-assume-unchanged \
-            --skip-worktree \
-            -- "$relative"
-
-        say "Protected local config from accidental Git commits: $relative"
+    command -v git >/dev/null 2>&1 || {
+        say '[WARN] git is unavailable; skipping local config protection.'
+        return 0
     }
 
-    say 'Protecting machine-specific configuration from accidental commits...'
+    git_dir="$(git -C "$repo_root" rev-parse --git-dir 2>/dev/null)" || {
+        say '[WARN] Unable to determine Git directory; skipping local config protection.'
+        return 0
+    }
 
-    protect_file "$settings_file"
-    protect_file "$hardware_file"
+    if [[ "$git_dir" != /* ]]; then
+        git_dir="$repo_root/$git_dir"
+    fi
+
+    exclude_file="$git_dir/info/exclude"
+
+    mkdir -p "$(dirname "$exclude_file")"
+    touch "$exclude_file"
+
+    if ! grep -Fqx 'profiles/*/hardware-configuration.nix.bak.*' "$exclude_file"; then
+        printf '%s\n' \
+            'profiles/*/hardware-configuration.nix.bak.*' \
+            >> "$exclude_file"
+    fi
+
+    # settings.nix is always machine-local.
+    if [[ -f "$repo_root/settings.nix" ]]; then
+        git -C "$repo_root" update-index --skip-worktree -- settings.nix
+        say 'Protected local config from accidental Git commits: settings.nix'
+    fi
+
+    # hardware_file is already an absolute path when supplied by the installer.
+    if [[ -n "$hardware_file" && -f "$hardware_file" ]]; then
+        relative_hardware="$(
+            realpath --relative-to="$repo_root" "$hardware_file"
+        )"
+
+        git -C "$repo_root" update-index --skip-worktree -- "$relative_hardware"
+
+        say "Protected local config from accidental Git commits: $relative_hardware"
+    elif [[ -n "$hardware_file" ]]; then
+        say "[WARN] Cannot protect missing local config: $hardware_file"
+    fi
 
     say 'Machine-specific configuration remains available to the Nix flake.'
 }
