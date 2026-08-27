@@ -4,19 +4,19 @@ let
     teamsProfile = "${config.home.homeDirectory}/.config/microsoft-edge-teams";
     normalBrowser = settings.preferredBrowser;
 
-    teamsApp = pkgs.writeShellScriptBin "alfheim-teams" ''
+    teamsApp = pkgs.writeShellScriptBin "gjallar-teams" ''
         set -euo pipefail
         mkdir -p ${teamsProfile}
         if [ "$#" -gt 0 ]; then
-            exec ${edge} --password-store=basic --class=alfheim-teams \
+            exec ${edge} --password-store=basic --class=gjallar-teams \
                 --name="Microsoft Teams" --user-data-dir=${teamsProfile} --app="$1"
         fi
-        exec ${edge} --password-store=basic --class=alfheim-teams \
+        exec ${edge} --password-store=basic --class=gjallar-teams \
             --name="Microsoft Teams" --user-data-dir=${teamsProfile} \
             --app=https://teams.microsoft.com
     '';
 
-    urlHandler = pkgs.writeShellScriptBin "alfheim-open-url" ''
+    urlHandler = pkgs.writeShellScriptBin "gjallar-open-url" ''
         set -euo pipefail
         url="''${1:-}"
         [ -n "$url" ] || exit 2
@@ -32,7 +32,7 @@ let
                 --button="Microsoft Teams":0 --button="Normal browser":1 --button="Cancel":2
             choice="$?"
             case "$choice" in
-                0) exec ${teamsApp}/bin/alfheim-teams "$url" ;;
+                0) exec ${teamsApp}/bin/gjallar-teams "$url" ;;
                 1) exec ${normalBrowser} "$url" ;;
                 *) exit 0 ;;
             esac
@@ -45,17 +45,17 @@ in {
     xdg.mimeApps = {
         enable = true;
         defaultApplications = {
-            "x-scheme-handler/http" = [ "alfheim-url-handler.desktop" ];
-            "x-scheme-handler/https" = [ "alfheim-url-handler.desktop" ];
+            "x-scheme-handler/http" = [ "gjallar-url-handler.desktop" ];
+            "x-scheme-handler/https" = [ "gjallar-url-handler.desktop" ];
         };
     };
 
-    home.file.".local/share/applications/alfheim-url-handler.desktop".text = ''
+    home.file.".local/share/applications/gjallar-url-handler.desktop".text = ''
         [Desktop Entry]
         Type=Application
-        Name=AlfheimOS URL handler
+        Name=GjallarOS URL handler
         NoDisplay=true
-        Exec=${urlHandler}/bin/alfheim-open-url %u
+        Exec=${urlHandler}/bin/gjallar-open-url %u
         MimeType=x-scheme-handler/http;x-scheme-handler/https;
     '';
 
@@ -63,14 +63,14 @@ in {
         [Desktop Entry]
         Type=Application
         Name=Microsoft Teams
-        Exec=${teamsApp}/bin/alfheim-teams %U
+        Exec=${teamsApp}/bin/gjallar-teams %U
         Terminal=false
         Icon=microsoft-edge
         Categories=Network;Office;InstantMessaging;
-        StartupWMClass=alfheim-teams
+        StartupWMClass=gjallar-teams
     '';
 
-    home.activation.alfheimDesktopDatabase = lib.hm.dag.entryAfter [ "writeBoundary" ] ''
+    home.activation.gjallarDesktopDatabase = lib.hm.dag.entryAfter [ "writeBoundary" ] ''
         if command -v update-desktop-database >/dev/null 2>&1; then
             update-desktop-database "$HOME/.local/share/applications" >/dev/null 2>&1 || true
         fi

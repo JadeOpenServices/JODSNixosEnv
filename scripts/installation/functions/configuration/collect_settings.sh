@@ -7,7 +7,7 @@ collect_settings() {
     default_system="$(uname -m)-linux"
     [[ "$default_system" == "x86_64-linux" || "$default_system" == "aarch64-linux" ]] || default_system="x86_64-linux"
     default_profile="${profile_values[0]}"; default_shell="${shell_values[0]}"; default_theme="${theme_values[0]}"
-    default_username="${SUDO_USER:-${USER:-user}}"; default_hostname="$(hostname 2>/dev/null || printf alfheim)"
+    default_username="${SUDO_USER:-${USER:-user}}"; default_hostname="$(hostname 2>/dev/null || printf gjallar)"
     default_editors=("${editor_values[0]}"); default_browsers=("${browser_values[0]}"); default_wms=("${wm_values[0]}")
 
     prompt_choice 'System architecture:' "$default_system" system_options; cfg_system="$REPLY"
@@ -36,4 +36,8 @@ collect_settings() {
     cfg_framework_enable=false
     cfg_framework_model=''
     cfg_luks_tpm2_enable=false
+    cfg_docker_enable=false
+    cfg_ai_model='qwen2.5-coder:7b'
+    cfg_ai_context_tokens=8192
+    cfg_ai_vram_mb=0
 }

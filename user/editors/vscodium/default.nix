@@ -46,11 +46,17 @@
                 "**/.turbo" = true;
                 "**/.venv" = true;
                 "**/result" = true;
+                "**/.env*" = true;
+                "**/*secret*" = true;
+                "**/*.key" = true;
             };
             "files.exclude" = {
                 "**/.direnv" = true;
                 "**/node_modules" = true;
                 "**/result" = true;
+                "**/.env*" = true;
+                "**/*secret*" = true;
+                "**/*.key" = true;
                 "**/target" = true;
             };
             "git.confirmSync" = false;

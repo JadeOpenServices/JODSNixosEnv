@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 cat <<'EOF'
-AlfheimOS tools
+GjallarOS tools
 
   rebuild          Apply the current NixOS configuration.
   update           Update flake inputs.

@@ -15,6 +15,7 @@ render_settings() {
         printf '    dotfilesDir = "%s";\n\n' "$(nix_string "$cfg_dotfiles_dir")"
         printf '    workUserEnable = %s;\n' "$cfg_work_user_enable"
         printf '    workUsername = "%s";\n\n' "$(nix_string "$cfg_work_username")"
+        printf '    dockerEnable = %s;\n\n' "$cfg_docker_enable"
         printf '    shell = "%s";\n' "$(nix_string "$cfg_shell")"
         printf '    editors = '; nix_list "${cfg_editors[@]}"; printf ';\n'
         printf '    browsers = '; nix_list "${cfg_browsers[@]}"; printf ';\n'
@@ -33,6 +34,9 @@ render_settings() {
         printf '    graphicsBusId = "%s";\n' "$(nix_string "$cfg_graphics_bus_id")"
         printf '    graphicsIntegratedBusId = "%s";\n' "$(nix_string "$cfg_graphics_integrated_bus_id")"
         printf '    wifiDriver = "%s";\n\n' "$(nix_string "$cfg_wifi_driver")"
+        printf '    aiModel = "%s";\n\n' "$(nix_string "$cfg_ai_model")"
+        printf '    aiContextTokens = %s;\n\n' "$cfg_ai_context_tokens"
+        printf '    aiVramMB = %s;\n\n' "$cfg_ai_vram_mb"
         printf '    nemuEnable = %s;\n' "$cfg_nemu_enable"
         printf '    nemuGpuPassthrough = %s;\n' "$cfg_nemu_gpu_passthrough"
         printf '    nemuGpuIds = '; nix_list "${cfg_nemu_gpu_ids[@]}"; printf ';\n\n'
