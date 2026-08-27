@@ -250,16 +250,18 @@ fi
 # Hardware configuration
 # ---------------------------------------------------------------------------
 
+hardware_file="$REPO_ROOT/profiles/$cfg_profile/hardware-configuration.nix"
+
 if (( ! skip_hardware )); then
     say "Generating hardware configuration..."
 
     generate_hardware_config \
-        "$REPO_ROOT/profiles/$cfg_profile/hardware-configuration.nix"
+        "$hardware_file"
 
     say "Configuring TPM2/LUKS..."
 
     configure_tpm2_luks \
-        "$REPO_ROOT/profiles/$cfg_profile/hardware-configuration.nix"
+        "$hardware_file"
 
     say "Refreshing settings.nix..."
 
@@ -268,9 +270,25 @@ if (( ! skip_hardware )); then
     say "Configuring LUKS..."
 
     configure_luks \
-        "$REPO_ROOT/profiles/$cfg_profile/hardware-configuration.nix"
+        "$hardware_file"
 else
     say "Skipping hardware configuration (--skip-hardware)."
+fi
+
+# ---------------------------------------------------------------------------
+# Protect machine-local configuration from Git
+# ---------------------------------------------------------------------------
+
+say "Protecting local machine configuration..."
+
+if (( ! skip_hardware )); then
+    protect_local_configs \
+        "$REPO_ROOT" \
+        "$hardware_file"
+else
+    protect_local_configs \
+        "$REPO_ROOT" \
+        ""
 fi
 
 # ---------------------------------------------------------------------------
