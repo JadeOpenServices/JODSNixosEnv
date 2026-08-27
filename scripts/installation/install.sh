@@ -258,7 +258,7 @@ if (( ! skip_hardware )); then
     generate_hardware_config \
         "$hardware_file"
 
-    say "Configuring TPM2/LUKS..."
+    say "Configuring TPM2 automatic unlock..."
 
     configure_tpm2_luks \
         "$hardware_file"
@@ -267,7 +267,7 @@ if (( ! skip_hardware )); then
 
     render_settings "$REPO_ROOT/settings.nix"
 
-    say "Configuring LUKS..."
+    say "Checking LUKS configuration..."
 
     configure_luks \
         "$hardware_file"
