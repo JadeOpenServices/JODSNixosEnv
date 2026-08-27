@@ -4,12 +4,20 @@
         ./hardware-configuration.nix
         ../../system/hardware/sound.nix
         ../../system/hardware/bluetooth.nix
+        ../../system/hardware/graphics
+        ../../system/hardware/networking.nix
+        ../../system/hardware/firmware.nix
+        ../../system/hardware/fingerprint.nix
+        ../../system/hardware/input.nix
         ../../system/hardware/thinkpad/boot.nix
         ../../system/security/laptop/firewall.nix
         ../../system/hardware/laptop/battery.nix
         ../../system/virtualization
         ../../system/gaming/nethack.nix
         ../../themes/lib/common.nix
+        ../../system/tools
+        ../../system/users/work.nix
+        ../../system/hardware/framework
     ] ++ (map (wm: ../../system/wm/${wm}) settings.wms);
 
     boot.kernelPackages = pkgs.linuxPackages_latest;
@@ -62,10 +70,8 @@
 
     # A lot of mpris packages require it.
     services.gvfs.enable = true;
-    services.upower.enable = true;
 
     # Before changing this value read the documentation for this option
     # (e.g. man configuration.nix or on https://nixos.org/nixos/options.html).
     system.stateVersion = "25.05"; # Did you read the comment?
 }
-

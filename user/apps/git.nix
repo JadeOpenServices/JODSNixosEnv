@@ -1,4 +1,4 @@
-{ config, pkgs, ...}:
+{ config, pkgs, settings, ...}:
 
 {
     programs.git = {
@@ -11,8 +11,8 @@
             };
             core.editor = "nvim";
             user = {
-                name = "Nikita Zheleztsov";
-                email = "n.zheleztsov@proton.me";
+                name = settings.name;
+                email = settings.email;
             };
             stash = {
                 showPatch = true;

@@ -32,18 +32,5 @@ in {
                 stylus
             ];
         };
-        search = {
-            force = true;
-            default = "local";
-            privateDefault = "local";
-            engines = {
-                local = {
-                    name = "SearXNG";
-                    urls = [{template =
-                        "https://searxng.serpentian.space/search?q={searchTerms}";
-                    }];
-                };
-            };
-        };
     };
 }

@@ -1,16 +1,16 @@
-{config, ...}:
+{config, lib, settings, ...}:
 {
-    services.mpdscribble = {
+    services.mpdscribble = lib.mkIf settings.enableScrobbling {
         enable = true;
         verbose = 3;
         endpoints = {
-            "last.fm" = {
+            "last.fm" = lib.mkIf settings.enableLastfm {
                 passwordFile = "/run/secrets/lastfm";
-                username = "serpentian";
+                username = settings.lastfmUsername;
             };
-            "listenbrainz" = {
+            "listenbrainz" = lib.mkIf settings.enableListenbrainz {
                 passwordFile = "/run/secrets/listenbrainz";
-                username = "serpent1an";
+                username = settings.listenbrainzUsername;
             };
         };
     };

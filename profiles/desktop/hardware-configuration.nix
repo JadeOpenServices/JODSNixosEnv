@@ -24,18 +24,6 @@
       options = [ "fmask=0022" "dmask=0022" ];
     };
 
-  # fileSystems."/home/serpentian/Drives/ssd1" =
-  #   { device = "/dev/disk/by-uuid/b2086a4b-fdd6-4ef2-8309-8a3a968cff96";
-  #     fsType = "xfs";
-  #     options = ["nofail"];
-  # };
-
-  fileSystems."/home/serpentian/Drives/ssd2" =
-    { device = "/dev/disk/by-uuid/a0cede19-b4ed-4362-a5ef-17a5c6b3ada3";
-      fsType = "ext4";
-      options = ["nofail"];
-    };
-
   swapDevices =
     [ { device = "/dev/disk/by-uuid/f049a537-4af0-4b28-9d68-b01d662b2a78"; }
     ];

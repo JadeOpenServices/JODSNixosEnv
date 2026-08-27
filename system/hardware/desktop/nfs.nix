@@ -3,9 +3,6 @@
     environment.systemPackages = with pkgs; [ nfs-utils ];
     boot.supportedFilesystems = [ "nfs" ];
     services.nfs = {};
-    fileSystems."/home/serpentian/Drives/network" = {
-        device = "192.0.2.219:/home/serpentian/media";
-        fsType = "nfs";
-        options = ["nofail"];
-    };
+    # Add a machine-specific NFS mount here when needed. The original mount
+    # pointed to the author's private network and is intentionally disabled.
 }

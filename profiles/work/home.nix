@@ -13,8 +13,9 @@
         ../../user/apps/khal.nix
         ../../user/apps/ssh.nix
         ../../user/apps/neofetch
-        ../../user/gaming/nethack.nix
         ../../user/shells/${settings.shell}.nix
+        ../../user/apps/teams.nix
+        ../../user/apps/fingerprint.nix
         ../../user/virtualization
     ] ++ (map (wm: ../../user/wm/${wm}) settings.wms)
       ++ (map (editor: ../../user/editors/${editor}) settings.editors)
@@ -29,6 +30,8 @@
     nixpkgs.overlays = import ../../pkgs/lib/overlays.nix;
     nixpkgs.config.allowUnfree = true; # Sorry, Stallman(
 
+    # Wine is provided system-wide by ../../system/virtualization and is
+    # intentionally available to the companion work account too.
     home.packages = with pkgs; [
         libreoffice-fresh
         yubikey-manager

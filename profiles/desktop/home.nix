@@ -22,6 +22,8 @@
         ../../user/apps/latex.nix
         ../../user/apps/btop
         ../../user/apps/mpd
+        ../../user/apps/teams.nix
+        ../../user/apps/fingerprint.nix
         ../../user/virtualization
         ../../user/shells/${settings.shell}.nix
     ] ++ (map (wm: ../../user/wm/${wm}) settings.wms)
@@ -89,7 +91,6 @@
         update-resolv-conf
         chromium
         unzip
-        p7zip
         translate-shell
         android-tools
 

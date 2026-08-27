@@ -46,7 +46,7 @@ api.nvim_win_set_cursor(0, {api.nvim_buf_line_count(0), 0})
       enable_audio_bell = "no";
       cursor_trail = 4;
       scrollback_pager = ''
-         nvim +"source /home/serpentian/.config/kitty/vim-mode.lua"
+         nvim +"source ${config.home.homeDirectory}/.config/kitty/vim-mode.lua"
       '';
       paste_actions = "no-op";
       allow_remote_control = "yes";

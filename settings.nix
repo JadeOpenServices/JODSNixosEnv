@@ -4,12 +4,14 @@ rec {
     system = "x86_64-linux";
     profile = "desktop"; # Select from profiles directory
     hostname = "alfheim"; # Hostname
-    username = "serpentian"; # Username
+    username = "user"; # Username (set by the installer)
     timezone = "Europe/Moscow"; # Select timezone
     locale = "en_US.UTF-8"; # Select locale
-    name = "Nikita Zheleztsov"; # Name (git config)
-    email = "n.zheleztsov@proton.me"; # Email (git config)
+    name = "Your Name"; # Name (git config)
+    email = "user@example.com"; # Email (git config)
     dotfilesDir = "/home/${username}/.dotfiles"; # Absolute path of the repo;
+    workUserEnable = false;
+    workUsername = "";
 
     # App configurations.
     shell = "zsh"; # See user/shells directory.
@@ -17,6 +19,25 @@ rec {
     browsers = ["librewolf" "qutebrowser" "zen-browser"]; # See user/browsers directory.
     preferredEditor = "nvim"; # Session variable $TERM.
     preferredBrowser = "librewolf"; # Session variable $BROWSER.
+
+    # Optional music scrobbling (configured by the installer).
+    enableScrobbling = false;
+    enableLastfm = false;
+    enableListenbrainz = false;
+    lastfmUsername = "";
+    listenbrainzUsername = "";
+    frameworkEnable = false;
+    frameworkModel = "";
+    graphicsVendor = "amd";
+    graphicsType = "integrated";
+    graphicsCompute = false;
+    graphicsBusId = "";
+    graphicsIntegratedBusId = "";
+    wifiDriver = "";
+    nemuEnable = false;
+    nemuGpuPassthrough = false;
+    nemuGpuIds = [];
+    luksTpm2Enable = false;
 
     # WM and theming.
     wms = ["hyprland" "sway"]; # See user/wm/ and system/wm directories.

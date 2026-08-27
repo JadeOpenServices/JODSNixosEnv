@@ -1,0 +1,78 @@
+{ config, lib, pkgs, settings, ... }:
+let
+    edge = "${pkgs.microsoft-edge}/bin/microsoft-edge";
+    teamsProfile = "${config.home.homeDirectory}/.config/microsoft-edge-teams";
+    normalBrowser = settings.preferredBrowser;
+
+    teamsApp = pkgs.writeShellScriptBin "alfheim-teams" ''
+        set -euo pipefail
+        mkdir -p ${teamsProfile}
+        if [ "$#" -gt 0 ]; then
+            exec ${edge} --password-store=basic --class=alfheim-teams \
+                --name="Microsoft Teams" --user-data-dir=${teamsProfile} --app="$1"
+        fi
+        exec ${edge} --password-store=basic --class=alfheim-teams \
+            --name="Microsoft Teams" --user-data-dir=${teamsProfile} \
+            --app=https://teams.microsoft.com
+    '';
+
+    urlHandler = pkgs.writeShellScriptBin "alfheim-open-url" ''
+        set -euo pipefail
+        url="''${1:-}"
+        [ -n "$url" ] || exit 2
+        case "$url" in
+            https://teams.microsoft.com/*|https://teams.live.com/*|https://teams.microsoft.us/*|msteams:*)
+                ;;
+            *)
+                exec ${normalBrowser} "$url"
+                ;;
+        esac
+        if command -v yad >/dev/null 2>&1 && [ -n "''${DISPLAY:-}''${WAYLAND_DISPLAY:-}" ]; then
+            yad --question --title="Open Teams link" --text="Open this link in Microsoft Teams?" \
+                --button="Microsoft Teams":0 --button="Normal browser":1 --button="Cancel":2
+            choice="$?"
+            case "$choice" in
+                0) exec ${teamsApp}/bin/alfheim-teams "$url" ;;
+                1) exec ${normalBrowser} "$url" ;;
+                *) exit 0 ;;
+            esac
+        fi
+        exec ${normalBrowser} "$url"
+    '';
+in {
+    home.packages = [ pkgs.microsoft-edge pkgs.yad teamsApp urlHandler ];
+
+    xdg.mimeApps = {
+        enable = true;
+        defaultApplications = {
+            "x-scheme-handler/http" = [ "alfheim-url-handler.desktop" ];
+            "x-scheme-handler/https" = [ "alfheim-url-handler.desktop" ];
+        };
+    };
+
+    home.file.".local/share/applications/alfheim-url-handler.desktop".text = ''
+        [Desktop Entry]
+        Type=Application
+        Name=AlfheimOS URL handler
+        NoDisplay=true
+        Exec=${urlHandler}/bin/alfheim-open-url %u
+        MimeType=x-scheme-handler/http;x-scheme-handler/https;
+    '';
+
+    home.file.".local/share/applications/microsoft-teams.desktop".text = ''
+        [Desktop Entry]
+        Type=Application
+        Name=Microsoft Teams
+        Exec=${teamsApp}/bin/alfheim-teams %U
+        Terminal=false
+        Icon=microsoft-edge
+        Categories=Network;Office;InstantMessaging;
+        StartupWMClass=alfheim-teams
+    '';
+
+    home.activation.alfheimDesktopDatabase = lib.hm.dag.entryAfter [ "writeBoundary" ] ''
+        if command -v update-desktop-database >/dev/null 2>&1; then
+            update-desktop-database "$HOME/.local/share/applications" >/dev/null 2>&1 || true
+        fi
+    '';
+}
