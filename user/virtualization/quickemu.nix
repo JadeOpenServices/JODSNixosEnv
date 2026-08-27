@@ -1,4 +1,4 @@
-{ config, pkgs, ... }:
+{ config, pkgs, settings, ... }:
 
 let
     vmDirectory = "${config.home.homeDirectory}/VMs/fedora";
@@ -14,14 +14,14 @@ let
         ];
         text = ''
             if ! ssh -o BatchMode=yes -o ConnectTimeout=2 -p 22220 \
-                serpentian@localhost true; then
+                ${settings.username}@localhost true; then
                 systemctl --user start quickemu-fedora.service
             fi
 
             for _ in $(seq 1 120); do
                 if ssh -o BatchMode=yes -o ConnectTimeout=2 -p 22220 \
-                    serpentian@localhost true; then
-                    exec waypipe ssh -p 22220 serpentian@localhost "$@"
+                    ${settings.username}@localhost true; then
+                    exec waypipe ssh -p 22220 ${settings.username}@localhost "$@"
                 fi
                 sleep 1
             done

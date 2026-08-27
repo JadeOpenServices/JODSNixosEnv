@@ -1,0 +1,6 @@
+{
+  "release": "26.05",
+  "nixpkgsInput": "nixos-26.05",
+  "updateEndpoint": null,
+  "updatePolicy": "review-and-lock"
+}

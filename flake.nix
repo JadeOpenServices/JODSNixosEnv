@@ -10,6 +10,7 @@
         nixosConfigurations = {
             ${settings.hostname} = nixpkgs.lib.nixosSystem {
                 modules = [
+                    (./. + "/system/compat/regreet-2605.nix")
                     inputs.stylix.nixosModules.stylix
                     inputs.sops-nix.nixosModules.sops
                     # inputs.chaotic.nixosModules.default
@@ -42,11 +43,25 @@
                     inherit settings;
                 };
             };
+        } // nixpkgs.lib.optionalAttrs settings.workUserEnable {
+            ${settings.workUsername} = home-manager.lib.homeManagerConfiguration {
+                pkgs = nixpkgs.legacyPackages.${settings.system};
+                modules = [
+                    (./. + "/profiles/work-user/home.nix")
+                    inputs.plasma-manager.homeModules.plasma-manager
+                    inputs.stylix.homeModules.stylix
+                    inputs.nixvim.homeModules.nixvim
+                    inputs.sops-nix.homeManagerModules.sops
+                    inputs.zen-browser.homeModules.twilight
+                    inputs.noctalia.homeModules.default
+                ];
+                extraSpecialArgs = { inherit inputs settings; };
+            };
         };
     };
 
     inputs = {
-        nixpkgs.url = "github:nixos/nixpkgs/nixos-unstable";
+        nixpkgs.url = "github:nixos/nixpkgs/nixos-26.05";
         home-manager.url = "github:nix-community/home-manager/master";
         home-manager.inputs.nixpkgs.follows = "nixpkgs";
         sops-nix.url = "github:Mic92/sops-nix";
