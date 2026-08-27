@@ -18,7 +18,7 @@
         quickmarks = {
             # Work
             gh = "https://github.com";
-            ghr = "https://github.com/Serpentian?tab=repositories";
+            ghr = "https://github.com/search?q=&type=repositories";
             ghi = "https://github.com/issues";
             ghp = "https://github.com/pulls";
             ghn = "https://github.com/notifications";
@@ -40,10 +40,6 @@
             em = "https://e.mail.ru/inbox";
             yt = "https://www.youtube.com";
 
-            # Local
-            nd = "http://192.168.1.218:4533";
-            qb = "http://192.168.1.218:8080";
-            sl = "http://192.168.1.218:5030";
         };
         extraConfig = ''
             c.tabs.padding = { "bottom": 8, "left": 5, "right": 5, "top": 8 }

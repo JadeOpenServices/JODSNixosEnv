@@ -16,6 +16,8 @@
         ../../user/apps/tlaplus.nix
         ../../user/apps/latex.nix
         ../../user/shells/${settings.shell}.nix
+        ../../user/apps/teams.nix
+        ../../user/apps/fingerprint.nix
         ../../user/virtualization
     ] ++ (map (wm: ../../user/wm/${wm}) settings.wms)
       ++ (map (editor: ../../user/editors/${editor}) settings.editors)

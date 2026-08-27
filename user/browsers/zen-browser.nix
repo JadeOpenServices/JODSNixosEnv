@@ -37,19 +37,6 @@ in {
                 stylus
             ];
         };
-        search = {
-            force = true;
-            default = "local";
-            privateDefault = "local";
-            engines = {
-                local = {
-                    name = "SearXNG";
-                    urls = [{template =
-                        "https://searxng.serpentian.space/search?q={searchTerms}";
-                    }];
-                };
-            };
-        };
         settings = {
             "zen.view.use-single-toolbar" = false;
             "zen.view.grey-out-inactive-windows" = false;

@@ -4,7 +4,11 @@
         ./hardware-configuration.nix
         ../../system/hardware/sound.nix
         ../../system/hardware/bluetooth.nix
-        ../../system/hardware/desktop/graphic.nix
+        ../../system/hardware/graphics
+        ../../system/hardware/networking.nix
+        ../../system/hardware/firmware.nix
+        ../../system/hardware/fingerprint.nix
+        ../../system/hardware/input.nix
         ../../system/hardware/desktop/mouse.nix
         ../../system/hardware/desktop/boot.nix
         ../../system/hardware/desktop/nfs.nix
@@ -13,6 +17,9 @@
         ../../system/security/vpn/xray.nix
         ../../system/security/ssh.nix
         ../../system/security/sops.nix
+        ../../system/tools
+        ../../system/users/work.nix
+        ../../system/hardware/framework
         ../../system/apps/thunar.nix
         # ../../system/apps/open-webui.nix
         ../../system/apps/guix.nix
@@ -34,10 +41,6 @@
     networking.hostName = settings.hostname;
     networking.networkmanager.enable = true;
     networking.networkmanager.dns = "dnsmasq";
-    networking.extraHosts = ''
-        127.0.0.1 serpentian.home
-    '';
-
     # Timezone
     time.timeZone = settings.timezone;
     services.chrony.enable = true;
@@ -74,7 +77,6 @@
         nix-index
         pciutils
         go-mtpfs
-        ntfs3g
         inetutils
         lsof
         wget
@@ -97,4 +99,3 @@
     # (e.g. man configuration.nix or on https://nixos.org/nixos/options.html).
     system.stateVersion = "24.11"; # Did you read the comment?
 }
-
