@@ -1,0 +1,8 @@
+{
+  "mode": "explicit-command",
+  "protocols": ["https"],
+  "maxBytes": 2097152,
+  "timeoutSeconds": 15,
+  "allowedHosts": ["nixos.org", "github.com", "docs.python.org", "developer.mozilla.org"],
+  "endpoint": null
+}

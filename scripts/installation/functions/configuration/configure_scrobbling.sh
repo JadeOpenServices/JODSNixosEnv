@@ -1,5 +1,5 @@
 configure_scrobbling() {
-    local repo_root="$1" username="$2" answer token service_username recipient key_file plain_file
+    local repo_root="$1" username="$2" answer token service_username recipient key_file plain_file home_dir
     cfg_enable_scrobbling=false
     cfg_enable_lastfm=false
     cfg_enable_listenbrainz=false
@@ -11,7 +11,8 @@ configure_scrobbling() {
 
     require_command sops
     require_command age-keygen
-    key_file="/home/$username/.config/sops/age/keys.txt"
+    home_dir="$(user_home_dir "$username")"
+    key_file="$home_dir/.config/sops/age/keys.txt"
     if [[ ! -f "$key_file" ]]; then
         mkdir -p "$(dirname "$key_file")"
         age-keygen -o "$key_file" >/dev/null

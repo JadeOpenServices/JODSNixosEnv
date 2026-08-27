@@ -1,7 +1,7 @@
 { config, pkgs, ... }:
 {
   home.packages = [ pkgs.fprintd pkgs.yad ];
-  systemd.user.services.alfheim-fingerprint-enroll = {
+  systemd.user.services.gjallar-fingerprint-enroll = {
     Unit = {
       Description = "Offer first-login fingerprint enrollment";
       After = [ "graphical-session.target" ];
@@ -9,9 +9,9 @@
     };
     Service = {
       Type = "oneshot";
-      ExecStart = pkgs.writeShellScript "alfheim-fingerprint-enroll" ''
+      ExecStart = pkgs.writeShellScript "gjallar-fingerprint-enroll" ''
         set -eu
-        marker="$HOME/.config/alfheim/fingerprint-enrollment-seen"
+        marker="$HOME/.config/gjallar/fingerprint-enrollment-seen"
         [ -e "$marker" ] && exit 0
         mkdir -p "$(dirname "$marker")"
         if ! ${pkgs.fprintd}/bin/fprintd-list "$USER" >/dev/null 2>&1; then

@@ -3,7 +3,7 @@ rec {
     # Basic configuration.
     system = "x86_64-linux";
     profile = "desktop"; # Select from profiles directory
-    hostname = "alfheim"; # Hostname
+    hostname = "gjallar"; # Hostname
     username = "user"; # Username (set by the installer)
     timezone = "Europe/Moscow"; # Select timezone
     locale = "en_US.UTF-8"; # Select locale
@@ -12,6 +12,7 @@ rec {
     dotfilesDir = "/home/${username}/.dotfiles"; # Absolute path of the repo;
     workUserEnable = false;
     workUsername = "";
+    dockerEnable = false;
 
     # App configurations.
     shell = "zsh"; # See user/shells directory.
@@ -34,6 +35,9 @@ rec {
     graphicsBusId = "";
     graphicsIntegratedBusId = "";
     wifiDriver = "";
+    aiModel = "qwen2.5-coder:7b";
+    aiContextTokens = 8192;
+    aiVramMB = 0;
     nemuEnable = false;
     nemuGpuPassthrough = false;
     nemuGpuIds = [];

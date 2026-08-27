@@ -7,7 +7,7 @@ let
     prefix="''${WINEPREFIX:-$HOME/.local/share/wine/win11}"
     export WINEPREFIX="$prefix" WINEARCH=win64 WINEESYNC=1 WINEFSYNC=1 DXVK_LOG_LEVEL=none
     mkdir -p "$prefix"
-    if [[ ! -f "$prefix/.alfheim-wine-initialized" ]]; then ${winePackage}/bin/wineboot -u; touch "$prefix/.alfheim-wine-initialized"; fi
+    if [[ ! -f "$prefix/.gjallar-wine-initialized" ]]; then ${winePackage}/bin/wineboot -u; touch "$prefix/.gjallar-wine-initialized"; fi
     exec ${winePackage}/bin/wine "$@"
   '';
   wineInit = pkgs.writeShellScriptBin "wine-win11-init" ''
@@ -44,7 +44,7 @@ in
 
     # Enable docker daemon. Rootless docker doesn't properly work
     # with distrobox. Let's use podman for that)
-    virtualisation.docker.enable = true;
+    virtualisation.docker.enable = settings.dockerEnable;
     virtualisation.podman.enable = true;
     virtualisation.podman.defaultNetwork.settings.dns_enabled = true;
 
