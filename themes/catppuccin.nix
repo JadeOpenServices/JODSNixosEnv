@@ -1,7 +1,7 @@
 { pkgs, ...}:
 {
     themeName = "catppuccin-mocha";
-    wallpaper = ../non-nix/wallpapers/evening-sky.png;
+    wallpaper = { center = ../non-nix/wallpapers/evening-sky.png; };
     # Stylix palette override.
     override = {
         base00 = "11111b";
