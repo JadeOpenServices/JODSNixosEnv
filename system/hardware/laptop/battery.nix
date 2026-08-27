@@ -33,15 +33,17 @@
         '';
     };
 
-    services.logind = {
+    services.logind.settings.Login = {
         # A short press is safe; require a long press for poweroff.
-        powerKey = "suspend";
-        powerKeyLongPress = "poweroff";
+        HandlePowerKey = "suspend";
+        HandlePowerKeyLongPress = "poweroff";
+
         # Suspend-to-RAM when undocked; stay awake with an external display.
-        lidSwitch = "suspend";
-        lidSwitchExternalPower = "ignore";
-        lidSwitchDocked = "ignore";
+        HandleLidSwitch = "suspend";
+        HandleLidSwitchExternalPower = "ignore";
+        HandleLidSwitchDocked = "ignore";
     };
+
 
     services.upower.enable = true;
 }

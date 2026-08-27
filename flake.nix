@@ -71,9 +71,8 @@
         };
         # chaotic.url = "github:chaotic-cx/nyx/nyxpkgs-unstable";
         stylix = {
-            url = "github:danth/stylix";
+            url = "github:danth/stylix/release-26.05";
             inputs.nixpkgs.follows = "nixpkgs";
-            inputs.home-manager.follows = "home-manager";
         };
         ags.url = "git+https://github.com/Aylur/ags?rev=60180a184cfb32b61a1d871c058b31a3b9b0743d";
         caelestia.url = "github:caelestia-dots/shell";
@@ -102,7 +101,6 @@
         plasma-manager = {
             url = "github:nix-community/plasma-manager";
             inputs.nixpkgs.follows = "nixpkgs";
-            inputs.home-manager.follows = "home-manager";
         };
         zen-browser = {
             url = "github:0xc000022070/zen-browser-flake";
