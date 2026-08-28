@@ -51,6 +51,22 @@ in {
         brightnessctl
         hyprlock
         sway-contrib.grimshot
+        # Spotifyd is slow with playerctl, use dbus instead.
+        (pkgs.writeScriptBin "hyprmusic" ''
+          #!/bin/sh
+          set -euo pipefail
+          case "''${1:-}" in
+            next) MEMBER=Next ;;
+            previous) MEMBER=Previous ;;
+            play) MEMBER=Play ;;
+            pause) MEMBER=Pause ;;
+            play-pause) MEMBER=PlayPause ;;
+            *) echo "Usage: $0 next|previous|play|pause|play-pause"; exit 1 ;;
+          esac
+          exec dbus-send --print-reply \
+            --dest="org.mpris.MediaPlayer2.''$(playerctl -l | head -n 1)" \
+            /org/mpris/MediaPlayer2 "org.mpris.MediaPlayer2.Player.$MEMBER"
+        '')
     ];
 
     programs.ags = {
@@ -59,44 +75,4 @@ in {
     };
 
     home.file.".cache/ags/options-nix.json".text = (builtins.toJSON agsOptions);
-    home.packages = with pkgs; [
-    # Spotifyd is slow with playerctl, use dbus insted.
-    (pkgs.writeScriptBin "hyprmusic" ''
-      #!/bin/sh
-      set -euo pipefail
-      case "''${1:-}" in
-        next)
-          MEMBER=Next
-          ;;
-
-        previous)
-          MEMBER=Previous
-          ;;
-
-        play)
-          MEMBER=Play
-          ;;
-
-        pause)
-          MEMBER=Pause
-          ;;
-
-        play-pause)
-          MEMBER=PlayPause
-          ;;
-
-        *)
-          echo "Usage: $0 next|previous|play|pause|play-pause"
-          exit 1
-          ;;
-
-      esac
-
-      exec dbus-send                                                \
-        --print-reply                                               \
-        --dest="org.mpris.MediaPlayer2.''$(playerctl -l | head -n 1)" \
-        /org/mpris/MediaPlayer2                                     \
-        "org.mpris.MediaPlayer2.Player.$MEMBER"
-    '')
-    ];
 }

@@ -1,5 +1,6 @@
 { inputs, config, lib, settings, pkgs, ... }: let
-    shell = "noctalia";
+    # The selected theme owns the shell choice; keep Hyprland itself stable.
+    shell = settings.themeDetails.shell or "noctalia";
 in {
     _module.args.hyprlandShellDetails =
         import (../. + "/shells/${shell}/details.nix") {};

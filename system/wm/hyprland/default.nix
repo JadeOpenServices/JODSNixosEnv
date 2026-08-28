@@ -1,10 +1,9 @@
-{ inputs, config, pkgs, ... }: let
-    shell = "noctalia";
+{ inputs, config, pkgs, lib, settings, ... }: let
+    shell = settings.themeDetails.shell or "noctalia";
 in {
     imports = [
         ../common/wayland.nix
-        ../shells/${shell}.nix
-    ];
+    ] ++ lib.optional (shell == "noctalia") ../shells/noctalia.nix;
 
     programs = {
         hyprland = {
