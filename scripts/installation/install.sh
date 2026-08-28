@@ -343,11 +343,20 @@ fi
 # ---------------------------------------------------------------------------
 
 if (( ! skip_rebuild )); then
-    if [[ "${cfg_preset_loaded:-false}" == true ]]; then
-        cfg_run_rebuild="$(preset_bool runRebuild && echo true || echo false)"
-    else
-        confirm "Run nixos-rebuild switch now?" && cfg_run_rebuild=true || cfg_run_rebuild=false
-    fi
+    while true; do
+        if [[ "${cfg_preset_loaded:-false}" == true ]]; then
+            cfg_run_rebuild="$(preset_bool runRebuild && echo true || echo false)"
+            break
+        elif confirm "Run nixos-rebuild switch now?"; then
+            cfg_run_rebuild=true
+            break
+        elif [[ "${INSTALLER_UI:-terminal}" == gtk ]]; then
+            gtk_cancel_prompt || continue
+        else
+            cfg_run_rebuild=false
+            break
+        fi
+    done
     if [[ "$cfg_run_rebuild" == true ]]; then
         say "Running NixOS rebuild..."
 
@@ -367,9 +376,6 @@ if (( ! skip_rebuild )); then
         printf "  sudo nixos-rebuild switch --flake '%s#%s'\n" \
             "$REPO_ROOT" \
             "$cfg_hostname"
-        fi
-        if [[ "${INSTALLER_UI:-terminal}" == gtk ]]; then
-            gtk_cancel_prompt || true
         fi
 else
     say "Skipping rebuild (--no-rebuild)."
