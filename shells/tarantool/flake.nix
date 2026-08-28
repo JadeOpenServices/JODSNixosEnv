@@ -2,6 +2,7 @@
   description = "Nix shell for Tarantool";
 
   inputs = {
+    # This development shell intentionally tracks unstable for its build toolchain.
     nixpkgs.url = "github:nixos/nixpkgs/nixpkgs-unstable";
     flake-utils.url = "github:numtide/flake-utils";
   };

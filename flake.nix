@@ -15,6 +15,7 @@
                     inputs.sops-nix.nixosModules.sops
                     inputs.home-manager.nixosModules.home-manager
                     {
+                        nixpkgs.overlays = [ inputs.nur.overlays.default ];
                         # Activate the matching Home Manager profile as part
                         # of the system rebuild. Without this, greetd can
                         # start Hyprland before its user configuration exists.
@@ -23,7 +24,6 @@
                         home-manager.extraSpecialArgs = { inherit inputs settings; };
                         home-manager.sharedModules = [
                             inputs.plasma-manager.homeModules.plasma-manager
-                            inputs.stylix.homeModules.stylix
                             inputs.nixvim.homeModules.nixvim
                             inputs.sops-nix.homeManagerModules.sops
                             inputs.zen-browser.homeModules.twilight
@@ -84,8 +84,10 @@
     };
 
     inputs = {
+        # Keep these literals aligned with deployment/release-policy.json.
+        # Flake input URLs must be static strings and cannot be computed from JSON.
         nixpkgs.url = "github:nixos/nixpkgs/nixos-26.05";
-        home-manager.url = "github:nix-community/home-manager/master";
+        home-manager.url = "github:nix-community/home-manager/release-26.05";
         home-manager.inputs.nixpkgs.follows = "nixpkgs";
         sops-nix.url = "github:Mic92/sops-nix";
         nur = {
