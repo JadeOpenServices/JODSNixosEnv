@@ -2,6 +2,7 @@
     description = "Nix shell for ComfyUI";
 
     inputs = {
+        # This shell intentionally tracks unstable for current ComfyUI/GPU support.
         nixpkgs.url = "github:nixos/nixpkgs/nixpkgs-unstable";
         flake-utils.url = "github:numtide/flake-utils";
     };

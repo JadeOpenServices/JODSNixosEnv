@@ -1,15 +1,18 @@
 {pkgs, settings, lib, ...}: let
     details = settings.themeDetails;
 in {
+    home.pointerCursor.enable = true;
+    xdg.userDirs.setSessionVariables = true;
+
     gtk = {
         enable = true;
         iconTheme = {
-            name = details.icons;
-            package = details.iconsPkg;
+            name = lib.mkForce details.icons;
+            package = lib.mkForce details.iconsPkg;
         };
         theme = {
-            name = "catppuccin-frappe-blue-standard";
-            package = pkgs.catppuccin-gtk;
+            name = lib.mkForce "catppuccin-frappe-blue-standard";
+            package = lib.mkForce pkgs.catppuccin-gtk;
         };
     };
 
@@ -22,6 +25,5 @@ in {
         targets.btop.enable =
             lib.mkIf (settings.themeDetails.btopTheme != null) false;
         targets.sway.useWallpaper = false;
-        targets.noctalia.enable = false;
     };
 }
