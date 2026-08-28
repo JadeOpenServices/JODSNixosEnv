@@ -130,8 +130,18 @@ say "This wizard writes settings.nix and can generate the selected profile's har
 
 say "Discovering available profiles and components..."
 
+detect_form_factor
+say "Detected ${CFG_FORM_FACTOR} hardware; filtering compatible profiles."
+
 mapfile -t profiles < <(
-    discover_options "$REPO_ROOT/profiles" directory
+    if [[ "${cfg_preset_loaded:-false}" == true ]]; then
+        discover_options "$REPO_ROOT/profiles" directory
+    elif [[ "$CFG_FORM_FACTOR" == desktop ]]; then
+        [[ -d "$REPO_ROOT/profiles/desktop" ]] && printf '%s\n' desktop
+    else
+        discover_options "$REPO_ROOT/profiles" directory |
+            awk '$0 != "desktop" && $0 != "work" && $0 != "work-user"'
+    fi
 )
 
 mapfile -t shells < <(
@@ -185,6 +195,9 @@ collect_settings \
     wms \
     themes
 
+say "Applying the selected laptop profile..."
+configure_framework
+
 say "Configuring Docker..."
 configure_docker
 
@@ -203,9 +216,6 @@ if [[ "$cfg_ai_enable" == true ]]; then
 else
     say "Local AI disabled; skipping AI hardware profiling."
 fi
-
-say "Configuring Framework..."
-configure_framework
 
 say "Configuring scrobbling..."
 configure_scrobbling \

@@ -17,6 +17,10 @@ collect_settings() {
         cfg_editors=("${cfg_editors[@]:-vscodium}"); cfg_browsers=("${cfg_browsers[@]:-librewolf}")
         cfg_preferred_editor="$(preset_get preferredEditor)"; cfg_preferred_browser="$(preset_get preferredBrowser)"
         cfg_wms=(hyprland); cfg_theme="$(preset_get theme)"
+        cfg_background_normal="$(preset_get backgroundNormal)"
+        cfg_background_work="$(preset_get backgroundWork)"
+        cfg_background_gaming="$(preset_get backgroundGaming)"
+        resolve_backgrounds "$repo_root" "$cfg_dotfiles_dir"
         cfg_enable_scrobbling=false; cfg_enable_lastfm=false; cfg_enable_listenbrainz=false
         cfg_lastfm_username=''; cfg_listenbrainz_username=''
         cfg_framework_enable=false; cfg_framework_model=''; cfg_luks_tpm2_enable=false
@@ -55,6 +59,9 @@ collect_settings() {
     prompt_value 'Preferred browser command:' "${cfg_browsers[0]}"; cfg_preferred_browser="$REPLY"
     cfg_wms=(hyprland)
     prompt_choice 'Theme:' "$default_theme" "$themes_name"; cfg_theme="$REPLY"
+    cfg_background_normal=''
+    cfg_background_work=''
+    cfg_background_gaming=''
     cfg_enable_scrobbling=false
     cfg_enable_lastfm=false
     cfg_enable_listenbrainz=false

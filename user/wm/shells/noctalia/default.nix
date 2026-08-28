@@ -1,6 +1,19 @@
 {config, settings, ...}: let
     themeDetails = settings.themeDetails;
     profileDetails = settings.profileDetails;
+    wallpaperDetails =
+      if builtins.isAttrs themeDetails.wallpaper then themeDetails.wallpaper
+      else {
+        left = themeDetails.wallpaper;
+        center = themeDetails.wallpaper;
+        right = themeDetails.wallpaper;
+      };
+    avatarPath = if themeDetails ? avatar then themeDetails.avatar else wallpaperDetails.center;
+    isWorkUser = config.home.username == settings.workUsername;
+    selectedBackground =
+      if isWorkUser && settings.backgroundWork != "" then settings.backgroundWork
+      else if !isWorkUser && settings.backgroundNormal != "" then settings.backgroundNormal
+      else wallpaperDetails.center;
     palette = {
         dark = {
             mPrimary = "#${config.lib.stylix.colors.base0D}";
@@ -68,7 +81,7 @@ in {
             };
             shell = {
                 font_family = themeDetails.font;
-                avatar_path = themeDetails.avatar;
+                avatar_path = avatarPath;
                 screenshot = {
                     directory = "~/Media/Pictures/Screenshots";
                 };
@@ -151,13 +164,13 @@ in {
                 directory = "${settings.dotfilesDir}/non-nix/wallpapers";
                 monitors = {
                     "${profileDetails.monitorsPosition.left}" = {
-                        path = themeDetails.wallpaper.left;
+                        path = wallpaperDetails.left;
                     };
                     "${settings.profileDetails.monitorsPosition.center}" = {
-                        path = themeDetails.wallpaper.center;
+                        path = selectedBackground;
                     };
                     "${settings.profileDetails.monitorsPosition.right}" = {
-                        path = themeDetails.wallpaper.right;
+                        path = wallpaperDetails.right;
                     };
                 };
             };

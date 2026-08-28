@@ -4,10 +4,15 @@ firmware_update() {
         say '[NOTE] fwupdmgr is unavailable; skipping firmware update check.'
         return 0
     fi
-    confirm 'Check for and install available firmware updates now?' || {
+    if [[ "${cfg_preset_loaded:-false}" == true ]]; then
+        preset_bool runUpdateChecks || {
+            say 'Firmware update check skipped by preset.'
+            return 0
+        }
+    elif ! confirm 'Check for and install available firmware updates now?'; then
         say 'Firmware update check skipped.'
         return 0
-    }
+    fi
     command -v sudo >/dev/null 2>&1 || {
         say '[WARN] sudo is unavailable; cannot apply firmware updates.'
         return 0

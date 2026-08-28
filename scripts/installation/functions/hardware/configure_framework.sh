@@ -1,5 +1,5 @@
 configure_framework() {
-    local answer model
+    local model
     cfg_framework_enable=false
     cfg_framework_model=""
     if [[ "${cfg_preset_loaded:-false}" == true ]]; then
@@ -7,13 +7,12 @@ configure_framework() {
         cfg_framework_model="$(preset_get frameworkModel)"
         return 0
     fi
-    if [[ "${INSTALLER_UI:-terminal}" == gtk ]]; then
-        confirm 'Is this a Framework laptop?' || return 0
-        answer=y
-    else
-        read -r -p 'Is this a Framework laptop? [y/N] ' answer
-    fi
-    [[ "$answer" =~ ^([yY]|[yY][eE][sS])$ ]] || return 0
+    # The profile/form-factor choice already identifies the laptop family.
+    # Desktops, ThinkPads, and generic laptops do not receive Framework
+    # settings or an unrelated extra prompt.
+    [[ "${CFG_FORM_FACTOR:-laptop}" == laptop ]] || return 0
+    [[ "${CFG_LAPTOP_VENDOR:-generic}" == framework || "$cfg_profile" == framework* ]] || return 0
+
     local -a models=(13 16 12)
     if [[ "${INSTALLER_UI:-terminal}" == gtk ]]; then
         prompt_choice 'Framework model:' 13 models

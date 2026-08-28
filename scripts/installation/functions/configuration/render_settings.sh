@@ -22,6 +22,10 @@ render_settings() {
         printf '    browsers = '; nix_list "${cfg_browsers[@]}"; printf ';\n'
         printf '    preferredEditor = "%s";\n' "$(nix_string "$cfg_preferred_editor")"
         printf '    preferredBrowser = "%s";\n\n' "$(nix_string "$cfg_preferred_browser")"
+        printf '    # Optional per-user wallpaper paths (empty uses the selected theme).\n'
+        printf '    backgroundNormal = "%s";\n' "$(nix_string "$cfg_background_normal")"
+        printf '    backgroundWork = "%s";\n' "$(nix_string "$cfg_background_work")"
+        printf '    backgroundGaming = "%s";\n\n' "$(nix_string "$cfg_background_gaming")"
         printf '    enableScrobbling = %s;\n' "$cfg_enable_scrobbling"
         printf '    enableLastfm = %s;\n' "$cfg_enable_lastfm"
         printf '    enableListenbrainz = %s;\n' "$cfg_enable_listenbrainz"
