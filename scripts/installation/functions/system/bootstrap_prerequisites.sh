@@ -15,6 +15,19 @@ bootstrap_prerequisites() {
         [git]=git
         [fwupdmgr]=fwupd
     )
+    # Preset mode is deliberately terminal-only, so it does not need GTK.
+    [[ "${cfg_preset_loaded:-false}" == true ]] || requirements[zenity]=zenity
+    if [[ -f "$config_file" ]] && ! grep -q 'catppuccin-gtk' "$config_file"; then
+        packages+=(catppuccin-gtk)
+        commands+=("catppuccin-gtk theme")
+    fi
+    if [[ -f "$config_file" ]] && ! grep -q 'GTK_THEME' "$config_file"; then
+        case " ${packages[*]} " in
+            *" catppuccin-gtk "*) ;;
+            *) packages+=(catppuccin-gtk) ;;
+        esac
+        commands+=("GTK_THEME")
+    fi
 
     for command in "${!requirements[@]}"; do
         if ! command -v "$command" >/dev/null 2>&1; then
@@ -242,6 +255,26 @@ bootstrap_prerequisites() {
         sudo mv -- "$tmp_file" "$config_file"
         say 'Enabled services.fwupd in configuration.nix.'
     fi
+
+    if ! sudo grep -q 'GTK_THEME' "$config_file"; then
+        tmp_file="${config_file}.gjallar-tmp"
+        sudo awk '
+            ! inserted && (/^[[:space:]]*\{[[:space:]]*$/ || /:[[:space:]]*\{[[:space:]]*$/) {
+                print
+                print "    environment.variables.GTK_THEME = \"Adwaita:dark\";"
+                inserted = 1
+                next
+            }
+            { print }
+            END { if (!inserted) exit 2 }
+        ' "$config_file" | sudo tee "$tmp_file" >/dev/null || {
+            sudo rm -f -- "$tmp_file"
+            die 'Could not enable the Catppuccin GTK theme in configuration.nix.'
+        }
+        sudo mv -- "$tmp_file" "$config_file"
+        say 'Enabled the Catppuccin GTK theme system-wide.'
+    fi
+    sudo sed -i 's/GTK_THEME[[:space:]]*=[[:space:]]*"[^"]*"/GTK_THEME = "Adwaita:dark"/' "$config_file"
 
     say "Backed up configuration to $backup"
 

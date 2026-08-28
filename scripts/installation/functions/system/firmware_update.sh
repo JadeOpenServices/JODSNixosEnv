@@ -4,8 +4,7 @@ firmware_update() {
         say '[NOTE] fwupdmgr is unavailable; skipping firmware update check.'
         return 0
     fi
-    read -r -p 'Check for and install available firmware updates now? [y/N] ' answer
-    [[ "$answer" =~ ^([yY]|[yY][eE][sS])$ ]] || {
+    confirm 'Check for and install available firmware updates now?' || {
         say 'Firmware update check skipped.'
         return 0
     }
