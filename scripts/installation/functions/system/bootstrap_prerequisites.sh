@@ -28,12 +28,18 @@ bootstrap_prerequisites() {
         fi
     done
 
+    # Installing the fwupd package alone does not register its daemon; the
+    # NixOS module must also be enabled in configuration.nix.
+    if [[ -f "$config_file" ]] &&
+       ! grep -qE 'services\.fwupd\.enable[[:space:]]*=[[:space:]]*true' "$config_file"; then
+        case " ${packages[*]} " in
+            *" fwupd "*) ;;
+            *) packages+=(fwupd); commands+=("services.fwupd.enable") ;;
+        esac
+    fi
+
     if (( ${#packages[@]} == 0 )); then
-        if command -v fwupdmgr >/dev/null 2>&1 &&
-           command -v systemctl >/dev/null 2>&1; then
-            sudo systemctl enable --now fwupd.service 2>/dev/null ||
-                say 'fwupd is installed but could not be started yet.'
-        fi
+        ensure_fwupd
         return 0
     fi
 
@@ -218,13 +224,31 @@ bootstrap_prerequisites() {
 
     sudo mv -- "$tmp_file" "$config_file"
 
+    if ! sudo grep -qE 'services\.fwupd\.enable[[:space:]]*=[[:space:]]*true' "$config_file"; then
+        tmp_file="${config_file}.gjallar-tmp"
+        sudo awk '
+            ! inserted && (/^[[:space:]]*\{[[:space:]]*$/ || /:[[:space:]]*\{[[:space:]]*$/) {
+                print
+                print "    services.fwupd.enable = true;"
+                inserted = 1
+                next
+            }
+            { print }
+            END { if (!inserted) exit 2 }
+        ' "$config_file" | sudo tee "$tmp_file" >/dev/null || {
+            sudo rm -f -- "$tmp_file"
+            die 'Could not enable services.fwupd in configuration.nix.'
+        }
+        sudo mv -- "$tmp_file" "$config_file"
+        say 'Enabled services.fwupd in configuration.nix.'
+    fi
+
     say "Backed up configuration to $backup"
 
     if sudo nixos-rebuild switch; then
         sudo rm -f -- "$backup"
 
-        sudo systemctl enable --now fwupd.service 2>/dev/null ||
-            say 'fwupd was installed, but its service could not be started.'
+        ensure_fwupd
 
         say 'Bootstrap rebuild succeeded; removed the temporary configuration backup.'
     else

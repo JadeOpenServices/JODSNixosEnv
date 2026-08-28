@@ -42,6 +42,8 @@ setup_error_handler
 
 skip_hardware=0
 skip_rebuild=0
+refresh_hardware=0
+existing_install=0
 
 for argument in "$@"; do
     case "$argument" in
@@ -53,8 +55,12 @@ for argument in "$@"; do
             skip_rebuild=1
             ;;
 
+        --refresh-hardware)
+            refresh_hardware=1
+            ;;
+
         -h|--help)
-            printf 'Usage: %s [--skip-hardware] [--no-rebuild]\n' \
+            printf 'Usage: %s [--skip-hardware] [--refresh-hardware] [--no-rebuild]\n' \
                 "${0##*/}"
             exit 0
             ;;
@@ -85,8 +91,25 @@ fi
 say "Checking NixOS release..."
 check_nixos_release
 
-say "Checking bootstrap prerequisites..."
+if detect_existing_install "$REPO_ROOT"; then
+    existing_install=1
+    say "Existing GjallarOS installation detected; preserving machine-local setup."
+    if [[ -f /etc/nixos/configuration.nix ]] &&
+       grep -qE 'services\.fwupd\.enable[[:space:]]*=[[:space:]]*true' /etc/nixos/configuration.nix; then
+        say "Skipping prerequisite bootstrap."
+        ensure_fwupd
+    else
+        say "fwupd is not enabled in the system configuration; bootstrapping it now."
+        bootstrap_prerequisites
+    fi
+else
+    say "Checking bootstrap prerequisites..."
 bootstrap_prerequisites
+fi
+
+load_user_preset "$REPO_ROOT"
+configure_auto_reboot "$REPO_ROOT"
+firmware_update
 
 # ---------------------------------------------------------------------------
 # Installer introduction
@@ -121,17 +144,7 @@ mapfile -t themes < <(
     discover_options "$REPO_ROOT/themes" nix-file
 )
 
-mapfile -t user_wms < <(
-    discover_options "$REPO_ROOT/user/wm" directory
-)
-
-wms=()
-
-for wm in "${user_wms[@]}"; do
-    if [[ -f "$REPO_ROOT/system/wm/$wm/default.nix" ]]; then
-        wms+=("$wm")
-    fi
-done
+wms=(hyprland)
 
 (( ${#profiles[@]} )) ||
     die "No profiles found."
@@ -145,8 +158,8 @@ done
 (( ${#browsers[@]} )) ||
     die "No browsers found."
 
-(( ${#wms[@]} )) ||
-    die "No shared window managers found."
+[[ -f "$REPO_ROOT/system/wm/hyprland/default.nix" ]] ||
+    die "Hyprland support is missing from this checkout."
 
 (( ${#themes[@]} )) ||
     die "No themes found."
@@ -169,14 +182,21 @@ collect_settings \
 say "Configuring Docker..."
 configure_docker
 
+say "Configuring local AI..."
+configure_ai
+
 say "Detecting graphics..."
 detect_graphics
 
 say "Detecting network..."
 detect_network
 
-say "Selecting AI profile..."
-select_ai_profile
+if [[ "$cfg_ai_enable" == true ]]; then
+    say "Selecting AI profile..."
+    select_ai_profile
+else
+    say "Local AI disabled; skipping AI hardware profiling."
+fi
 
 say "Configuring Framework..."
 configure_framework
@@ -220,6 +240,12 @@ else
     printf '  nemu: off\n'
 fi
 
+if [[ "$cfg_ai_enable" == true ]]; then
+    printf '  local AI: enabled (%s)\n' "$cfg_ai_model"
+else
+    printf '  local AI: off\n'
+fi
+
 if [[ "$cfg_work_user_enable" == true ]]; then
     printf '  work account: %s (no gaming modules)\n' \
         "$cfg_work_username"
@@ -232,7 +258,12 @@ printf '\n'
 # Write settings
 # ---------------------------------------------------------------------------
 
-if ! confirm "Write this configuration to $REPO_ROOT/settings.nix?"; then
+if [[ "${cfg_preset_loaded:-false}" == true ]]; then
+    cfg_write_config="$(preset_bool writeConfig && echo true || echo false)"
+else
+    confirm "Write this configuration to $REPO_ROOT/settings.nix?" && cfg_write_config=true || cfg_write_config=false
+fi
+if [[ "$cfg_write_config" != true ]]; then
     say "Nothing was changed."
     exit 0
 fi
@@ -252,6 +283,14 @@ fi
 
 hardware_file="$REPO_ROOT/profiles/$cfg_profile/hardware-configuration.nix"
 
+if (( existing_install && ! refresh_hardware )) && [[ -f "$hardware_file" ]]; then
+    skip_hardware=1
+    say "Existing hardware configuration found; skipping regeneration."
+    say "Use --refresh-hardware to regenerate it deliberately."
+elif (( existing_install && ! refresh_hardware )); then
+    say "No hardware configuration exists for profile '$cfg_profile'; generating it now."
+fi
+
 if (( ! skip_hardware )); then
     say "Generating hardware configuration..."
 
@@ -260,8 +299,7 @@ if (( ! skip_hardware )); then
 
     say "Configuring TPM2 automatic unlock..."
 
-    configure_tpm2_luks \
-        "$hardware_file"
+    configure_tpm2_luks "$hardware_file"
 
     say "Refreshing settings.nix..."
 
@@ -269,10 +307,13 @@ if (( ! skip_hardware )); then
 
     say "Checking LUKS configuration..."
 
-    configure_luks \
-        "$hardware_file"
+    # LUKS is intentionally never automated by user.config.json. Even in
+    # preset mode, require the operator to make an explicit choice and enter
+    # the current key before any key-management action is attempted.
+    configure_luks "$hardware_file"
 else
     say "Skipping hardware configuration (--skip-hardware)."
+    say "Skipping TPM2 and LUKS prompts; existing unlock configuration is unchanged."
 fi
 
 # ---------------------------------------------------------------------------
@@ -296,12 +337,23 @@ fi
 # ---------------------------------------------------------------------------
 
 if (( ! skip_rebuild )); then
-    if confirm "Run nixos-rebuild switch now?"; then
+    if [[ "${cfg_preset_loaded:-false}" == true ]]; then
+        cfg_run_rebuild="$(preset_bool runRebuild && echo true || echo false)"
+    else
+        confirm "Run nixos-rebuild switch now?" && cfg_run_rebuild=true || cfg_run_rebuild=false
+    fi
+    if [[ "$cfg_run_rebuild" == true ]]; then
         say "Running NixOS rebuild..."
 
         run_rebuild "$REPO_ROOT" "$cfg_hostname"
 
         say "NixOS rebuild completed successfully."
+        if [[ "$cfg_auto_reboot" == true ]]; then
+            say "Automatic reboot was selected; rebooting now."
+            sudo systemctl reboot
+        else
+            say "Reboot when convenient to start the new graphical session cleanly."
+        fi
     else
         say "Configuration written."
         printf 'Run:\n'
