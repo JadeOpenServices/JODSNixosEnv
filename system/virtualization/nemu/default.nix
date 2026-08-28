@@ -23,8 +23,11 @@ in {
         usbGroup = "usb";
         users = {
             ${settings.username} = {
-                autoAddVeth = true;
-                autoStartDaemon = true;
+                # Install Nemu without starting its daemon or creating veth
+                # devices during boot. Users can start it on demand once a
+                # VM definition exists; this keeps normal boots clean.
+                autoAddVeth = false;
+                autoStartDaemon = false;
                 # autoStartVMs = [ "Win11" ];
             };
         } // lib.optionalAttrs settings.workUserEnable {
