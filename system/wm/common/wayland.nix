@@ -4,6 +4,7 @@
     environment.systemPackages = with pkgs; [
         wayland
         wl-clipboard
+        catppuccin-sddm
     ];
 
     # Configure xwayland
@@ -24,6 +25,7 @@
         sddm = {
             enable = true;
             wayland.enable = true;
+            theme = "catppuccin-mocha";
         };
     };
 }
