@@ -21,6 +21,9 @@
                         # start Hyprland before its user configuration exists.
                         home-manager.useGlobalPkgs = true;
                         home-manager.useUserPackages = true;
+                        # Preserve pre-existing user files when activating HM
+                        # (for example VSCodium and xdg user-dir files).
+                        home-manager.backupFileExtension = "hm-bak";
                         home-manager.extraSpecialArgs = { inherit inputs settings; };
                         home-manager.sharedModules = [
                             inputs.plasma-manager.homeModules.plasma-manager
