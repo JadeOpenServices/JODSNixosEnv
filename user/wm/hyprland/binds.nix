@@ -12,7 +12,11 @@ let
   render = binding:
     let
       mods = binding.mods or "";
-      command = if binding.action == "exec" then commands.${binding.command} else binding.action;
+      command = if binding.action == "exec"
+        then if builtins.hasAttr binding.command commands
+          then commands.${binding.command}
+          else binding.command
+        else binding.action;
       args = binding.args or "";
     in "${mods}, ${binding.key}, ${command}${if args == "" then "," else ", ${args}"}";
 in {
