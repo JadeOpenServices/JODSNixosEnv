@@ -1,10 +1,9 @@
 configure_work_user() {
-    local answer suffix
+    local answer
     cfg_work_user_enable=false; cfg_work_username=""
     if [[ "${cfg_preset_loaded:-false}" == true ]]; then
         cfg_work_user_enable="$(preset_bool workUserEnable && echo true || echo false)"
-        cfg_work_username="$(preset_get workUsername)"
-        cfg_work_username="${cfg_work_username:-${cfg_username}-corp}"
+        [[ "$cfg_work_user_enable" == true ]] && cfg_work_username="${cfg_username}-corp"
         return 0
     fi
     if [[ "${INSTALLER_UI:-terminal}" == gtk ]]; then
@@ -14,7 +13,6 @@ configure_work_user() {
         read -r -p 'Create a separate work account? [y/N] ' answer
     fi
     [[ "$answer" =~ ^([yY]|[yY][eE][sS])$ ]] || return 0
-    prompt_value 'Work account suffix:' '-corp'; suffix="$REPLY"
-    [[ "$suffix" == -* ]] || suffix="-$suffix"
-    cfg_work_user_enable=true; cfg_work_username="${cfg_username}${suffix}"
+    cfg_work_user_enable=true
+    cfg_work_username="${cfg_username}-corp"
 }
