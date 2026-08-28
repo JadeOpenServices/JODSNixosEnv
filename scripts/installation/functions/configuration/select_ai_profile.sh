@@ -1,5 +1,15 @@
 select_ai_profile() {
     local ram_gb vram_mb vram_bytes vram_file
+    if [[ "${cfg_preset_loaded:-false}" == true ]]; then
+        cfg_ai_model="$(preset_get aiModel)"
+        cfg_ai_context_tokens="$(preset_get aiContextTokens)"
+        cfg_ai_vram_mb="$(preset_get aiVramMB)"
+        cfg_ai_model="${cfg_ai_model:-qwen2.5-coder:7b}"
+        cfg_ai_context_tokens="${cfg_ai_context_tokens:-8192}"
+        cfg_ai_vram_mb="${cfg_ai_vram_mb:-0}"
+        say "Using local AI profile from preset: $cfg_ai_model"
+        return 0
+    fi
     cfg_ai_model="qwen2.5-coder:7b"
     cfg_ai_context_tokens=8192
     cfg_ai_vram_mb=0

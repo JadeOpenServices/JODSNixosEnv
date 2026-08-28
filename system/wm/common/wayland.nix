@@ -14,8 +14,13 @@
             layout = "us,ru";
             options = "grp:win_space_toggle";
         };
-        displayManager.startx = {
-            enable = true;
+    };
+
+    services.greetd = {
+        enable = true;
+        settings.default_session = {
+            command = "${pkgs.tuigreet}/bin/tuigreet --time --remember --cmd ${pkgs.hyprland}/bin/Hyprland";
+            user = "greeter";
         };
     };
 }

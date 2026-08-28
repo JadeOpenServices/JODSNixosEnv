@@ -13,6 +13,11 @@ protect_local_configs() {
         return 0
     }
 
+    command -v realpath >/dev/null 2>&1 || {
+        say '[WARN] realpath is unavailable; skipping local config protection.'
+        return 0
+    }
+
     git_dir="$(git -C "$repo_root" rev-parse --git-dir 2>/dev/null)" || {
         say '[WARN] Unable to determine Git directory; skipping local config protection.'
         return 0
@@ -33,10 +38,20 @@ protect_local_configs() {
             >> "$exclude_file"
     fi
 
+    if ! grep -Fqx 'user.config.json' "$exclude_file"; then
+        printf '%s\n' 'user.config.json' >> "$exclude_file"
+    fi
+
     # settings.nix is always machine-local.
     if [[ -f "$repo_root/settings.nix" ]]; then
         git -C "$repo_root" update-index --skip-worktree -- settings.nix
         say 'Protected local config from accidental Git commits: settings.nix'
+    fi
+
+    if [[ -f "$repo_root/user.config.json" ]] &&
+       git -C "$repo_root" ls-files --error-unmatch -- user.config.json >/dev/null 2>&1; then
+        git -C "$repo_root" update-index --skip-worktree -- user.config.json
+        say 'Protected local config from accidental Git commits: user.config.json'
     fi
 
     # hardware_file is already an absolute path when supplied by the installer.

@@ -13,7 +13,7 @@ let
   };
 in
 
-{
+lib.mkIf (if settings ? aiEnable then settings.aiEnable else false) {
     environment.systemPackages = with pkgs; [
         ollamaPackage
         (writeShellScriptBin "gjallar-ai" ''

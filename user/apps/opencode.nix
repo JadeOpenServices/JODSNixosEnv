@@ -1,5 +1,5 @@
-{ pkgs, ...}:
-{
+{ lib, pkgs, settings, ...}:
+lib.mkIf (if settings ? aiEnable then settings.aiEnable else false) {
     programs.opencode = {
         enable = true;
         # package = inputs.opencode.packages.${pkgs.system}.opencode;

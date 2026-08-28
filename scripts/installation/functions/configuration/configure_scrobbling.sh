@@ -6,7 +6,22 @@ configure_scrobbling() {
     cfg_lastfm_username=''
     cfg_listenbrainz_username=''
 
-    read -r -p 'Enable Last.fm and/or ListenBrainz scrobbling? [y/N] ' answer
+    if [[ "${cfg_preset_loaded:-false}" == true ]]; then
+        cfg_enable_scrobbling="$(preset_bool enableScrobbling && echo true || echo false)"
+        cfg_enable_lastfm="$(preset_bool enableLastfm && echo true || echo false)"
+        cfg_enable_listenbrainz="$(preset_bool enableListenbrainz && echo true || echo false)"
+        cfg_lastfm_username="$(preset_get lastfmUsername)"
+        cfg_listenbrainz_username="$(preset_get listenbrainzUsername)"
+        lastfm_token="$(preset_get lastfmToken)"
+        listenbrainz_token="$(preset_get listenbrainzToken)"
+        [[ "$cfg_enable_scrobbling" == true ]] || return 0
+        # Continue below using preset credentials, without interactive prompts.
+        answer=y
+    else
+        answer=''
+    fi
+
+    [[ "${cfg_preset_loaded:-false}" == true ]] || read -r -p 'Enable Last.fm and/or ListenBrainz scrobbling? [y/N] ' answer
     [[ "$answer" =~ ^([yY]|[yY][eE][sS])$ ]] || return 0
 
     require_command sops
@@ -22,21 +37,23 @@ configure_scrobbling() {
     recipient="$(awk '/public key:/ {print $NF; exit}' "$key_file")"
     [[ "$recipient" == age1* ]] || die "Could not read the public recipient from $key_file"
 
-    read -r -p 'Enable Last.fm? [y/N] ' answer
+    [[ "${cfg_preset_loaded:-false}" == true ]] || read -r -p 'Enable Last.fm? [y/N] ' answer
     if [[ "$answer" =~ ^([yY]|[yY][eE][sS])$ ]]; then
-        read -r -p 'Last.fm username: ' cfg_lastfm_username
-        read -r -s -p 'Last.fm token/password: ' token; printf '\n'
+        if [[ "${cfg_preset_loaded:-false}" != true ]]; then
+            read -r -p 'Last.fm username: ' cfg_lastfm_username
+            read -r -s -p 'Last.fm token/password: ' token; printf '\n'
+            lastfm_token="$token"; unset token
+        fi
         cfg_enable_lastfm=true
-        lastfm_token="$token"
-        unset token
     fi
-    read -r -p 'Enable ListenBrainz? [y/N] ' answer
+    [[ "${cfg_preset_loaded:-false}" == true ]] || read -r -p 'Enable ListenBrainz? [y/N] ' answer
     if [[ "$answer" =~ ^([yY]|[yY][eE][sS])$ ]]; then
-        read -r -p 'ListenBrainz username: ' cfg_listenbrainz_username
-        read -r -s -p 'ListenBrainz token: ' token; printf '\n'
+        if [[ "${cfg_preset_loaded:-false}" != true ]]; then
+            read -r -p 'ListenBrainz username: ' cfg_listenbrainz_username
+            read -r -s -p 'ListenBrainz token: ' token; printf '\n'
+            listenbrainz_token="$token"; unset token
+        fi
         cfg_enable_listenbrainz=true
-        listenbrainz_token="$token"
-        unset token
     fi
     [[ "$cfg_enable_lastfm" == true || "$cfg_enable_listenbrainz" == true ]] || return 0
     cfg_enable_scrobbling=true

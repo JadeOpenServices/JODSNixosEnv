@@ -3,6 +3,12 @@ configure_nemu() {
     cfg_nemu_enable=false
     cfg_nemu_gpu_passthrough=false
     cfg_nemu_gpu_ids=()
+    if [[ "${cfg_preset_loaded:-false}" == true ]]; then
+        cfg_nemu_enable="$(preset_bool nemuEnable && echo true || echo false)"
+        cfg_nemu_gpu_passthrough="$(preset_bool nemuGpuPassthrough && echo true || echo false)"
+        mapfile -t cfg_nemu_gpu_ids < <(preset_array nemuGpuIds)
+        return 0
+    fi
     read -r -p 'Enable Nemu for local QEMU virtual machines? [y/N] ' answer
     [[ "$answer" =~ ^([yY]|[yY][eE][sS])$ ]] || return 0
     cfg_nemu_enable=true
