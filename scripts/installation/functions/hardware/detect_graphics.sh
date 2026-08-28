@@ -68,7 +68,10 @@ detect_graphics() {
             }'
     )"
 
-    if [[ "$cfg_graphics_vendor" == "nvidia" ]]; then
+    # Broadened check to capture bus IDs for nvidia, amd, and intel
+    if [[ "$cfg_graphics_vendor" == "nvidia" ||
+          "$cfg_graphics_vendor" == "amd" ||
+          "$cfg_graphics_vendor" == "intel" ]]; then
         cfg_graphics_bus_id="$bus"
     fi
 
