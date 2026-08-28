@@ -38,6 +38,11 @@
                         } // nixpkgs.lib.optionalAttrs settings.workUserEnable {
                             ${settings.workUsername} = import ./profiles/work-user/home.nix;
                         };
+                        # Do not offer a login prompt until the user
+                        # configuration (including Hyprland) is activated.
+                        systemd.services.display-manager.after = [
+                            "home-manager-${settings.username}.service"
+                        ];
                     }
                     # inputs.chaotic.nixosModules.default
                     (./. + "/profiles" + ("/" + settings.profile) + "/configuration.nix")
