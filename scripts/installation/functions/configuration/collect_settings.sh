@@ -8,7 +8,10 @@ collect_settings() {
         cfg_hostname="$(preset_get hostname)"; cfg_username="$(preset_get username)"
         cfg_timezone="$(preset_get timezone)"; cfg_locale="$(preset_get locale)"
         cfg_name="$(preset_get name)"; cfg_email="$(preset_get email)"
+        cfg_github_username="$(preset_get githubUsername)"
         cfg_dotfiles_dir="$(preset_get dotfilesDir)"; cfg_shell="$(preset_get shell)"
+        [[ -n "$cfg_dotfiles_dir" ]] || cfg_dotfiles_dir="/home/$cfg_username/Documents/gjallarOS"
+        cfg_dotfiles_dir="${cfg_dotfiles_dir//usernamehere/$cfg_username}"
         mapfile -t cfg_editors < <(preset_array editors)
         mapfile -t cfg_browsers < <(preset_array browsers)
         cfg_editors=("${cfg_editors[@]:-vscodium}"); cfg_browsers=("${cfg_browsers[@]:-librewolf}")
@@ -42,6 +45,7 @@ collect_settings() {
     prompt_value 'Locale:' 'en_US.UTF-8'; cfg_locale="$REPLY"
     prompt_value 'Full name (used by Git):' "$cfg_username"; cfg_name="$REPLY"
     prompt_value 'Email (used by Git):' "$cfg_username@example.com"; cfg_email="$REPLY"
+    prompt_value 'GitHub username (optional, separate from Linux user):' ''; cfg_github_username="$REPLY"
     prompt_value 'Absolute dotfiles path:' "$repo_root"; cfg_dotfiles_dir="$REPLY"
     [[ "$cfg_dotfiles_dir" = /* ]] || die 'Dotfiles path must be absolute.'
     prompt_choice 'Login shell:' "$default_shell" "$shells_name"; cfg_shell="$REPLY"
