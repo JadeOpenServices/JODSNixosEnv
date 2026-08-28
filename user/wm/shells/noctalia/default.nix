@@ -1,4 +1,4 @@
-{config, settings, ...}: let
+{config, lib, settings, ...}: let
     themeDetails = settings.themeDetails;
     profileDetails = settings.profileDetails;
     wallpaperDetails =
@@ -10,6 +10,11 @@
       };
     avatarPath = if themeDetails ? avatar then themeDetails.avatar else wallpaperDetails.center;
     isWorkUser = config.home.username == settings.workUsername;
+    monitorNames = lib.unique [
+      profileDetails.monitorsPosition.left
+      profileDetails.monitorsPosition.center
+      profileDetails.monitorsPosition.right
+    ];
     selectedBackground =
       if isWorkUser && settings.backgroundWork != "" then settings.backgroundWork
       else if !isWorkUser && settings.backgroundNormal != "" then settings.backgroundNormal
@@ -162,17 +167,15 @@ in {
             wallpaper = {
                 enable = true;
                 directory = "${settings.dotfilesDir}/non-nix/wallpapers";
-                monitors = {
-                    "${profileDetails.monitorsPosition.left}" = {
-                        path = wallpaperDetails.left;
-                    };
-                    "${settings.profileDetails.monitorsPosition.center}" = {
-                        path = selectedBackground;
-                    };
-                    "${settings.profileDetails.monitorsPosition.right}" = {
-                        path = wallpaperDetails.right;
-                    };
-                };
+                monitors = lib.genAttrs monitorNames (monitor:
+                  {
+                    # On single-panel laptops all three profile positions may
+                    # resolve to eDP-1; the unique list prevents duplicate
+                    # dynamic attributes while retaining the user wallpaper.
+                    path = if monitor == profileDetails.monitorsPosition.center
+                      then selectedBackground
+                      else wallpaperDetails.center;
+                  });
             };
         };
     };
