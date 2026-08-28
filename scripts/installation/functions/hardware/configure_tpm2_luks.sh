@@ -70,11 +70,13 @@ configure_tpm2_luks() {
         --tpm2-device=auto \
         "$device"; then
 
-        sed -i '$i\
+        if ! grep -q 'boot.initrd.systemd.tpm2.enable' "$hardware_file"; then
+            sed -i '$i\
     boot.initrd.systemd.enable = true;\
     boot.initrd.systemd.tpm2.enable = true;\
     boot.initrd.luks.devices."'"$name"'".crypttabExtraOpts = [ "tpm2-device=auto" ];' \
-            "$hardware_file"
+                "$hardware_file"
+        fi
 
         cfg_luks_tpm2_enable=true
 
