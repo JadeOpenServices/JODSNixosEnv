@@ -21,6 +21,14 @@
                         home-manager.useGlobalPkgs = true;
                         home-manager.useUserPackages = true;
                         home-manager.extraSpecialArgs = { inherit inputs settings; };
+                        home-manager.sharedModules = [
+                            inputs.plasma-manager.homeModules.plasma-manager
+                            inputs.stylix.homeModules.stylix
+                            inputs.nixvim.homeModules.nixvim
+                            inputs.sops-nix.homeManagerModules.sops
+                            inputs.zen-browser.homeModules.twilight
+                            inputs.noctalia.homeModules.default
+                        ];
                         home-manager.users = {
                             ${settings.username} = import
                                 (./. + "/profiles/${settings.profile}/home.nix");
