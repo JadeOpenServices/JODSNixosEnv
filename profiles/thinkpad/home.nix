@@ -29,10 +29,6 @@
         homeDirectory = "/home/${settings.username}";
     };
 
-    # Add packages from the pkgs dir
-    nixpkgs.overlays = import ../../pkgs/lib/overlays.nix;
-    nixpkgs.config.allowUnfree = true; # Sorry, Stallman(
-
     home.packages = with pkgs; [
         libreoffice-fresh
         yubikey-manager
@@ -65,8 +61,8 @@
         desktop = null;
         publicShare = null;
         extraConfig = {
-            XDG_DOTFILES_DIR = "${settings.dotfilesDir}";
-            XDG_BOOK_DIR = "${config.home.homeDirectory}/Media/Books";
+            DOTFILES = "${settings.dotfilesDir}";
+            BOOK = "${config.home.homeDirectory}/Media/Books";
         };
     };
 

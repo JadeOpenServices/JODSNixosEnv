@@ -1,6 +1,8 @@
 {
   "release": "26.05",
   "nixpkgsInput": "nixos-26.05",
+  "unstableNixpkgsInput": "nixpkgs-unstable",
+  "unstableShells": ["comfy", "tarantool"],
   "updateEndpoint": null,
   "updatePolicy": "review-and-lock"
 }
