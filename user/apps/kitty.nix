@@ -1,4 +1,4 @@
-{settings, lib, ...}:
+{config, settings, lib, ...}:
 {
   home.file.".config/kitty/vim-mode.lua".text = ''
 local api = vim.api
