@@ -1,7 +1,14 @@
 { pkgs, ...}:
 {
     themeName = "catppuccin-mocha";
-    wallpaper = { center = ../non-nix/wallpapers/evening-sky.png; };
+    # Complete wallpaper/avatar defaults keep the Noctalia session valid even
+    # when no per-user background is supplied in user.config.json.
+    avatar = ../non-nix/wallpapers/avatar.png;
+    wallpaper = {
+        left = ../non-nix/wallpapers/evening-sky.png;
+        center = ../non-nix/wallpapers/evening-sky.png;
+        right = ../non-nix/wallpapers/evening-sky.png;
+    };
     # Stylix palette override.
     override = {
         base00 = "11111b";

@@ -8,20 +8,20 @@ setup_error_handler() {
         local source_file="${3:-${BASH_SOURCE[1]:-$0}}"
         local function_name="${4:-${FUNCNAME[1]:-main}}"
 
-        printf '\n' >&2
-        printf '%s\n' '============================================================' >&2
-        printf '%s\n' 'GjallarOS installer failed.' >&2
-        printf '%s\n' '------------------------------------------------------------' >&2
-        printf 'Exit code : %s\n' "$exit_code" >&2
-        printf 'Line      : %s\n' "$line_no" >&2
-        printf 'Function  : %s\n' "$function_name" >&2
-        printf 'File      : %s\n' "$source_file" >&2
-        printf 'Command   : %s\n' "$command" >&2
-        printf '%s\n' '============================================================' >&2
-        printf '\n' >&2
-        printf 'The installer stopped unexpectedly.\n' >&2
-        printf 'No further installer actions will be performed.\n' >&2
-        printf '\n' >&2
+        local red='' yellow='' dim='' reset=''
+        if [[ -t 2 ]]; then
+            red=$'\033[1;31m'; yellow=$'\033[1;33m'; dim=$'\033[2m'; reset=$'\033[0m'
+        fi
+        printf '\n%s╭─ GjallarOS installer could not continue ─╮%s\n' "$red" "$reset" >&2
+        printf '%s│%s The last operation failed (exit code %s).%s\n' "$red" "$reset" "$exit_code" "$reset" >&2
+        printf '%s│%s No further changes were attempted.%s\n' "$red" "$reset" "$reset" >&2
+        printf '%s╰──────────────────────────────────────────╯%s\n' "$red" "$reset" >&2
+        printf '\n%sWhat to do next:%s\n' "$yellow" "$reset" >&2
+        printf '  1. Read the first error above this summary.\n' >&2
+        printf '  2. Correct the reported configuration or hardware issue.\n' >&2
+        printf '  3. Run the installer again; existing setup will be preserved.\n' >&2
+        printf '\n%s[DEBUG] line %s, function %s, file %s%s\n' \
+            "$dim" "$line_no" "$function_name" "$source_file" "$reset" >&2
 
         exit "$exit_code"
     }

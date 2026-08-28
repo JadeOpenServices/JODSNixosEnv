@@ -13,6 +13,21 @@
                     (./. + "/system/compat/regreet-2605.nix")
                     inputs.stylix.nixosModules.stylix
                     inputs.sops-nix.nixosModules.sops
+                    inputs.home-manager.nixosModules.home-manager
+                    {
+                        # Activate the matching Home Manager profile as part
+                        # of the system rebuild. Without this, greetd can
+                        # start Hyprland before its user configuration exists.
+                        home-manager.useGlobalPkgs = true;
+                        home-manager.useUserPackages = true;
+                        home-manager.extraSpecialArgs = { inherit inputs settings; };
+                        home-manager.users = {
+                            ${settings.username} = import
+                                (./. + "/profiles/${settings.profile}/home.nix");
+                        } // nixpkgs.lib.optionalAttrs settings.workUserEnable {
+                            ${settings.workUsername} = import ./profiles/work-user/home.nix;
+                        };
+                    }
                     # inputs.chaotic.nixosModules.default
                     (./. + "/profiles" + ("/" + settings.profile) + "/configuration.nix")
                 ];

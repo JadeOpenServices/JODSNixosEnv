@@ -14,6 +14,7 @@ bootstrap_prerequisites() {
         [lspci]=pciutils
         [git]=git
         [fwupdmgr]=fwupd
+        [curl]=curl
     )
     # Preset mode is deliberately terminal-only, so it does not need GTK.
     [[ "${cfg_preset_loaded:-false}" == true ]] || requirements[zenity]=zenity

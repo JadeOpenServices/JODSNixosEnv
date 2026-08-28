@@ -16,11 +16,14 @@
         };
     };
 
-    services.greetd = {
-        enable = true;
-        settings.default_session = {
-            command = "${pkgs.tuigreet}/bin/tuigreet --time --remember --cmd ${pkgs.hyprland}/bin/Hyprland";
-            user = "greeter";
+    # SDDM provides a graphical, highly themeable login screen while keeping
+    # Hyprland as the only supported desktop session. The default SDDM theme
+    # is intentionally used here; OS theming remains controlled by Stylix.
+    services.displayManager = {
+        defaultSession = "hyprland";
+        sddm = {
+            enable = true;
+            wayland.enable = true;
         };
     };
 }
