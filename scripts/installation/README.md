@@ -28,6 +28,18 @@ In the preset, `username` is the Linux account and the single identity input.
 name; it is not the Linux username or GitHub username. `githubUsername` is a
 separate optional account label.
 
+Optional `backgroundNormal` and `backgroundWork` values select different
+wallpapers for the normal and work accounts. Use an absolute path, a path
+inside the repository (for example `non-nix/wallpapers/nord.png`), or an
+HTTPS URL. HTTPS backgrounds are downloaded into `non-nix/wallpapers/` using a
+stable URL-derived filename; an empty value uses the selected theme wallpaper.
+`backgroundGaming` is reserved for a future gaming account and is intentionally
+unused for now. Downloaded `user-*` wallpapers are added to Git's local exclude
+file, just like `settings.nix`, generated hardware backups, and
+`user.config.json`.
+Set `runUpdateChecks` to `true` or `false` in preset mode to automatically run
+or skip the fwupd update check without being prompted.
+
 The installer targets NixOS 26.05 and stops before making changes if another
 release is detected. The release/channel policy is kept in
 `deployment/release-policy.json` for future centrally managed updates.
@@ -42,6 +54,14 @@ GjallarOS rebuild when possible.
 The wizard asks for every setting in `settings.nix`, discovers available
 profiles and modules, writes your selections, and can generate hardware
 configuration before running `nixos-rebuild`.
+Because Nix flakes use the Git snapshot, newly added profile metadata is
+automatically staged locally before rebuilding; no commit or remote push is
+performed.
+The installer detects whether it is running on a laptop or desktop before
+showing profiles: desktops are limited to the standard `desktop` profile,
+while laptops receive laptop-oriented profiles (including `thinkpad` and any
+future `framework*` profiles added to the repository). Presets may explicitly
+choose a profile and are not overridden by this filter.
 
 When run inside a graphical session, the installer uses GTK dialogs through
 Zenity. Zenity is bootstrapped into the NixOS configuration automatically;

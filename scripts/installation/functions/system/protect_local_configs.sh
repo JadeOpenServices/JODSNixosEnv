@@ -1,7 +1,7 @@
 protect_local_configs() {
     local repo_root="$1"
     local hardware_file="$2"
-    local git_dir exclude_file relative_hardware
+    local git_dir exclude_file relative_hardware profile_details
 
     [[ -d "$repo_root/.git" ]] || {
         say '[NOTE] Git repository metadata not found; skipping local config protection.'
@@ -42,6 +42,12 @@ protect_local_configs() {
         printf '%s\n' 'user.config.json' >> "$exclude_file"
     fi
 
+    # Backgrounds downloaded from user.config.json are machine-local assets;
+    # keep them available to the flake without adding them to Git.
+    if ! grep -Fqx 'non-nix/wallpapers/user-*' "$exclude_file"; then
+        printf '%s\n' 'non-nix/wallpapers/user-*' >> "$exclude_file"
+    fi
+
     # settings.nix is always machine-local.
     if [[ -f "$repo_root/settings.nix" ]]; then
         git -C "$repo_root" update-index --skip-worktree -- settings.nix
@@ -66,6 +72,17 @@ protect_local_configs() {
     elif [[ -n "$hardware_file" ]]; then
         say "[WARN] Cannot protect missing local config: $hardware_file"
     fi
+
+    # Flakes evaluate the Git snapshot. Stage newly-created profile metadata so
+    # a valid profile cannot fail evaluation merely because it was just added.
+    for profile_details in "$repo_root"/profiles/*/details.nix; do
+        [[ -f "$profile_details" ]] || continue
+        relative_hardware="$(realpath --relative-to="$repo_root" "$profile_details")"
+        if ! git -C "$repo_root" ls-files --error-unmatch -- "$relative_hardware" >/dev/null 2>&1; then
+            git -C "$repo_root" add -- "$relative_hardware"
+            say "Added new profile metadata to the flake snapshot: $relative_hardware"
+        fi
+    done
 
     say 'Machine-specific configuration remains available to the Nix flake.'
 }
