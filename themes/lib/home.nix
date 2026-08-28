@@ -7,6 +7,10 @@ in {
             name = details.icons;
             package = details.iconsPkg;
         };
+        theme = {
+            name = "catppuccin-frappe-blue-standard";
+            package = pkgs.catppuccin-gtk;
+        };
     };
 
     stylix = {

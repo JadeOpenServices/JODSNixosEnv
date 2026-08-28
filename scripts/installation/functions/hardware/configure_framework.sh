@@ -7,8 +7,20 @@ configure_framework() {
         cfg_framework_model="$(preset_get frameworkModel)"
         return 0
     fi
-    read -r -p 'Is this a Framework laptop? [y/N] ' answer
+    if [[ "${INSTALLER_UI:-terminal}" == gtk ]]; then
+        confirm 'Is this a Framework laptop?' || return 0
+        answer=y
+    else
+        read -r -p 'Is this a Framework laptop? [y/N] ' answer
+    fi
     [[ "$answer" =~ ^([yY]|[yY][eE][sS])$ ]] || return 0
+    local -a models=(13 16 12)
+    if [[ "${INSTALLER_UI:-terminal}" == gtk ]]; then
+        prompt_choice 'Framework model:' 13 models
+        cfg_framework_model="$REPLY"
+        cfg_framework_enable=true
+        return 0
+    fi
     printf '  1) Framework 13\n  2) Framework 16\n  3) Framework 12\n'
     while true; do
         read -r -p 'Framework model [1]: ' model

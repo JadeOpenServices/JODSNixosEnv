@@ -35,6 +35,7 @@ done < <(
 
 # Enable the global error handler after all functions are loaded.
 setup_error_handler
+trap 'say "Installer interrupted by user; no further actions were performed."; exit 130' INT TERM
 
 # ---------------------------------------------------------------------------
 # Arguments
@@ -44,6 +45,7 @@ skip_hardware=0
 skip_rebuild=0
 refresh_hardware=0
 existing_install=0
+deployment_complete=false
 
 for argument in "$@"; do
     case "$argument" in
@@ -90,16 +92,20 @@ fi
 
 say "Checking NixOS release..."
 check_nixos_release
+load_user_preset "$REPO_ROOT"
 
 if detect_existing_install "$REPO_ROOT"; then
     existing_install=1
     say "Existing GjallarOS installation detected; preserving machine-local setup."
     if [[ -f /etc/nixos/configuration.nix ]] &&
-       grep -qE 'services\.fwupd\.enable[[:space:]]*=[[:space:]]*true' /etc/nixos/configuration.nix; then
+       grep -qE 'services\.fwupd\.enable[[:space:]]*=[[:space:]]*true' /etc/nixos/configuration.nix &&
+       grep -q 'catppuccin-gtk' /etc/nixos/configuration.nix &&
+       grep -q 'GTK_THEME = "Adwaita:dark"' /etc/nixos/configuration.nix &&
+       ( [[ "${cfg_preset_loaded:-false}" == true ]] || command -v zenity >/dev/null 2>&1 ); then
         say "Skipping prerequisite bootstrap."
         ensure_fwupd
     else
-        say "fwupd is not enabled in the system configuration; bootstrapping it now."
+        say "Required installer support is missing; bootstrapping fwupd/GTK support now."
         bootstrap_prerequisites
     fi
 else
@@ -107,8 +113,8 @@ else
 bootstrap_prerequisites
 fi
 
-load_user_preset "$REPO_ROOT"
 configure_auto_reboot "$REPO_ROOT"
+detect_ui
 firmware_update
 
 # ---------------------------------------------------------------------------
@@ -347,6 +353,7 @@ if (( ! skip_rebuild )); then
 
         run_rebuild "$REPO_ROOT" "$cfg_hostname"
 
+        deployment_complete=true
         say "NixOS rebuild completed successfully."
         if [[ "$cfg_auto_reboot" == true ]]; then
             say "Automatic reboot was selected; rebooting now."
@@ -355,12 +362,15 @@ if (( ! skip_rebuild )); then
             say "Reboot when convenient to start the new graphical session cleanly."
         fi
     else
-        say "Configuration written."
+        say "Configuration written, but the system was not deployed."
         printf 'Run:\n'
         printf "  sudo nixos-rebuild switch --flake '%s#%s'\n" \
             "$REPO_ROOT" \
             "$cfg_hostname"
-    fi
+        fi
+        if [[ "${INSTALLER_UI:-terminal}" == gtk ]]; then
+            gtk_cancel_prompt || true
+        fi
 else
     say "Skipping rebuild (--no-rebuild)."
 fi
@@ -371,6 +381,10 @@ fi
 
 printf '\n'
 printf '%s\n' '============================================================'
-printf '%s\n' 'GjallarOS configuration complete!'
+if [[ "$deployment_complete" == true ]]; then
+    printf '%s\n' 'GjallarOS deployment complete!'
+else
+    printf '%s\n' 'GjallarOS configuration saved; deployment is still pending.'
+fi
 printf '%s\n' '============================================================'
 printf '\n'

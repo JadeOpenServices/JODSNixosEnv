@@ -8,11 +8,25 @@ Run this from the repository root on an existing NixOS installation:
 
 ## Preset automation
 
-Copy `scripts/installation/user_PresetJSON/default.user.config.json` to the
-repository root as `user.config.json`, edit its values, and run the installer.
-The preset answers the interactive questions automatically. Keep credentials
-only in this local file; it is excluded from Git automatically. Remove or
-rename the file to return to interactive mode.
+Copy the preset with:
+
+```bash
+cp scripts/installation/user_PresetJSON/default.user.config.json user.config.json
+```
+
+Then edit `user.config.json` and run the installer.
+The preset answers the non-secret configuration automatically. Hardware
+profiling remains dynamic, GPU passthrough IDs are detected automatically, and
+Last.fm/ListenBrainz usernames and tokens are always requested in the terminal;
+never place those credentials in this file. Remove or rename the file to return
+to fully interactive mode.
+
+In the preset, `username` is the Linux account and the single identity input.
+`dotfilesDir` is derived automatically as `/home/<username>/Documents/gjallarOS`.
+`workUserEnable` controls the optional work account, whose default name is
+`<username>-corp`. The `name` field is the human-readable Git commit author
+name; it is not the Linux username or GitHub username. `githubUsername` is a
+separate optional account label.
 
 The installer targets NixOS 26.05 and stops before making changes if another
 release is detected. The release/channel policy is kept in
@@ -28,6 +42,19 @@ GjallarOS rebuild when possible.
 The wizard asks for every setting in `settings.nix`, discovers available
 profiles and modules, writes your selections, and can generate hardware
 configuration before running `nixos-rebuild`.
+
+When run inside a graphical session, the installer uses GTK dialogs through
+Zenity. Zenity is bootstrapped into the NixOS configuration automatically;
+TTY, SSH, live-media, and headless runs continue using the terminal interface.
+On an existing install, a missing Zenity package also triggers the small
+prerequisite bootstrap so the next installer prompts can use GTK.
+The same bootstrap installs `catppuccin-gtk` and sets
+`environment.variables.GTK_THEME` to `Adwaita:dark`, a predictable GTK engine
+for installer dialogs, while the
+installer stylesheet supplies the Catppuccin palette and spacing. This avoids
+theme-engine-specific rendering differences in Zenity.
+Closing or pressing Escape in a GTK prompt opens a quit confirmation; choosing
+No returns to the interrupted prompt.
 
 Local AI is optional. If disabled, Ollama, OpenCode, the AI wrapper commands,
 and AI profiling are all omitted from the generated system.
