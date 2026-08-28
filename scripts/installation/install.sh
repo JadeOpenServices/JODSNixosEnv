@@ -357,7 +357,7 @@ if (( ! skip_rebuild )); then
         if [[ "${cfg_preset_loaded:-false}" == true ]]; then
             cfg_run_rebuild="$(preset_bool runRebuild && echo true || echo false)"
             break
-        elif confirm "Run nixos-rebuild switch now?"; then
+        elif confirm "Install the next NixOS generation now (activate after reboot)?"; then
             cfg_run_rebuild=true
             break
         elif [[ "${INSTALLER_UI:-terminal}" == gtk ]]; then
@@ -373,7 +373,7 @@ if (( ! skip_rebuild )); then
         run_rebuild "$REPO_ROOT" "$cfg_hostname"
 
         deployment_complete=true
-        say "NixOS rebuild completed successfully."
+        say "NixOS generation installed successfully; the current session was left untouched."
         if [[ "$cfg_auto_reboot" == true ]]; then
             say "Automatic reboot was selected; rebooting now."
             sudo systemctl reboot
@@ -383,10 +383,10 @@ if (( ! skip_rebuild )); then
     else
         say "Configuration written, but the system was not deployed."
         printf 'Run:\n'
-        printf "  sudo nixos-rebuild switch --flake '%s#%s'\n" \
+        printf "  sudo nixos-rebuild boot --flake '%s#%s'\n" \
             "$REPO_ROOT" \
             "$cfg_hostname"
-        fi
+    fi
 else
     say "Skipping rebuild (--no-rebuild)."
 fi
