@@ -12,6 +12,7 @@ render_settings() {
         printf '    locale = "%s";\n' "$(nix_string "$cfg_locale")"
         printf '    name = "%s";\n' "$(nix_string "$cfg_name")"
         printf '    email = "%s";\n' "$(nix_string "$cfg_email")"
+        printf '    githubUsername = "%s";\n' "$(nix_string "$cfg_github_username")"
         printf '    dotfilesDir = "%s";\n\n' "$(nix_string "$cfg_dotfiles_dir")"
         printf '    workUserEnable = %s;\n' "$cfg_work_user_enable"
         printf '    workUsername = "%s";\n\n' "$(nix_string "$cfg_work_username")"
