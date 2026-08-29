@@ -1,6 +1,95 @@
-{ pkgs, settings, ... }:
-{
-    imports = [ ./scripts/default.nix ];
+{ lib, pkgs, settings, ... }:
+let
+    diagnosticsEnabled = settings.debugFunctions or false;
+    systemctl = "${pkgs.systemd}/bin/systemctl";
+    systemdEscape = "${pkgs.systemd}/bin/systemd-escape";
+    coreutils = "${pkgs.coreutils}/bin";
+    bootDiagnostic = pkgs.writeShellScript "gjallar-boot-diagnostics" ''
+        set -u
+        log_file="/var/lib/gjallar-diagnostics/boot-$(${coreutils}/cat /proc/sys/kernel/random/boot_id).log"
+        exec > >(${coreutils}/tee "$log_file") 2>&1
+
+        log() { printf 'gjallar-boot-diagnostics: %s\n' "$*"; }
+        report_unit() {
+          local unit="$1"
+          log "unit=$unit"
+          ${systemctl} show "$unit" --property=LoadState --property=ActiveState --property=SubState --property=Result --no-pager || true
+          ${systemctl} status "$unit" --no-pager --full || true
+        }
+        report_home() {
+          local home="$1"
+          if ${coreutils}/test -L "$home/.config/hypr/hyprland.conf"; then
+            log "hyprland-config=$(${coreutils}/readlink -f "$home/.config/hypr/hyprland.conf")"
+          else
+            log "hyprland-config missing: $home/.config/hypr/hyprland.conf"
+          fi
+        }
+
+        log 'begin'
+        ${coreutils}/date --iso-8601=seconds
+        ${coreutils}/uname -a
+        ${coreutils}/df -h / /boot || true
+        ${systemctl} --failed --no-pager || true
+        report_unit NetworkManager.service
+        report_unit display-manager.service
+        report_unit "home-manager-$(${systemdEscape} -- "${settings.username}").service"
+        report_home "/home/${settings.username}"
+        ${lib.optionalString settings.workUserEnable ''
+          report_unit "home-manager-$(${systemdEscape} -- "${settings.workUsername}").service"
+          report_home "/home/${settings.workUsername}"
+        ''}
+        ${pkgs.networkmanager}/bin/nmcli general status || true
+        ${pkgs.networkmanager}/bin/nmcli device status || true
+        ${pkgs.systemd}/bin/journalctl -b -p warning..alert --no-pager || true
+        log 'end'
+    '';
+    homeDiagnosticsModule = { ... }: let
+        sessionDiagnostic = pkgs.writeShellScript "gjallar-hyprland-session-diagnostics" ''
+            set -u
+            state_dir="$HOME/.local/state/gjallar-diagnostics"
+            ${coreutils}/mkdir -p "$state_dir"
+            exec > >(${coreutils}/tee "$state_dir/hyprland-session.log") 2>&1
+            log() { printf 'gjallar-hyprland-session-diagnostics: %s\n' "$*"; }
+            log 'begin'
+            ${coreutils}/date --iso-8601=seconds
+            ${coreutils}/id
+            ${pkgs.systemd}/bin/systemctl --user show hyprland-session.target --property=ActiveState --property=SubState --property=Result --no-pager || true
+            ${coreutils}/printenv | ${pkgs.gnugrep}/bin/grep -E '^(PATH|XDG_|WAYLAND_DISPLAY|HYPRLAND_INSTANCE_SIGNATURE|DBUS_SESSION_BUS_ADDRESS)=' || true
+            for command in fuzzel kitty waybar asztal; do
+              path="$(${pkgs.findutils}/bin/find "$HOME/.nix-profile/bin" "/etc/profiles/per-user/$USER/bin" -maxdepth 1 -name "$command" \( -type l -o -type f \) -print -quit 2>/dev/null || true)"
+              if [ -n "$path" ]; then log "command=$command path=$path"; else log "command=$command missing from user profiles"; fi
+            done
+            if ${coreutils}/test -L "$HOME/.config/hypr/hyprland.conf"; then
+              log "hyprland-config=$(${coreutils}/readlink -f "$HOME/.config/hypr/hyprland.conf")"
+            else
+              log 'hyprland-config missing'
+            fi
+            ${pkgs.hyprland}/bin/hyprctl version || true
+            ${pkgs.hyprland}/bin/hyprctl configerrors || true
+            ${pkgs.hyprland}/bin/hyprctl monitors || true
+            ${pkgs.hyprland}/bin/hyprctl clients || true
+            ${pkgs.procps}/bin/pgrep -a -u "$USER" 'Hyprland|waybar|fuzzel|ags' || true
+            log 'end'
+        '';
+    in {
+        systemd.user.services.gjallar-hyprland-session-diagnostics = {
+            Unit = {
+                Description = "GjallarOS Hyprland session diagnostics";
+                After = [ "hyprland-session.target" ];
+                PartOf = [ "hyprland-session.target" ];
+            };
+            Service = {
+                Type = "oneshot";
+                RemainAfterExit = true;
+                ExecStart = sessionDiagnostic;
+            };
+            Install.WantedBy = [ "hyprland-session.target" ];
+        };
+    };
+in {
+  imports = [ ./scripts/default.nix ];
+  config = lib.mkMerge [
+  {
     programs.nh = {
         enable = true;
         clean.enable = false;
@@ -16,4 +105,21 @@
         openssl
         power-profiles-daemon
     ];
+  }
+  (lib.mkIf diagnosticsEnabled {
+    home-manager.sharedModules = [ homeDiagnosticsModule ];
+    systemd.services.gjallar-boot-diagnostics = {
+      description = "GjallarOS boot diagnostics";
+      wantedBy = [ "multi-user.target" ];
+      after = [ "NetworkManager.service" "display-manager.service" "home-manager-${settings.username}.service" ];
+      serviceConfig = {
+        Type = "oneshot";
+        ExecStart = bootDiagnostic;
+        StandardOutput = "journal+console";
+        StandardError = "journal+console";
+        StateDirectory = "gjallar-diagnostics";
+      };
+    };
+  })
+  ];
 }
