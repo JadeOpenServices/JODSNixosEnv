@@ -14,9 +14,11 @@ in {
         ];
 
         exec-once = shellDetails.launchCommands ++ [
-            "[workspace 3 silent] kitty btop"
-            "[workspace 3 silent] kitty ncmpcpp"
-            "[workspace 3 silent] kitty cava"
+            "${lib.getExe pkgs.awww} daemon"
+            "${lib.getExe pkgs.waybar}"
+            "[workspace 3 silent] ${lib.getExe pkgs.kitty} ${lib.getExe pkgs.btop}"
+            "[workspace 3 silent] ${lib.getExe pkgs.kitty} ${lib.getExe pkgs.ncmpcpp}"
+            "[workspace 3 silent] ${lib.getExe pkgs.kitty} ${lib.getExe pkgs.cava}"
         ];
 
         general = {
