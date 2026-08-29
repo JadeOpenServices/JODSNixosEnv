@@ -7,6 +7,8 @@
   "locale": "en_US.UTF-8",
   "keyboardLayout": "de",
   "touchpadWorkspaceSwipe": true,
+  "clamshellEnable": true,
+  "usbguardEnable": false,
   "name": "Your Name",
   "email": "you@example.com",
   "githubUsername": "UsernameHere",

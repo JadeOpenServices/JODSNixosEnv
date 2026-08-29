@@ -43,6 +43,49 @@ let
         ${pkgs.systemd}/bin/journalctl -b -p warning..alert --no-pager || true
         log 'end'
     '';
+    usbguardReviewModule = { pkgs, ... }: let
+        reviewScript = pkgs.writeShellScript "gjallar-usbguard-review" ''
+            set -u
+            declare -A prompted=()
+            while :; do
+              active_ids=' '
+              while IFS= read -r line; do
+                id="$(${pkgs.gnused}/bin/sed -n 's/^\([0-9][0-9]*\):.*/\1/p' <<< "$line")"
+                [ -n "$id" ] || continue
+                active_ids+="$id "
+                [ -z "''${prompted[$id]+x}" ] || continue
+                prompted[$id]=1
+                ${pkgs.yad}/bin/yad --question --title='USBGuard approval' \
+                  --text="A new USB device is blocked:\n\n$line\n\nAllow it?" \
+                  --width=620 --center \
+                  --button='Allow once:0' --button='Always allow:2' --button='Keep blocked:1'
+                choice="$?"
+                case "$choice" in
+                  0) ${pkgs.usbguard}/bin/usbguard allow-device "$id" || true ;;
+                  2) ${pkgs.usbguard}/bin/usbguard allow-device --permanent "$id" || true ;;
+                esac
+              done < <(${pkgs.usbguard}/bin/usbguard list-devices --blocked 2>/dev/null || true)
+              for id in "''${!prompted[@]}"; do
+                [[ "$active_ids" == *" $id "* ]] || unset 'prompted[$id]'
+              done
+              ${pkgs.coreutils}/bin/sleep 2
+            done
+        '';
+    in {
+        systemd.user.services.gjallar-usbguard-review = {
+            Unit = {
+                Description = "GjallarOS USBGuard approval prompts";
+                After = [ "hyprland-session.target" ];
+                PartOf = [ "hyprland-session.target" ];
+            };
+            Service = {
+                ExecStart = reviewScript;
+                Restart = "on-failure";
+                RestartSec = 3;
+            };
+            Install.WantedBy = [ "hyprland-session.target" ];
+        };
+    };
     homeDiagnosticsModule = { ... }: let
         sessionDiagnostic = pkgs.writeShellScript "gjallar-hyprland-session-diagnostics" ''
             set -u
@@ -90,6 +133,12 @@ in {
   imports = [ ./scripts/default.nix ];
   config = lib.mkMerge [
   {
+    services.usbguard = {
+      enable = settings.usbguardEnable or false;
+      dbus.enable = settings.usbguardEnable or false;
+      IPCAllowedGroups = [ "wheel" ];
+    };
+
     # Replace the noisy kernel/systemd console with Plymouth's graphical
     # spinner. Kernel errors remain visible when a boot actually fails.
     boot = {
@@ -117,6 +166,10 @@ in {
         power-profiles-daemon
     ];
   }
+  (lib.mkIf (settings.usbguardEnable or false) {
+    # Only the primary interactive user receives hardware approval prompts.
+    home-manager.users.${settings.username} = usbguardReviewModule;
+  })
   (lib.mkIf diagnosticsEnabled {
     home-manager.sharedModules = [ homeDiagnosticsModule ];
     systemd.services.gjallar-boot-diagnostics = {

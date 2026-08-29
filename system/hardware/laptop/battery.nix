@@ -1,3 +1,4 @@
+{ lib, settings, ... }:
 {
     # Laptop related settings for optimization.
     powerManagement.enable = true;
@@ -37,7 +38,7 @@
         # A short press is safe; require a long press for poweroff.
         HandlePowerKey = "suspend";
         HandlePowerKeyLongPress = "poweroff";
-
+    } // lib.optionalAttrs (settings.clamshellEnable or true) {
         # Suspend-to-RAM when undocked; stay awake with an external display.
         HandleLidSwitch = "suspend";
         HandleLidSwitchExternalPower = "ignore";

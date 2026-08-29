@@ -1,5 +1,12 @@
-{config, settings, lib, ...}:
-{
+{config, settings, lib, pkgs, ...}:
+let
+  kittyShell = pkgs.writeShellScript "gjallar-kitty-shell" ''
+    if [ -t 1 ]; then
+      ${lib.getExe pkgs.fastfetch}
+    fi
+    exec ${lib.getExe pkgs.${settings.shell}} "$@"
+  '';
+in {
   home.file.".config/kitty/vim-mode.lua".text = ''
 local api = vim.api
 local orig_buf = api.nvim_get_current_buf()
@@ -23,7 +30,9 @@ api.nvim_win_set_cursor(0, {api.nvim_buf_line_count(0), 0})
       active_tab_font_style = "bold";
       bold_font = "auto";
       bold_italic_font = "auto";
-      confirm_os_window_close = 0;
+      # Prompt only when a process is still running; plain shell prompts do
+      # not count because Kitty shell integration is enabled.
+      confirm_os_window_close = -1;
       cursor_blink_interval = "-1";
       cursor_shape = "underline";
       cursor_stop_blinking_after = 0;
@@ -39,17 +48,24 @@ api.nvim_win_set_cursor(0, {api.nvim_buf_line_count(0), 0})
       placement_strategy = "center";
       resize_in_steps = "yes";
       scrollback_lines = 10000;
+      shell = "${kittyShell}";
       touch_scroll_multiplier = "1.0";
       wheel_scroll_multiplier = "5.0";
       window_margin_width = 0;
       window_padding_width = 15;
       enable_audio_bell = "no";
+      visual_bell_duration = "0.0";
       cursor_trail = 4;
       scrollback_pager = ''
          nvim +"source ${config.home.homeDirectory}/.config/kitty/vim-mode.lua"
       '';
-      paste_actions = "no-op";
-      allow_remote_control = "yes";
+      # Quote URLs at prompts and confirm potentially dangerous terminal
+      # control sequences before pasting them.
+      paste_actions = "quote-urls-at-prompt,confirm";
+      clipboard_control = "write-clipboard write-primary read-clipboard-ask read-primary-ask";
+      clipboard_max_size = 64;
+      # No global terminal remote-control channel for local or SSH processes.
+      allow_remote_control = "no";
     };
     keybindings = {
       "ctrl+shift+v" = "paste_from_clipboard";
