@@ -90,6 +90,17 @@ in {
   imports = [ ./scripts/default.nix ];
   config = lib.mkMerge [
   {
+    # Replace the noisy kernel/systemd console with Plymouth's graphical
+    # spinner. Kernel errors remain visible when a boot actually fails.
+    boot = {
+      plymouth = {
+        enable = true;
+      };
+      consoleLogLevel = 3;
+      initrd.verbose = false;
+      kernelParams = [ "quiet" "splash" ];
+    };
+
     programs.nh = {
         enable = true;
         clean.enable = false;
