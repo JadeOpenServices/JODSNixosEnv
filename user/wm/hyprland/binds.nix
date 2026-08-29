@@ -15,17 +15,20 @@ let
   render = binding:
     let
       mods = binding.mods or "";
-      command = if binding.action == "exec"
-        then if builtins.hasAttr binding.command commands
-          then commands.${binding.command}
-          else binding.command
-        else binding.action;
+      isExec = binding.action == "exec";
+      command = if isExec && builtins.hasAttr binding.command commands
+        then commands.${binding.command}
+        else binding.command or binding.action;
       args = binding.args or "";
-    in "${mods}, ${binding.key}, ${command}${if args == "" then "," else ", ${args}"}";
+    in if isExec
+      then "${mods}, ${binding.key}, exec, ${command}${if args == "" then "" else " ${args}"}"
+      else "${mods}, ${binding.key}, ${command}${if args == "" then "," else ", ${args}"}";
+  renderBindm = binding:
+    "${binding.mods or ""}, ${binding.key}, ${binding.action}";
 in {
   wayland.windowManager.hyprland.settings = {
     "$mod" = "SUPER";
-    bindm = map render profile.bindm;
+    bindm = map renderBindm profile.bindm;
     binde = map render profile.binde;
     bind = map render profile.bind;
   };
