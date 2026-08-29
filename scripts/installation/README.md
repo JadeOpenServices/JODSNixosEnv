@@ -39,6 +39,9 @@ file, just like `settings.nix`, generated hardware backups, and
 `user.config.json`.
 Set `runUpdateChecks` to `true` or `false` in preset mode to automatically run
 or skip the fwupd update check without being prompted.
+Set `keyboardLayout` to an XKB layout such as `us` or `de`. The installer
+normalizes `de` to the XKB German Latin-1 layout (`de` with `latin1` variant)
+for both Hyprland and SDDM.
 Set `debugFunctions` to `true` to enable the boot diagnostic service. It logs
 the display manager, NetworkManager, Home Manager, failed units, and
 Hyprland-config state. It also records the actual Hyprland-session environment,
