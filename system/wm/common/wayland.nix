@@ -4,7 +4,6 @@
     environment.systemPackages = with pkgs; [
         wayland
         wl-clipboard
-        catppuccin-sddm
     ];
 
     # Configure xwayland
@@ -25,7 +24,11 @@
         sddm = {
             enable = true;
             wayland.enable = true;
-            theme = "catppuccin-mocha";
+            # The package's actual installed theme identifier includes the
+            # palette accent. Without this exact name SDDM silently falls
+            # back to its stock theme.
+            theme = "catppuccin-mocha-mauve";
+            extraPackages = [ pkgs.catppuccin-sddm ];
         };
     };
 }
