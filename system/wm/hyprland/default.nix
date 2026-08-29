@@ -1,6 +1,11 @@
 { inputs, config, pkgs, lib, settings, ... }: let
     shell = settings.themeDetails.shell or "noctalia";
 in {
+    # SDDM's Hyprland session must never fall back to /etc/xdg's sample
+    # configuration. Point the compositor at Home Manager's user config.
+    environment.sessionVariables.HYPRLAND_CONFIG =
+        "/home/${settings.username}/.config/hypr/hyprland.conf";
+
     imports = [
         ../common/wayland.nix
     ] ++ lib.optional (shell == "noctalia") ../shells/noctalia.nix;
