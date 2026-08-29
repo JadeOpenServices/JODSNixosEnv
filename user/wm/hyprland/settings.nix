@@ -83,7 +83,8 @@ in {
         };
 
         input = {
-            kb_layout = "us,ru";
+            kb_layout = settings.keyboardLayout;
+            kb_variant = settings.keyboardVariant;
             kb_options = "grp:alt_shift_toggle";
             follow_mouse = true;
             # sensitivity = -0.5;

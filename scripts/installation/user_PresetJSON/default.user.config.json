@@ -5,6 +5,7 @@
   "username": "usernamehere",
   "timezone": "Europe/Berlin",
   "locale": "en_US.UTF-8",
+  "keyboardLayout": "de",
   "name": "Your Name",
   "email": "you@example.com",
   "githubUsername": "UsernameHere",
