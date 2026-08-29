@@ -1,0 +1,2 @@
+# Installer atomic-write temporary files.
+settings.nix.tmp*
