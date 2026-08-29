@@ -377,6 +377,9 @@ if (( ! skip_rebuild )); then
         if [[ "$cfg_auto_reboot" == true ]]; then
             say "Automatic reboot was selected; rebooting now."
             sudo systemctl reboot
+        elif confirm "Deployment complete. Reboot now?"; then
+            say "Rebooting now."
+            sudo systemctl reboot
         else
             say "Reboot when convenient to start the new graphical session cleanly."
         fi
