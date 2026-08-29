@@ -145,9 +145,9 @@ thresholds are enabled only after that choice; each model’s JSON profile lives
 in `system/hardware/framework/profiles/` for future tuning.
 
 The installer also detects the graphics and Wi-Fi hardware with `lspci`. It
-selects AMD, Intel, or NVIDIA graphics settings, enables firmware, and adds the
-matching common Wi-Fi kernel driver when it can identify one. Unknown hardware
-keeps the safe generic firmware and NetworkManager setup.
+selects AMD, Intel, or NVIDIA graphics settings and enables firmware. Wi-Fi
+drivers are left to kernel autodetection to avoid forcing a mismatched module;
+unknown hardware keeps the safe generic firmware and NetworkManager setup.
 
 Selecting `vscodium` as an editor installs VSCodium and the compatible
 development extensions from nixpkgs. Its search and file-watcher exclusions
