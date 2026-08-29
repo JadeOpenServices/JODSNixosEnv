@@ -42,6 +42,10 @@ let
 in {
     home.packages = [ pkgs.microsoft-edge pkgs.yad teamsApp urlHandler ];
 
+    # Keep the launcher icon independent from Edge's generic application icon.
+    home.file.".local/share/icons/hicolor/scalable/apps/gjallar-teams.svg".source =
+        "${pkgs.papirus-icon-theme}/share/icons/Papirus/64x64/apps/teams-for-linux.svg";
+
     xdg.mimeApps = {
         enable = true;
         defaultApplications = {
@@ -65,7 +69,7 @@ in {
         Name=Microsoft Teams
         Exec=${teamsApp}/bin/gjallar-teams %U
         Terminal=false
-        Icon=microsoft-edge
+        Icon=gjallar-teams
         Categories=Network;Office;InstantMessaging;
         StartupWMClass=gjallar-teams
     '';
