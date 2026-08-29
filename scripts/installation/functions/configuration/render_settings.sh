@@ -10,6 +10,8 @@ render_settings() {
         printf '    username = "%s";\n' "$(nix_string "$cfg_username")"
         printf '    timezone = "%s";\n' "$(nix_string "$cfg_timezone")"
         printf '    locale = "%s";\n' "$(nix_string "$cfg_locale")"
+        printf '    keyboardLayout = "%s";\n' "$(nix_string "$cfg_keyboard_layout")"
+        printf '    keyboardVariant = "%s";\n' "$(nix_string "$cfg_keyboard_variant")"
         printf '    name = "%s";\n' "$(nix_string "$cfg_name")"
         printf '    email = "%s";\n' "$(nix_string "$cfg_email")"
         printf '    githubUsername = "%s";\n' "$(nix_string "$cfg_github_username")"
