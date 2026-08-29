@@ -1,4 +1,3 @@
-
 { config, pkgs, ...}:
 
 {
@@ -9,7 +8,22 @@
   home.file.".config/fastfetch/config.jsonc".text = ''
     {
       "$schema": "https://github.com/fastfetch-cli/fastfetch/wiki/Configuration",
-      "modules": ["title", "separator", "os", "kernel", "uptime", "disk"]
+      "modules": [
+        "title",
+        "separator",
+        "os",
+        "host",
+        "kernel",
+        "uptime",
+        "packages",
+        "shell",
+        "cpu",
+        "gpu",
+        "memory",
+        "disk",
+        "separator",
+        "colors"
+      ]
     }
   '';
 }
