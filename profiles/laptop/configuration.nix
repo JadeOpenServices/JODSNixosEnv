@@ -19,6 +19,7 @@
         ../../system/tools
         ../../system/users/work.nix
         ../../system/hardware/framework
+        ../../system/apps/ollama.nix
     ] ++ (map (wm: ../../system/wm/${wm}) settings.wms);
 
     boot.kernelPackages = pkgs.linuxPackages_latest;

@@ -51,7 +51,7 @@ lib.mkIf (if settings ? aiEnable then settings.aiEnable else false) {
         NoNewPrivileges = true;
         PrivateTmp = true;
         ProtectSystem = "strict";
-        ProtectHome = "read-only";
+        ProtectHome = lib.mkForce "read-only";
         ReadWritePaths = [ "/var/lib/ollama" "/var/cache/ollama" ];
         RestrictAddressFamilies = [ "AF_UNIX" "AF_INET" "AF_INET6" ];
     };

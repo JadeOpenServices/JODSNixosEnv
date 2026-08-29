@@ -12,5 +12,6 @@ in {
         (pkgs.writeShellScriptBin "cleanup" (builtins.readFile ./cleanup.sh))
         (pkgs.writeShellScriptBin "thermal-status" (builtins.readFile ./thermal-status.sh))
         (pkgs.writeShellScriptBin "thermal-test" (builtins.readFile ./thermal-test.sh))
+        pkgs.yad
     ];
 }
