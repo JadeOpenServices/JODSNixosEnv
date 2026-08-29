@@ -13,6 +13,8 @@ render_settings() {
         printf '    keyboardLayout = "%s";\n' "$(nix_string "$cfg_keyboard_layout")"
         printf '    keyboardVariant = "%s";\n' "$(nix_string "$cfg_keyboard_variant")"
         printf '    touchpadWorkspaceSwipe = %s;\n' "$cfg_touchpad_workspace_swipe"
+        printf '    clamshellEnable = %s;\n' "$cfg_clamshell_enable"
+        printf '    usbguardEnable = %s;\n' "$cfg_usbguard_enable"
         printf '    name = "%s";\n' "$(nix_string "$cfg_name")"
         printf '    email = "%s";\n' "$(nix_string "$cfg_email")"
         printf '    githubUsername = "%s";\n' "$(nix_string "$cfg_github_username")"
