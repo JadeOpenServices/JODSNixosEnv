@@ -36,11 +36,45 @@
         };
     };
     agsOptions = lib.recursiveUpdate agsColors details.ags;
+    weather = pkgs.writeShellScriptBin "gjallar-weather" ''
+        set -eu
+        cache_dir="''${XDG_CACHE_HOME:-$HOME/.cache}/gjallar-weather"
+        cache_file="$cache_dir/frankfurt.json"
+        ${pkgs.coreutils}/bin/mkdir -p "$cache_dir"
+
+        if response="$(${pkgs.curl}/bin/curl --fail --silent --show-error --max-time 10 \
+            'https://api.open-meteo.com/v1/forecast?latitude=50.1109&longitude=8.6821&current=temperature_2m,weather_code&temperature_unit=celsius')"; then
+            ${pkgs.coreutils}/bin/printf '%s\n' "$response" > "$cache_file"
+        elif [ -r "$cache_file" ]; then
+            response="$(${pkgs.coreutils}/bin/cat "$cache_file")"
+        else
+            ${pkgs.coreutils}/bin/printf '%s\n' '{"text":"󰖐 --°C","tooltip":"Frankfurt am Main weather unavailable","class":"unavailable"}'
+            exit 0
+        fi
+
+        temperature="$(${pkgs.jq}/bin/jq -r '.current.temperature_2m | round' <<< "$response")"
+        code="$(${pkgs.jq}/bin/jq -r '.current.weather_code' <<< "$response")"
+        case "$code" in
+            0) icon='󰖙'; description='Clear sky' ;;
+            1|2) icon='󰖕'; description='Partly cloudy' ;;
+            3) icon='󰖐'; description='Overcast' ;;
+            45|48) icon='󰖑'; description='Fog' ;;
+            51|53|55|56|57) icon='󰖗'; description='Drizzle' ;;
+            61|63|65|66|67|80|81|82) icon='󰖖'; description='Rain' ;;
+            71|73|75|77|85|86) icon='󰼶'; description='Snow' ;;
+            95|96|99) icon='󰖓'; description='Thunderstorm' ;;
+            *) icon='󰖐'; description='Weather' ;;
+        esac
+        ${pkgs.coreutils}/bin/printf \
+            '{"text":"%s %s°C","tooltip":"Frankfurt am Main: %s°C — %s","class":"weather"}\n' \
+            "$icon" "$temperature" "$temperature" "$description"
+    '';
 in {
     imports = [ inputs.ags.homeManagerModules.default ];
     home.packages = with pkgs; [
         asztal
         fuzzel
+        weather
         bun
         fd
         dart-sass
@@ -93,7 +127,7 @@ in {
             height = 30;
             modules-left = [ "hyprland/workspaces" ];
             modules-center = [ "clock" ];
-            modules-right = [ "pulseaudio" "network" "battery" "tray" ];
+            modules-right = [ "custom/weather" "idle_inhibitor" "pulseaudio" "network" "battery" "tray" ];
             clock.format = "{:%a %d %b  %H:%M}";
             network.format-wifi = "  {signalStrength}%";
             network.format-ethernet = "󰈀  connected";
@@ -101,6 +135,21 @@ in {
             pulseaudio.format = "  {volume}%";
             battery.format = "{icon}  {capacity}%";
             battery.format-icons = [ "󰁺" "󰁼" "󰁾" "󰂀" "󰁹" ];
+            "idle_inhibitor" = {
+                format = "{icon}";
+                format-icons = {
+                    activated = "☕";
+                    deactivated = "󰾪";
+                };
+                tooltip-format-activated = "Coffee mode: display stays on";
+                tooltip-format-deactivated = "Coffee mode: display may sleep";
+            };
+            "custom/weather" = {
+                exec = "${weather}/bin/gjallar-weather";
+                return-type = "json";
+                interval = 900;
+                tooltip = true;
+            };
         };
         style = ''
           * {
@@ -118,8 +167,11 @@ in {
           #workspaces button.active {
             color: #${config.lib.stylix.colors.base0D};
           }
-          #clock, #pulseaudio, #network, #battery, #tray {
+          #clock, #custom-weather, #idle_inhibitor, #pulseaudio, #network, #battery, #tray {
             padding: 0 10px;
+          }
+          #idle_inhibitor.activated {
+            color: #${config.lib.stylix.colors.base0D};
           }
         '';
     };

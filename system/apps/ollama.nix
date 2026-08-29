@@ -11,15 +11,27 @@ let
     OLLAMA_FLASH_ATTENTION = "1";
     OLLAMA_KV_CACHE_TYPE = "q8_0";
   };
+  aiCli = pkgs.writeShellScriptBin "gjallar-ai" ''
+    exec ${ollamaPackage}/bin/ollama run ${lib.escapeShellArg settings.aiModel} \
+      --system "Caveman mode: use few words, keep meaning. Lead with the result; no greetings, filler, repetition, or long background. Use compact bullets when useful. Keep code, commands, paths, errors, identifiers, and safety caveats exact. Expand only when asked or safety requires it." "$@"
+  '';
+  aiLauncher = pkgs.makeDesktopItem {
+    name = "gjallarOS-ai";
+    desktopName = "gjallarOS-ai";
+    genericName = "Local AI assistant";
+    comment = "Private local AI assistant powered by Ollama";
+    exec = "${pkgs.kitty}/bin/kitty --title gjallarOS-ai --class gjallarOS-ai ${aiCli}/bin/gjallar-ai";
+    icon = "${pkgs.papirus-icon-theme}/share/icons/Papirus/64x64/apps/devassistant.svg";
+    categories = [ "Utility" "Development" "Chat" ];
+    startupNotify = true;
+  };
 in
 
 lib.mkIf (if settings ? aiEnable then settings.aiEnable else false) {
     environment.systemPackages = with pkgs; [
         ollamaPackage
-        (writeShellScriptBin "gjallar-ai" ''
-          exec ${ollamaPackage}/bin/ollama run ${lib.escapeShellArg settings.aiModel} \
-            --system "Caveman mode: use few words, keep meaning. Lead with the result; no greetings, filler, repetition, or long background. Use compact bullets when useful. Keep code, commands, paths, errors, identifiers, and safety caveats exact. Expand only when asked or safety requires it." "$@"
-        '')
+        aiCli
+        aiLauncher
     ];
 
     services.ollama = rec {
