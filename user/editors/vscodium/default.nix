@@ -3,7 +3,6 @@
     programs.vscodium = {
         enable = true;
         profiles.default.extensions = with pkgs.vscode-extensions; [
-            vscodevim.vim
             golang.go
             ms-python.python
             redhat.vscode-yaml
@@ -16,6 +15,9 @@
             hashicorp.terraform
         ];
         profiles.default.userSettings = {
+            # Keep standard editor shortcuts such as Ctrl+C/Ctrl+V. The Vim
+            # extension changes modal input and can look like overwrite mode.
+            "editor.overwrite" = false;
             # Keep search, file watching, and AI-assisted indexing focused on
             # source files instead of generated/dependency trees.
             "search.followSymlinks" = false;

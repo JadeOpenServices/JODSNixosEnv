@@ -12,11 +12,11 @@ configure_keyboard_layout() {
     [[ "$requested" =~ ^[a-z0-9,_+-]+$ ]] ||
         die 'Keyboard layout may contain only letters, numbers, commas, plus, underscore, and hyphen.'
 
-    # XKB calls the common German Latin-1 layout `de` with variant `latin1`.
-    # Accept the natural installer input while generating valid XKB settings.
+    # The default XKB German map is the standard Latin-1-capable layout.
+    # `de(latin1)` is not a valid variant in current xkeyboard-config.
     if [[ "$requested" == 'de' || "$requested" == 'de-latin1' ]]; then
         cfg_keyboard_layout='de'
-        cfg_keyboard_variant='latin1'
+        cfg_keyboard_variant=''
     else
         cfg_keyboard_layout="$requested"
         cfg_keyboard_variant=''
