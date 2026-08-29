@@ -101,7 +101,8 @@ in {
         gestures = {
             # Three-finger touchpad swipes change workspaces; touchscreen
             # devices are left to libinput/Hyprland's native gesture handling.
-            workspace_swipe_touch = true;
+            workspace_swipe_touch = settings.touchpadWorkspaceSwipe;
+            workspace_swipe_fingers = 3;
             workspace_swipe_cancel_ratio = 0.15;
             workspace_swipe_forever = true;
             workspace_swipe_distance = 200;
