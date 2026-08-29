@@ -17,6 +17,7 @@ render_settings() {
         printf '    workUserEnable = %s;\n' "$cfg_work_user_enable"
         printf '    workUsername = "%s";\n\n' "$(nix_string "$cfg_work_username")"
         printf '    dockerEnable = %s;\n\n' "$cfg_docker_enable"
+        printf '    debugFunctions = %s;\n\n' "$cfg_debug_functions"
         printf '    shell = "%s";\n' "$(nix_string "$cfg_shell")"
         printf '    editors = '; nix_list "${cfg_editors[@]}"; printf ';\n'
         printf '    browsers = '; nix_list "${cfg_browsers[@]}"; printf ';\n'

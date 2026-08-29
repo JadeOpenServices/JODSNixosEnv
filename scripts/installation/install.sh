@@ -114,6 +114,7 @@ bootstrap_prerequisites
 fi
 
 configure_auto_reboot "$REPO_ROOT"
+configure_debug_functions
 detect_ui
 firmware_update
 
