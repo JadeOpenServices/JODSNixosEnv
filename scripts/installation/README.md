@@ -39,6 +39,15 @@ file, just like `settings.nix`, generated hardware backups, and
 `user.config.json`.
 Set `runUpdateChecks` to `true` or `false` in preset mode to automatically run
 or skip the fwupd update check without being prompted.
+Set `debugFunctions` to `true` to enable the boot diagnostic service. It logs
+the display manager, NetworkManager, Home Manager, failed units, and
+Hyprland-config state. It also records the actual Hyprland-session environment,
+binary paths, running processes, monitors, and clients after login. Read
+`/var/lib/gjallar-diagnostics/boot-*.log` and
+`~/.local/state/gjallar-diagnostics/hyprland-session.log`.
+The Hyprland report includes `hyprctl configerrors`, which exposes invalid
+configuration lines and failed commands. The report is a systemd user service
+that remains active for the logged-in Hyprland session.
 
 The installer targets NixOS 26.05 and stops before making changes if another
 release is detected. The release/channel policy is kept in

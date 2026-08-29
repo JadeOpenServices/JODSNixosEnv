@@ -23,6 +23,7 @@
   "runUpdateChecks": false,
   "writeConfig": true,
   "runRebuild": true,
+  "debugFunctions": false,
   "aiEnable": true,
   "enableScrobbling": false,
   "enableLastfm": false,
