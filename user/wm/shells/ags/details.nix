@@ -1,11 +1,11 @@
 {...}:
 rec {
-    launchCommands = [
-        "awww-daemon &"
-        "ags &"
-    ];
+    # Waybar is started by the Hyprland module with an absolute Nix path.
+    # Keep AGS installed for its optional tools, but do not make a graphical
+    # session depend on its JavaScript runtime starting correctly.
+    launchCommands = [ ];
     binds = {
-        launcher = "ags -t launcher";
+        launcher = "fuzzel";
         volumeUp = "pulsemixer --change-volume +2";
         volumeDown = "pulsemixer --change-volume -2";
         brightnessUp = "brightnessctl s +5%";

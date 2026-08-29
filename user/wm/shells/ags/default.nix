@@ -40,6 +40,7 @@ in {
     imports = [ inputs.ags.homeManagerModules.default ];
     home.packages = with pkgs; [
         asztal
+        fuzzel
         bun
         fd
         dart-sass
@@ -72,6 +73,46 @@ in {
     programs.ags = {
         enable = true;
         configDir = ../../../../non-nix/ags;
+    };
+
+    programs.waybar = {
+        enable = true;
+        systemd.enable = false;
+        settings.mainBar = {
+            layer = "top";
+            position = "top";
+            height = 30;
+            modules-left = [ "hyprland/workspaces" ];
+            modules-center = [ "clock" ];
+            modules-right = [ "pulseaudio" "network" "battery" "tray" ];
+            clock.format = "{:%a %d %b  %H:%M}";
+            network.format-wifi = "  {signalStrength}%";
+            network.format-ethernet = "󰈀  connected";
+            network.format-disconnected = "󰤮  offline";
+            pulseaudio.format = "  {volume}%";
+            battery.format = "{icon}  {capacity}%";
+            battery.format-icons = [ "󰁺" "󰁼" "󰁾" "󰂀" "󰁹" ];
+        };
+        style = ''
+          * {
+            font-family: "${settings.themeDetails.font}";
+            font-size: ${toString settings.themeDetails.fontSize}px;
+          }
+          window#waybar {
+            background: #${config.lib.stylix.colors.base00};
+            color: #${config.lib.stylix.colors.base05};
+          }
+          #workspaces button {
+            color: #${config.lib.stylix.colors.base05};
+            padding: 0 8px;
+          }
+          #workspaces button.active {
+            color: #${config.lib.stylix.colors.base0D};
+          }
+          #clock, #pulseaudio, #network, #battery, #tray {
+            padding: 0 10px;
+          }
+        '';
     };
 
     home.file.".cache/ags/options-nix.json".text = (builtins.toJSON agsOptions);
