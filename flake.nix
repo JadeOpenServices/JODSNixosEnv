@@ -43,6 +43,12 @@
                         systemd.services.display-manager.after = [
                             "home-manager-${settings.username}.service"
                         ];
+                        systemd.services.display-manager.wants = [
+                            "home-manager-${settings.username}.service"
+                        ];
+                        systemd.services.display-manager.requires = [
+                            "home-manager-${settings.username}.service"
+                        ];
                     }
                     # inputs.chaotic.nixosModules.default
                     (./. + "/profiles" + ("/" + settings.profile) + "/configuration.nix")

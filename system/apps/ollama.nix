@@ -17,7 +17,8 @@ lib.mkIf (if settings ? aiEnable then settings.aiEnable else false) {
     environment.systemPackages = with pkgs; [
         ollamaPackage
         (writeShellScriptBin "gjallar-ai" ''
-          exec ${ollamaPackage}/bin/ollama run ${lib.escapeShellArg settings.aiModel} "$@"
+          exec ${ollamaPackage}/bin/ollama run ${lib.escapeShellArg settings.aiModel} \
+            --system "Caveman mode: use few words, keep meaning. Lead with the result; no greetings, filler, repetition, or long background. Use compact bullets when useful. Keep code, commands, paths, errors, identifiers, and safety caveats exact. Expand only when asked or safety requires it." "$@"
         '')
     ];
 
