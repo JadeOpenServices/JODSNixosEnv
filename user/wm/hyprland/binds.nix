@@ -1,11 +1,14 @@
-{ config, pkgs, hyprlandShellDetails, ... }:
+{ config, pkgs, lib, hyprlandShellDetails, ... }:
 let
   shell = hyprlandShellDetails.binds;
   profile = builtins.fromJSON (builtins.readFile ./keybinds.json);
   commands = {
     volumeUp = shell.volumeUp; volumeDown = shell.volumeDown;
     brightnessUp = shell.brightnessUp; brightnessDown = shell.brightnessDown;
-    lock = shell.lock; launcher = shell.launcher; screenshot = shell.screenshot;
+    lock = shell.lock;
+    launcher = if shell.launcher == "fuzzel" then lib.getExe pkgs.fuzzel else shell.launcher;
+    terminal = lib.getExe pkgs.kitty;
+    screenshot = shell.screenshot;
     micMute = shell.micMute; mediaNext = shell.mediaNext; mediaPrev = shell.mediaPrev;
     mediaToggle = shell.mediaToggle;
   };
