@@ -75,6 +75,15 @@ in {
         configDir = ../../../../non-nix/ags;
     };
 
+    # Fuzzel reads desktop entries and icons from the Hyprland XDG data paths.
+    programs.fuzzel = {
+        enable = true;
+        settings.main = {
+            icons-enabled = true;
+            icon-theme = details.icons;
+        };
+    };
+
     programs.waybar = {
         enable = true;
         systemd.enable = false;

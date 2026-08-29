@@ -2,9 +2,6 @@
 let
     themeConf = pkgs.writeText "gjallaros-sddm-theme.conf" ''
         [General]
-        type=color
-        color=#11111b
-        background=#11111b
     '';
     metadata = pkgs.writeText "gjallaros-sddm-metadata.desktop" ''
         [SddmGreeterTheme]
