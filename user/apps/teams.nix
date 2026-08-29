@@ -21,26 +21,16 @@ let
         url="''${1:-}"
         [ -n "$url" ] || exit 2
         case "$url" in
-            https://teams.microsoft.com/*|https://teams.live.com/*|https://teams.microsoft.us/*|msteams:*)
+            https://teams.microsoft.com|https://teams.microsoft.com/*|https://teams.live.com|https://teams.live.com/*|https://teams.microsoft.us|https://teams.microsoft.us/*|https://teams.cloud.microsoft|https://teams.cloud.microsoft/*|msteams:*)
+                exec ${teamsApp}/bin/gjallar-teams "$url"
                 ;;
             *)
                 exec ${normalBrowser} "$url"
                 ;;
         esac
-        if command -v yad >/dev/null 2>&1 && [ -n "''${DISPLAY:-}''${WAYLAND_DISPLAY:-}" ]; then
-            yad --question --title="Open Teams link" --text="Open this link in Microsoft Teams?" \
-                --button="Microsoft Teams":0 --button="Normal browser":1 --button="Cancel":2
-            choice="$?"
-            case "$choice" in
-                0) exec ${teamsApp}/bin/gjallar-teams "$url" ;;
-                1) exec ${normalBrowser} "$url" ;;
-                *) exit 0 ;;
-            esac
-        fi
-        exec ${normalBrowser} "$url"
     '';
 in {
-    home.packages = [ pkgs.microsoft-edge pkgs.yad teamsApp urlHandler ];
+    home.packages = [ pkgs.microsoft-edge teamsApp urlHandler ];
 
     # Keep the launcher icon independent from Edge's generic application icon.
     home.file.".local/share/icons/hicolor/scalable/apps/gjallar-teams.svg".source =
@@ -51,6 +41,7 @@ in {
         defaultApplications = {
             "x-scheme-handler/http" = [ "gjallar-url-handler.desktop" ];
             "x-scheme-handler/https" = [ "gjallar-url-handler.desktop" ];
+            "x-scheme-handler/msteams" = [ "gjallar-url-handler.desktop" ];
         };
     };
 
@@ -60,7 +51,7 @@ in {
         Name=GjallarOS URL handler
         NoDisplay=true
         Exec=${urlHandler}/bin/gjallar-open-url %u
-        MimeType=x-scheme-handler/http;x-scheme-handler/https;
+        MimeType=x-scheme-handler/http;x-scheme-handler/https;x-scheme-handler/msteams;
     '';
 
     home.file.".local/share/applications/microsoft-teams.desktop".text = ''

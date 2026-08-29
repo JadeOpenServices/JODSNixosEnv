@@ -11,6 +11,7 @@ let
         MainScript=Main.qml
         Theme-Id=gjallaros
         Theme-API=2.0
+        QtVersion=6
     '';
     mainQml = pkgs.writeText "gjallaros-sddm-main.qml" ''
         import QtQuick 2.15
