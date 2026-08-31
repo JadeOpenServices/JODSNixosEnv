@@ -142,12 +142,19 @@ in {
     # Replace the noisy kernel/systemd console with Plymouth's graphical
     # spinner. Kernel errors remain visible when a boot actually fails.
     boot = {
-      plymouth = {
-        enable = true;
-      };
-      consoleLogLevel = 3;
+      plymouth.enable = true;
+
+      consoleLogLevel = 0;
       initrd.verbose = false;
-      kernelParams = [ "quiet" "splash" ];
+
+      kernelParams = [
+        "quiet"
+        "splash"
+        "rd.systemd.show_status=false"
+        "systemd.show_status=false"
+        "udev.log_level=0"
+        "rd.udev.log_level=0"
+      ];
     };
 
     programs.nh = {

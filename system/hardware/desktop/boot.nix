@@ -1,4 +1,4 @@
-{ config, pkgs, ... }:
+{ config, pkgs, settings, ... }:
 
 {
   boot.loader.efi.canTouchEfiVariables = true;
@@ -9,4 +9,6 @@
     efiSupport = true;
     useOSProber = true;
   };
+
+  boot.loader.timeout = if settings.debugFunctions then 5 else 0;
 }
