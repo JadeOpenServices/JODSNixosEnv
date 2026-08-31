@@ -7,12 +7,16 @@ host="${GJALLAROS_HOST:-__HOSTNAME__}"
 messages_json="$repo/system/tools/scripts/rebuild-messages.json"
 
 debug=0
+cleanup_enabled=1
 args=()
 
 for arg in "$@"; do
     case "$arg" in
         -d|--debug)
             debug=1
+            ;;
+        -n|--no-cleanup)
+            cleanup_enabled=0
             ;;
         *)
             args+=("$arg")
@@ -46,6 +50,7 @@ cleanup() {
         kill "$ui_pid" 2>/dev/null || true
         wait "$ui_pid" 2>/dev/null || true
     fi
+
     rm -f "$tmp_log"
     printf '\r\033[2K'
 }
@@ -84,7 +89,8 @@ if ((debug)); then
         "${args[@]}"
 
     status=$?
-    if (( status == 0 )); then
+
+    if ((status == 0 && cleanup_enabled)); then
         cleanup_old_generations
     fi
 
@@ -92,8 +98,13 @@ if ((debug)); then
     minutes=$((elapsed / 60))
     seconds=$((elapsed % 60))
 
-    printf '\n⏱ %02d:%02d  ✓ Rebuild completed successfully.\n' \
-        "$minutes" "$seconds"
+    if ((status == 0)); then
+        printf '\n⏱ %02d:%02d  ✓ Rebuild completed successfully.\n' \
+            "$minutes" "$seconds"
+    else
+        printf '\n⏱ %02d:%02d  ✗ Rebuild failed.\n' \
+            "$minutes" "$seconds"
+    fi
 
     exit "$status"
 fi
@@ -108,8 +119,6 @@ fi
         seconds=$((elapsed % 60))
 
         line="⏱ $(printf '%02d:%02d' "$minutes" "$seconds")  ${messages[index]}"
-
-        printf '033[2K%s' "$line"
 
         printf '\r\033[2K%s' "$line"
 
@@ -128,10 +137,11 @@ sudo nixos-rebuild switch \
     --flake "$repo#$host" \
     "${args[@]}" >"$tmp_log" 2>&1
 status=$?
-if (( status == 0 )); then
+set -e
+
+if ((status == 0 && cleanup_enabled)); then
     cleanup_old_generations
 fi
-set -e
 
 elapsed=$((SECONDS - start_time))
 minutes=$((elapsed / 60))
@@ -153,5 +163,3 @@ else
     cat "$tmp_log" >&2
     exit "$status"
 fi
-
-
