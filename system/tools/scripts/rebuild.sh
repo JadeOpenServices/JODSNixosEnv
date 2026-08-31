@@ -14,4 +14,4 @@ if command -v nom >/dev/null 2>&1; then
 else
   sudo nixos-rebuild switch --flake "$repo#$host" "$@"
 fi
-printf '[GjallarOS] Done. New generation is active.\n'
+printf '[GjallarOS] Done. New generation is active; SDDM changes apply on next login.\n'
