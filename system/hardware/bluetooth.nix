@@ -7,6 +7,11 @@
     ];
 
     hardware.bluetooth = {
+        settings = {
+            General = {
+                ControllerMode = "dual";
+            };
+        };
         enable = true;
         package = pkgs.bluez;
     };
