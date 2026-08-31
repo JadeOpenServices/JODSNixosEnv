@@ -1,6 +1,8 @@
 { lib, settings, pkgs, ... }:
 
 let
+  aiSystemPrompt = (builtins.fromJSON (builtins.readFile ./ai/system-prompt.json)).system;
+
   ollamaPackage =
     if settings.graphicsVendor == "amd"
        && builtins.hasAttr "ollama-rocm" pkgs
@@ -35,6 +37,8 @@ let
     OLLAMA_KV_CACHE_TYPE = "q8_0";
   } // ollamaIgpuEnable;
 
+  securityInstructions = builtins.fromJSON (builtins.readFile ./ai/security-instructions.json);
+
   aiCli = pkgs.writeShellScriptBin "gjallar-ai" ''
     set -eu
 
@@ -42,14 +46,12 @@ let
     modelfile="$(mktemp)"
     trap 'rm -f "$modelfile"' EXIT
 
-    printf '%s\n' \
-      "FROM ${settings.aiModel}" \
-      'SYSTEM """Caveman mode: use few words, keep meaning. Lead with the result; no greetings, filler, repetition, or long background. Use compact bullets when useful. Keep code, commands, paths, errors, identifiers, and safety caveats exact. Expand only when asked or safety requires it."""' \
-      > "$modelfile"
+    cat > "$modelfile" <<EOF
+FROM ${settings.aiModel}
+SYSTEM """${securityInstructions.system}"""
+EOF
 
-    if ! ${ollamaPackage}/bin/ollama show "$assistant_model" >/dev/null 2>&1; then
-      ${ollamaPackage}/bin/ollama create "$assistant_model" --file "$modelfile"
-    fi
+    ${ollamaPackage}/bin/ollama create "$assistant_model" --file "$modelfile"
 
     exec ${ollamaPackage}/bin/ollama run "$assistant_model" "$@"
   '';
@@ -97,7 +99,6 @@ lib.mkIf (if settings ? aiEnable then settings.aiEnable else false) {
 
     ReadWritePaths = [
       "/var/lib/ollama"
-      "/var/cache/ollama"
     ];
 
     RestrictAddressFamilies = [
