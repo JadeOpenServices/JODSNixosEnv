@@ -196,6 +196,8 @@ collect_settings \
     wms \
     themes
 
+configure_work_user_password
+
 say "Applying the selected laptop profile..."
 configure_framework
 

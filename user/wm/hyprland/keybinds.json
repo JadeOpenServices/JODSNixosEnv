@@ -14,36 +14,51 @@
   "bind": [
     {"mods":"$mod","key":"Q","action":"killactive"},
     {"mods":"$mod","key":"W","action":"fullscreen","args":"1"},
-    {"mods":"$mod","key":"E","action":"togglefloating"},
+
+    {"mods":"$mod","key":"E","action":"exec","command":"editor"},
+    {"mods":"$mod","key":"B","action":"exec","command":"browser"},
+    {"mods":"$mod","key":"T","action":"exec","command":"terminal"},
+    {"mods":"$mod","key":"F","action":"exec","command":"fileManager"},
+    {"mods":"$mod","key":"A","action":"exec","command":"gjallarAI"},
+    {"mods":"$mod","key":"L","action":"exec","command":"libreoffice"},
+    {"mods":"$mod","key":"M","action":"exec","command":"teams"},
+
     {"mods":"$mod","key":"Delete","action":"exit"},
     {"mods":"$mod","key":"O","action":"layoutmsg","args":"togglesplit"},
     {"mods":"$mod","key":"P","action":"pseudo"},
     {"mods":"$mod","key":"Escape","action":"exec","command":"lock"},
-    {"mods":"$mod","key":"Return","action":"exec","command":"terminal"},
+
     {"mods":"$mod SHIFT","key":"Return","action":"exec","command":"terminal","args":"--class floating"},
+
     {"mods":"$mod","key":"S","action":"togglespecialworkspace"},
     {"mods":"$mod SHIFT","key":"S","action":"movetoworkspacesilent","args":"special"},
     {"mods":"$mod SHIFT","key":"A","action":"exec","command":"launcher"},
     {"mods":"$mod","key":"D","action":"exec","command":"launcher"},
     {"mods":"$mod SHIFT","key":"Z","action":"exec","command":"screenshot"},
+
     {"mods":"$mod","key":"h","action":"movefocus","args":"l"},
     {"mods":"$mod","key":"l","action":"movefocus","args":"r"},
     {"mods":"$mod","key":"k","action":"movefocus","args":"u"},
     {"mods":"$mod","key":"j","action":"movefocus","args":"d"},
+
     {"mods":"$mod ALT","key":"m","action":"exec","command":"micMute"},
     {"mods":"$mod ALT","key":"l","action":"exec","command":"mediaNext"},
     {"mods":"$mod ALT","key":"h","action":"exec","command":"mediaPrev"},
     {"mods":"$mod ALT","key":"p","action":"exec","command":"mediaToggle"},
+
     {"key":"XF86AudioMicMute","action":"exec","command":"micMute"},
     {"key":"XF86AudioNext","action":"exec","command":"mediaNext"},
     {"key":"XF86AudioPrev","action":"exec","command":"mediaPrev"},
     {"key":"XF86AudioPlay","action":"exec","command":"mediaToggle"},
+
     {"mods":"$mod SHIFT","key":"h","action":"movewindow","args":"l"},
     {"mods":"$mod SHIFT","key":"l","action":"movewindow","args":"r"},
     {"mods":"$mod SHIFT","key":"k","action":"movewindow","args":"u"},
     {"mods":"$mod SHIFT","key":"j","action":"movewindow","args":"d"},
     {"mods":"$mod SHIFT","key":"c","action":"centerwindow","args":"1"},
+
     {"mods":"$mod","key":"TAB","action":"focusmonitor","args":"+1"},
+
     {"mods":"$mod","key":"1","action":"exec","command":"hyprworkspace 1"},
     {"mods":"$mod","key":"2","action":"exec","command":"hyprworkspace 2"},
     {"mods":"$mod","key":"3","action":"exec","command":"hyprworkspace 3"},
@@ -54,13 +69,16 @@
     {"mods":"$mod","key":"8","action":"exec","command":"hyprworkspace 8"},
     {"mods":"$mod","key":"9","action":"exec","command":"hyprworkspace 9"},
     {"mods":"$mod","key":"0","action":"exec","command":"hyprworkspace 10"},
+
     {"mods":"$mod CTRL","key":"h","action":"workspace","args":"r-1"},
     {"mods":"$mod","key":"Left","action":"workspace","args":"r-1"},
     {"mods":"$mod CTRL","key":"l","action":"workspace","args":"r+1"},
     {"mods":"$mod","key":"Right","action":"workspace","args":"r+1"},
+
     {"mods":"$mod","key":"mouse_down","action":"workspace","args":"r-1"},
     {"mods":"$mod","key":"mouse_up","action":"workspace","args":"r+1"},
     {"mods":"$mod","key":"mouse:274","action":"killactive"},
+
     {"mods":"$mod SHIFT","key":"1","action":"movetoworkspace","args":"1"},
     {"mods":"$mod SHIFT","key":"2","action":"movetoworkspace","args":"2"},
     {"mods":"$mod SHIFT","key":"3","action":"movetoworkspace","args":"3"},
@@ -71,6 +89,7 @@
     {"mods":"$mod SHIFT","key":"8","action":"movetoworkspace","args":"8"},
     {"mods":"$mod SHIFT","key":"9","action":"movetoworkspace","args":"9"},
     {"mods":"$mod SHIFT","key":"0","action":"movetoworkspace","args":"10"},
+
     {"mods":"$mod CTRL SHIFT","key":"l","action":"movetoworkspace","args":"r+1"},
     {"mods":"$mod SHIFT","key":"Right","action":"movetoworkspace","args":"r+1"},
     {"mods":"$mod CTRL SHIFT","key":"h","action":"movetoworkspace","args":"r-1"},

@@ -9,6 +9,7 @@ rows=(
   "cleanup|Remove old generations and collect garbage.|cleanup"
   "thermal-status|Show CPU temperatures and power state.|thermal-status"
   "thermal-test|Pause/resume a process pattern for troubleshooting.|thermal-test"
+  "check-installer|Check installer configuration, graphics detection and Ollama integration.|check-installer",
   "gjallar-ai|Start the local Ollama assistant.|gjallar-ai"
   "opencode-local|Start OpenCode against local Ollama.|opencode-local"
   "usbguard|Manage USB device policy when USBGuard is enabled.|usbguard list-devices --blocked"
