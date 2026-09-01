@@ -1,0 +1,110 @@
+{
+    description = "GjallarOS — a practical Nordic NixOS workstation";
+
+    outputs = { self, nixpkgs, home-manager, ... } @ inputs: let
+        superfileOverlay = final: prev: {
+            superfile = inputs.superfile.packages.${final.stdenv.hostPlatform.system}.superfile.overrideAttrs (old: {
+                buildGoModule = final.buildGoModule.override {
+                    go = final.go_1_26;
+                    mainProgram = "superfile";
+        pkgs = import nixpkgs {
+            system = settings.system;
+            overlays = [ superfileOverlay ];
+            ${settings.hostname} = nixpkgs.lib.nixosSystem {
+                modules = [
+                    inputs.noctalia-greeter.nixosModules.default
+                    inputs.stylix.nixosModules.stylix
+                    inputs.sops-nix.nixosModules.sops
+                    inputs.home-manager.nixosModules.home-manager
+                    {
+                        nixpkgs.overlays = [ inputs.nur.overlays.default superfileOverlay ];
+
+                        # Activate the matching Home Manager profile as part
+                        # of the system rebuild. Without this, greetd can
+                        # start Hyprland before its user configuration exists.
+                        home-manager.useGlobalPkgs = true;
+                        home-manager.useUserPackages = true;
+
+                        # Preserve pre-existing user files when activating HM
+                        # (for example VSCodium and xdg user-dir files).
+                        home-manager.backupFileExtension = "hm-bak";
+                        home-manager.extraSpecialArgs = { inherit inputs settings; };
+
+                        home-manager.sharedModules = [
+                            inputs.plasma-manager.homeModules.plasma-manager
+                            inputs.nixvim.homeModules.nixvim
+                            inputs.sops-nix.homeManagerModules.sops
+                            inputs.zen-browser.homeModules.twilight
+                            inputs.noctalia.homeModules.default
+                        ];
+
+                        home-manager.users = {
+                            ${settings.username} = import
+                                (./. + "/profiles/${settings.profile}/home.nix");
+                        } // nixpkgs.lib.optionalAttrs settings.workUserEnable {
+                            ${settings.workUsername} = import ./profiles/work-user/home.nix;
+                            "home-manager-${settings.username}.service"
+                        ];
+                        systemd.services.display-manager.wants = [
+                            "home-manager-${settings.username}.service"
+                        ];
+                        systemd.services.display-manager.requires = [
+                            "home-manager-${settings.username}.service"
+                        ];
+                    }
+
+                    # inputs.chaotic.nixosModules.default
+                    (./. + "/profiles" + ("/" + settings.profile) + "/configuration.nix")
+                ];
+
+                specialArgs = {
+                    inherit inputs;
+                    inherit settings;
+        # 'home-manager switch --flake .#username
+        homeConfigurations = {
+            ${settings.username} = home-manager.lib.homeManagerConfiguration {
+                pkgs = nixpkgs.legacyPackages.${settings.system};
+
+                modules = [
+                    (./. + "/profiles" + ("/" + settings.profile) + "/home.nix")
+                    inputs.plasma-manager.homeModules.plasma-manager
+                    inputs.stylix.homeModules.stylix
+                    inputs.nixvim.homeModules.nixvim
+                    inputs.sops-nix.homeManagerModules.sops
+                    inputs.zen-browser.homeModules.twilight
+                    inputs.noctalia.homeModules.default
+                    # inputs.chaotic.homeModules.default
+                ];
+
+                extraSpecialArgs = {
+                    inherit inputs;
+                    inherit settings;
+
+                modules = [
+                    (./. + "/profiles/work-user/home.nix")
+                    inputs.plasma-manager.homeModules.plasma-manager
+                    inputs.stylix.homeModules.stylix
+                    inputs.nixvim.homeModules.nixvim
+                    inputs.sops-nix.homeManagerModules.sops
+                    inputs.zen-browser.homeModules.twilight
+                    inputs.noctalia.homeModules.default
+                ];
+
+                extraSpecialArgs = { inherit inputs settings; };
+        superfile = {
+            url = "github:yorukot/superfile";
+        home-manager.url = "github:nix-community/home-manager/release-26.05";
+        home-manager.inputs.nixpkgs.follows = "nixpkgs";
+
+        sops-nix.url = "github:Mic92/sops-nix";
+
+        nur = {
+            url = "github:nix-community/NUR";
+            inputs.nixpkgs.follows = "nixpkgs";
+            url = "github:danth/stylix/release-26.05";
+            inputs.nixpkgs.follows = "nixpkgs";
+        hyprland = {
+            type = "git";
+            url = "https://github.com/hyprwm/Hyprland";
+            submodules = true;
+            # inputs.nixpkgs.follows = "nixpkgs";
