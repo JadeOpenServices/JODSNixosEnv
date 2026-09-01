@@ -29,7 +29,7 @@ let
     gjallarAI = "opencode-local";
 
     # Applications
-    libreoffice = lib.getExe pkgs.libreoffice-fresh;
+    libreoffice = lib.getExe pkgs.libreoffice;
     teams = "gjallar-teams";
 
     screenshot = shell.screenshot;

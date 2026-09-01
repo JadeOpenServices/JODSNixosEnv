@@ -187,6 +187,7 @@ in {
         flake = settings.dotfilesDir;
     };
     environment.systemPackages = with pkgs; [
+        python3
         nix-output-monitor
         nvd
         lm_sensors
