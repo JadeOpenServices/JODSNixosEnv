@@ -1,0 +1,64 @@
+{
+  "system": "x86_64-linux",
+  "profile": "laptop",
+  "hostname": "gjallarOS",
+  "username": "usernamehere",
+  "timezone": "Europe/Berlin",
+  "locale": "en_US.UTF-8",
+  "keyboardLayout": "de",
+  "keyboardVariant": "",
+  "touchpadWorkspaceSwipe": true,
+  "clamshellEnable": true,
+  "usbguardEnable": false,
+
+  "name": "Your Name",
+  "email": "you@example.com",
+  "githubUsername": "UsernameHere",
+  "dotfilesDir": "",
+
+  "shell": "zsh",
+  "editors": [
+    "vscodium"
+  ],
+  "browsers": [
+    "librewolf"
+  ],
+  "preferredEditor": "vscodium",
+  "preferredBrowser": "librewolf",
+
+  "theme": "catppuccin",
+  "backgroundNormal": "non-nix/wallpapers/sword.jpg",
+  "backgroundWork": "non-nix/wallpapers/nord.png",
+  "backgroundGaming": "",
+
+  "workUserEnable": false,
+  "workUsername": "",
+  "workUserPasswordFile": "",
+
+  "dockerEnable": false,
+  "debugFunctions": false,
+
+  "aiEnable": true,
+  "aiModel": "qwen2.5-coder:7b",
+  "aiContextTokens": 8192,
+  "aiVramMB": 0,
+
+  "enableScrobbling": false,
+  "enableLastfm": false,
+  "enableListenbrainz": false,
+  "lastfmUsername": "",
+  "listenbrainzUsername": "",
+
+  "frameworkEnable": true,
+  "frameworkModel": "13",
+
+  "nemuEnable": false,
+  "nemuGpuPassthrough": false,
+
+  "luksTpm2Enable": false,
+
+  "autoReboot": false,
+  "runUpdateChecks": false,
+  "writeConfig": true,
+  "runRebuild": true
+}
