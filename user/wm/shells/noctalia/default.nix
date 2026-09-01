@@ -1,4 +1,4 @@
-{config, lib, settings, ...}: let
+{ pkgs, inputs, config, lib, settings, ... }: let
     themeDetails = settings.themeDetails;
     profileDetails = settings.profileDetails;
     wallpaperDetails =
@@ -74,11 +74,13 @@
     };
 in {
     programs.noctalia = {
-        settings = import ./settings.nix;
-        corner_radius_scale = 2.0;
         enable = true;
-        settings = {
-            # configure options
+        systemd.enable = true;
+        package = inputs.noctalia.packages.${pkgs.stdenv.hostPlatform.system}.default;
+
+        settings = lib.recursiveUpdate (import ./settings.nix) {
+            corner_radius_scale = 2.0;
+
             theme = {
                 source = "custom";
                 custom_palette = "stylix";
@@ -167,7 +169,6 @@ in {
                 ];
             };
             wallpaper = {
-                enable = true;
                 directory = "${settings.dotfilesDir}/non-nix/wallpapers";
                 monitors = lib.genAttrs monitorNames (monitor:
                   {

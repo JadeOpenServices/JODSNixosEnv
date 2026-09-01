@@ -2,8 +2,17 @@
     description = "GjallarOS — a practical Nordic NixOS workstation";
 
     outputs = { self, nixpkgs, home-manager, ... } @ inputs: let
+        superfileOverlay = final: prev: {
+            superfile = inputs.superfile.packages.${final.stdenv.hostPlatform.system}.superfile.overrideAttrs (old: {
+                env = (old.env or {}) // {
+                };
+                meta = (old.meta or {}) // {
+                    mainProgram = "superfile";
+                };
+            });
+        };
         settings = import (./. + "/settings.nix") {inherit pkgs inputs;};
-        pkgs = import nixpkgs {system = settings.system;};
+        pkgs = import nixpkgs {system = settings.system; overlays = [ superfileOverlay ];};
     in {
         # NixOS configuration entrypoint.
         # 'nixos-rebuild switch --flake .#hostname
@@ -15,7 +24,7 @@
                     inputs.sops-nix.nixosModules.sops
                     inputs.home-manager.nixosModules.home-manager
                     {
-                        nixpkgs.overlays = [ inputs.nur.overlays.default ];
+                        nixpkgs.overlays = [ inputs.nur.overlays.default superfileOverlay ];
                         # Activate the matching Home Manager profile as part
                         # of the system rebuild. Without this, greetd can
                         # start Hyprland before its user configuration exists.
@@ -98,6 +107,9 @@
     };
 
     inputs = {
+        superfile = {
+            url = "github:yorukot/superfile";
+        };
         # Keep these literals aligned with deployment/release-policy.json.
         # Flake input URLs must be static strings and cannot be computed from JSON.
         nixpkgs.url = "github:nixos/nixpkgs/nixos-26.05";
