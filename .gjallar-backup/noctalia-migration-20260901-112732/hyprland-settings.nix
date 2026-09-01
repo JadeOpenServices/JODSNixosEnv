@@ -1,5 +1,4 @@
-{ config, pkgs, settings, inputs, lib, hyprlandShellDetails, ... }:
-let
+{ config, pkgs, settings, inputs, lib, hyprlandShellDetails, ... }: let
     themeDetails = settings.themeDetails;
     profileDetails = settings.profileDetails;
     shellDetails = hyprlandShellDetails;
@@ -10,16 +9,13 @@ in {
     ];
 
     wayland.windowManager.hyprland.settings = {
-        bind = [
-            "SUPER, C, exec, ${lib.getExe config.programs.noctalia.package} msg panel-toggle control-center"
-        ];
-
         monitor = profileDetails.hyprlandMonitors ++ [
             ",preferred,auto,1"
         ];
 
         exec-once = shellDetails.launchCommands ++ [
             "${lib.getExe pkgs.awww} daemon"
+            "${lib.getExe pkgs.waybar}"
         ];
 
         general = {
@@ -38,7 +34,6 @@ in {
         decoration = {
             dim_special = 0.5;
             rounding = themeDetails.rounding;
-
             blur = {
                 enabled = true;
                 special = true;
@@ -51,6 +46,7 @@ in {
 
             shadow = {
                 enabled = themeDetails.shadow;
+                # ignore_window = false;
                 offset = "2 2";
                 range = 20;
                 color = "rgba(${config.lib.stylix.colors.base00}ff)";
@@ -59,7 +55,6 @@ in {
 
         animations = {
             enabled = true;
-
             bezier = [
                 "wind, 0.05, 0.9, 0.1, 1.05"
                 "winIn, 0.1, 1.1, 0.1, 1.1"
@@ -67,7 +62,6 @@ in {
                 "liner, 1, 1, 1, 1"
                 "workIn, 0.72, -0.07, 0.41, 0.98"
             ];
-
             animation = [
                 "windows, 1, 6, wind, slide"
                 "windowsIn, 1, 6, winIn, slide"
@@ -90,7 +84,7 @@ in {
             kb_variant = settings.keyboardVariant;
             kb_options = "grp:alt_shift_toggle";
             follow_mouse = true;
-
+            # sensitivity = -0.5;
             touchpad = {
                 natural_scroll = true;
             };
@@ -102,6 +96,8 @@ in {
         };
 
         gestures = {
+            # Three-finger touchpad swipes change workspaces; touchscreen
+            # devices are left to libinput/Hyprland's native gesture handling.
             workspace_swipe_touch = settings.touchpadWorkspaceSwipe;
             workspace_swipe_cancel_ratio = 0.15;
             workspace_swipe_forever = true;
@@ -109,6 +105,8 @@ in {
         };
 
         dwindle = {
+            # keep floating dimentions while tiling
+            # pseudotile = true;
             preserve_split = true;
             force_split = 2;
             split_width_multiplier = 1.5;

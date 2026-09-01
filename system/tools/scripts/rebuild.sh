@@ -1,9 +1,13 @@
 #!/usr/bin/env bash
+
 set -euo pipefail
 
 repo="${GJALLAROS_REPO:-__REPO_ROOT__}"
+
 source "$repo/system/tools/functions/cleanup-old-generations.sh"
+
 host="${GJALLAROS_HOST:-__HOSTNAME__}"
+
 messages_json="$repo/system/tools/scripts/rebuild-messages.json"
 
 debug=0
@@ -111,6 +115,7 @@ fi
 
 (
     index=$((RANDOM % ${#messages[@]}))
+    last_index=$index
     next_change=5
 
     while true; do
@@ -123,20 +128,31 @@ fi
         printf '\r\033[2K%s' "$line"
 
         if ((elapsed >= next_change)); then
-            index=$(( (index + 1) % ${#messages[@]} ))
+            if ((${#messages[@]} > 1)); then
+                while :; do
+                    index=$((RANDOM % ${#messages[@]}))
+                    ((index != last_index)) && break
+                done
+            fi
+
+            last_index=$index
             next_change=$((next_change + 5))
         fi
 
         sleep 1
     done
 ) &
+
 ui_pid=$!
 
 set +e
+
 sudo nixos-rebuild switch \
     --flake "$repo#$host" \
     "${args[@]}" >"$tmp_log" 2>&1
+
 status=$?
+
 set -e
 
 if ((status == 0 && cleanup_enabled)); then
@@ -159,7 +175,9 @@ if ((status == 0)); then
 else
     printf '⏱ %02d:%02d  ✗ Rebuild failed.\n' \
         "$minutes" "$seconds"
+
     printf '\n'
     cat "$tmp_log" >&2
+
     exit "$status"
 fi

@@ -1,6 +1,5 @@
 {...}:
 rec {
-    # Waybar is started by the Hyprland module with an absolute Nix path.
     # Keep AGS installed for its optional tools, but do not make a graphical
     # session depend on its JavaScript runtime starting correctly.
     launchCommands = [ ];

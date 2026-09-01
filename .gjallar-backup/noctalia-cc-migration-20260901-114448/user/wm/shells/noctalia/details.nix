@@ -1,17 +1,11 @@
-{ pkgs, inputs, lib, config, ... }:
-
-let
-    noctalia = lib.getExe config.programs.noctalia.package;
-    ipc = "${noctalia} msg";
+{...}: let
+    ipc = "noctalia msg";
 in {
     launchCommands = [
-        "${noctalia} --daemon"
+        "noctalia &"
     ];
-
     binds = {
         launcher = "${ipc} panel-toggle launcher";
-        controlCenter = "${ipc} panel-toggle control-center";
-
         volumeUp = "${ipc} volume-up 2";
         volumeDown = "${ipc} volume-down 2";
         brightnessUp = "${ipc} brightness-up current 5";

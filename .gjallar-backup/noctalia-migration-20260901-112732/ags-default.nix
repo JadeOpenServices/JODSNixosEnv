@@ -50,14 +50,56 @@ let
 
     agsOptions = lib.recursiveUpdate agsColors details.ags;
 
+    menu = import ./menus/menu.nix {
+        inherit pkgs;
+    };
+
+    wifiMenu = import ./menus/wifi.nix {
+        inherit pkgs menu;
+    };
+
+    bluetoothMenu = import ./menus/bluetooth.nix {
+        inherit pkgs menu;
+    };
+
+    batteryMenu = import ./menus/battery.nix {
+        inherit pkgs menu;
+    };
+
+    weatherMenu = import ./menus/weather.nix {
+        inherit pkgs;
+    };
+
+    calendarMenu = import ./menus/calendar.nix {
+        inherit pkgs;
+    };
+
+    soundMenu = import ./menus/sound.nix {
+        inherit pkgs;
+    };
+
+    powerMenu = import ./menus/power.nix {
+        inherit pkgs menu;
+    };
+
 in {
     imports = [
         inputs.ags.homeManagerModules.default
+        ./waybar
     ];
 
     home.packages = with pkgs; [
         asztal
         fuzzel
+
+        menu
+        wifiMenu
+        bluetoothMenu
+        batteryMenu
+        weatherMenu
+        calendarMenu
+        soundMenu
+        powerMenu
 
         bun
         fd
