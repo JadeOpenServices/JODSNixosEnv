@@ -1,1 +1,1 @@
-{"model":"qwen2.5-coder:14b","maxRamGB":32,"description":"Larger coding model for dedicated GPUs"}
+{"model":"qwen3-coder:30b","maxRamGB":32,"minRamGB":32,"minVramMB":12288,"contextTokens":32768,"description":"Large coding model for systems with sufficient RAM and dedicated GPU VRAM"}

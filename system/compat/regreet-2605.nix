@@ -19,8 +19,4 @@
       };
     };
   };
-  options.services.kmscon.config = lib.mkOption {
-    default = {};
-    type = lib.types.attrs;
-  };
 }
