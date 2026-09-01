@@ -157,6 +157,30 @@ in {
       ];
     };
 
+    systemd.services.plymouth-quit-wait.enable = false;
+
+
+    systemd.services.noctalia-greeter-plymouth = {
+      description = "Wait for Noctalia Greeter before quitting Plymouth";
+      wantedBy = [ "graphical.target" ];
+      after = [ "greetd.service" ];
+      wants = [ "greetd.service" ];
+      serviceConfig = {
+        Type = "oneshot";
+        ExecStart = pkgs.writeShellScript "wait-for-noctalia-greeter" ''
+          for i in $(seq 1 600); do
+            if ${pkgs.procps}/bin/pgrep -f noctalia-greeter-compositor >/dev/null; then
+              ${pkgs.plymouth}/bin/plymouth quit --wait || true
+              exit 0
+            fi
+            ${pkgs.coreutils}/bin/sleep 0.1
+          done
+          ${pkgs.plymouth}/bin/plymouth quit --wait || true
+          exit 0
+        '';
+      };
+    };
+
     programs.nh = {
         enable = true;
         clean.enable = false;

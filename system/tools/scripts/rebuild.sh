@@ -3,11 +3,9 @@
 set -euo pipefail
 
 repo="${GJALLAROS_REPO:-__REPO_ROOT__}"
-
 source "$repo/system/tools/functions/cleanup-old-generations.sh"
 
 host="${GJALLAROS_HOST:-__HOSTNAME__}"
-
 messages_json="$repo/system/tools/scripts/rebuild-messages.json"
 
 debug=0
@@ -16,15 +14,9 @@ args=()
 
 for arg in "$@"; do
     case "$arg" in
-        -d|--debug)
-            debug=1
-            ;;
-        -n|--no-cleanup)
-            cleanup_enabled=0
-            ;;
-        *)
-            args+=("$arg")
-            ;;
+        -d|--debug) debug=1 ;;
+        -n|--no-cleanup) cleanup_enabled=0 ;;
+        *) args+=("$arg") ;;
     esac
 done
 
@@ -36,6 +28,7 @@ while IFS= read -r line; do
         message="${message%\",*}"
         message="${message%\"}"
         message="${message//\$runtime_host/$host}"
+        message="${message#Rebuilding NixOS for $host... }"
         messages+=("$message")
     fi
 done < "$messages_json"
@@ -49,6 +42,31 @@ tmp_log="$(mktemp)"
 ui_pid=""
 start_time=$SECONDS
 
+terminal_width() {
+    local width
+
+    width="$(tput cols 2>/dev/null || true)"
+
+    if [[ ! "$width" =~ ^[0-9]+$ ]] || ((width < 2)); then
+        width=80
+    fi
+
+    printf '%s' "$width"
+}
+
+print_status() {
+    local text="$1"
+    local width
+    local max
+
+    width="$(terminal_width)"
+    max=$((width - 1))
+
+    # Move to the beginning of the quote line, erase it completely,
+    # then print a version guaranteed not to reach the right margin.
+    printf '\r\033[2K%s' "${text:0:max}"
+}
+
 cleanup() {
     if [[ -n "$ui_pid" ]]; then
         kill "$ui_pid" 2>/dev/null || true
@@ -56,6 +74,7 @@ cleanup() {
     fi
 
     rm -f "$tmp_log"
+
     printf '\r\033[2K'
 }
 
@@ -84,8 +103,10 @@ trap cancel INT TERM
 sudo -v
 
 if ((debug)); then
-    printf '[GjallarOS] Debug rebuild for %s\n' "$host"
+    printf 'Rebuilding NixOS for %s\n' "$host"
     printf '[GjallarOS] Flake: %s#%s\n\n' "$repo" "$host"
+
+    set +e
 
     sudo nixos-rebuild switch \
         --flake "$repo#$host" \
@@ -93,6 +114,7 @@ if ((debug)); then
         "${args[@]}"
 
     status=$?
+    set -e
 
     if ((status == 0 && cleanup_enabled)); then
         cleanup_old_generations
@@ -113,6 +135,10 @@ if ((debug)); then
     exit "$status"
 fi
 
+# Static header.
+printf 'Rebuilding NixOS for %s\n' "$host"
+
+# Animated quote line.
 (
     index=$((RANDOM % ${#messages[@]}))
     last_index=$index
@@ -125,7 +151,7 @@ fi
 
         line="⏱ $(printf '%02d:%02d' "$minutes" "$seconds")  ${messages[index]}"
 
-        printf '\r\033[2K%s' "$line"
+        print_status "$line"
 
         if ((elapsed >= next_change)); then
             if ((${#messages[@]} > 1)); then
@@ -163,9 +189,11 @@ elapsed=$((SECONDS - start_time))
 minutes=$((elapsed / 60))
 seconds=$((elapsed % 60))
 
-kill "$ui_pid" 2>/dev/null || true
-wait "$ui_pid" 2>/dev/null || true
-ui_pid=""
+if [[ -n "$ui_pid" ]]; then
+    kill "$ui_pid" 2>/dev/null || true
+    wait "$ui_pid" 2>/dev/null || true
+    ui_pid=""
+fi
 
 printf '\r\033[2K'
 

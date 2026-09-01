@@ -18,7 +18,8 @@ in {
             ",preferred,auto,1"
         ];
 
-        exec-once = shellDetails.launchCommands ++ [
+        exec-once = [
+            "${lib.getExe inputs.noctalia.packages.${pkgs.stdenv.hostPlatform.system}.default} --daemon"
             "${lib.getExe pkgs.awww} daemon"
         ];
 
