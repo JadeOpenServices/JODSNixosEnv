@@ -3,7 +3,7 @@
     shell = settings.themeDetails.shell or "noctalia";
 in {
     _module.args.hyprlandShellDetails =
-        import (../. + "/shells/${shell}/details.nix") {};
+        import (../. + "/shells/${shell}/details.nix") { inherit pkgs inputs lib config; };
     imports = [
         ./env.nix
         ./binds.nix

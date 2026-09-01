@@ -10,7 +10,7 @@
         nixosConfigurations = {
             ${settings.hostname} = nixpkgs.lib.nixosSystem {
                 modules = [
-                    inputs.noctalia-greeter.nixosModules.default
+                    (./. + "/system/compat/regreet-2605.nix")
                     inputs.stylix.nixosModules.stylix
                     inputs.sops-nix.nixosModules.sops
                     inputs.home-manager.nixosModules.home-manager

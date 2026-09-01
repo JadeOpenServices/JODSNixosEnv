@@ -10,7 +10,7 @@
         nixosConfigurations = {
             ${settings.hostname} = nixpkgs.lib.nixosSystem {
                 modules = [
-                    inputs.noctalia-greeter.nixosModules.default
+                    (./. + "/system/compat/regreet-2605.nix")
                     inputs.stylix.nixosModules.stylix
                     inputs.sops-nix.nixosModules.sops
                     inputs.home-manager.nixosModules.home-manager
@@ -31,6 +31,7 @@
                             inputs.sops-nix.homeManagerModules.sops
                             inputs.zen-browser.homeModules.twilight
                             inputs.noctalia.homeModules.default
+                    inputs.noctalia-greeter.nixosModules.default
                         ];
                         home-manager.users = {
                             ${settings.username} = import
@@ -73,6 +74,7 @@
                     inputs.sops-nix.homeManagerModules.sops
                     inputs.zen-browser.homeModules.twilight
                     inputs.noctalia.homeModules.default
+                    inputs.noctalia-greeter.nixosModules.default
                     # inputs.chaotic.homeModules.default
                 ];
                 extraSpecialArgs = {
@@ -91,6 +93,7 @@
                     inputs.sops-nix.homeManagerModules.sops
                     inputs.zen-browser.homeModules.twilight
                     inputs.noctalia.homeModules.default
+                    inputs.noctalia-greeter.nixosModules.default
                 ];
                 extraSpecialArgs = { inherit inputs settings; };
             };

@@ -1,4 +1,4 @@
-{ pkgs, settings, ... }:
+{ pkgs, settings, inputs, ... }:
 
 {
     environment.systemPackages = with pkgs; [
@@ -9,7 +9,6 @@
 
     services.xserver = {
         enable = true;
-
         xkb = {
             variant = settings.keyboardVariant;
             layout = settings.keyboardLayout;
@@ -19,13 +18,10 @@
 
     programs.noctalia-greeter = {
         enable = true;
+        package = inputs.noctalia-greeter.packages.${pkgs.system}.default;
 
         settings = {
-            appearance = {
-                scheme = "Synced";
-                password_style = "random";
-                hide_logo = false;
-            };
+            appearance.scheme = "Synced";
 
             cursor = {
                 theme = "Bibata-Modern-Classic";
@@ -40,6 +36,8 @@
             };
         };
     };
+
+    services.greetd.settings.default_session.user = "greeter";
 
     security.polkit.enable = true;
 }
