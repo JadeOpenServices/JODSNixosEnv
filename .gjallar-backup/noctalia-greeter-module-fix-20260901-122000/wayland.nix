@@ -21,11 +21,7 @@
         enable = true;
 
         settings = {
-            appearance = {
-                scheme = "Synced";
-                password_style = "random";
-                hide_logo = false;
-            };
+            appearance.scheme = "Synced";
 
             cursor = {
                 theme = "Bibata-Modern-Classic";

@@ -98,7 +98,7 @@ let
             ${coreutils}/id
             ${pkgs.systemd}/bin/systemctl --user show hyprland-session.target --property=ActiveState --property=SubState --property=Result --no-pager || true
             ${coreutils}/printenv | ${pkgs.gnugrep}/bin/grep -E '^(PATH|XDG_|WAYLAND_DISPLAY|HYPRLAND_INSTANCE_SIGNATURE|DBUS_SESSION_BUS_ADDRESS)=' || true
-            for command in fuzzel kitty waybar asztal; do
+            for command in fuzzel kitty asztal; do
               path="$(${pkgs.findutils}/bin/find "$HOME/.nix-profile/bin" "/etc/profiles/per-user/$USER/bin" -maxdepth 1 -name "$command" \( -type l -o -type f \) -print -quit 2>/dev/null || true)"
               if [ -n "$path" ]; then log "command=$command path=$path"; else log "command=$command missing from user profiles"; fi
             done
@@ -111,7 +111,7 @@ let
             ${pkgs.hyprland}/bin/hyprctl configerrors || true
             ${pkgs.hyprland}/bin/hyprctl monitors || true
             ${pkgs.hyprland}/bin/hyprctl clients || true
-            ${pkgs.procps}/bin/pgrep -a -u "$USER" 'Hyprland|waybar|fuzzel|ags' || true
+            ${pkgs.procps}/bin/pgrep -a -u "$USER" 'Hyprland|fuzzel|ags' || true
             log 'end'
         '';
     in {
