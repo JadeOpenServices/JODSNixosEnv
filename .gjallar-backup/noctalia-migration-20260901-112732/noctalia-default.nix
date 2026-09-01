@@ -74,8 +74,6 @@
     };
 in {
     programs.noctalia = {
-        settings = import ./settings.nix;
-        corner_radius_scale = 2.0;
         enable = true;
         settings = {
             # configure options

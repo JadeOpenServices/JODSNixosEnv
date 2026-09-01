@@ -1,4 +1,4 @@
-{ inputs, config, pkgs, ... }:
+{ inputs, config, pkgs, lib, settings, ... }:
 
 {
     home.packages = with pkgs; [
@@ -8,6 +8,14 @@
     home.file.".config/superfile/config.toml".text = ''
 # change your theme
 theme = 'catppuccin'
+#
+# File editor
+# Uses the configured preferred editor executable from settings.nix.
+editor = "${lib.getExe pkgs.${settings.preferredEditor}}"
+#
+# Directory editor
+# Uses the configured preferred editor executable from settings.nix.
+dir_editor = "${lib.getExe pkgs.${settings.preferredEditor}}"
 #
 # Auto check for update
 auto_check_update = false

@@ -7,19 +7,17 @@ in {
     home.packages = with pkgs; [
         awww
         wayvnc
+        waybar
     ];
 
     wayland.windowManager.hyprland.settings = {
-        bind = [
-            "SUPER, C, exec, ${lib.getExe config.programs.noctalia.package} msg panel-toggle control-center"
-        ];
-
         monitor = profileDetails.hyprlandMonitors ++ [
             ",preferred,auto,1"
         ];
 
         exec-once = shellDetails.launchCommands ++ [
             "${lib.getExe pkgs.awww} daemon"
+            "${lib.getExe pkgs.waybar}"
         ];
 
         general = {
