@@ -72,7 +72,8 @@ in
 
 lib.mkIf (if settings ? aiEnable then settings.aiEnable else false) {
   environment.systemPackages = with pkgs; [
-    ollamaPackage
+      nixfmt-rfc-style
+ollamaPackage
     aiCli
     aiLauncher
   ];
