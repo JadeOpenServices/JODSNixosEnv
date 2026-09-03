@@ -49,7 +49,13 @@
         isNormalUser = true;
         shell = pkgs.${settings.shell};
         description = settings.username;
-        extraGroups = [ "wheel" ];
+        extraGroups = [
+        "wheel"
+        "networkmanager"
+        "kvm"
+        "vhost"
+        "usb"
+    ];
     };
 
     # See https://nix.dev/permalink/stub-ld.
