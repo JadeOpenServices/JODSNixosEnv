@@ -1,9 +1,14 @@
-{ inputs, config, pkgs, ... }:
+{
+  inputs,
+  config,
+  pkgs,
+  ...
+}:
 
 {
-    imports = [
-        ./extensions.nix
-        ./autostart.nix
-        ./settings.nix
-    ];
+  imports = [
+    ./extensions.nix
+    ./autostart.nix
+    ./settings.nix
+  ];
 }

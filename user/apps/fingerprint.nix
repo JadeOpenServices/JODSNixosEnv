@@ -1,6 +1,9 @@
 { config, pkgs, ... }:
 {
-  home.packages = [ pkgs.fprintd pkgs.yad ];
+  home.packages = [
+    pkgs.fprintd
+    pkgs.yad
+  ];
   systemd.user.services.gjallar-fingerprint-enroll = {
     Unit = {
       Description = "Offer first-login fingerprint enrollment";
@@ -24,6 +27,8 @@
         touch "$marker"
       '';
     };
-    Install = { WantedBy = [ "graphical-session.target" ]; };
+    Install = {
+      WantedBy = [ "graphical-session.target" ];
+    };
   };
 }

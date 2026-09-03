@@ -1,4 +1,4 @@
-{...}:
+{ ... }:
 {
-    services.guix.enable = true;
+  services.guix.enable = true;
 }

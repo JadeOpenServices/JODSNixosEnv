@@ -1,4 +1,10 @@
-{ config, lib, pkgs, settings, ... }:
+{
+  config,
+  lib,
+  pkgs,
+  settings,
+  ...
+}:
 
 let
   winePackage = pkgs.wineWow64Packages.staging;
@@ -120,37 +126,41 @@ let
   };
 
   fexPackages =
-    if settings.system == "aarch64-linux" && builtins.hasAttr "fex" pkgs
-    then [ pkgs.fex ]
-    else if settings.system == "aarch64-linux" && builtins.hasAttr "fex-emu" pkgs
-    then [ pkgs.fex-emu ]
-    else [];
+    if settings.system == "aarch64-linux" && builtins.hasAttr "fex" pkgs then
+      [ pkgs.fex ]
+    else if settings.system == "aarch64-linux" && builtins.hasAttr "fex-emu" pkgs then
+      [ pkgs.fex-emu ]
+    else
+      [ ];
 in
 {
   imports = [ ./spice.nix ] ++ lib.optional settings.nemuEnable ./nemu;
 
-  environment.systemPackages = with pkgs; [
-    docker-compose
-    distrobox
-    libvirt
-    qemu
+  environment.systemPackages =
+    with pkgs;
+    [
+      docker-compose
+      distrobox
+      libvirt
+      qemu
 
-    winePackage
-    wineInit
-    wineWin11
-    wineWin11Desktop
-    winetricks
-    dxvk
-    vkd3d
-    cabextract
-    p7zip
-    ntfs3g
+      winePackage
+      wineInit
+      wineWin11
+      wineWin11Desktop
+      winetricks
+      dxvk
+      vkd3d
+      cabextract
+      p7zip
+      ntfs3g
 
-    # Host UI & launcher runtimes
-    umu-launcher
-    dotnet-runtime_8
-    webkitgtk_4_1
-  ] ++ fexPackages;
+      # Host UI & launcher runtimes
+      umu-launcher
+      dotnet-runtime_8
+      webkitgtk_4_1
+    ]
+    ++ fexPackages;
 
   # Associate .exe, .msi, and shortcut files system-wide
   xdg.mime.defaultApplications = {
@@ -170,29 +180,24 @@ in
     };
   };
 
-  boot.kernelParams =
-    lib.optionals settings.nemuGpuPassthrough (
-      [
-        (if settings.graphicsVendor == "intel"
-         then "intel_iommu=on"
-         else "amd_iommu=on")
-      ]
-      ++ lib.optional
-        (settings.nemuGpuIds != [])
-        ("vfio-pci.ids=" + lib.concatStringsSep "," settings.nemuGpuIds)
-    );
+  boot.kernelParams = lib.optionals settings.nemuGpuPassthrough (
+    [
+      (if settings.graphicsVendor == "intel" then "intel_iommu=on" else "amd_iommu=on")
+    ]
+    ++ lib.optional (settings.nemuGpuIds != [ ]) (
+      "vfio-pci.ids=" + lib.concatStringsSep "," settings.nemuGpuIds
+    )
+  );
 
-  boot.initrd.kernelModules =
-    lib.optionals settings.nemuGpuPassthrough [
-      "vfio"
-      "vfio_pci"
-      "vfio_iommu_type1"
-    ];
+  boot.initrd.kernelModules = lib.optionals settings.nemuGpuPassthrough [
+    "vfio"
+    "vfio_pci"
+    "vfio_iommu_type1"
+  ];
 
-  environment.etc."nemu/gpu-passthrough.conf" =
-    lib.mkIf settings.nemuGpuPassthrough {
-      text = lib.concatStringsSep "\n" settings.nemuGpuIds + "\n";
-    };
+  environment.etc."nemu/gpu-passthrough.conf" = lib.mkIf settings.nemuGpuPassthrough {
+    text = lib.concatStringsSep "\n" settings.nemuGpuIds + "\n";
+  };
 
   virtualisation.docker.enable = settings.dockerEnable;
 

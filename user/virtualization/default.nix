@@ -1,7 +1,8 @@
-{ lib, settings, ...}:
+{ lib, settings, ... }:
 {
-    imports = [
-        ./winapps
-        ./quickemu.nix
-    ] ++ lib.optional settings.nemuEnable ./nemu.nix;
+  imports = [
+    ./winapps
+    ./quickemu.nix
+  ]
+  ++ lib.optional settings.nemuEnable ./nemu.nix;
 }

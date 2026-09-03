@@ -1,43 +1,41 @@
-{ lib, pkgs, settings, ... }:
+{
+  lib,
+  pkgs,
+  settings,
+  ...
+}:
 
 let
-  outputs =
-    lib.filter
-      (output: output != "*")
-      (builtins.attrNames settings.profileDetails.swayMonitors);
+  outputs = lib.filter (output: output != "*") (
+    builtins.attrNames settings.profileDetails.swayMonitors
+  );
 
-  outputSpecs =
-    lib.imap0
-      (index: output: {
+  outputSpecs = lib.imap0 (index: output: {
+    inherit output;
+    offset = index * 10;
+  }) outputs;
+
+  workspaceAssignments = lib.concatMap (
+    { output, offset }:
+    map (
+      localNumber:
+      let
+        globalNumber = offset + localNumber;
+      in
+      {
+        workspace = "${toString globalNumber}:${toString localNumber}";
         inherit output;
-        offset = index * 10;
-      })
-      outputs;
+      }
+    ) (lib.range 1 10)
+  ) outputSpecs;
 
-  workspaceAssignments =
-    lib.concatMap
-      ({ output, offset }:
-        map
-          (localNumber:
-            let
-              globalNumber = offset + localNumber;
-            in {
-              workspace =
-                "${toString globalNumber}:${toString localNumber}";
-              inherit output;
-            })
-          (lib.range 1 10))
-      outputSpecs;
-
-  outputCases =
-    lib.concatStringsSep "\n"
-      (map
-        ({ output, offset }: ''
-          ${lib.escapeShellArg output})
-            offset=${toString offset}
-            ;;
-        '')
-        outputSpecs);
+  outputCases = lib.concatStringsSep "\n" (
+    map ({ output, offset }: ''
+      ${lib.escapeShellArg output})
+        offset=${toString offset}
+        ;;
+    '') outputSpecs
+  );
 
   swayWorkspace = pkgs.writeShellApplication {
     name = "sway-workspace";
@@ -155,10 +153,11 @@ let
       esac
     '';
   };
-in {
+in
+{
   assertions = [
     {
-      assertion = outputs != [];
+      assertion = outputs != [ ];
       message = ''
         The Sway workspace script requires at least one explicitly named
         output in settings.profileDetails.swayMonitors.

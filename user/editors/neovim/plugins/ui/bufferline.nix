@@ -1,18 +1,18 @@
 {
-    programs.nixvim.plugins.bufferline = {
-        enable = true;
-        # separatorStyle = "thick"; # “slant”, “padded_slant”, “slope”, “padded_slope”, “thick”, “thin”
-        settings.options.offsets = [
-            {
-                filetype = "NvimTree";
-                text = "NvimTree";
-                highlight = "Directory";
-                text_align = "left";
-                separator = true;
-            }
-        ];
-    };
-    programs.nixvim.keymaps = [
+  programs.nixvim.plugins.bufferline = {
+    enable = true;
+    # separatorStyle = "thick"; # “slant”, “padded_slant”, “slope”, “padded_slope”, “thick”, “thin”
+    settings.options.offsets = [
+      {
+        filetype = "NvimTree";
+        text = "NvimTree";
+        highlight = "Directory";
+        text_align = "left";
+        separator = true;
+      }
+    ];
+  };
+  programs.nixvim.keymaps = [
     {
       mode = "n";
       key = "<leader>bl";
@@ -35,20 +35,20 @@
       mode = "n";
       key = "<leader>bx";
       action.__raw = ''
-                function()
-                    local bd = require("mini.bufremove").delete
-                    if vim.bo.modified then
-                        local choice = vim.fn.confirm(("Save changes to %q?"):format(vim.fn.bufname()), "&Yes\n&No\n&Cancel")
-                        if choice == 1 then -- Yes
-                            vim.cmd.write()
-                            bd(0)
-                        elseif choice == 2 then -- No
-                            bd(0, true)
-                        end
-                    else
-                        bd(0)
-                    end
+        function()
+            local bd = require("mini.bufremove").delete
+            if vim.bo.modified then
+                local choice = vim.fn.confirm(("Save changes to %q?"):format(vim.fn.bufname()), "&Yes\n&No\n&Cancel")
+                if choice == 1 then -- Yes
+                    vim.cmd.write()
+                    bd(0)
+                elseif choice == 2 then -- No
+                    bd(0, true)
                 end
+            else
+                bd(0)
+            end
+        end
       '';
       options = {
         desc = "Delete buffer";

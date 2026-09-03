@@ -1,9 +1,9 @@
-{pkgs, ...}:
+{ pkgs, ... }:
 {
-    programs.vscode = {
-        enable = true;
-        extensions = with pkgs.vscode-extensions; [
-            vscodevim.vim
-        ];
-    };
+  programs.vscode = {
+    enable = true;
+    extensions = with pkgs.vscode-extensions; [
+      vscodevim.vim
+    ];
+  };
 }

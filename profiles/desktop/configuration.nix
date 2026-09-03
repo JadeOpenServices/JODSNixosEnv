@@ -1,101 +1,117 @@
-{ pkgs, lib, settings, ... }:
 {
-    imports = [
-        ./hardware-configuration.nix
-        ../../system/hardware/sound.nix
-        ../../system/hardware/bluetooth.nix
-        ../../system/hardware/graphics
-        ../../system/hardware/networking.nix
-        ../../system/hardware/firmware.nix
-        ../../system/hardware/fingerprint.nix
-        ../../system/hardware/input.nix
-        ../../system/hardware/desktop/mouse.nix
-        ../../system/hardware/desktop/boot.nix
-        ../../system/hardware/desktop/nfs.nix
-        ../../system/security/desktop/firewall.nix
-        ../../system/virtualization
-        ../../system/security/vpn/xray.nix
-        ../../system/security/ssh.nix
-        ../../system/security/sops.nix
-        ../../system/tools
-        ../../system/users/work.nix
-        ../../system/hardware/framework
-        ../../system/apps/thunar.nix
-        # ../../system/apps/open-webui.nix
-        ../../system/apps/guix.nix
-        ../../system/apps/ollama.nix
-        ../../system/apps/platformio.nix
-        ../../system/gaming/steam.nix
-        # ../../system/gaming/aagl.nix
-        ../../system/gaming/nethack.nix
-        ../../themes/lib/common.nix
-    ] ++ (map (wm: ../../system/wm/${wm}) settings.wms);
+  pkgs,
+  lib,
+  settings,
+  ...
+}:
+{
+  imports = [
+    ./hardware-configuration.nix
+    ../../system/hardware/sound.nix
+    ../../system/hardware/bluetooth.nix
+    ../../system/hardware/graphics
+    ../../system/hardware/networking.nix
+    ../../system/hardware/firmware.nix
+    ../../system/hardware/fingerprint.nix
+    ../../system/hardware/input.nix
+    ../../system/hardware/desktop/mouse.nix
+    ../../system/hardware/desktop/boot.nix
+    ../../system/hardware/desktop/nfs.nix
+    ../../system/security/desktop/firewall.nix
+    ../../system/virtualization
+    ../../system/security/vpn/xray.nix
+    ../../system/security/ssh.nix
+    ../../system/security/sops.nix
+    ../../system/tools
+    ../../system/users/work.nix
+    ../../system/hardware/framework
+    ../../system/apps/thunar.nix
+    # ../../system/apps/open-webui.nix
+    ../../system/apps/guix.nix
+    ../../system/apps/ollama.nix
+    ../../system/apps/platformio.nix
+    ../../system/gaming/steam.nix
+    # ../../system/gaming/aagl.nix
+    ../../system/gaming/nethack.nix
+    ../../themes/lib/common.nix
+  ]
+  ++ (map (wm: ../../system/wm/${wm}) settings.wms);
 
-    boot.kernelPackages = pkgs.linuxPackages_latest;
+  boot.kernelPackages = pkgs.linuxPackages_latest;
 
-    nixpkgs.overlays = import ../../pkgs/lib/overlays.nix;
-    nixpkgs.config.allowUnfree = true; # Sorry, Stallman(
-    nix.settings.experimental-features = [ "nix-command" "flakes" ];
+  nixpkgs.overlays = import ../../pkgs/lib/overlays.nix;
+  nixpkgs.config.allowUnfree = true; # Sorry, Stallman(
+  nix.settings.experimental-features = [
+    "nix-command"
+    "flakes"
+  ];
 
-    # Netorking
-    networking.hostName = settings.hostname;
-    networking.networkmanager.enable = true;
-    networking.networkmanager.dns = "dnsmasq";
-    # Timezone
-    time.timeZone = settings.timezone;
-    services.chrony.enable = true;
+  # Netorking
+  networking.hostName = settings.hostname;
+  networking.networkmanager.enable = true;
+  networking.networkmanager.dns = "dnsmasq";
+  # Timezone
+  time.timeZone = settings.timezone;
+  services.chrony.enable = true;
 
-    # Locale.
-    i18n.defaultLocale = settings.locale;
-    i18n.extraLocaleSettings = {
-        LC_ALL = settings.locale;
-    };
+  # Locale.
+  i18n.defaultLocale = settings.locale;
+  i18n.extraLocaleSettings = {
+    LC_ALL = settings.locale;
+  };
 
-    programs.${settings.shell}.enable = true;
+  programs.${settings.shell}.enable = true;
 
-    # Users.
-    nix.settings.trusted-users = [ "root" settings.username ];
-    users.users.${settings.username} = {
-        isNormalUser = true;
-        shell = pkgs.${settings.shell};
-        description = settings.username;
-        extraGroups = [ "wheel" "gamemode" "dialout"];
-    };
-
-    # See https://nix.dev/permalink/stub-ld.
-    programs.nix-ld.enable = true;
-    programs.nix-ld.libraries = with pkgs; [
-        stdenv.cc.cc
+  # Users.
+  nix.settings.trusted-users = [
+    "root"
+    settings.username
+  ];
+  users.users.${settings.username} = {
+    isNormalUser = true;
+    shell = pkgs.${settings.shell};
+    description = settings.username;
+    extraGroups = [
+      "wheel"
+      "gamemode"
+      "dialout"
     ];
+  };
 
-    services.emacs.enable = true;
+  # See https://nix.dev/permalink/stub-ld.
+  programs.nix-ld.enable = true;
+  programs.nix-ld.libraries = with pkgs; [
+    stdenv.cc.cc
+  ];
 
-    # List of globally installed packages.
-    environment.systemPackages = with pkgs; [
-        usbutils
-        home-manager
-        nix-index
-        pciutils
-        go-mtpfs
-        inetutils
-        lsof
-        wget
-        git
-        vim
-    ];
+  services.emacs.enable = true;
 
-    fonts.packages = [ settings.themeDetails.fontPkg ];
+  # List of globally installed packages.
+  environment.systemPackages = with pkgs; [
+    usbutils
+    home-manager
+    nix-index
+    pciutils
+    go-mtpfs
+    inetutils
+    lsof
+    wget
+    git
+    vim
+  ];
 
-    # A lot of mpris packages require it.
-    services.gvfs.enable = true;
+  fonts.packages = [ settings.themeDetails.fontPkg ];
 
-    # boot.kernelParams = [
-    #     "video=DP-1:3440x1440@144"
-    #     "video=HDMI-A-1:2560x1440@144"
-    #     "video=HDMI-A-2:2560x1440@144"
-    # ];
+  # A lot of mpris packages require it.
+  services.gvfs.enable = true;
 
-    # Before changing this value read the documentation for this option
-    # (e.g. man configuration.nix or on https://nixos.org/nixos/options.html).
-    system.stateVersion = "24.11"; # Did you read the comment?
+  # boot.kernelParams = [
+  #     "video=DP-1:3440x1440@144"
+  #     "video=HDMI-A-1:2560x1440@144"
+  #     "video=HDMI-A-2:2560x1440@144"
+  # ];
+
+  # Before changing this value read the documentation for this option
+  # (e.g. man configuration.nix or on https://nixos.org/nixos/options.html).
+  system.stateVersion = "24.11"; # Did you read the comment?
 }
