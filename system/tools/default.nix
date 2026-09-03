@@ -187,6 +187,7 @@ in {
         flake = settings.dotfilesDir;
     };
     environment.systemPackages = with pkgs; [
+    nixfmt-rfc-style
         python3
         nix-output-monitor
         nvd
