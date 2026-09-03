@@ -39,4 +39,3 @@ appimageTools.wrapType2 {
     sourceProvenance = [ lib.sourceTypes.binaryNativeCode ];
   };
 }
-
