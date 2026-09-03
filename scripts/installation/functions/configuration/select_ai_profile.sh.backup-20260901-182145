@@ -75,9 +75,9 @@ elif (( system_ram_gb >= 16 )); then
     cfg_ai_context_tokens=16384
 fi
 
+user_config="$repo_root/user.config.json"
 script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 repo_root="$(cd "$script_dir/../../../.." 2>/dev/null && pwd)"
-user_config="$repo_root/user.config.json"
 
 override_ai_selection=false
 override_model_with=""
