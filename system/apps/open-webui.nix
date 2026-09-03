@@ -1,8 +1,8 @@
 { settings, pkgs, ... }:
 
 {
-    services.open-webui = rec {
-        enable = true;
-        port = 11111;
-    };
+  services.open-webui = rec {
+    enable = true;
+    port = 11111;
+  };
 }

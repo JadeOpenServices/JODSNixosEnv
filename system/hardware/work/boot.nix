@@ -1,4 +1,9 @@
-{ config, pkgs, settings, ... }:
+{
+  config,
+  pkgs,
+  settings,
+  ...
+}:
 
 {
   boot.loader.efi.canTouchEfiVariables = true;

@@ -1,122 +1,129 @@
-{ inputs, config, pkgs, settings, ...}:
 {
-    imports = [
-        ../../themes/lib/common.nix
-        ../../themes/lib/home.nix
-        ../../user/apps/kitty.nix
-        ../../user/apps/git.nix
-        ../../user/apps/superfile.nix
-        ../../user/apps/zathura.nix
-        ../../user/apps/cava.nix
-        # ../../user/apps/github.nix
-        # ../../user/apps/neofetch
-        ../../user/apps/mangohud.nix
-        ../../user/apps/kdeconnect.nix
-        ../../user/apps/ssh.nix
-        ../../user/apps/opencode.nix
-        ../../user/gaming/nethack.nix
-        ../../user/gaming/oss-games.nix
-        ../../user/gaming/steam.nix
-        ../../user/gaming/lutris.nix
-        ../../user/apps/tlaplus.nix
-        ../../user/apps/latex.nix
-        ../../user/apps/btop
-        ../../user/apps/mpd
-        ../../user/apps/teams.nix
-        ../../user/apps/fingerprint.nix
-        ../../user/virtualization
-        ../../user/shells/${settings.shell}.nix
-    ] ++ (map (wm: ../../user/wm/${wm}) settings.wms)
-      ++ (map (editor: ../../user/editors/${editor}) settings.editors)
-      ++ (map (browser: ../../user/browsers/${browser}.nix) settings.browsers);
+  inputs,
+  config,
+  pkgs,
+  settings,
+  ...
+}:
+{
+  imports = [
+    ../../themes/lib/common.nix
+    ../../themes/lib/home.nix
+    ../../user/apps/kitty.nix
+    ../../user/apps/git.nix
+    ../../user/apps/superfile.nix
+    ../../user/apps/zathura.nix
+    ../../user/apps/cava.nix
+    # ../../user/apps/github.nix
+    # ../../user/apps/neofetch
+    ../../user/apps/mangohud.nix
+    ../../user/apps/kdeconnect.nix
+    ../../user/apps/ssh.nix
+    ../../user/apps/opencode.nix
+    ../../user/gaming/nethack.nix
+    ../../user/gaming/oss-games.nix
+    ../../user/gaming/steam.nix
+    ../../user/gaming/lutris.nix
+    ../../user/apps/tlaplus.nix
+    ../../user/apps/latex.nix
+    ../../user/apps/btop
+    ../../user/apps/mpd
+    ../../user/apps/teams.nix
+    ../../user/apps/fingerprint.nix
+    ../../user/virtualization
+    ../../user/shells/${settings.shell}.nix
+  ]
+  ++ (map (wm: ../../user/wm/${wm}) settings.wms)
+  ++ (map (editor: ../../user/editors/${editor}) settings.editors)
+  ++ (map (browser: ../../user/browsers/${browser}.nix) settings.browsers);
 
-    nix.package = pkgs.nix;
-    home = {
-        username = settings.username;
-        homeDirectory = "/home/${settings.username}";
+  nix.package = pkgs.nix;
+  home = {
+    username = settings.username;
+    homeDirectory = "/home/${settings.username}";
+  };
+
+  home.packages = with pkgs; [
+    obs-studio
+    lshw
+    calc
+    sysstat
+    gnupg
+    libreoffice-fresh
+    # obs-studio
+    # tty-clock
+    qbittorrent
+    # rtorrent
+    cpulimit
+    swayimg
+    vesktop
+    # revolt-desktop
+    telegram-desktop
+    # wayvnc
+    drawio
+    # flacon
+    # inkscape
+    # krita
+    gimp
+    mpv
+
+    # Test.
+    ghostty
+    kicad
+    # weechat
+    # _nyarch-assistant
+    # _msgpuck
+
+    pcsx2
+    dolphin-emu
+    pwgen
+
+    element-desktop
+    gnome-keyring
+    seahorse
+
+    # Overclock
+    dmidecode
+    sysbench
+
+    # Sometimes needed for work.
+    # zoom-us
+    openvpn
+    update-resolv-conf
+    chromium
+    unzip
+    translate-shell
+    android-tools
+
+    jq
+
+    # inputs.late.packages.${pkgs.system}.late-sh
+    inputs.late.packages.${pkgs.stdenv.hostPlatform.system}.late
+  ];
+
+  xdg.enable = true;
+  xdg.userDirs = {
+    enable = true;
+    createDirectories = true;
+    music = "${config.home.homeDirectory}/Media/Music";
+    videos = "${config.home.homeDirectory}/Media/Videos";
+    pictures = "${config.home.homeDirectory}/Media/Pictures";
+    download = "${config.home.homeDirectory}/Downloads";
+    documents = "${config.home.homeDirectory}/Documents";
+    templates = null;
+    desktop = null;
+    publicShare = null;
+    extraConfig = {
+      DOTFILES = "${settings.dotfilesDir}";
+      BOOK = "${config.home.homeDirectory}/Media/Books";
     };
+  };
 
-    home.packages = with pkgs; [
-        obs-studio
-        lshw
-        calc
-        sysstat
-        gnupg
-        libreoffice-fresh
-        # obs-studio
-        # tty-clock
-        qbittorrent
-        # rtorrent
-        cpulimit
-        swayimg
-        vesktop
-        # revolt-desktop
-        telegram-desktop
-        # wayvnc
-        drawio
-        # flacon
-        # inkscape
-        # krita
-        gimp
-        mpv
+  home.sessionVariables = {
+    EDITOR = settings.preferredEditor;
+    BROWSER = settings.preferredBrowser;
+  };
 
-        # Test.
-        ghostty
-        kicad
-        # weechat
-        # _nyarch-assistant
-        # _msgpuck
-
-        pcsx2
-        dolphin-emu
-        pwgen
-
-        element-desktop
-        gnome-keyring
-        seahorse
-
-        # Overclock
-        dmidecode
-        sysbench
-
-        # Sometimes needed for work.
-        # zoom-us
-        openvpn
-        update-resolv-conf
-        chromium
-        unzip
-        translate-shell
-        android-tools
-
-        jq
-
-        # inputs.late.packages.${pkgs.system}.late-sh
-        inputs.late.packages.${pkgs.stdenv.hostPlatform.system}.late
-    ];
-
-    xdg.enable = true;
-    xdg.userDirs = {
-        enable = true;
-        createDirectories = true;
-        music = "${config.home.homeDirectory}/Media/Music";
-        videos = "${config.home.homeDirectory}/Media/Videos";
-        pictures = "${config.home.homeDirectory}/Media/Pictures";
-        download = "${config.home.homeDirectory}/Downloads";
-        documents = "${config.home.homeDirectory}/Documents";
-        templates = null;
-        desktop = null;
-        publicShare = null;
-        extraConfig = {
-            DOTFILES = "${settings.dotfilesDir}";
-            BOOK = "${config.home.homeDirectory}/Media/Books";
-        };
-    };
-
-    home.sessionVariables = {
-        EDITOR = settings.preferredEditor;
-        BROWSER = settings.preferredBrowser;
-    };
-
-    programs.home-manager.enable = true;
-    home.stateVersion = "24.11";
+  programs.home-manager.enable = true;
+  home.stateVersion = "24.11";
 }

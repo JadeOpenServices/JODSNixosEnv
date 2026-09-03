@@ -1,7 +1,12 @@
-{pkgs, settings, lib, ...}:
 {
-    programs.bat = {
-        enable = true;
-        config = {};
-    };
+  pkgs,
+  settings,
+  lib,
+  ...
+}:
+{
+  programs.bat = {
+    enable = true;
+    config = { };
+  };
 }

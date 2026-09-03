@@ -1,34 +1,40 @@
-{ stdenv, config, lib, fetchFromGitHub, fetchpatch, installShellFiles
-, cmake
-, pkg-config
-, gettext
-, libpthreadstubs
-, libusb1
-, sqlite
-, qemu
-, ncurses
-, socat
-, picocom
+{
+  stdenv,
+  config,
+  lib,
+  fetchFromGitHub,
+  fetchpatch,
+  installShellFiles,
+  cmake,
+  pkg-config,
+  gettext,
+  libpthreadstubs,
+  libusb1,
+  sqlite,
+  qemu,
+  ncurses,
+  socat,
+  picocom,
 
-, dbus
-, graphviz
-, libxml2
-, libarchive
-, json_c
-, virt-viewer
-, tigervnc
-, openssl
+  dbus,
+  graphviz,
+  libxml2,
+  libarchive,
+  json_c,
+  virt-viewer,
+  tigervnc,
+  openssl,
 
-, withDbus ? false
-, withNetworkMap ? false
-, withOVF ? true
-, withSpice ? true
-, withVNC ? true
-, withRemote ? false
+  withDbus ? false,
+  withNetworkMap ? false,
+  withOVF ? true,
+  withSpice ? true,
+  withVNC ? true,
+  withRemote ? false,
 
-, configName ? ".config/nemu/nemu.cfg"
-, vmDir ? ".local/share/nemu/vms"
-, databaseName ? ".local/share/nemu/nemu.db"
+  configName ? ".config/nemu/nemu.cfg",
+  vmDir ? ".local/share/nemu/vms",
+  databaseName ? ".local/share/nemu/nemu.db",
 }:
 
 stdenv.mkDerivation rec {
@@ -48,7 +54,11 @@ stdenv.mkDerivation rec {
     (isEnabled "MACVTAP")
   ];
 
-  nativeBuildInputs = [ cmake pkg-config installShellFiles ];
+  nativeBuildInputs = [
+    cmake
+    pkg-config
+    installShellFiles
+  ];
 
   buildInputs = [
     gettext
@@ -61,12 +71,15 @@ stdenv.mkDerivation rec {
     picocom
     json_c
   ]
-    ++ lib.optional withDbus dbus
-    ++ lib.optional withNetworkMap graphviz
-    ++ lib.optionals withOVF [ libxml2 libarchive ]
-    ++ lib.optional withSpice virt-viewer
-    ++ lib.optional withVNC tigervnc
-    ++ lib.optional withRemote openssl;
+  ++ lib.optional withDbus dbus
+  ++ lib.optional withNetworkMap graphviz
+  ++ lib.optionals withOVF [
+    libxml2
+    libarchive
+  ]
+  ++ lib.optional withSpice virt-viewer
+  ++ lib.optional withVNC tigervnc
+  ++ lib.optional withRemote openssl;
 
   cmakeFlags = [
     "-DNM_CFG_NAME=${configName}"
@@ -76,12 +89,12 @@ stdenv.mkDerivation rec {
     "-DNM_DEFAULT_SPICE=${virt-viewer}/bin/remote-viewer"
     "-DNM_DEFAULT_QEMUDIR=${qemu}/bin"
   ]
-    ++ lib.optional withDbus "-DNM_WITH_DBUS=ON"
-    ++ lib.optional withNetworkMap "-DNM_WITH_NETWORK_MAP=ON"
-    ++ lib.optional withOVF "-DNM_WITH_OVF_SUPPORT=ON"
-    ++ lib.optional withSpice "-DNM_WITH_SPICE=ON"
-    ++ lib.optional withVNC "-DNM_WITH_VNC_CLIENT=ON"
-    ++ lib.optional withRemote "-DNM_WITH_REMOTE=ON";
+  ++ lib.optional withDbus "-DNM_WITH_DBUS=ON"
+  ++ lib.optional withNetworkMap "-DNM_WITH_NETWORK_MAP=ON"
+  ++ lib.optional withOVF "-DNM_WITH_OVF_SUPPORT=ON"
+  ++ lib.optional withSpice "-DNM_WITH_SPICE=ON"
+  ++ lib.optional withVNC "-DNM_WITH_VNC_CLIENT=ON"
+  ++ lib.optional withRemote "-DNM_WITH_REMOTE=ON";
 
   preConfigure = ''
     patchShebangs .
@@ -125,4 +138,3 @@ stdenv.mkDerivation rec {
     platforms = with lib.platforms; linux;
   };
 }
-

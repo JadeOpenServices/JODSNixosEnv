@@ -1,6 +1,11 @@
-{ pkgs, settings, lib, ... }:
 {
-    networking.firewall = {
-        enable = true;
-    };
+  pkgs,
+  settings,
+  lib,
+  ...
+}:
+{
+  networking.firewall = {
+    enable = true;
+  };
 }

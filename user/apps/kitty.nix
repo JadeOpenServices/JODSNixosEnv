@@ -1,4 +1,10 @@
-{config, settings, lib, pkgs, ...}:
+{
+  config,
+  settings,
+  lib,
+  pkgs,
+  ...
+}:
 let
   kittyShell = pkgs.writeShellScript "gjallar-kitty-shell" ''
     if [ -t 1 ]; then
@@ -6,21 +12,22 @@ let
     fi
     exec ${lib.getExe pkgs.${settings.shell}} "$@"
   '';
-in {
+in
+{
   home.file.".config/kitty/vim-mode.lua".text = ''
-local api = vim.api
-local orig_buf = api.nvim_get_current_buf()
-local term_buf = api.nvim_create_buf(false, true)
-api.nvim_set_current_buf(term_buf)
-vim.bo.scrollback = 100000
-local term_chan = api.nvim_open_term(0, {})
-api.nvim_chan_send(term_chan, table.concat(api.nvim_buf_get_lines(orig_buf, 0, -1, true), "\r\n"))
-vim.fn.chanclose(term_chan)
-api.nvim_buf_set_lines(orig_buf, 0, -1, true, api.nvim_buf_get_lines(term_buf, 0, -1, true))
-api.nvim_set_current_buf(orig_buf)
-api.nvim_buf_delete(term_buf, { force = true })
-vim.bo.modified = false
-api.nvim_win_set_cursor(0, {api.nvim_buf_line_count(0), 0})
+    local api = vim.api
+    local orig_buf = api.nvim_get_current_buf()
+    local term_buf = api.nvim_create_buf(false, true)
+    api.nvim_set_current_buf(term_buf)
+    vim.bo.scrollback = 100000
+    local term_chan = api.nvim_open_term(0, {})
+    api.nvim_chan_send(term_chan, table.concat(api.nvim_buf_get_lines(orig_buf, 0, -1, true), "\r\n"))
+    vim.fn.chanclose(term_chan)
+    api.nvim_buf_set_lines(orig_buf, 0, -1, true, api.nvim_buf_get_lines(term_buf, 0, -1, true))
+    api.nvim_set_current_buf(orig_buf)
+    api.nvim_buf_delete(term_buf, { force = true })
+    vim.bo.modified = false
+    api.nvim_win_set_cursor(0, {api.nvim_buf_line_count(0), 0})
   '';
 
   programs.kitty = {
@@ -57,7 +64,7 @@ api.nvim_win_set_cursor(0, {api.nvim_buf_line_count(0), 0})
       visual_bell_duration = "0.0";
       cursor_trail = 4;
       scrollback_pager = ''
-         nvim +"source ${config.home.homeDirectory}/.config/kitty/vim-mode.lua"
+        nvim +"source ${config.home.homeDirectory}/.config/kitty/vim-mode.lua"
       '';
       # Quote URLs at prompts and confirm potentially dangerous terminal
       # control sequences before pasting them.

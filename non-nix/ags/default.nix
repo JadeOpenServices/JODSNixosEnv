@@ -20,11 +20,12 @@
   networkmanager,
   gtk3,
   which,
-}: let
+}:
+let
   name = "asztal";
 
   ags = inputs.ags.packages.${stdenv.hostPlatform.system}.default.override {
-    extraPackages = [accountsservice];
+    extraPackages = [ accountsservice ];
   };
 
   dependencies = [
@@ -75,13 +76,13 @@
     '';
   };
 in
-  stdenv.mkDerivation {
-    inherit name;
-    src = config;
+stdenv.mkDerivation {
+  inherit name;
+  src = config;
 
-    installPhase = ''
-      mkdir -p $out/bin
-      cp -r . $out
-      cp ${desktop} $out/bin/${name}
-    '';
-  }
+  installPhase = ''
+    mkdir -p $out/bin
+    cp -r . $out
+    cp ${desktop} $out/bin/${name}
+  '';
+}
