@@ -1,7 +1,7 @@
-{ pkgs, ...}:
+{ pkgs, ... }:
 {
-    environment.systemPackages = with pkgs; [
-        xorg.xhost # start with sudo
-        nekoray
-    ];
+  environment.systemPackages = with pkgs; [
+    xorg.xhost # start with sudo
+    nekoray
+  ];
 }

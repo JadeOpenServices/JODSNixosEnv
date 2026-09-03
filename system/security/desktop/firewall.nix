@@ -1,17 +1,28 @@
-{ pkgs, settings, lib, ... }:
 {
-    networking.firewall = {
-        enable = true;
-        allowedTCPPortRanges = [
-            { from = 1714; to = 1764; } # KDE Connect
-        ];
-        allowedUDPPortRanges = [
-            { from = 1714; to = 1764; } # KDE Connect
-        ];
+  pkgs,
+  settings,
+  lib,
+  ...
+}:
+{
+  networking.firewall = {
+    enable = true;
+    allowedTCPPortRanges = [
+      {
+        from = 1714;
+        to = 1764;
+      } # KDE Connect
+    ];
+    allowedUDPPortRanges = [
+      {
+        from = 1714;
+        to = 1764;
+      } # KDE Connect
+    ];
 
-        allowedUDPPorts = [ ];
-        allowedTCPPorts = [
-            22     # SSH server
-        ];
-    };
+    allowedUDPPorts = [ ];
+    allowedTCPPorts = [
+      22 # SSH server
+    ];
+  };
 }

@@ -1,12 +1,12 @@
-{pkgs, ...}:
+{ pkgs, ... }:
 {
-    home.packages = with pkgs; [
-        supertuxkart
-        # zeroad
-        wesnoth
-        xonotic
-        luanti
-        airshipper
-        pioneer
-    ];
+  home.packages = with pkgs; [
+    supertuxkart
+    # zeroad
+    wesnoth
+    xonotic
+    luanti
+    airshipper
+    pioneer
+  ];
 }

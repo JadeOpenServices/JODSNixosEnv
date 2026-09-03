@@ -1,10 +1,10 @@
-{pkgs, ...}:
+{ pkgs, ... }:
 {
-    programs.thunar = {
-        enable = true;
-        plugins = with pkgs; [
-            xfce.thunar-archive-plugin
-            peazip
-        ];
-    };
+  programs.thunar = {
+    enable = true;
+    plugins = with pkgs; [
+      xfce.thunar-archive-plugin
+      peazip
+    ];
+  };
 }
