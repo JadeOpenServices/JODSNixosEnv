@@ -62,8 +62,7 @@ func testRepository(t *testing.T, config string) string {
 		"cmd/gjallar-installer/main.go":                                 "package main\n",
 		"internal/installer/app/app.go":                                 "package app\n",
 		"system/apps/ollama.nix":                                        "{}\n",
-		"system/tools/scripts/default.nix":                              "# check-installer\n",
-		"system/tools/scripts/help.sh":                                  "# check-installer\n",
+		"system/tools/commands/default.nix":                             "# check-installer\n",
 	}
 	for relative, contents := range files {
 		path := filepath.Join(root, relative)

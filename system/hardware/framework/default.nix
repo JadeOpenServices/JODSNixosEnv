@@ -17,6 +17,7 @@ if settings.frameworkEnable then
       name = "gjallar-verify-secure-boot-artifacts";
       runtimeInputs = [
         pkgs.sbctl
+      pkgs.util-linux
         pkgs.coreutils
         pkgs.gnugrep
       ];
@@ -24,8 +25,11 @@ if settings.frameworkEnable then
         set -u
         export LC_ALL=C
 
-        output="$(sbctl verify 2>&1)"
-        rc=$?
+        if output="$(sbctl verify 2>&1)"; then
+  rc=0
+else
+  rc=$?
+fi
 
         printf '%s\n' "$output"
 
@@ -306,6 +310,7 @@ PYEOF
         pkgs.systemd
         pkgs.python3
         pkgs.util-linux
+          pkgs.e2fsprogs
         secureBootArtifactVerifier
         secureBootOwnershipVerifier
       ];
@@ -328,17 +333,17 @@ PYEOF
           exit 0
         fi
 
-        if ! compgen -G '/sys/firmware/efi/efivars/KEK-*' >/dev/null; then
+        if ! ls /sys/firmware/efi/efivars/KEK-* >/dev/null 2>&1; then
           printf '%s\n' 'ERROR: KEK is missing. Restore factory Secure Boot keys and restart provisioning.' >&2
           exit 1
         fi
 
-        if ! compgen -G '/sys/firmware/efi/efivars/db-*' >/dev/null; then
+        if ! ls /sys/firmware/efi/efivars/db-* >/dev/null 2>&1; then
           printf '%s\n' 'ERROR: db is missing. Restore factory Secure Boot keys and restart provisioning.' >&2
           exit 1
         fi
 
-        if ! compgen -G '/sys/firmware/efi/efivars/dbx-*' >/dev/null; then
+        if ! ls /sys/firmware/efi/efivars/dbx-* >/dev/null 2>&1; then
           printf '%s\n' 'ERROR: dbx is missing. Restore factory Secure Boot keys and restart provisioning.' >&2
           exit 1
         fi
@@ -349,6 +354,16 @@ PYEOF
             'Refusing automatic key enrollment.' >&2
           exit 1
         fi
+
+        # efivarfs commonly protects existing Secure Boot variables with the
+        # Linux immutable bit. sbctl refuses enrollment while that protection is
+        # present, so clear it only after Setup Mode and KEK/db/dbx preservation
+        # have already been verified above.
+        #
+        # PK is absent here by design: deleting only PK is what placed firmware
+        # into Setup Mode. Never require or fabricate a PK efivar before sbctl
+        # installs the GjallarOS Platform Key.
+        chattr -i           /sys/firmware/efi/efivars/KEK-*           /sys/firmware/efi/efivars/db-*
 
         # Explicitly import firmware KEK + db only.
         # The firmware PK must never be inherited: GjallarOS becomes the
@@ -409,6 +424,10 @@ PYEOF
         # Remove this FIRST so a reboot can never re-enroll in a loop.
         rm -f -- "$enrollment_marker"
 
+        # Recovery confirmation is only an installer-resume checkpoint.
+        # It is no longer needed once firmware ownership is enrolled.
+        rm -f --           /var/lib/gjallarOS/secure-boot-recovery-confirmed           /var/lib/gjallarOS/secure-boot/recovery-passphrase.pending
+
         printf '%s\n' \
           'GjallarOS Secure Boot ownership enrolled successfully.' \
           'GjallarOS PK is now the platform owner.' \
@@ -425,7 +444,10 @@ PYEOF
     systemd.services.gjallar-secure-boot-finalize = lib.mkIf settings.secureBootEnable {
       description = "Verify final GjallarOS Secure Boot activation";
       wantedBy = [ "multi-user.target" ];
-      after = [ "local-fs.target" ];
+      after = [
+        "local-fs.target"
+        "systemd-remount-fs.service"
+      ];
       unitConfig.ConditionPathExists = "/var/lib/gjallarOS/secure-boot-enable-required";
 
       serviceConfig = {
@@ -447,7 +469,21 @@ PYEOF
 
         marker=/var/lib/gjallarOS/secure-boot-enable-required
 
-        status="$(sbctl status)"
+        status=""
+for attempt in 1 2 3 4 5; do
+  if status="$(sbctl status 2>&1)"; then
+    break
+  fi
+
+  if [ "$attempt" -eq 5 ]; then
+    printf '%s\n' \
+      'ERROR: sbctl status was not ready after 5 attempts during boot.' \
+      "$status" >&2
+    exit 1
+  fi
+
+  sleep 1
+done
 
         if ! printf '%s\n' "$status" | grep -Eq 'Secure Boot:.*Enabled'; then
           printf '%s\n' \
@@ -470,6 +506,243 @@ PYEOF
         printf '%s\n' \
           'GjallarOS Secure Boot provisioning complete.' \
           'Secure Boot is enabled, Setup Mode is disabled, and signed artifacts verified.'
+      '';
+    };
+
+    systemd.services.gjallar-installer-post-secure-boot = lib.mkIf settings.secureBootEnable {
+      description = "Finish GjallarOS installer after Secure Boot provisioning";
+
+      wantedBy = [ "multi-user.target" ];
+
+      after = [
+        "local-fs.target"
+        "systemd-remount-fs.service"
+        "gjallar-secure-boot-finalize.service"
+      ];
+
+      unitConfig.ConditionPathExists =
+        "/var/lib/gjallarOS/installer-resume-after-secure-boot";
+
+      serviceConfig = {
+        Type = "oneshot";
+        UMask = "0077";
+      };
+
+      path = [
+        pkgs.sbctl
+        pkgs.coreutils
+        pkgs.gnugrep
+        pkgs.gawk
+        pkgs.systemd
+        pkgs.util-linux
+        pkgs.zenity
+        secureBootArtifactVerifier
+        secureBootOwnershipVerifier
+      ];
+
+      script = ''
+        set -euo pipefail
+        export LC_ALL=C
+
+        resume=/var/lib/gjallarOS/installer-resume-after-secure-boot
+        sb_final=/var/lib/gjallarOS/secure-boot-enable-required
+        status_file=/var/lib/gjallarOS/installer-status.txt
+        complete=/var/lib/gjallarOS/installation-complete
+
+        write_status() {
+          message="$1"
+
+          install -d -m 0700 /var/lib/gjallarOS
+
+          printf '%s\n' "$message" > "$status_file"
+          chmod 0644 "$status_file"
+
+          printf '%s\n' "$message"
+
+          # Always make progress visible on logged-in terminals.
+          printf '\n[GjallarOS Installer]\n%s\n\n' "$message" |
+            wall 2>/dev/null || true
+        }
+
+        gtk_message() {
+          message="$1"
+          timeout_seconds="''${2:-0}"
+          gtk_log=/var/lib/gjallarOS/installer-gtk.log
+          launched=0
+
+          # Do not attempt to manufacture a Wayland session from the root
+          # service. The logged-in user's systemd manager already owns the
+          # authoritative graphical environment (WAYLAND_DISPLAY, DISPLAY,
+          # XDG_CURRENT_DESKTOP, etc.).
+          #
+          # Spawn Zenity as a transient USER unit. This also moves the dialog
+          # out of this root oneshot service's cgroup, so systemd does not kill
+          # the popup when the installer finisher exits.
+          for runtime in /run/user/[0-9]*; do
+            [ -d "$runtime" ] || continue
+            [ -S "$runtime/bus" ] || continue
+
+            uid="''${runtime##*/}"
+
+            user="$(
+              loginctl list-users --no-legend 2>/dev/null |
+                awk -v uid="$uid" '$1 == uid { print $2; exit }'
+            )"
+
+            [ -n "$user" ] || continue
+
+            unit="gjallar-installer-notice-$(date +%s%N)"
+
+            if [ "$timeout_seconds" -gt 0 ]; then
+              if runuser -u "$user" -- \
+                env \
+                  XDG_RUNTIME_DIR="$runtime" \
+                  DBUS_SESSION_BUS_ADDRESS="unix:path=$runtime/bus" \
+                systemd-run \
+                  --user \
+                  --quiet \
+                  --collect \
+                  --unit="$unit" \
+                  ${lib.getExe pkgs.zenity} \
+                    --info \
+                    --timeout="$timeout_seconds" \
+                    --title="GjallarOS Installer" \
+                    --width=520 \
+                    --text="$message"
+              then
+                printf '%s
+' \
+                  "GTK installer notification launched for $user ($unit)." \
+                  >> "$gtk_log"
+                launched=1
+              else
+                rc=$?
+                printf '%s
+' \
+                  "GTK installer notification FAILED for $user (rc=$rc)." \
+                  >> "$gtk_log"
+              fi
+            else
+              if runuser -u "$user" -- \
+                env \
+                  XDG_RUNTIME_DIR="$runtime" \
+                  DBUS_SESSION_BUS_ADDRESS="unix:path=$runtime/bus" \
+                systemd-run \
+                  --user \
+                  --quiet \
+                  --collect \
+                  --unit="$unit" \
+                  ${lib.getExe pkgs.zenity} \
+                    --info \
+                    --title="GjallarOS Installer" \
+                    --width=520 \
+                    --text="$message"
+              then
+                printf '%s
+' \
+                  "GTK installer notification launched for $user ($unit)." \
+                  >> "$gtk_log"
+                launched=1
+              else
+                rc=$?
+                printf '%s
+' \
+                  "GTK installer notification FAILED for $user (rc=$rc)." \
+                  >> "$gtk_log"
+              fi
+            fi
+
+            # One physical graphical desktop is enough.
+            break
+          done
+
+          if [ "$launched" -eq 0 ]; then
+            printf '%s
+' \
+              'No usable graphical user session found; terminal/journal status remains available.' \
+              >> "$gtk_log"
+          fi
+
+          # GUI notification failure must never invalidate an otherwise
+          # successful installation transaction.
+          return 0
+        }
+
+        fail_visible() {
+          message="$1"
+
+          write_status "INSTALLER PAUSED: $message"
+          gtk_message "GjallarOS installation is paused.
+
+$message
+
+The continuation marker was kept so the operation can be resumed safely."
+
+          exit 1
+        }
+
+        write_status \
+          "Secure Boot is enabled. GjallarOS is running final installer verification."
+
+        gtk_message "Secure Boot is enabled.
+
+GjallarOS is now finishing installation and verifying the boot chain.
+
+No action is required unless an error is shown." 5
+
+        # The Secure Boot finalizer must have completed first.
+        if [ -e "$sb_final" ]; then
+          fail_visible \
+            "Secure Boot final verification has not completed successfully yet."
+        fi
+
+        status="$(sbctl status 2>&1)" ||
+          fail_visible "Unable to read Secure Boot status."
+
+        printf '%s\n' "$status" |
+          grep -Eq 'Secure Boot:.*Enabled' ||
+          fail_visible "Secure Boot is not enforcing."
+
+        if printf '%s\n' "$status" |
+          grep -Eq 'Setup Mode:.*Enabled'; then
+          fail_visible "Firmware is unexpectedly still in Secure Boot Setup Mode."
+        fi
+
+        write_status "Verifying signed GjallarOS boot artifacts..."
+
+        gjallar-verify-secure-boot-artifacts ||
+          fail_visible "GjallarOS boot artifact verification failed."
+
+        write_status "Verifying GjallarOS Secure Boot ownership..."
+
+        gjallar-verify-secure-boot-ownership enrolled ||
+          fail_visible "GjallarOS PK/KEK/db ownership verification failed."
+
+        # Basic installed-system sanity. Do not declare completion unless the
+        # active system and booted-system links exist and are readable.
+        [ -e /run/current-system ] ||
+          fail_visible "/run/current-system is missing."
+
+        [ -e /run/booted-system ] ||
+          fail_visible "/run/booted-system is missing."
+
+        write_status "Final GjallarOS installer checks passed."
+
+        # Commit completion before deleting the continuation marker.
+        install -m 0600 /dev/null "$complete"
+        rm -f -- "$resume"
+
+        sync
+
+        write_status "GjallarOS installation complete."
+
+        gtk_message "GjallarOS installation complete.
+
+Secure Boot is enabled.
+GjallarOS PK/KEK/db ownership is verified.
+Boot artifacts are verified.
+
+The installation transaction has finished successfully."
       '';
     };
 

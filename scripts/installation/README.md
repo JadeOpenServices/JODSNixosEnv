@@ -183,6 +183,7 @@ set secureBootEnable=true and rebuild
 verify with gjallar-secure-boot status
 installer arms enrollment and opens Framework firmware setup
 delete ONLY PK, keep KEK, DB, and DBX intact, then boot with Secure Boot disabled
+DO NOT use "Erase All Secure Boot Settings"; that would also remove KEK, DB, and DBX
 boot service enrolls per-device keys and verifies signed artifacts
 reboot and verify again
 ```
@@ -198,6 +199,20 @@ that prompt: JODS must provision and escrow per-device keys itself. On an
 unmanaged device, the installer creates an encrypted recovery archive under
 `/var/lib/gjallarOS/recovery`, displays its generated passphrase outside shell
 history before rebuild or reboot, and requires two save confirmations.
+The whole installer transaction remains armed across both firmware visits.
+After `gjallar-secure-boot-finalize.service` proves that Secure Boot is
+enforcing and that GjallarOS owns the expected PK/KEK/db hierarchy,
+`gjallar-installer-post-secure-boot.service` performs the final installer
+verification and only then records installation completion.
+
+The reboot-time continuation is deliberately user-visible. Progress and
+failures are written to `/var/lib/gjallarOS/installer-status.txt` and the
+system journal, are broadcast to logged-in terminals, and use a GTK/Zenity
+dialog when a graphical user session is available. If no GUI or terminal is
+currently attached, the persistent status file and journal retain the result.
+Failures leave the installer continuation marker in place so a reboot or
+repair cannot be mistaken for a completed installation.
+
 After a successful installer rebuild, a root-only marker arms automatic
 enrollment. The installer can reboot directly into firmware settings. Framework Setup Mode requires clearing ONLY PK while keeping KEK, DB, and DBX intact; once Linux boots in Setup
 Mode, `gjallar-secure-boot-enroll.service` enrolls the keys with

@@ -3,6 +3,7 @@ package main
 
 import (
 	"bufio"
+	"bytes"
 	"context"
 	"encoding/json"
 	"flag"
@@ -988,7 +989,7 @@ func runRebuild(args []string, stdout, stderr io.Writer) int {
 		return 2
 	}
 
-	messages, err := loadRebuildMessages(filepath.Join(repo, "system/tools/scripts/rebuild-messages.json"), host)
+	messages, err := loadRebuildMessages(filepath.Join(repo, "system/tools/commands/rebuild-messages.json"), host)
 	if err != nil {
 		fmt.Fprintf(stderr, "[GjallarOS] Error: %v\n", err)
 		return 1
@@ -1121,9 +1122,19 @@ func runThermalStatus(args []string, stdout, stderr io.Writer) int {
 	for _, item := range []struct {
 		title, name string
 		args        []string
-	}{{"uptime", "uptime", nil}, {"sensors", "sensors", nil}, {"power profile", "powerprofilesctl", []string{"get"}}, {"top CPU", "ps", []string{"-eo", "pid,user,comm,%cpu,%mem", "--sort=-%cpu"}}} {
+	}{{"uptime", "uptime", nil}, {"sensors", "sensors", nil}, {"power profile", "powerprofilesctl", []string{"get"}}} {
 		fmt.Fprintf(stdout, "\n== %s ==\n", item.title)
 		_ = runCommand(context.Background(), stdout, stderr, item.name, item.args...)
+	}
+	fmt.Fprintln(stdout, "\n== top CPU ==")
+	data, err := exec.Command("ps", "-eo", "pid,user,comm,%cpu,%mem", "--sort=-%cpu").Output()
+	if err != nil {
+		fmt.Fprintf(stderr, "ps: %v\n", err)
+		return 1
+	}
+	scanner := bufio.NewScanner(bytes.NewReader(data))
+	for line := 0; line < 20 && scanner.Scan(); line++ {
+		fmt.Fprintln(stdout, scanner.Text())
 	}
 	return 0
 }
@@ -1164,9 +1175,23 @@ func runHelpme(args []string, stdout, stderr io.Writer) int {
 		return 2
 	}
 	text := "GjallarOS tools\n\n  rebuild            Apply the current NixOS configuration.\n  update             Update flake inputs.\n  cleanup            Remove old generations and collect garbage.\n  thermal-status     Show temperatures and power state.\n  thermal-test       Pause/resume processes for troubleshooting.\n  check-installer    Check installer configuration.\n"
-	if len(args) == 1 || os.Getenv("DISPLAY")+os.Getenv("WAYLAND_DISPLAY") == "" { fmt.Fprint(stdout, text); return 0 }
-	if _, err := exec.LookPath("yad"); err != nil { fmt.Fprint(stdout, text); return 0 }
-	return runCommand(context.Background(), stdout, stderr, "yad", "--text-info", "--title=GjallarOS tools", "--width=900", "--height=520", "--center", "--button=Close:0", "--filename=/dev/stdin")
+	if len(args) == 1 || os.Getenv("DISPLAY")+os.Getenv("WAYLAND_DISPLAY") == "" {
+		fmt.Fprint(stdout, text)
+		return 0
+	}
+	if _, err := exec.LookPath("yad"); err != nil {
+		fmt.Fprint(stdout, text)
+		return 0
+	}
+	return runCommand(context.Background(), stdout, stderr, "yad",
+		"--list", "--title=GjallarOS tools", "--width=900", "--height=520", "--center", "--button=Close:0",
+		"--column=Command", "--column=Description",
+		"rebuild", "Apply the current NixOS configuration.",
+		"update", "Update flake inputs.",
+		"cleanup", "Remove old generations and collect garbage.",
+		"thermal-status", "Show temperatures and power state.",
+		"thermal-test", "Pause/resume processes for troubleshooting.",
+		"check-installer", "Check installer configuration.")
 }
 
 func runRebuildQuiet(stdout, stderr io.Writer, host string, messages []string, started time.Time, commandArgs []string) int {
