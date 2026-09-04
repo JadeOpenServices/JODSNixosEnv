@@ -216,6 +216,7 @@ in
         flake = settings.dotfilesDir;
       };
       environment.systemPackages = with pkgs; [
+        go_1_26
         nixfmt
         python3
         nix-output-monitor
