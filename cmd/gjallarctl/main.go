@@ -6,6 +6,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"flag"
 	"fmt"
 	"io"
@@ -989,7 +990,11 @@ func runRebuild(args []string, stdout, stderr io.Writer) int {
 		return 2
 	}
 
-	messages, err := loadRebuildMessages(filepath.Join(repo, "system/tools/commands/rebuild-messages.json"), host)
+	messagesPath := filepath.Join(repo, "system/tools/commands/rebuild-messages.json")
+	if _, err := os.Stat(messagesPath); errors.Is(err, os.ErrNotExist) {
+		messagesPath = filepath.Join(repo, "system/tools/scripts/rebuild-messages.json")
+	}
+	messages, err := loadRebuildMessages(messagesPath, host)
 	if err != nil {
 		fmt.Fprintf(stderr, "[GjallarOS] Error: %v\n", err)
 		return 1
