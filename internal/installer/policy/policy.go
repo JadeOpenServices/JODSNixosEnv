@@ -12,6 +12,10 @@ type Features struct {
 	USBGuardEnable         bool
 	NemuEnable             bool
 	NemuGPUPassthrough     bool
+	RecoveryEnable         bool
+	JODSPrebootLockEnable  bool
+	SecureBootEnable       bool
+	EndpointManagedDevice  bool
 	TouchpadWorkspaceSwipe bool
 	WorkUserEnable         bool
 }
@@ -22,6 +26,9 @@ func FromUser(user config.User) Features {
 		DebugFunctions: user.DebugFunctions, DockerEnable: user.DockerEnable,
 		ClamshellEnable: user.ClamshellEnable, USBGuardEnable: user.USBGuardEnable,
 		NemuEnable: user.NemuEnable, NemuGPUPassthrough: user.NemuGPUPassthrough,
+		RecoveryEnable: user.RecoveryEnable, JODSPrebootLockEnable: user.JODSPrebootLockEnable,
+		SecureBootEnable:       user.SecureBootEnable,
+		EndpointManagedDevice:  user.EndpointManagedDevice,
 		TouchpadWorkspaceSwipe: user.TouchpadWorkspaceSwipe, WorkUserEnable: user.WorkUserEnable,
 	}
 }

@@ -12,10 +12,81 @@ if settings.frameworkEnable then
       strategyOnDischarging = profile.strategyOnDischarging;
       strategies = profile.strategies;
     };
+    secureBootTool = pkgs.writeShellApplication {
+      name = "gjallar-secure-boot";
+      runtimeInputs = [
+        pkgs.sbctl
+        pkgs.systemd
+        pkgs.fwupd
+      ];
+      text = ''
+        set -euo pipefail
+
+        case "''${1:-status}" in
+          status)
+            bootctl status
+            printf '\n'
+            sudo sbctl status
+            printf '\nSigned boot artifacts:\n'
+            sudo sbctl verify
+            ;;
+          create-keys)
+            if [ -e /var/lib/sbctl/keys/db/db.key ]; then
+              printf 'Secure Boot keys already exist in /var/lib/sbctl.\n' >&2
+              exit 1
+            fi
+            printf 'Create machine-specific Secure Boot keys? Type CREATE: '
+            read -r answer
+            [ "$answer" = CREATE ] || exit 1
+            sudo sbctl create-keys
+            printf 'Keys created. Set secureBootEnable=true and rebuild before enrollment.\n'
+            ;;
+          enroll-framework)
+            printf '%s\n' \
+              'DANGER: firmware must already be in Secure Boot Setup Mode.' \
+              'Framework: delete PK, KEK, and DB entries individually.' \
+              'Do not use the firmware Erase All Secure Boot Settings action.' \
+              'This keeps Framework firmware-builtin keys for devices and fwupd.'
+            printf 'Type ENROLL to write keys into firmware: '
+            read -r answer
+            [ "$answer" = ENROLL ] || exit 1
+            sudo sbctl enroll-keys --firmware-builtin
+            sudo sbctl verify
+            ;;
+          firmware)
+            fwupdmgr get-devices
+            ;;
+          *)
+            printf '%s\n' \
+              'Usage: gjallar-secure-boot {status|create-keys|enroll-framework|firmware}'
+            exit 2
+            ;;
+        esac
+      '';
+    };
   in
   {
     environment.etc."fw-fanctrl/config.json".text = configJson;
-    environment.systemPackages = [ pkgs.fw-fanctrl ];
+    assertions = [
+      {
+        assertion = !settings.secureBootEnable || builtins.pathExists "/var/lib/sbctl/keys/db/db.key";
+        message = "secureBootEnable requires keys; run gjallar-secure-boot create-keys first";
+      }
+    ];
+
+    environment.systemPackages = [
+      pkgs.fw-fanctrl
+      pkgs.sbctl
+      secureBootTool
+    ];
+
+    boot.loader.grub.enable = lib.mkIf settings.secureBootEnable (lib.mkForce false);
+    boot.loader.systemd-boot.enable = lib.mkIf settings.secureBootEnable (lib.mkForce false);
+    boot.lanzaboote = lib.mkIf settings.secureBootEnable {
+      enable = true;
+      pkiBundle = "/var/lib/sbctl";
+      configurationLimit = 8;
+    };
     systemd.services.gjallar-framework-fan-curve = {
       description = "Framework fan curve control";
       wantedBy = [ "multi-user.target" ];

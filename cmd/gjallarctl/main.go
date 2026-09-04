@@ -745,6 +745,10 @@ func runRender(args []string, stdout, stderr io.Writer) int {
 	f.BoolVar(&s.NemuGPUPassthrough, "nemu-gpu-passthrough", false, "")
 	f.Var((*stringList)(&s.NemuGPUIDs), "nemu-gpu-id", "repeatable GPU ID")
 	f.BoolVar(&s.LUKSTPM2Enable, "luks-tpm2-enable", false, "")
+	f.BoolVar(&s.RecoveryEnable, "recovery-enable", false, "")
+	f.BoolVar(&s.JODSPrebootLockEnable, "jods-preboot-lock-enable", false, "")
+	f.BoolVar(&s.SecureBootEnable, "secure-boot-enable", false, "")
+	f.BoolVar(&s.EndpointManagedDevice, "endpoint-managed-device", false, "")
 	f.Var((*stringList)(&s.WMs), "wm", "repeatable window manager")
 	f.StringVar(&s.Theme, "theme", "", "")
 	if err := f.Parse(args); err != nil || f.NArg() != 0 {

@@ -30,6 +30,7 @@ import (
 	"github.com/bakanura/gjallarOS/internal/installer/prompt"
 	"github.com/bakanura/gjallarOS/internal/installer/release"
 	"github.com/bakanura/gjallarOS/internal/installer/secrets"
+	"github.com/bakanura/gjallarOS/internal/installer/secureboot"
 	"github.com/bakanura/gjallarOS/internal/installercheck"
 )
 
@@ -95,6 +96,12 @@ func Run(ctx context.Context, args []string, in io.Reader, out, errOut io.Writer
 	} else if err := collectInteractive(ctx, ui, root, hardware, choices, &s.user); err != nil {
 		return fail(errOut, err)
 	}
+	if s.user.FrameworkEnable && s.user.SecureBootPrompt && !s.user.EndpointManagedDevice {
+		s.user.SecureBootEnable, err = ui.Confirm(ctx, "Prepare Framework Secure Boot and recovery keys?", false)
+		if err != nil {
+			return fail(errOut, err)
+		}
+	}
 	if err := validateSelections(s.user, choices); err != nil {
 		return fail(errOut, err)
 	}
@@ -114,7 +121,7 @@ func Run(ctx context.Context, args []string, in io.Reader, out, errOut io.Writer
 			s.render.NemuGPUIDs = append([]string(nil), s.passthroughIDs...)
 		}
 	}
-	if err := configureSecrets(ctx, ui, root, &s, out, errOut); err != nil {
+	if err := configureSecrets(ctx, root, &s, errOut); err != nil {
 		return fail(errOut, err)
 	}
 	fmt.Fprintf(out, "\nSelected: profile=%s hostname=%s user=%s shell=%s theme=%s\n", s.user.Profile, s.user.Hostname, s.user.Username, s.user.Shell, s.user.Theme)
@@ -138,6 +145,7 @@ func Run(ctx context.Context, args []string, in io.Reader, out, errOut io.Writer
 		if len(lines) > 0 {
 			s.render.WorkUserPasswordFile = lines[len(lines)-1]
 		}
+		fmt.Fprint(out, path)
 	}
 	settingsPath := filepath.Join(root, "settings.nix")
 	if err := nixrender.WriteAtomic(settingsPath, s.render); err != nil {
@@ -167,6 +175,7 @@ func Run(ctx context.Context, args []string, in io.Reader, out, errOut io.Writer
 			return fail(errOut, err)
 		}
 	}
+	fmt.Fprintln(out, "PLAN: atomically update local Git excludes and protect generated machine configuration")
 	if _, err := localgit.Protect(ctx, root, func() string {
 		if skip {
 			return ""
@@ -174,6 +183,22 @@ func Run(ctx context.Context, args []string, in io.Reader, out, errOut io.Writer
 		return hardwarePath
 	}()); err != nil {
 		return fail(errOut, err)
+	}
+	if s.render.SecureBootEnable && !s.render.EndpointManagedDevice {
+		recovery, err := secureboot.Provision(ctx)
+		if err != nil {
+			return fail(errOut, err)
+		}
+		fmt.Fprintf(out, "\nSECURE BOOT RECOVERY ARCHIVE\n%s\n\nSECURE BOOT ARCHIVE PASSPHRASE\n%s\nIMPORTANT: store both offline. This output is not added to shell history.\n", recovery.ArchivePath, recovery.Passphrase)
+		yes, err := ui.Confirm(ctx, "Have you saved the Secure Boot recovery archive and passphrase?", false)
+		if err != nil || !yes {
+			return fail(errOut, errors.New("Secure Boot recovery material was not confirmed saved"))
+		}
+		yes, err = ui.Confirm(ctx, "Are you absolutely sure the Secure Boot recovery material is saved offline?", false)
+		if err != nil || !yes {
+			return fail(errOut, errors.New("Secure Boot recovery material was not confirmed twice"))
+		}
+		recovery.Passphrase = ""
 	}
 	runRebuild := s.user.RunRebuild && !opt.noRebuild
 	if !s.preset && !opt.noRebuild {
@@ -208,12 +233,17 @@ func prepareHost(ctx context.Context, ui prompt.UI, opt options, s state, out, e
 	}
 	if expected != actual {
 		fmt.Fprintf(out, "NixOS %s detected; target is %s.\n", actual, expected)
+		fmt.Fprintf(out, "PLAN: sudo nix-channel --add https://channels.nixos.org/nixos-%s nixos\nPLAN: sudo nix-channel --update nixos\nPLAN: sudo nixos-rebuild switch --upgrade\n", expected)
 		yes, err := ui.Confirm(ctx, "Align the NixOS channel and rebuild?", false)
 		if err != nil || !yes {
 			return fail(errOut, errors.New("release mismatch not approved"))
 		}
 		if err := release.Align(ctx, expected); err != nil {
 			return fail(errOut, err)
+		}
+		_, active, inspectErr := release.Inspect(opt.repo, "/run/current-system/etc/os-release")
+		if inspectErr != nil || active != expected {
+			return fail(errOut, fmt.Errorf("rebuild completed, but NixOS %s is not active", expected))
 		}
 	}
 	configPath := "/etc/nixos/configuration.nix"
@@ -228,15 +258,19 @@ func prepareHost(ctx context.Context, ui prompt.UI, opt options, s state, out, e
 		if err != nil {
 			return fail(errOut, err)
 		}
-		if yes {
-			if _, err := bootstrap.Apply(ctx, configPath, plan.Updated, time.Now()); err != nil {
-				return fail(errOut, err)
-			}
+		if !yes {
+			return fail(errOut, errors.New("required persistent prerequisites were not approved"))
+		}
+		if _, err := bootstrap.Apply(ctx, configPath, plan.Updated, time.Now()); err != nil {
+			return fail(errOut, err)
 		}
 	}
 	check := s.user.RunUpdateChecks
 	if !s.preset {
-		check, _ = ui.Confirm(ctx, "Check for and install firmware updates?", false)
+		check, err = ui.Confirm(ctx, "Check for and install firmware updates?", false)
+		if err != nil {
+			return fail(errOut, err)
+		}
 	}
 	if check && firmware.Available() {
 		fmt.Fprintln(out, "PLAN: refresh and apply firmware updates")
@@ -274,7 +308,10 @@ func collectInteractive(ctx context.Context, ui prompt.UI, root string, hardware
 	if u.Username, err = ui.Value(ctx, "Username", username); err != nil {
 		return err
 	}
-	u.WorkUserEnable, _ = ui.Confirm(ctx, "Create a separate work account?", false)
+	u.WorkUserEnable, err = ui.Confirm(ctx, "Create a separate work account?", false)
+	if err != nil {
+		return err
+	}
 	if u.WorkUserEnable {
 		u.WorkUsername = u.Username + "-corp"
 	}
@@ -295,9 +332,18 @@ func collectInteractive(ctx context.Context, ui prompt.UI, root string, hardware
 		return err
 	}
 	u.KeyboardLayout, u.KeyboardVariant = normalized.Name, normalized.Variant
-	u.TouchpadWorkspaceSwipe, _ = ui.Confirm(ctx, "Enable three-finger workspace swipes?", true)
-	u.ClamshellEnable, _ = ui.Confirm(ctx, "Enable dock-aware clamshell mode?", true)
-	u.USBGuardEnable, _ = ui.Confirm(ctx, "Enable USBGuard? New devices will be blocked until permitted.", false)
+	u.TouchpadWorkspaceSwipe, err = ui.Confirm(ctx, "Enable three-finger workspace swipes?", true)
+	if err != nil {
+		return err
+	}
+	u.ClamshellEnable, err = ui.Confirm(ctx, "Enable dock-aware clamshell mode?", true)
+	if err != nil {
+		return err
+	}
+	u.USBGuardEnable, err = ui.Confirm(ctx, "Enable USBGuard? New devices will be blocked until permitted.", false)
+	if err != nil {
+		return err
+	}
 	u.Name, err = ui.Value(ctx, "Full name", u.Username)
 	if err != nil {
 		return err
@@ -338,9 +384,18 @@ func collectInteractive(ctx context.Context, ui prompt.UI, root string, hardware
 	if err != nil {
 		return err
 	}
-	u.DockerEnable, _ = ui.Confirm(ctx, "Enable Docker daemon? Docker access is root-equivalent.", false)
-	u.AIEnable, _ = ui.Confirm(ctx, "Enable local AI tools?", false)
-	u.NemuEnable, _ = ui.Confirm(ctx, "Enable Nemu virtual machines?", false)
+	u.DockerEnable, err = ui.Confirm(ctx, "Enable Docker daemon? Docker access is root-equivalent.", false)
+	if err != nil {
+		return err
+	}
+	u.AIEnable, err = ui.Confirm(ctx, "Enable local AI tools?", false)
+	if err != nil {
+		return err
+	}
+	u.NemuEnable, err = ui.Confirm(ctx, "Enable Nemu virtual machines?", false)
+	if err != nil {
+		return err
+	}
 	if hardware.LaptopVendor == "framework" || strings.HasPrefix(u.Profile, "framework") {
 		u.FrameworkEnable = true
 		u.FrameworkModel, err = ui.Choice(ctx, "Framework model", "13", []string{"13", "16", "12"})
@@ -348,10 +403,19 @@ func collectInteractive(ctx context.Context, ui prompt.UI, root string, hardware
 			return err
 		}
 	}
-	u.EnableScrobbling, _ = ui.Confirm(ctx, "Enable Last.fm and/or ListenBrainz scrobbling?", false)
+	u.EnableScrobbling, err = ui.Confirm(ctx, "Enable Last.fm and/or ListenBrainz scrobbling?", false)
+	if err != nil {
+		return err
+	}
 	if u.EnableScrobbling {
-		u.EnableLastfm, _ = ui.Confirm(ctx, "Enable Last.fm?", false)
-		u.EnableListenbrainz, _ = ui.Confirm(ctx, "Enable ListenBrainz?", false)
+		u.EnableLastfm, err = ui.Confirm(ctx, "Enable Last.fm?", false)
+		if err != nil {
+			return err
+		}
+		u.EnableListenbrainz, err = ui.Confirm(ctx, "Enable ListenBrainz?", false)
+		if err != nil {
+			return err
+		}
 		u.EnableScrobbling = u.EnableLastfm || u.EnableListenbrainz
 	}
 	u.WriteConfig = true
@@ -406,14 +470,14 @@ func detectAndRenderState(ctx context.Context, root string, s *state) error {
 	}
 	s.passthroughIDs = append([]string(nil), g.PassthroughIDs...)
 	passthrough := u.NemuGPUPassthrough && len(g.PassthroughIDs) > 0
-	s.render = nixrender.Settings{System: u.System, Profile: u.Profile, Hostname: u.Hostname, Username: u.Username, Timezone: u.Timezone, Locale: u.Locale, KeyboardLayout: u.KeyboardLayout, KeyboardVariant: u.KeyboardVariant, TouchpadWorkspaceSwipe: u.TouchpadWorkspaceSwipe, ClamshellEnable: u.ClamshellEnable, USBGuardEnable: u.USBGuardEnable, Name: u.Name, Email: u.Email, GitHubUsername: u.GitHubUsername, DotfilesDir: u.DotfilesDir, WorkUserEnable: u.WorkUserEnable, WorkUsername: u.WorkUsername, DockerEnable: u.DockerEnable, DebugFunctions: u.DebugFunctions, Shell: u.Shell, Editors: u.Editors, Browsers: u.Browsers, PreferredEditor: u.PreferredEditor, PreferredBrowser: u.PreferredBrowser, BackgroundNormal: u.BackgroundNormal, BackgroundWork: u.BackgroundWork, BackgroundGaming: u.BackgroundGaming, EnableScrobbling: u.EnableScrobbling, EnableLastfm: u.EnableLastfm, EnableListenbrainz: u.EnableListenbrainz, LastfmUsername: u.LastfmUsername, ListenbrainzUsername: u.ListenbrainzUsername, FrameworkEnable: u.FrameworkEnable, FrameworkModel: u.FrameworkModel, GraphicsVendor: g.Vendor, GraphicsType: g.Type, GraphicsCompute: g.Compute, GraphicsBusID: g.BusID, GraphicsIntegratedBusID: g.IntegratedBusID, WiFiDriver: wifi, AIEnable: u.AIEnable, AIModel: ai.Model, AIContextTokens: ai.ContextTokens, AIVRAMMB: ai.VRAMMB, NemuEnable: u.NemuEnable, NemuGPUPassthrough: passthrough, LUKSTPM2Enable: false, WMs: []string{"hyprland"}, Theme: u.Theme}
+	s.render = nixrender.Settings{System: u.System, Profile: u.Profile, Hostname: u.Hostname, Username: u.Username, Timezone: u.Timezone, Locale: u.Locale, KeyboardLayout: u.KeyboardLayout, KeyboardVariant: u.KeyboardVariant, TouchpadWorkspaceSwipe: u.TouchpadWorkspaceSwipe, ClamshellEnable: u.ClamshellEnable, USBGuardEnable: u.USBGuardEnable, Name: u.Name, Email: u.Email, GitHubUsername: u.GitHubUsername, DotfilesDir: u.DotfilesDir, WorkUserEnable: u.WorkUserEnable, WorkUsername: u.WorkUsername, DockerEnable: u.DockerEnable, DebugFunctions: u.DebugFunctions, Shell: u.Shell, Editors: u.Editors, Browsers: u.Browsers, PreferredEditor: u.PreferredEditor, PreferredBrowser: u.PreferredBrowser, BackgroundNormal: u.BackgroundNormal, BackgroundWork: u.BackgroundWork, BackgroundGaming: u.BackgroundGaming, EnableScrobbling: u.EnableScrobbling, EnableLastfm: u.EnableLastfm, EnableListenbrainz: u.EnableListenbrainz, LastfmUsername: u.LastfmUsername, ListenbrainzUsername: u.ListenbrainzUsername, FrameworkEnable: u.FrameworkEnable, FrameworkModel: u.FrameworkModel, GraphicsVendor: g.Vendor, GraphicsType: g.Type, GraphicsCompute: g.Compute, GraphicsBusID: g.BusID, GraphicsIntegratedBusID: g.IntegratedBusID, WiFiDriver: wifi, AIEnable: u.AIEnable, AIModel: ai.Model, AIContextTokens: ai.ContextTokens, AIVRAMMB: ai.VRAMMB, NemuEnable: u.NemuEnable, NemuGPUPassthrough: passthrough, LUKSTPM2Enable: false, RecoveryEnable: u.RecoveryEnable, JODSPrebootLockEnable: u.JODSPrebootLockEnable, SecureBootEnable: u.SecureBootEnable, EndpointManagedDevice: u.EndpointManagedDevice, WMs: []string{"hyprland"}, Theme: u.Theme}
 	if passthrough {
 		s.render.NemuGPUIDs = g.PassthroughIDs
 	}
 	return nil
 }
 
-func configureSecrets(ctx context.Context, ui prompt.UI, root string, s *state, out, errOut io.Writer) error {
+func configureSecrets(ctx context.Context, root string, s *state, errOut io.Writer) error {
 	if !s.user.EnableScrobbling {
 		return nil
 	}

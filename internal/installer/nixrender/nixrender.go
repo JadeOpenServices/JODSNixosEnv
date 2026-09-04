@@ -56,6 +56,9 @@ type Settings struct {
 	NemuEnable, NemuGPUPassthrough                          bool
 	NemuGPUIDs                                              []string
 	LUKSTPM2Enable                                          bool
+	RecoveryEnable, JODSPrebootLockEnable                   bool
+	SecureBootEnable                                        bool
+	EndpointManagedDevice                                   bool
 	WMs                                                     []string
 	Theme                                                   string
 }
@@ -118,6 +121,10 @@ func Render(s Settings) []byte {
 	boolean("nemuGpuPassthrough", s.NemuGPUPassthrough)
 	list("nemuGpuIds", s.NemuGPUIDs)
 	boolean("luksTpm2Enable", s.LUKSTPM2Enable)
+	boolean("recoveryEnable", s.RecoveryEnable)
+	boolean("jodsPrebootLockEnable", s.JODSPrebootLockEnable)
+	boolean("secureBootEnable", s.SecureBootEnable)
+	boolean("endpointManagedDevice", s.EndpointManagedDevice)
 	list("wms", s.WMs)
 	str("theme", s.Theme)
 	fmt.Fprintln(&b, "    profileDetails = import (./. + \"/profiles/${profile}/details.nix\") {};")
