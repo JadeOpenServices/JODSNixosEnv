@@ -1,8 +1,12 @@
 # Installer atomic-write temporary files.
 settings.nix.tmp*
+
+# Editor/agent backup and interrupted-write artifacts.
 .*-backup-*
 .*-backup
-*.go.backup-*
-*.go.broken-*
-*.nix.backup-*
-*.md.backup-*
+*.backup
+*.backup-*
+*.broken-*
+*.broken-resume-*
+*.bak
+*~
