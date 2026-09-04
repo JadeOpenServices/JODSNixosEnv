@@ -12,7 +12,7 @@ buildGoModule {
     root = ../../.;
     fileset = lib.fileset.unions [
       ../../go.mod
-      ../../cmd/gjallarctl
+      ../../cmd
       ../../internal/ai
       ../../internal/hardware
       ../../internal/input

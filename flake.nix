@@ -132,7 +132,12 @@
       };
     in
     {
-      packages.${system}.gjallarctl = pkgs.callPackage ./pkgs/gjallarctl { };
+      packages.${system} = rec {
+        gjallarctl = pkgs.callPackage ./pkgs/gjallarctl { };
+        "gjallar-installer" = gjallarctl.overrideAttrs (old: {
+          meta = old.meta // { mainProgram = "gjallar-installer"; };
+        });
+      };
 
       nixosConfigurations = {
         ${settings.hostname} = nixpkgs.lib.nixosSystem {
