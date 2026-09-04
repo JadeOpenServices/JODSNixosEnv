@@ -4,13 +4,23 @@ package main
 import (
 	"bufio"
 	"context"
+	"encoding/json"
 	"flag"
 	"fmt"
 	"io"
+	"math/rand/v2"
 	"os"
+	"os/exec"
+	"os/signal"
 	"path/filepath"
+	"strconv"
 	"strings"
+	"sync"
+	"syscall"
 	"time"
+	"unicode"
+	"unicode/utf8"
+	"unsafe"
 
 	"github.com/bakanura/gjallarOS/internal/ai/profile"
 	"github.com/bakanura/gjallarOS/internal/hardware/graphics"
@@ -31,6 +41,11 @@ import (
 	"github.com/bakanura/gjallarOS/internal/installer/workpassword"
 	"github.com/bakanura/gjallarOS/internal/installercheck"
 	"github.com/bakanura/gjallarOS/internal/preset"
+)
+
+const (
+	rebuildUIEnter = "\x1b[?1049h\x1b[?25l"
+	rebuildUILeave = "\x1b[?25h\x1b[?1049l"
 )
 
 func main() {
@@ -56,6 +71,20 @@ func run(args []string, stdout, stderr io.Writer) int {
 		return runNormalize(args[1:], stdout, stderr)
 	case "preset":
 		return runPreset(args[1:], stdout, stderr)
+	case "rebuild":
+		return runRebuild(args[1:], stdout, stderr)
+	case "update":
+		return runUpdate(args[1:], stdout, stderr)
+	case "cleanup":
+		return runCleanup(args[1:], stdout, stderr)
+	case "cleanup-old-generations":
+		return runCleanupOld(args[1:], stdout, stderr)
+	case "thermal-status":
+		return runThermalStatus(args[1:], stdout, stderr)
+	case "thermal-test":
+		return runThermalTest(args[1:], stdout, stderr)
+	case "helpme":
+		return runHelpme(args[1:], stdout, stderr)
 	default:
 		fmt.Fprintf(stderr, "ERROR: unknown command %q\n", args[0])
 		printUsage(stderr)
@@ -922,6 +951,440 @@ func runCheck(args []string, stdout, stderr io.Writer) int {
 }
 
 func printUsage(out io.Writer) {
-	fmt.Fprintln(out, "Usage: gjallarctl check [--repo PATH] [--timeout DURATION]\n       gjallarctl detect {graphics|network}\n       gjallarctl ai profile [--config PATH]\n       gjallarctl normalize keyboard --layout VALUE\n       gjallarctl preset {validate|get|list|bool} --config PATH [--key NAME]")
-	fmt.Fprintln(out, "\nSafe GjallarOS maintenance commands. No command uses sudo.")
+	fmt.Fprintln(out, "Usage: gjallarctl check [--repo PATH] [--timeout DURATION]\n       gjallarctl rebuild --repo PATH --host HOST [-d|--debug] [-n|--no-cleanup] [NIXOS-REBUILD-ARGS...]\n       gjallarctl detect {graphics|network}\n       gjallarctl ai profile [--config PATH]\n       gjallarctl normalize keyboard --layout VALUE\n       gjallarctl preset {validate|get|list|bool} --config PATH [--key NAME]")
+	fmt.Fprintln(out, "\nSafe GjallarOS maintenance commands. Rebuild invokes sudo explicitly.")
+}
+
+func runRebuild(args []string, stdout, stderr io.Writer) int {
+	repo, host := "", ""
+	debug, cleanup := false, true
+	var rebuildArgs []string
+	for i := 0; i < len(args); i++ {
+		switch args[i] {
+		case "--repo", "--host":
+			if i+1 >= len(args) {
+				fmt.Fprintf(stderr, "ERROR: %s requires a value\n", args[i])
+				return 2
+			}
+			i++
+			if args[i-1] == "--repo" {
+				repo = args[i]
+			} else {
+				host = args[i]
+			}
+		case "-d", "--debug":
+			debug = true
+		case "-n", "--no-cleanup":
+			cleanup = false
+		case "--":
+			rebuildArgs = append(rebuildArgs, args[i+1:]...)
+			i = len(args)
+		default:
+			rebuildArgs = append(rebuildArgs, args[i])
+		}
+	}
+	if repo == "" || host == "" {
+		fmt.Fprintln(stderr, "ERROR: rebuild requires --repo and --host")
+		return 2
+	}
+
+	messages, err := loadRebuildMessages(filepath.Join(repo, "system/tools/scripts/rebuild-messages.json"), host)
+	if err != nil {
+		fmt.Fprintf(stderr, "[GjallarOS] Error: %v\n", err)
+		return 1
+	}
+	if status := runCommand(context.Background(), stdout, stderr, "sudo", "-v"); status != 0 {
+		return status
+	}
+
+	started := time.Now()
+	commandArgs := []string{"nixos-rebuild", "switch", "--flake", repo + "#" + host}
+	if debug {
+		commandArgs = append(commandArgs, "--show-trace")
+	}
+	commandArgs = append(commandArgs, rebuildArgs...)
+
+	var status int
+	if debug {
+		fmt.Fprintf(stdout, "Rebuilding NixOS for %s\n[GjallarOS] Flake: %s#%s\n\n", host, repo, host)
+		status = runCommand(context.Background(), stdout, stderr, "sudo", commandArgs...)
+	} else {
+		status = runRebuildQuiet(stdout, stderr, host, messages, started, commandArgs)
+	}
+	if status == 0 && cleanup {
+		status = runCleanupOld(nil, stdout, stderr)
+	}
+	elapsed := int(time.Since(started).Round(time.Second) / time.Second)
+	if status == 130 {
+		fmt.Fprintf(stderr, "\n⏱ %02d:%02d  ✗ Rebuild cancelled.\n", elapsed/60, elapsed%60)
+	} else if status == 0 {
+		fmt.Fprintf(stdout, "\n⏱ %02d:%02d  ✓ Rebuild completed successfully.\n", elapsed/60, elapsed%60)
+	} else {
+		fmt.Fprintf(stderr, "\n⏱ %02d:%02d  ✗ Rebuild failed.\n", elapsed/60, elapsed%60)
+	}
+	return status
+}
+
+func runUpdate(args []string, stdout, stderr io.Writer) int {
+	repo := os.Getenv("GJALLAROS_REPO")
+	if repo == "" {
+		repo = "."
+	}
+	mode := "update"
+	if len(args) > 1 {
+		fmt.Fprintln(stderr, "Usage: update [--rebuild|-r|--check]")
+		return 2
+	}
+	if len(args) == 1 {
+		mode = args[0]
+	}
+	if mode == "--check" {
+		return runCommand(context.Background(), stdout, stderr, "nix", "flake", "check", repo)
+	}
+	if mode != "update" && mode != "--rebuild" && mode != "-r" {
+		fmt.Fprintln(stderr, "Usage: update [--rebuild|-r|--check]")
+		return 2
+	}
+	if status := runCommand(context.Background(), stdout, stderr, "nix", "flake", "update", repo); status != 0 {
+		return status
+	}
+	if mode == "--rebuild" || mode == "-r" {
+		return runCommand(context.Background(), stdout, stderr, "rebuild")
+	}
+	return 0
+}
+
+func runCleanup(args []string, stdout, stderr io.Writer) int {
+	keep := "5"
+	for i := 0; i < len(args); i++ {
+		if (args[i] == "-k" || args[i] == "--keep") && i+1 < len(args) {
+			i++
+			keep = args[i]
+		} else if args[i] == "-h" || args[i] == "--help" {
+			fmt.Fprintln(stdout, "Usage: cleanup [--keep N]")
+			return 0
+		} else {
+			fmt.Fprintln(stderr, "Usage: cleanup [--keep N]")
+			return 2
+		}
+	}
+	for _, r := range keep {
+		if r < '0' || r > '9' {
+			fmt.Fprintln(stderr, "Keep count must be numeric.")
+			return 2
+		}
+	}
+	for _, command := range [][]string{{"sudo", "nix-env", "--profile", "/nix/var/nix/profiles/system", "--delete-generations", "+" + keep}, {"nix", "store", "gc"}, {"sudo", "nix", "store", "gc"}} {
+		if status := runCommand(context.Background(), stdout, stderr, command[0], command[1:]...); status != 0 {
+			return status
+		}
+	}
+	return 0
+}
+
+func runCleanupOld(args []string, stdout, stderr io.Writer) int {
+	if len(args) != 0 {
+		fmt.Fprintln(stderr, "Usage: cleanup-old-generations")
+		return 2
+	}
+	cmd := exec.Command("sudo", "nix-env", "--profile", "/nix/var/nix/profiles/system", "--list-generations")
+	data, err := cmd.Output()
+	if err != nil {
+		fmt.Fprintf(stderr, "ERROR: %v\n", err)
+		return 1
+	}
+	var generations []string
+	scanner := bufio.NewScanner(strings.NewReader(string(data)))
+	for scanner.Scan() {
+		fields := strings.Fields(scanner.Text())
+		if len(fields) > 0 {
+			if _, err := strconv.Atoi(fields[0]); err == nil {
+				generations = append(generations, fields[0])
+			}
+		}
+	}
+	if len(generations) <= 5 {
+		fmt.Fprintf(stdout, "[GjallarOS] Nothing to clean (%d generations, keeping 5).\n", len(generations))
+		return 0
+	}
+	remove := generations[:len(generations)-5]
+	fmt.Fprintf(stdout, "[GjallarOS] Removing %d old generations; keeping 5.\n", len(remove))
+	command := []string{"nix-env", "--profile", "/nix/var/nix/profiles/system", "--delete-generations"}
+	command = append(command, remove...)
+	return runCommand(context.Background(), stdout, stderr, "sudo", command...)
+}
+
+func runThermalStatus(args []string, stdout, stderr io.Writer) int {
+	if len(args) != 0 {
+		return 2
+	}
+	for _, item := range []struct {
+		title, name string
+		args        []string
+	}{{"uptime", "uptime", nil}, {"sensors", "sensors", nil}, {"power profile", "powerprofilesctl", []string{"get"}}, {"top CPU", "ps", []string{"-eo", "pid,user,comm,%cpu,%mem", "--sort=-%cpu"}}} {
+		fmt.Fprintf(stdout, "\n== %s ==\n", item.title)
+		_ = runCommand(context.Background(), stdout, stderr, item.name, item.args...)
+	}
+	return 0
+}
+
+func runThermalTest(args []string, stdout, stderr io.Writer) int {
+	if len(args) != 2 {
+		fmt.Fprintln(stderr, "Usage: thermal-test <off|on|status> <process-pattern>")
+		return 2
+	}
+	data, _ := exec.Command("pgrep", "-f", args[1]).Output()
+	pids := strings.Fields(string(data))
+	if len(pids) == 0 {
+		fmt.Fprintln(stdout, "No matching processes.")
+		return 0
+	}
+	switch args[0] {
+	case "off", "on":
+		sig := syscall.SIGSTOP
+		if args[0] == "on" {
+			sig = syscall.SIGCONT
+		}
+		for _, pid := range pids {
+			var n int
+			fmt.Sscanf(pid, "%d", &n)
+			_ = syscall.Kill(n, sig)
+		}
+		return 0
+	case "status":
+		return runCommand(context.Background(), stdout, stderr, "ps", "-o", "pid,stat,comm,args=", "-p", strings.Join(pids, ","))
+	default:
+		fmt.Fprintf(stderr, "Unknown action: %s\n", args[0])
+		return 2
+	}
+}
+
+func runHelpme(args []string, stdout, stderr io.Writer) int {
+	if len(args) > 1 || len(args) == 1 && args[0] != "--text" {
+		return 2
+	}
+	text := "GjallarOS tools\n\n  rebuild            Apply the current NixOS configuration.\n  update             Update flake inputs.\n  cleanup            Remove old generations and collect garbage.\n  thermal-status     Show temperatures and power state.\n  thermal-test       Pause/resume processes for troubleshooting.\n  check-installer    Check installer configuration.\n"
+	if len(args) == 1 || os.Getenv("DISPLAY")+os.Getenv("WAYLAND_DISPLAY") == "" { fmt.Fprint(stdout, text); return 0 }
+	if _, err := exec.LookPath("yad"); err != nil { fmt.Fprint(stdout, text); return 0 }
+	return runCommand(context.Background(), stdout, stderr, "yad", "--text-info", "--title=GjallarOS tools", "--width=900", "--height=520", "--center", "--button=Close:0", "--filename=/dev/stdin")
+}
+
+func runRebuildQuiet(stdout, stderr io.Writer, host string, messages []string, started time.Time, commandArgs []string) int {
+	log, err := os.CreateTemp("", "gjallar-rebuild-*.log")
+	if err != nil {
+		fmt.Fprintf(stderr, "ERROR: create rebuild log: %v\n", err)
+		return 1
+	}
+	defer os.Remove(log.Name())
+	defer log.Close()
+
+	terminal, ok := stdout.(*os.File)
+	interactive := ok && isTerminal(terminal)
+	stop := make(chan struct{})
+	var ui sync.WaitGroup
+	if interactive {
+		fmt.Fprint(stdout, rebuildUIEnter)
+		ui.Add(1)
+		go func() {
+			defer ui.Done()
+			index, shownAt := rand.IntN(len(messages)), 0
+			ticker := time.NewTicker(time.Second / 4)
+			defer ticker.Stop()
+			for {
+				elapsed := int(time.Since(started) / time.Second)
+				width := terminalWidth(terminal)
+				if elapsed-shownAt >= rebuildMessageSeconds(messages[index], width) {
+					if len(messages) > 1 {
+						next := index
+						for next == index {
+							next = rand.IntN(len(messages))
+						}
+						index = next
+					}
+					shownAt = elapsed
+				}
+				fmt.Fprint(stdout, rebuildFrame(host, messages[index], elapsed, elapsed-shownAt, width))
+				select {
+				case <-stop:
+					return
+				case <-ticker.C:
+				}
+			}
+		}()
+	} else {
+		fmt.Fprintf(stdout, "Rebuilding NixOS for %s\n", host)
+	}
+
+	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	status := runCommand(ctx, log, log, "sudo", commandArgs...)
+	cancel()
+	if interactive {
+		close(stop)
+		ui.Wait()
+		fmt.Fprint(stdout, rebuildUILeave)
+	}
+	if status != 0 {
+		if _, err := log.Seek(0, io.SeekStart); err == nil {
+			_, _ = io.Copy(stderr, log)
+		}
+	}
+	return status
+}
+
+func runCommand(ctx context.Context, stdout, stderr io.Writer, name string, args ...string) int {
+	cmd := exec.CommandContext(ctx, name, args...)
+	cmd.Stdout, cmd.Stderr, cmd.Stdin = stdout, stderr, os.Stdin
+	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
+	err := cmd.Run()
+	if err == nil {
+		return 0
+	}
+	if ctx.Err() != nil && cmd.Process != nil {
+		_ = syscall.Kill(-cmd.Process.Pid, syscall.SIGTERM)
+		return 130
+	}
+	if exit, ok := err.(*exec.ExitError); ok {
+		return exit.ExitCode()
+	}
+	fmt.Fprintf(stderr, "ERROR: %s: %v\n", name, err)
+	return 1
+}
+
+func loadRebuildMessages(path, host string) ([]string, error) {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return nil, fmt.Errorf("read rebuild messages: %w", err)
+	}
+	var document any
+	if err := json.Unmarshal(data, &document); err != nil {
+		return nil, fmt.Errorf("parse rebuild messages: %w", err)
+	}
+	var messages []string
+	var visit func(any)
+	visit = func(value any) {
+		switch value := value.(type) {
+		case string:
+			prefix := "Rebuilding NixOS for $runtime_host... "
+			if strings.HasPrefix(value, prefix) {
+				messages = append(messages, strings.ReplaceAll(strings.TrimPrefix(value, prefix), "$runtime_host", host))
+			}
+		case []any:
+			for _, item := range value {
+				visit(item)
+			}
+		case map[string]any:
+			for _, item := range value {
+				visit(item)
+			}
+		}
+	}
+	visit(document)
+	if len(messages) == 0 {
+		return nil, fmt.Errorf("no rebuild messages found in %s", path)
+	}
+	return messages, nil
+}
+
+func isTerminal(file *os.File) bool {
+	info, err := file.Stat()
+	return err == nil && info.Mode()&os.ModeCharDevice != 0
+}
+
+func terminalWidth(file *os.File) int {
+	type winsize struct{ Row, Col, Xpixel, Ypixel uint16 }
+	var size winsize
+	_, _, errno := syscall.Syscall(syscall.SYS_IOCTL, file.Fd(), uintptr(syscall.TIOCGWINSZ), uintptr(unsafe.Pointer(&size)))
+	if errno != 0 || size.Col < 2 {
+		return 80
+	}
+	return int(size.Col)
+}
+
+func rebuildFrame(host, message string, elapsedSeconds, messageSeconds, width int) string {
+	if width < 2 {
+		width = 80
+	}
+	prefix := fmt.Sprintf("⏱ [%02d:%02d]  ", elapsedSeconds/60, elapsedSeconds%60)
+	available := width - terminalCellWidth(prefix) - 2
+	if available < 1 {
+		available = 1
+	}
+	overflow := terminalCellWidth(message) - available
+	if overflow < 0 {
+		overflow = 0
+	}
+	offset := messageSeconds * 4
+	if offset > overflow {
+		offset = overflow
+	}
+	status := prefix + terminalCellSlice(message, offset, available)
+	return "\x1b[H\x1b[2J" + terminalCellSlice("Rebuilding NixOS for "+host, 0, width-1) + "\n" + status
+}
+
+func rebuildMessageSeconds(message string, width int) int {
+	available := width - terminalCellWidth("⏱ [00:00]  ") - 2
+	if available < 1 {
+		available = 1
+	}
+	overflow := terminalCellWidth(message) - available
+	if overflow <= 0 {
+		return 5
+	}
+	seconds := (overflow+3)/4 + 2
+	if seconds < 5 {
+		return 5
+	}
+	return seconds
+}
+
+func terminalCellWidth(value string) int {
+	width := 0
+	for _, r := range value {
+		width += terminalRuneWidth(r)
+	}
+	return width
+}
+
+func terminalCellSlice(value string, skip, limit int) string {
+	if limit <= 0 {
+		return ""
+	}
+	var out strings.Builder
+	position, used := 0, 0
+	for _, r := range value {
+		width := terminalRuneWidth(r)
+		if position+width <= skip {
+			position += width
+			continue
+		}
+		if position < skip {
+			position += width
+			continue
+		}
+		if used+width > limit {
+			break
+		}
+		out.WriteRune(r)
+		used += width
+		position += width
+	}
+	return out.String()
+}
+
+func terminalRuneWidth(r rune) int {
+	if r == utf8.RuneError || r == 0 || r == '\n' || r == '\r' || unicode.IsControl(r) {
+		return 0
+	}
+	if unicode.Is(unicode.Mn, r) || unicode.Is(unicode.Me, r) || r == '\u200d' || r == '\ufe0f' {
+		return 0
+	}
+	if r == 0x23f1 || r >= 0x1100 && (r <= 0x115f || r == 0x2329 || r == 0x232a ||
+		(r >= 0x2e80 && r <= 0xa4cf) || (r >= 0xac00 && r <= 0xd7a3) ||
+		(r >= 0xf900 && r <= 0xfaff) || (r >= 0xfe10 && r <= 0xfe19) ||
+		(r >= 0xfe30 && r <= 0xfe6f) || (r >= 0xff00 && r <= 0xff60) ||
+		(r >= 0xffe0 && r <= 0xffe6) || (r >= 0x1f300 && r <= 0x1faff) ||
+		(r >= 0x20000 && r <= 0x3fffd)) {
+		return 2
+	}
+	return 1
 }

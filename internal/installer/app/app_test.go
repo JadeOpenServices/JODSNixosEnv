@@ -38,6 +38,15 @@ func TestExistingInstallMarkers(t *testing.T) {
 	}
 }
 
+func TestExistingInstallRejectsUnmarkedSettings(t *testing.T) {
+	root := t.TempDir()
+	path := filepath.Join(root, "settings.nix")
+	os.WriteFile(path, []byte("{ hostname = \"unrelated\"; }\n"), 0644)
+	if existingInstall(root) {
+		t.Fatal("unmarked settings.nix detected as an existing GjallarOS install")
+	}
+}
+
 func TestValidateSelections(t *testing.T) {
 	o := discovery.Options{Profiles: []string{"laptop"}, Shells: []string{"zsh"}, Editors: []string{"vscodium"}, Browsers: []string{"librewolf"}, Themes: []string{"catppuccin"}}
 	u := config.User{Profile: "laptop", Shell: "zsh", Editors: []string{"vscodium"}, Browsers: []string{"librewolf"}, Theme: "catppuccin", DotfilesDir: "/repo"}

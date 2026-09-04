@@ -1,4 +1,4 @@
-{ pkgs, ... }:
+{ lib, pkgs, settings, ... }:
 let
   enrollment = pkgs.writeShellScript "gjallar-fingerprint-enroll" ''
     set -eu
@@ -35,7 +35,7 @@ let
     exec ${pkgs.kitty}/bin/kitty --title 'GjallarOS fingerprint setup' -e ${enrollment}
   '';
 in
-{
+lib.mkIf (!settings.endpointManagedDevice) {
   home.packages = [
     pkgs.fprintd
     pkgs.yad
@@ -44,14 +44,15 @@ in
     Unit = {
       Description = "Offer first-login fingerprint enrollment";
       After = [ "graphical-session.target" ];
-      Wants = [ "graphical-session.target" ];
     };
     Service = {
-      Type = "oneshot";
+      # Kitty stays open for user input. Type=oneshot makes Home Manager wait
+      # for that window and eventually time out during a rebuild.
+      Type = "exec";
       ExecStart = launcher;
     };
     Install = {
-      WantedBy = [ "default.target" ];
+      WantedBy = [ "graphical-session.target" ];
     };
   };
 }
