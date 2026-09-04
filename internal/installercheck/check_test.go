@@ -58,12 +58,12 @@ func testRepository(t *testing.T, config string) string {
 		"flake.nix":                       "{}",
 		"user.config.json":                config,
 		"scripts/installation/install.sh": "#!/usr/bin/env bash\n",
-		"scripts/installation/user_PresetJSON/default.user.config.json":   `{"system":"x86_64-linux","profile":"laptop"}`,
-		"scripts/installation/functions/configuration/render_settings.sh": "render_settings() {}\n",
-		"scripts/installation/functions/hardware/detect_graphics.sh":      "detect_graphics() { :; }\n",
-		"system/apps/ollama.nix":           "{}\n",
-		"system/tools/scripts/default.nix": "# check-installer\n",
-		"system/tools/scripts/help.sh":     "# check-installer\n",
+		"scripts/installation/user_PresetJSON/default.user.config.json": `{"system":"x86_64-linux","profile":"laptop"}`,
+		"cmd/gjallar-installer/main.go":                                 "package main\n",
+		"internal/installer/app/app.go":                                 "package app\n",
+		"system/apps/ollama.nix":                                        "{}\n",
+		"system/tools/scripts/default.nix":                              "# check-installer\n",
+		"system/tools/scripts/help.sh":                                  "# check-installer\n",
 	}
 	for relative, contents := range files {
 		path := filepath.Join(root, relative)

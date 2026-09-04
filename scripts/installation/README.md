@@ -71,6 +71,14 @@ GjallarOS rebuild when possible.
 The wizard asks for every setting in `settings.nix`, discovers available
 profiles and modules, writes your selections, and can generate hardware
 configuration before running `nixos-rebuild`.
+`settings.nix` is rendered and atomically replaced by `gjallarctl`; all string
+values escape Nix interpolation markers as well as quotes and backslashes.
+Machine-local Git protection is also owned by `gjallarctl`, with repository
+containment checks and fixed-argument Git invocations.
+Hardware generation uses a Go plan/apply action with a validated profile target,
+timestamped backup, fixed `nixos-generate-config` arguments, and atomic replacement.
+Deployment uses a Go plan/apply action: `nixos-rebuild dry-build` must pass before
+the next boot generation is installed, and both privileged commands use fixed arguments.
 Because Nix flakes use the Git snapshot, newly added profile metadata is
 automatically staged locally before rebuilding; no commit or remote push is
 performed.
@@ -135,13 +143,10 @@ If a root-level `user.config.json` exists, the installer asks whether to reboot
 automatically after a successful rebuild. That file is treated as local
 machine configuration and is added to Git's local exclude list automatically.
 
-Installer functions are kept as small, reusable Bash files in `functions/`.
-Shared and installer-specific functions are organized beneath `functions/` for
-readability, but their directory names are not part of the interface. The entry
-point discovers and loads every `.sh` file recursively, so a category can be
-renamed or reorganized without changing the installer. Only the location of the
-`functions/` tree relative to `install.sh` matters, and the installer can be run
-from any working directory.
+`gjallar-installer` owns discovery, terminal/GTK prompts, policy, rendering, and
+action sequencing. `install.sh` only launches that binary directly or through
+the flake. The old sourced Bash implementation is inactive and retained under
+`legacy-functions/` only as a historical compatibility reference.
 
 The installed helper commands (`helpme`, `update`, `rebuild`, `cleanup`,
 `thermal-status`, and `thermal-test`) are provided by `system/tools/` and use
