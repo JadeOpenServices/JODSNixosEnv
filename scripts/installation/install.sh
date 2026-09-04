@@ -196,8 +196,6 @@ collect_settings \
     wms \
     themes
 
-configure_work_user_password
-
 say "Applying the selected laptop profile..."
 configure_framework
 
@@ -286,6 +284,8 @@ if [[ "$cfg_write_config" != true ]]; then
     say "Nothing was changed."
     exit 0
 fi
+
+configure_work_user_password
 
 say "Writing settings.nix..."
 

@@ -23,9 +23,14 @@
     settings = {
       appearance = {
         scheme = "Synced";
+        theme_mode = "dark";
+        corner_radius_scale = 2.0;
+        font_family = settings.themeDetails.font;
         password_style = "random";
         hide_logo = false;
       };
+
+      session.default = "GjallarOS Hyprland";
 
       cursor = {
         theme = "Bibata-Modern-Classic";
@@ -40,6 +45,9 @@
       };
     };
   };
+
+  # The greeter starts its own compositor, so it controls the Plymouth handoff.
+  services.greetd.greeterManagesPlymouth = true;
 
   security.polkit.enable = true;
 }
