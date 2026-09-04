@@ -1,0 +1,27 @@
+package graphics
+
+import "testing"
+
+func TestParseHybridNvidiaAndAMD(t *testing.T) {
+	result := Parse(`0000:05:00.0 VGA compatible controller [0300]: NVIDIA Corporation AD107M [GeForce RTX 4060 Max-Q / Mobile] [10de:28a0] (rev a1)
+0000:c1:00.0 VGA compatible controller [0300]: Advanced Micro Devices, Inc. [AMD/ATI] Phoenix1 [Radeon 780M] [1002:15bf] (rev c8)`)
+	if result.Vendor != "nvidia" || result.Type != "hybrid" || !result.Compute {
+		t.Fatalf("unexpected topology: %#v", result)
+	}
+	if result.BusID != "PCI:5:0:0" || result.IntegratedBusID != "PCI:193:0:0" {
+		t.Fatalf("unexpected bus IDs: %#v", result)
+	}
+	if len(result.PassthroughIDs) != 2 || result.PassthroughIDs[0] != "1002:15bf" {
+		t.Fatalf("unexpected passthrough IDs: %#v", result.PassthroughIDs)
+	}
+}
+
+func TestParseIntelOnly(t *testing.T) {
+	result := Parse(`0000:00:02.0 VGA compatible controller [0300]: Intel Corporation Meteor Lake-P [Intel Arc Graphics] [8086:7d55] (rev 08)`)
+	if result.Vendor != "intel" || result.Type != "integrated" || result.Compute || result.BusID != "PCI:0:2:0" {
+		t.Fatalf("unexpected Intel result: %#v", result)
+	}
+	if len(result.PassthroughIDs) != 0 {
+		t.Fatalf("Intel must not be selected for passthrough: %#v", result.PassthroughIDs)
+	}
+}

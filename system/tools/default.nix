@@ -95,19 +95,29 @@ let
       };
     };
   homeDiagnosticsModule =
-    { ... }:
+    { config, ... }:
     let
       sessionDiagnostic = pkgs.writeShellScript "gjallar-hyprland-session-diagnostics" ''
         set -u
         state_dir="$HOME/.local/state/gjallar-diagnostics"
         ${coreutils}/mkdir -p "$state_dir"
-        exec > >(${coreutils}/tee "$state_dir/hyprland-session.log") 2>&1
+        boot_id="$(${coreutils}/cat /proc/sys/kernel/random/boot_id)"
+        exec > >(${coreutils}/tee -a "$state_dir/hyprland-$boot_id.log") 2>&1
         log() { printf 'gjallar-hyprland-session-diagnostics: %s\n' "$*"; }
         log 'begin'
         ${coreutils}/date --iso-8601=seconds
         ${coreutils}/id
         ${pkgs.systemd}/bin/systemctl --user show hyprland-session.target --property=ActiveState --property=SubState --property=Result --no-pager || true
         ${coreutils}/printenv | ${pkgs.gnugrep}/bin/grep -E '^(PATH|XDG_|WAYLAND_DISPLAY|HYPRLAND_INSTANCE_SIGNATURE|DBUS_SESSION_BUS_ADDRESS)=' || true
+        hyprland_ready=false
+        for attempt in $(${coreutils}/seq 1 300); do
+          if ${pkgs.hyprland}/bin/hyprctl monitors >/dev/null 2>&1; then
+            hyprland_ready=true
+            break
+          fi
+          ${coreutils}/bin/sleep 0.1
+        done
+        log "hyprland-ipc-ready=$hyprland_ready"
         for command in fuzzel kitty asztal; do
           path="$(${pkgs.findutils}/bin/find "$HOME/.nix-profile/bin" "/etc/profiles/per-user/$USER/bin" -maxdepth 1 -name "$command" \( -type l -o -type f \) -print -quit 2>/dev/null || true)"
           if [ -n "$path" ]; then log "command=$command path=$path"; else log "command=$command missing from user profiles"; fi
@@ -121,7 +131,10 @@ let
         ${pkgs.hyprland}/bin/hyprctl configerrors || true
         ${pkgs.hyprland}/bin/hyprctl monitors || true
         ${pkgs.hyprland}/bin/hyprctl clients || true
-        ${pkgs.procps}/bin/pgrep -a -u "$USER" 'Hyprland|fuzzel|ags' || true
+        ${lib.getExe config.programs.noctalia.package} config validate || true
+        ${lib.getExe config.programs.noctalia.package} msg status || true
+        ${pkgs.systemd}/bin/journalctl --user -b --no-pager -u gjallar-hyprland-session-diagnostics.service || true
+        ${pkgs.procps}/bin/pgrep -a -u "$USER" 'Hyprland|noctalia|fuzzel|kitty|swaybg|waybar|ags' || true
         log 'end'
       '';
     in
@@ -169,6 +182,9 @@ in
         ];
       };
 
+      # Noctalia's greetd compositor takes over the DRM device. Keep Plymouth
+      # visible until that compositor and its greeter client are both running.
+      systemd.services.plymouth-quit.enable = false;
       systemd.services.plymouth-quit-wait.enable = false;
 
       systemd.services.noctalia-greeter-plymouth = {
@@ -180,7 +196,9 @@ in
           Type = "oneshot";
           ExecStart = pkgs.writeShellScript "wait-for-noctalia-greeter" ''
             for i in $(seq 1 600); do
-              if ${pkgs.procps}/bin/pgrep -f noctalia-greeter-compositor >/dev/null; then
+              if ${pkgs.procps}/bin/pgrep -x noctalia-greeter-compositor >/dev/null \
+                && ${pkgs.procps}/bin/pgrep -x noctalia-greeter >/dev/null; then
+                ${pkgs.coreutils}/bin/sleep 0.3
                 ${pkgs.plymouth}/bin/plymouth quit --wait || true
                 exit 0
               fi
@@ -198,7 +216,7 @@ in
         flake = settings.dotfilesDir;
       };
       environment.systemPackages = with pkgs; [
-        nixfmt-rfc-style
+        nixfmt
         python3
         nix-output-monitor
         nvd
