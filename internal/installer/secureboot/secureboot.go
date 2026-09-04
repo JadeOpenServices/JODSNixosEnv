@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/rand"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
@@ -13,6 +14,8 @@ import (
 const ArchivePath = "/var/lib/gjallarOS/recovery/secure-boot-keys.tar.enc"
 const EnrollmentMarkerPath = "/var/lib/gjallarOS/secure-boot-enrollment-armed"
 const FinalMarkerPath = "/var/lib/gjallarOS/secure-boot-enable-required"
+const RecoveryPassphrasePath = "/var/lib/gjallarOS/secure-boot/recovery-passphrase.pending"
+const RecoveryConfirmedMarkerPath = "/var/lib/gjallarOS/secure-boot-recovery-confirmed"
 
 type Continuation string
 
@@ -28,49 +31,290 @@ type Recovery struct {
 }
 
 func Provision(ctx context.Context) (Recovery, error) {
+	// An interrupted installer may leave a root-only passphrase checkpoint.
+	// Reuse it with the existing archive rather than silently replacing the
+	// user's recovery material.
+	if recovery, ok, err := pendingRecovery(ctx); err != nil {
+		return Recovery{}, err
+	} else if ok {
+		return recovery, nil
+	}
+
 	passphrase, err := generatePassphrase()
 	if err != nil {
 		return Recovery{}, err
 	}
+
 	passFile, err := os.CreateTemp("", "gjallar-secure-boot-passphrase-*")
 	if err != nil {
 		return Recovery{}, err
 	}
 	passPath := passFile.Name()
 	defer os.Remove(passPath)
+
 	if err := passFile.Chmod(0600); err != nil {
-		passFile.Close()
+		_ = passFile.Close()
 		return Recovery{}, err
 	}
+
 	if _, err := passFile.WriteString(passphrase); err != nil {
-		passFile.Close()
+		_ = passFile.Close()
 		return Recovery{}, err
 	}
+
 	if err := passFile.Close(); err != nil {
 		return Recovery{}, err
 	}
 
-	if err := run(ctx, "sudo", "test", "-f", "/var/lib/sbctl/keys/db/db.key"); err != nil {
+	keyExists, err := sudoTest(
+		ctx,
+		"-f",
+		"/var/lib/sbctl/keys/db/db.key",
+	)
+	if err != nil {
+		return Recovery{}, fmt.Errorf(
+			"check existing Secure Boot keys: %w",
+			err,
+		)
+	}
+
+	if !keyExists {
 		if err := run(ctx, "sudo", "sbctl", "create-keys"); err != nil {
-			return Recovery{}, fmt.Errorf("create Secure Boot keys: %w", err)
+			return Recovery{}, fmt.Errorf(
+				"create Secure Boot keys: %w",
+				err,
+			)
 		}
 	}
-	if err := run(ctx, "sudo", "install", "-d", "-m", "0700", "/var/lib/gjallarOS/recovery"); err != nil {
+
+	if err := run(
+		ctx,
+		"sudo", "install",
+		"-d", "-m", "0700",
+		"/var/lib/gjallarOS/recovery",
+	); err != nil {
 		return Recovery{}, err
 	}
+
+	if err := run(
+		ctx,
+		"sudo", "install",
+		"-d", "-m", "0700",
+		"/var/lib/gjallarOS/secure-boot",
+	); err != nil {
+		return Recovery{}, err
+	}
+
 	raw := "/var/lib/gjallarOS/recovery/.secure-boot-keys.tar"
-	defer func() { _ = run(context.Background(), "sudo", "rm", "-f", "--", raw) }()
-	if err := run(ctx, "sudo", "tar", "-C", "/var/lib/sbctl", "-cf", raw, "."); err != nil {
-		return Recovery{}, fmt.Errorf("archive Secure Boot keys: %w", err)
+
+	defer func() {
+		_ = run(
+			context.Background(),
+			"sudo", "rm", "-f", "--", raw,
+		)
+	}()
+
+	if err := run(
+		ctx,
+		"sudo", "tar",
+		"-C", "/var/lib/sbctl",
+		"-cf", raw,
+		".",
+	); err != nil {
+		return Recovery{}, fmt.Errorf(
+			"archive Secure Boot keys: %w",
+			err,
+		)
 	}
-	if err := run(ctx, "sudo", "openssl", "enc", "-aes-256-cbc", "-pbkdf2", "-salt", "-in", raw, "-out", ArchivePath, "-pass", "file:"+passPath); err != nil {
-		_ = run(ctx, "sudo", "rm", "-f", "--", ArchivePath)
-		return Recovery{}, fmt.Errorf("encrypt Secure Boot recovery archive: %w", err)
+
+	if err := run(
+		ctx,
+		"sudo", "openssl",
+		"enc",
+		"-aes-256-cbc",
+		"-pbkdf2",
+		"-salt",
+		"-in", raw,
+		"-out", ArchivePath,
+		"-pass", "file:"+passPath,
+	); err != nil {
+		_ = run(
+			ctx,
+			"sudo", "rm", "-f", "--", ArchivePath,
+		)
+		return Recovery{}, fmt.Errorf(
+			"encrypt Secure Boot recovery archive: %w",
+			err,
+		)
 	}
-	if err := run(ctx, "sudo", "chmod", "0600", ArchivePath); err != nil {
+
+	if err := run(
+		ctx,
+		"sudo", "chmod", "0600",
+		ArchivePath,
+	); err != nil {
 		return Recovery{}, err
 	}
-	return Recovery{ArchivePath: ArchivePath, Passphrase: passphrase}, nil
+
+	// This is intentionally temporary. It exists only so Ctrl+C before the
+	// recovery confirmation can resume with the exact same passphrase.
+	if err := run(
+		ctx,
+		"sudo", "install",
+		"-m", "0600",
+		passPath,
+		RecoveryPassphrasePath,
+	); err != nil {
+		return Recovery{}, fmt.Errorf(
+			"save temporary Secure Boot recovery checkpoint: %w",
+			err,
+		)
+	}
+
+	// A newly generated archive means any old confirmation is stale.
+	if err := run(
+		ctx,
+		"sudo", "rm", "-f", "--",
+		RecoveryConfirmedMarkerPath,
+	); err != nil {
+		return Recovery{}, fmt.Errorf(
+			"clear stale recovery confirmation: %w",
+			err,
+		)
+	}
+
+	return Recovery{
+		ArchivePath: ArchivePath,
+		Passphrase:  passphrase,
+	}, nil
+}
+
+func pendingRecovery(ctx context.Context) (Recovery, bool, error) {
+	archiveExists, err := sudoTest(ctx, "-s", ArchivePath)
+	if err != nil {
+		return Recovery{}, false, fmt.Errorf(
+			"check Secure Boot recovery archive: %w",
+			err,
+		)
+	}
+
+	passphraseExists, err := sudoTest(
+		ctx,
+		"-s",
+		RecoveryPassphrasePath,
+	)
+	if err != nil {
+		return Recovery{}, false, fmt.Errorf(
+			"check Secure Boot recovery passphrase checkpoint: %w",
+			err,
+		)
+	}
+
+	if !archiveExists || !passphraseExists {
+		return Recovery{}, false, nil
+	}
+
+	cmd := exec.CommandContext(
+		ctx,
+		"sudo", "cat",
+		RecoveryPassphrasePath,
+	)
+
+	out, err := cmd.Output()
+	if err != nil {
+		return Recovery{}, false, fmt.Errorf(
+			"read Secure Boot recovery passphrase checkpoint: %w",
+			err,
+		)
+	}
+
+	passphrase := strings.TrimSpace(string(out))
+	if passphrase == "" {
+		return Recovery{}, false, fmt.Errorf(
+			"Secure Boot recovery passphrase checkpoint is empty",
+		)
+	}
+
+	return Recovery{
+		ArchivePath: ArchivePath,
+		Passphrase:  passphrase,
+	}, true, nil
+}
+
+func RecoveryConfirmed(ctx context.Context) (bool, error) {
+	ok, err := sudoTest(
+		ctx,
+		"-f",
+		RecoveryConfirmedMarkerPath,
+	)
+	if err != nil {
+		return false, fmt.Errorf(
+			"check Secure Boot recovery confirmation: %w",
+			err,
+		)
+	}
+
+	return ok, nil
+}
+
+func MarkRecoveryConfirmed(ctx context.Context) error {
+	if err := run(
+		ctx,
+		"sudo", "install",
+		"-d", "-m", "0700",
+		"/var/lib/gjallarOS",
+	); err != nil {
+		return fmt.Errorf(
+			"create Secure Boot state directory: %w",
+			err,
+		)
+	}
+
+	// Write the completed checkpoint first. If power is lost immediately
+	// afterwards, the next installer run knows this gate was completed.
+	if err := run(
+		ctx,
+		"sudo", "install",
+		"-m", "0600",
+		"/dev/null",
+		RecoveryConfirmedMarkerPath,
+	); err != nil {
+		return fmt.Errorf(
+			"record Secure Boot recovery confirmation: %w",
+			err,
+		)
+	}
+
+	// The plaintext passphrase must not survive beyond confirmation.
+	if err := run(
+		ctx,
+		"sudo", "rm", "-f", "--",
+		RecoveryPassphrasePath,
+	); err != nil {
+		return fmt.Errorf(
+			"destroy temporary Secure Boot recovery passphrase checkpoint: %w",
+			err,
+		)
+	}
+
+	return nil
+}
+
+func sudoTest(ctx context.Context, args ...string) (bool, error) {
+	cmdArgs := append([]string{"test"}, args...)
+	cmd := exec.CommandContext(ctx, "sudo", cmdArgs...)
+
+	err := cmd.Run()
+	if err == nil {
+		return true, nil
+	}
+
+	var exitErr *exec.ExitError
+	if errors.As(err, &exitErr) && exitErr.ExitCode() == 1 {
+		return false, nil
+	}
+
+	return false, err
 }
 
 // VerifyAndArmEnrollment validates the installed boot chain and determines the

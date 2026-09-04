@@ -46,6 +46,8 @@ type state struct {
 	control          string
 }
 
+const installerSecureBootResumeMarker = "/var/lib/gjallarOS/installer-resume-after-secure-boot"
+
 func Run(ctx context.Context, args []string, in io.Reader, out, errOut io.Writer) int {
 	f := flag.NewFlagSet("gjallar-installer", flag.ContinueOnError)
 	f.SetOutput(errOut)
@@ -234,32 +236,19 @@ func Run(ctx context.Context, args []string, in io.Reader, out, errOut io.Writer
 			}
 
 			fmt.Fprintln(out, "OEM/factory-derived Secure Boot root detected; preparing machine-specific GjallarOS ownership.")
+
+			// Provision() creates a root-only temporary recovery
+			// checkpoint so an interrupted installer can resume with the
+			// same recovery archive/passphrase.
 			recovery, err := secureboot.Provision(ctx)
 			if err != nil {
 				return fail(errOut, err)
 			}
+			recovery.Passphrase = ""
+
 			if err := secureboot.RecordOwnership(ctx, "pending-enrollment"); err != nil {
-				recovery.Passphrase = ""
 				return fail(errOut, err)
 			}
-			if err := ui.ShowSecureBootRecovery(
-				ctx,
-				recovery.ArchivePath,
-				recovery.Passphrase,
-			); err != nil {
-				return fail(errOut, fmt.Errorf("display Secure Boot recovery material: %w", err))
-			}
-			yes, err := ui.Confirm(ctx, "Have you saved the Secure Boot recovery archive and passphrase?", false)
-			if err != nil || !yes {
-				recovery.Passphrase = ""
-				return fail(errOut, errors.New("Secure Boot recovery material was not confirmed saved"))
-			}
-			yes, err = ui.Confirm(ctx, "Are you absolutely sure the Secure Boot recovery material is saved offline?", false)
-			if err != nil || !yes {
-				recovery.Passphrase = ""
-				return fail(errOut, errors.New("Secure Boot recovery material was not confirmed twice"))
-			}
-			recovery.Passphrase = ""
 
 		case secureboot.StateSetupModeUnknown:
 			return fail(errOut, errors.New("firmware is already in Secure Boot Setup Mode but GjallarOS cannot prove that it initiated the transition; refusing automatic enrollment"))
@@ -290,114 +279,252 @@ func Run(ctx context.Context, args []string, in io.Reader, out, errOut io.Writer
 		if err := deploy.Apply(ctx, target); err != nil {
 			return fail(errOut, err)
 		}
-		if s.render.SecureBootEnable && !s.render.EndpointManagedDevice {
-			// FINAL SECURE BOOT RECOVERY GATE
-			//
-			// This intentionally runs immediately before firmware handoff.
-			// Existing sbctl keys are reused; they are NOT regenerated.
-			recovery, err := secureboot.Provision(ctx)
-			if err != nil {
-				return fail(
-					errOut,
-					fmt.Errorf("prepare Secure Boot recovery material: %w", err),
-				)
-			}
+	}
 
-			for {
-				if err := ui.ShowSecureBootRecovery(
-					ctx,
-					recovery.ArchivePath,
-					recovery.Passphrase,
-				); err != nil {
-					return fail(
-						errOut,
-						fmt.Errorf("display Secure Boot recovery material: %w", err),
-					)
-				}
+	// Secure Boot continuation is intentionally independent of runRebuild.
+	//
+	// -no-rebuild means "do not install another NixOS generation"; it must
+	// never mean "skip an already-started Secure Boot transaction".
+	if s.render.SecureBootEnable && !s.render.EndpointManagedDevice {
+		inspection, err := secureboot.Inspect(ctx)
+		if err != nil {
+			return fail(
+				errOut,
+				fmt.Errorf(
+					"inspect Secure Boot state before continuation: %w",
+					err,
+				),
+			)
+		}
 
-				saved, err := ui.Confirm(
-					ctx,
-					"Have you saved BOTH the Secure Boot recovery archive and passphrase?",
-					false,
-				)
-				if err != nil {
-					return fail(errOut, err)
-				}
+		needsRecoveryGate :=
+			inspection.State == secureboot.StateOEMFactoryDerived ||
+				inspection.State == secureboot.StatePendingEnrollment
 
-				if !saved {
-					fmt.Fprintln(
-						out,
-						"Recovery material not confirmed saved; showing it again.",
-					)
-					continue
-				}
-
-				savedAgain, err := ui.Confirm(
-					ctx,
-					"Are you absolutely sure the Secure Boot recovery material is saved offline?",
-					false,
-				)
-				if err != nil {
-					return fail(errOut, err)
-				}
-
-				if !savedAgain {
-					fmt.Fprintln(
-						out,
-						"Second confirmation declined; showing the recovery material again.",
-					)
-					continue
-				}
-
-				break
-			}
-
-			recovery.Passphrase = ""
-
-			next, err := secureboot.VerifyAndArmEnrollment(ctx)
+		if needsRecoveryGate {
+			confirmed, err := secureboot.RecoveryConfirmed(ctx)
 			if err != nil {
 				return fail(errOut, err)
 			}
 
-			switch next {
-			case secureboot.ContinuationNone:
-				fmt.Fprintln(out, "Secure Boot is active and the GjallarOS boot chain is verified.")
-				fmt.Fprintln(out, "GjallarOS installation complete.")
-				return 0
-
-			case secureboot.ContinuationEnable:
-				fmt.Fprintln(out, "GjallarOS Secure Boot ownership is already enrolled.")
-				fmt.Fprintln(out, "Only Secure Boot enforcement still needs to be enabled in firmware.")
-				if err := ui.SecureBootEnableHandoff(ctx); err != nil {
-					return fail(errOut, fmt.Errorf("Secure Boot enable handoff: %w", err))
+			if confirmed {
+				fmt.Fprintln(
+					out,
+					"Secure Boot recovery material was already confirmed saved; resuming provisioning.",
+				)
+			} else {
+				recovery, err := secureboot.Provision(ctx)
+				if err != nil {
+					return fail(
+						errOut,
+						fmt.Errorf(
+							"prepare Secure Boot recovery material: %w",
+							err,
+						),
+					)
 				}
 
-			case secureboot.ContinuationEnroll:
-				fmt.Fprintln(out, "Secure Boot ownership transfer armed and boot artifacts verified.")
-				if err := ui.SecureBootFirmwareHandoff(ctx); err != nil {
-					return fail(errOut, fmt.Errorf("Secure Boot firmware handoff: %w", err))
+				for {
+					if err := ui.ShowSecureBootRecovery(
+						ctx,
+						recovery.ArchivePath,
+						recovery.Passphrase,
+					); err != nil {
+						recovery.Passphrase = ""
+						return fail(
+							errOut,
+							fmt.Errorf(
+								"display Secure Boot recovery material: %w",
+								err,
+							),
+						)
+					}
+
+					saved, err := ui.Confirm(
+						ctx,
+						"Have you saved BOTH the Secure Boot recovery archive and passphrase?",
+						false,
+					)
+					if err != nil {
+						recovery.Passphrase = ""
+						return fail(errOut, err)
+					}
+
+					if !saved {
+						fmt.Fprintln(
+							out,
+							"Recovery material not confirmed saved; showing it again.",
+						)
+						continue
+					}
+
+					savedAgain, err := ui.Confirm(
+						ctx,
+						"Are you absolutely sure the Secure Boot recovery material is saved offline?",
+						false,
+					)
+					if err != nil {
+						recovery.Passphrase = ""
+						return fail(errOut, err)
+					}
+
+					if !savedAgain {
+						fmt.Fprintln(
+							out,
+							"Second confirmation declined; showing the recovery material again.",
+						)
+						continue
+					}
+
+					break
 				}
 
-			default:
-				return fail(errOut, fmt.Errorf("unknown Secure Boot continuation state %q", next))
+				recovery.Passphrase = ""
+
+				if err := secureboot.MarkRecoveryConfirmed(ctx); err != nil {
+					return fail(errOut, err)
+				}
+
+				fmt.Fprintln(
+					out,
+					"Secure Boot recovery checkpoint completed; future interrupted runs resume after this gate.",
+				)
+			}
+		}
+
+		next, err := secureboot.VerifyAndArmEnrollment(ctx)
+		if err != nil {
+			return fail(errOut, err)
+		}
+
+		switch next {
+		case secureboot.ContinuationNone:
+			fmt.Fprintln(
+				out,
+				"Secure Boot is active and the GjallarOS boot chain is verified.",
+			)
+			// Secure Boot is one installer stage, not the definition of
+			// installation completion. Continue into the normal final
+			// completion path below.
+
+		case secureboot.ContinuationEnable:
+			fmt.Fprintln(
+				out,
+				"GjallarOS Secure Boot ownership is already enrolled.",
+			)
+			fmt.Fprintln(
+				out,
+				"Only Secure Boot enforcement still needs to be enabled in firmware.",
+			)
+
+			if err := ui.SecureBootEnableHandoff(ctx); err != nil {
+				return fail(
+					errOut,
+					fmt.Errorf("Secure Boot enable handoff: %w", err),
+				)
 			}
 
-			fmt.Fprintln(out, "Secure Boot firmware instructions acknowledged.")
-			fmt.Fprintln(out, "Rebooting directly into firmware setup...")
+		case secureboot.ContinuationEnroll:
+			fmt.Fprintln(
+				out,
+				"Secure Boot ownership transfer armed and boot artifacts verified.",
+			)
 
-			if err := attached(ctx, "sudo", "systemctl", "reboot", "--firmware-setup"); err != nil {
-				return fail(errOut, fmt.Errorf("reboot into firmware setup: %w", err))
+			if err := ui.SecureBootFirmwareHandoff(ctx); err != nil {
+				return fail(
+					errOut,
+					fmt.Errorf("Secure Boot firmware handoff: %w", err),
+				)
 			}
-			return 0
-		} else if s.user.AutoReboot {
+
+		default:
+			return fail(
+				errOut,
+				fmt.Errorf(
+					"unknown Secure Boot continuation state %q",
+					next,
+				),
+			)
+		}
+
+		if err := attached(
+			ctx,
+			"sudo", "install",
+			"-d", "-m", "0700",
+			"/var/lib/gjallarOS",
+		); err != nil {
+			return fail(
+				errOut,
+				fmt.Errorf(
+					"create installer continuation directory: %w",
+					err,
+				),
+			)
+		}
+
+		if err := attached(
+			ctx,
+			"sudo", "install",
+			"-m", "0600",
+			"/dev/null",
+			installerSecureBootResumeMarker,
+		); err != nil {
+			return fail(
+				errOut,
+				fmt.Errorf(
+					"arm installer continuation across Secure Boot reboot: %w",
+					err,
+				),
+			)
+		}
+
+		fmt.Fprintln(
+			out,
+			"Installer continuation armed across Secure Boot reboot.",
+		)
+		fmt.Fprintln(
+			out,
+			"After Secure Boot is verified, GjallarOS will automatically run the final installer checks.",
+		)
+
+		fmt.Fprintln(
+			out,
+			"Secure Boot firmware instructions acknowledged.",
+		)
+		fmt.Fprintln(
+			out,
+			"Rebooting directly into firmware setup...",
+		)
+
+		if err := attached(
+			ctx,
+			"sudo", "systemctl",
+			"reboot", "--firmware-setup",
+		); err != nil {
+			return fail(
+				errOut,
+				fmt.Errorf("reboot into firmware setup: %w", err),
+			)
+		}
+
+		return 0
+	}
+
+	if runRebuild {
+		if s.user.AutoReboot {
 			_ = attached(ctx, "sudo", "systemctl", "reboot")
 		} else if !s.render.EndpointManagedDevice {
-			yes, _ := ui.Confirm(ctx, "Deployment complete. Reboot now?", false)
+			yes, _ := ui.Confirm(
+				ctx,
+				"Deployment complete. Reboot now?",
+				false,
+			)
 			if yes {
 				_ = attached(ctx, "sudo", "systemctl", "reboot")
 			}
 		}
 	}
+
 	fmt.Fprintln(out, "GjallarOS installation complete.")
 	return 0
 }
