@@ -38,7 +38,7 @@ type Settings struct {
 	TouchpadWorkspaceSwipe, ClamshellEnable, USBGuardEnable bool
 	Name, Email, GitHubUsername, DotfilesDir                string
 	WorkUserEnable                                          bool
-	WorkUsername, WorkUserPasswordFile                      string
+	WorkUsername, WorkUserPasswordFile, RootPasswordFile    string
 	DockerEnable, DebugFunctions                            bool
 	Shell                                                   string
 	Editors, Browsers                                       []string
@@ -90,6 +90,7 @@ func Render(s Settings) []byte {
 	boolean("workUserEnable", s.WorkUserEnable)
 	str("workUsername", s.WorkUsername)
 	str("workUserPasswordFile", s.WorkUserPasswordFile)
+	str("rootPasswordFile", s.RootPasswordFile)
 	boolean("dockerEnable", s.DockerEnable)
 	boolean("debugFunctions", s.DebugFunctions)
 	str("shell", s.Shell)
