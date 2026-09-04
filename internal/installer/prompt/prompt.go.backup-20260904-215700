@@ -209,46 +209,6 @@ Do not continue until you have saved both.
 	)
 }
 
-func (u UI) SecureBootEnableHandoff(ctx context.Context) error {
-	const instructions = `GJALLAROS SECURE BOOT
-FINAL FIRMWARE ACTION
-
-GjallarOS ownership is already enrolled.
-
-DO NOT clear PK, KEK, DB or DBX.
-DO NOT restore or erase Secure Boot keys.
-
-In Framework firmware:
-
-1. Enable Secure Boot.
-2. Save and exit.
-3. Boot GjallarOS.
-`
-
-	if err := u.secureTextDialog(
-		ctx,
-		"GjallarOS Secure Boot - Enable Secure Boot",
-		instructions,
-		"Continue",
-	); err != nil {
-		return err
-	}
-
-	understood, err := u.Confirm(
-		ctx,
-		"Enable Secure Boot without clearing or replacing any keys?",
-		false,
-	)
-	if err != nil {
-		return err
-	}
-	if !understood {
-		return fmt.Errorf("Secure Boot enable instructions were not acknowledged")
-	}
-
-	return nil
-}
-
 func (u UI) SecureBootFirmwareHandoff(ctx context.Context) error {
 	const instructions = `GJALLAROS SECURE BOOT
 FIRMWARE ACTION REQUIRED
@@ -256,22 +216,17 @@ FIRMWARE ACTION REQUIRED
 FIRST FIRMWARE VISIT
 
 1. Open Framework Secure Boot settings.
-2. Clear/delete ONLY the Platform Key (PK).
+2. Clear PK individually.
+3. Clear KEK individually.
+4. Clear DB individually.
 
 DO NOT:
 
-- clear KEK
-- clear DB
 - clear DBX
 - use "Erase All Secure Boot Settings"
 - enable Secure Boot yet
 
-KEK, DB and DBX must remain present.
-
-Clearing only PK enters UEFI Setup Mode while preserving the existing
-Framework/Microsoft trust databases.
-
-After clearing ONLY PK:
+After clearing PK, KEK and DB:
 
 - Save and exit firmware.
 - Leave Secure Boot disabled.
@@ -279,13 +234,12 @@ After clearing ONLY PK:
 
 GjallarOS will automatically:
 
-- verify that firmware is in Setup Mode
-- refuse enrollment if KEK, DB or DBX were cleared
+- detect Setup Mode
 - enroll the GjallarOS Platform Key
-- add the GjallarOS KEK and DB certificates
-- retain the existing Framework/Microsoft KEK and DB trust
+- retain Framework/Microsoft KEK trust
+- retain Framework/Microsoft DB trust
 - leave DBX untouched
-- verify the GjallarOS boot chain
+- verify the signed boot chain
 - reboot back into firmware
 
 SECOND FIRMWARE VISIT
@@ -293,60 +247,54 @@ SECOND FIRMWARE VISIT
 1. Enable Secure Boot.
 2. Save and exit.
 3. Boot GjallarOS.
-
-If the installer reports that firmware ownership is foreign or inconsistent,
-restore the firmware Secure Boot keys to factory defaults, leave Secure Boot
-disabled, boot GjallarOS, and rerun the installer.
 `
+
 	const explanation = `WHY THESE STEPS ARE REQUIRED
 
 PK
 
 The Platform Key controls ownership of the Secure Boot configuration.
 
-Removing only PK places UEFI into Setup Mode. This allows GjallarOS to install
-its own Platform Key without destroying the existing KEK, DB or DBX databases.
+Clearing PK allows the firmware to enter Setup Mode so GjallarOS can
+install its own Platform Key.
 
 
 KEK
 
-DO NOT CLEAR KEK.
+The Key Exchange Key database controls authorized updates to Secure Boot
+signature databases.
 
-GjallarOS adds its own KEK certificate while retaining the existing
-Framework/Microsoft KEK trust.
+GjallarOS installs its own KEK while retaining compatible
+Framework/Microsoft trust.
 
 
 DB
 
-DO NOT CLEAR DB.
+The DB contains certificates and hashes permitted to boot.
 
-GjallarOS adds its own signing certificate while retaining compatible
-Framework/Microsoft DB trust.
+GjallarOS installs its own signing certificate while retaining the
+Framework/Microsoft trust needed by compatible firmware and UEFI software.
 
 
 DBX
 
+DBX is the revoked-signature database.
+
 DO NOT CLEAR DBX.
 
-DBX contains revocations for known-bad or compromised boot software.
-
-
-LANZABOOTE EXTERNAL KERNEL
-
-Do not individually sign /boot/EFI/nixos/kernel-*.efi.
-
-The signed generation stub records the external kernel hash. Adding a separate
-signature changes the kernel bytes and causes "Kernel hash does not match".
+It contains revocations for known-bad or compromised boot software.
 
 
 WHY SECURE BOOT REMAINS DISABLED ON THE FIRST REBOOT
 
-GjallarOS still needs firmware Setup Mode to perform the ownership transfer.
+GjallarOS still needs firmware Setup Mode to enroll the prepared keys.
 
-After enrollment succeeds, GjallarOS automatically reboots back into firmware.
+After enrollment succeeds, GjallarOS automatically reboots back into
+firmware.
 
 Only on the SECOND firmware visit should Secure Boot be enabled.
 `
+
 	for {
 		if err := u.secureTextDialog(
 			ctx,

@@ -1,0 +1,144 @@
+{
+  lib,
+  pkgs,
+  settings,
+  ...
+}:
+if settings.frameworkEnable then
+  let
+    profile = builtins.fromJSON (builtins.readFile (./profiles + "/${settings.frameworkModel}.json"));
+    configJson = builtins.toJSON {
+      defaultStrategy = profile.defaultStrategy;
+      strategyOnDischarging = profile.strategyOnDischarging;
+      strategies = profile.strategies;
+    };
+    secureBootTool = pkgs.writeShellApplication {
+      name = "gjallar-secure-boot";
+      runtimeInputs = [
+        pkgs.sbctl
+        pkgs.systemd
+        pkgs.fwupd
+      ];
+      text = ''
+        set -euo pipefail
+
+        case "''${1:-status}" in
+          status)
+            bootctl status
+            printf '\n'
+            sudo sbctl status
+            printf '\nSigned boot artifacts:\n'
+            sudo sbctl verify
+            ;;
+          create-keys)
+            if [ -e /var/lib/sbctl/keys/db/db.key ]; then
+              printf 'Secure Boot keys already exist in /var/lib/sbctl.\n' >&2
+              exit 1
+            fi
+            printf 'Create machine-specific Secure Boot keys? Type CREATE: '
+            read -r answer
+            [ "$answer" = CREATE ] || exit 1
+            sudo sbctl create-keys
+            printf 'Keys created. Set secureBootEnable=true and rebuild before enrollment.\n'
+            ;;
+          enroll-framework)
+            printf '%s\n' \
+              'DANGER: firmware must already be in Secure Boot Setup Mode.' \
+              'Framework: delete PK, KEK, and DB entries individually.' \
+              'Do not use the firmware Erase All Secure Boot Settings action.' \
+              'This keeps Framework firmware-builtin keys for devices and fwupd.'
+            printf 'Type ENROLL to write keys into firmware: '
+            read -r answer
+            [ "$answer" = ENROLL ] || exit 1
+            sudo sbctl enroll-keys --firmware-builtin
+            sudo sbctl verify
+            ;;
+          arm-enrollment)
+            sudo sbctl verify
+            sudo install -d -m 0700 /var/lib/gjallarOS
+            sudo install -m 0600 /dev/null /var/lib/gjallarOS/secure-boot-enrollment-armed
+            printf 'Enrollment armed. Reboot into firmware setup and enter Setup Mode.\n'
+            ;;
+          firmware)
+            fwupdmgr get-devices
+            ;;
+          *)
+            printf '%s\n' \
+              'Usage: gjallar-secure-boot {status|create-keys|arm-enrollment|enroll-framework|firmware}'
+            exit 2
+            ;;
+        esac
+      '';
+    };
+  in
+  {
+    environment.etc."fw-fanctrl/config.json".text = configJson;
+    # Secure Boot key existence is validated/provisioned by the installer.
+    # Do not inspect /var/lib/sbctl with builtins.pathExists here: flake
+    # evaluation must not depend on mutable host filesystem state.
+
+    environment.systemPackages = [
+      pkgs.fw-fanctrl
+      pkgs.sbctl
+      secureBootTool
+    ];
+
+    boot.loader.grub.enable = lib.mkIf settings.secureBootEnable (lib.mkForce false);
+    boot.loader.systemd-boot.enable = lib.mkIf settings.secureBootEnable (lib.mkForce false);
+    boot.lanzaboote = lib.mkIf settings.secureBootEnable {
+      enable = true;
+      pkiBundle = "/var/lib/sbctl";
+      configurationLimit = 8;
+    };
+    systemd.services.gjallar-secure-boot-enroll = lib.mkIf settings.secureBootEnable {
+      description = "Enroll GjallarOS Secure Boot keys in firmware Setup Mode";
+      wantedBy = [ "multi-user.target" ];
+      after = [ "local-fs.target" ];
+      unitConfig.ConditionPathExists = "/var/lib/gjallarOS/secure-boot-enrollment-armed";
+      serviceConfig = {
+        Type = "oneshot";
+        UMask = "0077";
+      };
+      path = [ pkgs.sbctl pkgs.coreutils pkgs.gnugrep ];
+      script = ''
+        set -euo pipefail
+        export LC_ALL=C
+
+        status="$(sbctl status)"
+        if ! printf '%s\n' "$status" | grep -Eq 'Setup Mode:.*Enabled'; then
+          printf '%s\n' 'Enrollment remains armed: firmware is not in Setup Mode.' >&2
+          exit 0
+        fi
+
+        sbctl enroll-keys --firmware-builtin
+        sbctl verify
+        rm -f -- /var/lib/gjallarOS/secure-boot-enrollment-armed
+        printf '%s\n' 'GjallarOS Secure Boot keys enrolled and signed artifacts verified.'
+      '';
+    };
+    systemd.services.gjallar-framework-fan-curve = {
+      description = "Framework fan curve control";
+      wantedBy = [ "multi-user.target" ];
+      serviceConfig = {
+        Type = "simple";
+        Restart = "always";
+        RestartSec = "2s";
+        ExecStart = "${pkgs.fw-fanctrl}/bin/fw-fanctrl run --config /etc/fw-fanctrl/config.json --silent ${profile.defaultStrategy}";
+      };
+    };
+    systemd.services.gjallar-framework-battery-threshold = {
+      description = "Apply Framework battery charge thresholds";
+      wantedBy = [ "multi-user.target" ];
+      serviceConfig.Type = "oneshot";
+      script = ''
+        set -eu
+        for battery in /sys/class/power_supply/BAT*; do
+            [ -d "$battery" ] || continue
+            [ ! -w "$battery/charge_control_start_threshold" ] || printf '%s\n' ${toString profile.batteryStart} > "$battery/charge_control_start_threshold"
+            [ ! -w "$battery/charge_control_end_threshold" ] || printf '%s\n' ${toString profile.batteryEnd} > "$battery/charge_control_end_threshold"
+        done
+      '';
+    };
+  }
+else
+  { }

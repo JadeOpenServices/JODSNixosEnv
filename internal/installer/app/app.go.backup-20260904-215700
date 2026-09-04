@@ -354,32 +354,19 @@ func Run(ctx context.Context, args []string, in io.Reader, out, errOut io.Writer
 
 			recovery.Passphrase = ""
 
-			next, err := secureboot.VerifyAndArmEnrollment(ctx)
+			firmwareHandoff, err := secureboot.VerifyAndArmEnrollment(ctx)
 			if err != nil {
 				return fail(errOut, err)
 			}
-
-			switch next {
-			case secureboot.ContinuationNone:
-				fmt.Fprintln(out, "Secure Boot is active and the GjallarOS boot chain is verified.")
+			if !firmwareHandoff {
+				fmt.Fprintln(out, "Secure Boot is already active and signed artifacts are verified.")
 				fmt.Fprintln(out, "GjallarOS installation complete.")
 				return 0
+			}
+			fmt.Fprintln(out, "Secure Boot continuation armed and signed artifacts verified.")
 
-			case secureboot.ContinuationEnable:
-				fmt.Fprintln(out, "GjallarOS Secure Boot ownership is already enrolled.")
-				fmt.Fprintln(out, "Only Secure Boot enforcement still needs to be enabled in firmware.")
-				if err := ui.SecureBootEnableHandoff(ctx); err != nil {
-					return fail(errOut, fmt.Errorf("Secure Boot enable handoff: %w", err))
-				}
-
-			case secureboot.ContinuationEnroll:
-				fmt.Fprintln(out, "Secure Boot ownership transfer armed and boot artifacts verified.")
-				if err := ui.SecureBootFirmwareHandoff(ctx); err != nil {
-					return fail(errOut, fmt.Errorf("Secure Boot firmware handoff: %w", err))
-				}
-
-			default:
-				return fail(errOut, fmt.Errorf("unknown Secure Boot continuation state %q", next))
+			if err := ui.SecureBootFirmwareHandoff(ctx); err != nil {
+				return fail(errOut, fmt.Errorf("Secure Boot firmware handoff: %w", err))
 			}
 
 			fmt.Fprintln(out, "Secure Boot firmware instructions acknowledged.")

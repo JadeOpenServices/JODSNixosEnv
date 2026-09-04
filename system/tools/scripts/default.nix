@@ -4,25 +4,29 @@ let
   checkInstaller = pkgs.writeShellScriptBin "check-installer" ''
     exec ${gjallarctl}/bin/gjallarctl check --repo ${lib.escapeShellArg settings.dotfilesDir} "$@"
   '';
+  rebuild = pkgs.writeShellScriptBin "rebuild" ''
+    exec ${gjallarctl}/bin/gjallarctl rebuild \
+      --repo ${lib.escapeShellArg settings.dotfilesDir} \
+      --host ${lib.escapeShellArg settings.hostname} \
+      "$@"
+  '';
+  goCommand = name: command: pkgs.writeShellScriptBin name ''
+    exec ${gjallarctl}/bin/gjallarctl ${command} "$@"
+  '';
 
-  replaceSettings =
-    file:
-    builtins.replaceStrings
-      [ "__REPO_ROOT__" "__HOSTNAME__" ]
-      [ settings.dotfilesDir settings.hostname ]
-      (builtins.readFile file);
 in
 {
   environment.systemPackages = [
-    (pkgs.writeShellScriptBin "helpme" (builtins.readFile ./help.sh))
-    (pkgs.writeShellScriptBin "rebuild" (replaceSettings ./rebuild.sh))
-    (pkgs.writeShellScriptBin "update" (replaceSettings ./update.sh))
-    (pkgs.writeShellScriptBin "cleanup" (builtins.readFile ./cleanup.sh))
-    (pkgs.writeShellScriptBin "cleanup-old-generations" (
-      builtins.readFile ../functions/cleanup-old-generations.sh
-    ))
-    (pkgs.writeShellScriptBin "thermal-status" (builtins.readFile ./thermal-status.sh))
-    (pkgs.writeShellScriptBin "thermal-test" (builtins.readFile ./thermal-test.sh))
+    (goCommand "helpme" "helpme")
+    rebuild
+    (pkgs.writeShellScriptBin "update" ''
+      export GJALLAROS_REPO=${lib.escapeShellArg settings.dotfilesDir}
+      exec ${gjallarctl}/bin/gjallarctl update "$@"
+    '')
+    (goCommand "cleanup" "cleanup")
+    (goCommand "cleanup-old-generations" "cleanup-old-generations")
+    (goCommand "thermal-status" "thermal-status")
+    (goCommand "thermal-test" "thermal-test")
     gjallarctl
     checkInstaller
     pkgs.yad
