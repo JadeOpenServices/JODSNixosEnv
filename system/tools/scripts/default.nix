@@ -1,5 +1,10 @@
-{ pkgs, settings, ... }:
+{ pkgs, lib, settings, ... }:
 let
+  gjallarctl = pkgs.callPackage ../../../pkgs/gjallarctl { };
+  checkInstaller = pkgs.writeShellScriptBin "check-installer" ''
+    exec ${gjallarctl}/bin/gjallarctl check --repo ${lib.escapeShellArg settings.dotfilesDir} "$@"
+  '';
+
   replaceSettings =
     file:
     builtins.replaceStrings
@@ -18,7 +23,8 @@ in
     ))
     (pkgs.writeShellScriptBin "thermal-status" (builtins.readFile ./thermal-status.sh))
     (pkgs.writeShellScriptBin "thermal-test" (builtins.readFile ./thermal-test.sh))
-    (pkgs.writeShellScriptBin "check-installer" (builtins.readFile ./check-installer.sh))
+    gjallarctl
+    checkInstaller
     pkgs.yad
   ];
 }
