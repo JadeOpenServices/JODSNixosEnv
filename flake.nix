@@ -132,6 +132,8 @@
       };
     in
     {
+      packages.${system}.gjallarctl = pkgs.callPackage ./pkgs/gjallarctl { };
+
       nixosConfigurations = {
         ${settings.hostname} = nixpkgs.lib.nixosSystem {
           modules = [
