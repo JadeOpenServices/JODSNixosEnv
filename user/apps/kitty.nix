@@ -30,9 +30,26 @@ in
     api.nvim_win_set_cursor(0, {api.nvim_buf_line_count(0), 0})
   '';
 
+  # Noctalia replaces this file whenever its palette changes.  The fallback
+  # prevents Kitty reporting a missing include during the first login.
+  home.activation.gjallarKittyNoctaliaFallback = lib.hm.dag.entryAfter [ "writeBoundary" ] ''
+    theme_file="$HOME/.config/kitty/noctalia.conf"
+    if [ ! -e "$theme_file" ]; then
+      cat >"$theme_file" <<'EOF'
+foreground #${config.lib.stylix.colors.base05}
+background #${config.lib.stylix.colors.base00}
+cursor #${config.lib.stylix.colors.base0D}
+selection_background #${config.lib.stylix.colors.base02}
+EOF
+    fi
+  '';
+
   programs.kitty = {
     enable = true;
     shellIntegration.enableZshIntegration = true;
+    extraConfig = ''
+      include ~/.config/kitty/noctalia.conf
+    '';
     settings = {
       active_tab_font_style = "bold";
       bold_font = "auto";

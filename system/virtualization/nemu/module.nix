@@ -145,12 +145,12 @@ in
     users.users = mapAttrs' (
       user: _:
       nameValuePair "${user}" {
-        extraGroups = [
-          "kvm"
-        ]
-        ++ optional (isString cfg.vhostNetGroup) cfg.vhostNetGroup
-        ++ optional (isString cfg.macvtapGroup) cfg.macvtapGroup
-        ++ optional (isString cfg.usbGroup) cfg.usbGroup;
+        extraGroups = unique (
+          [ "kvm" ]
+          ++ optional (isString cfg.vhostNetGroup) cfg.vhostNetGroup
+          ++ optional (isString cfg.macvtapGroup) cfg.macvtapGroup
+          ++ optional (isString cfg.usbGroup) cfg.usbGroup
+        );
       }
     ) cfg.users;
 

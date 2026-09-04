@@ -4,10 +4,12 @@ configure_work_user_password() {
     cfg_work_user_password_file=""
     [[ "${cfg_work_user_enable:-false}" == true ]] || return 0
     [[ -t 0 && -t 1 ]] || die 'The work-account password must be set from a terminal.'
+    [[ "$cfg_work_username" =~ ^[a-z_][a-z0-9_-]*$ ]] || \
+        die "Invalid work-account username: $cfg_work_username"
 
     password_file="/var/lib/gjallarOS/passwords/${cfg_work_username}.hash"
-    require_command mkpasswd
     require_command sudo
+    sudo -v
 
     if sudo test -s "$password_file"; then
         cfg_work_user_password_file="$password_file"
@@ -22,7 +24,12 @@ configure_work_user_password() {
         [[ -n "$password" ]] || { say 'Password must not be empty.'; continue; }
         [[ "$password" == "$confirmation" ]] || { say 'Passwords do not match.'; continue; }
 
-        password_hash="$(printf '%s' "$password" | mkpasswd --method=yescrypt --stdin)"
+        if command -v mkpasswd >/dev/null 2>&1; then
+            password_hash="$(printf '%s' "$password" | mkpasswd --method=yescrypt --stdin)"
+        else
+            require_command openssl
+            password_hash="$(printf '%s' "$password" | openssl passwd -6 -stdin)"
+        fi
         unset password confirmation
         sudo install -d -m 0700 /var/lib/gjallarOS/passwords
         printf '%s\n' "$password_hash" | \
