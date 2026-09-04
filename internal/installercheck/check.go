@@ -252,7 +252,7 @@ func checkRequiredFiles(r *Report, root string) {
 		"cmd/gjallar-installer/main.go",
 		"internal/installer/app/app.go",
 		"system/apps/ollama.nix",
-		"system/tools/scripts/default.nix",
+		"system/tools/commands/default.nix",
 	} {
 		if info, err := os.Stat(filepath.Join(root, relative)); err != nil || info.IsDir() {
 			r.Findings = append(r.Findings, Finding{Error, fmt.Sprintf("required file missing: %s", relative)})
@@ -263,7 +263,7 @@ func checkRequiredFiles(r *Report, root string) {
 }
 
 func checkRegistration(r *Report, root string) {
-	for _, relative := range []string{"system/tools/scripts/default.nix", "system/tools/scripts/help.sh"} {
+	for _, relative := range []string{"system/tools/commands/default.nix"} {
 		contents, err := os.ReadFile(filepath.Join(root, relative))
 		if err != nil {
 			continue
