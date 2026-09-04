@@ -60,11 +60,14 @@ print_status() {
     local max
 
     width="$(terminal_width)"
-    max=$((width - 1))
+    # Leave a safety margin. Bash counts characters while terminals render
+    # cells; the margin prevents an auto-wrap even with unusual glyph widths.
+    max=$((width - 4))
+    ((max > 0)) || max=1
 
     # Move to the beginning of the quote line, erase it completely,
     # then print a version guaranteed not to reach the right margin.
-    printf '\r\033[2K%s' "${text:0:max}"
+    printf '\r\033[2K\033[1G%s' "${text:0:max}"
 }
 
 cleanup() {
@@ -149,7 +152,9 @@ printf 'Rebuilding NixOS for %s\n' "$host"
         minutes=$((elapsed / 60))
         seconds=$((elapsed % 60))
 
-        line="⏱ $(printf '%02d:%02d' "$minutes" "$seconds")  ${messages[index]}"
+        # Keep the animated line ASCII-only. Terminal cell width now matches
+        # Bash's truncation count, so narrow terminals cannot auto-wrap it.
+        line="[$(printf '%02d:%02d' "$minutes" "$seconds")]  ${messages[index]}"
 
         print_status "$line"
 

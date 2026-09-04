@@ -17,6 +17,7 @@ buildGoModule {
       ../../internal/hardware
       ../../internal/input
       ../../internal/installercheck
+      ../../internal/installer
       ../../internal/preset
     ];
   };
