@@ -1,8 +1,8 @@
 # GjallarOS installer architecture
 
-The installer is a typed Go application. `scripts/installation/install.sh` is
-only a compatibility launcher; inactive historical adapters live under
-`scripts/installation/legacy-functions/`.
+The installer is a typed Go application. `scripts/installation/install.sh`
+only builds and launches it with `nix build`; it never opens a temporary Nix
+environment. Persistent prerequisite installation remains owned by Go.
 
 ## Layout
 
@@ -20,8 +20,8 @@ internal/installer/
 
 ## Module contract
 
-Every module has a narrow input/output type, unit tests, and one owner. A
-No module executes a shell. Privileged action packages must validate their
+Every module has a narrow input/output type, unit tests, and one owner. No
+module executes a shell. Privileged action packages must validate their
 target, use fixed argument vectors and atomic
 writes, preserve an existing backup where appropriate, and return an error
 rather than continuing after a failed command.

@@ -1,4 +1,40 @@
-{ config, pkgs, ... }:
+{ pkgs, ... }:
+let
+  enrollment = pkgs.writeShellScript "gjallar-fingerprint-enroll" ''
+    set -eu
+    marker="$HOME/.local/state/gjallar/fingerprint-enrollment-seen"
+    mkdir -p "$(dirname "$marker")"
+    [ ! -e "$marker" ] || exit 0
+
+    if ! ${pkgs.fprintd}/bin/fprintd-list "$USER" >/dev/null 2>&1; then
+      printf 'No supported fingerprint reader was found.\n'
+      touch "$marker"
+      printf 'Press Enter to close.\n'
+      read -r _
+      exit 0
+    fi
+
+    printf 'Set up a fingerprint for login and sudo? [Y/n] '
+    read -r answer
+    case "$answer" in
+      n|N|no|NO|No) touch "$marker"; exit 0 ;;
+    esac
+
+    if ${pkgs.fprintd}/bin/fprintd-enroll "$USER"; then
+      touch "$marker"
+      printf '\nFingerprint enrolled. Your password remains available.\n'
+    else
+      printf '\nEnrollment failed. This prompt will return next login.\n' >&2
+    fi
+    printf 'Press Enter to close.\n'
+    read -r _
+  '';
+  launcher = pkgs.writeShellScript "gjallar-fingerprint-enroll-launcher" ''
+    marker="$HOME/.local/state/gjallar/fingerprint-enrollment-seen"
+    [ ! -e "$marker" ] || exit 0
+    exec ${pkgs.kitty}/bin/kitty --title 'GjallarOS fingerprint setup' -e ${enrollment}
+  '';
+in
 {
   home.packages = [
     pkgs.fprintd
@@ -8,27 +44,14 @@
     Unit = {
       Description = "Offer first-login fingerprint enrollment";
       After = [ "graphical-session.target" ];
-      PartOf = [ "graphical-session.target" ];
+      Wants = [ "graphical-session.target" ];
     };
     Service = {
       Type = "oneshot";
-      ExecStart = pkgs.writeShellScript "gjallar-fingerprint-enroll" ''
-        set -eu
-        marker="$HOME/.config/gjallar/fingerprint-enrollment-seen"
-        [ -e "$marker" ] && exit 0
-        mkdir -p "$(dirname "$marker")"
-        if ! ${pkgs.fprintd}/bin/fprintd-list "$USER" >/dev/null 2>&1; then
-          touch "$marker"
-          exit 0
-        fi
-        if ${pkgs.yad}/bin/yad --question --title='Fingerprint setup' --text='Set up a fingerprint for faster login?'; then
-          ${pkgs.fprintd}/bin/fprintd-enroll || true
-        fi
-        touch "$marker"
-      '';
+      ExecStart = launcher;
     };
     Install = {
-      WantedBy = [ "graphical-session.target" ];
+      WantedBy = [ "default.target" ];
     };
   };
 }

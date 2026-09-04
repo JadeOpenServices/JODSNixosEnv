@@ -53,6 +53,11 @@ type User struct {
 	NemuEnable             bool     `json:"nemuEnable"`
 	NemuGPUPassthrough     bool     `json:"nemuGpuPassthrough"`
 	LUKSTPM2Enable         bool     `json:"luksTpm2Enable"`
+	RecoveryEnable         bool     `json:"recoveryEnable"`
+	JODSPrebootLockEnable  bool     `json:"jodsPrebootLockEnable"`
+	SecureBootEnable       bool     `json:"secureBootEnable"`
+	SecureBootPrompt       bool     `json:"secureBootPrompt"`
+	EndpointManagedDevice  bool     `json:"endpointManagedDevice"`
 	AutoReboot             bool     `json:"autoReboot"`
 	RunUpdateChecks        bool     `json:"runUpdateChecks"`
 	WriteConfig            bool     `json:"writeConfig"`
