@@ -1,0 +1,353 @@
+package prompt
+
+import (
+	"bufio"
+	"context"
+	"errors"
+	"fmt"
+	"io"
+	"os"
+	"os/exec"
+	"strconv"
+	"strings"
+)
+
+var ErrCancelled = errors.New("prompt cancelled")
+
+type UI struct {
+	Reader *bufio.Reader
+	Out    io.Writer
+	GTK    bool
+}
+
+func New(in io.Reader, out io.Writer) UI {
+	_, zenity := exec.LookPath("zenity")
+	gtk := zenity == nil && (os.Getenv("DISPLAY") != "" || os.Getenv("WAYLAND_DISPLAY") != "") && os.Getenv("SSH_CONNECTION") == ""
+	return UI{bufio.NewReader(in), out, gtk}
+}
+
+func (u UI) Confirm(ctx context.Context, message string, defaultYes bool) (bool, error) {
+	if u.GTK {
+		args := []string{"--question", "--title=GjallarOS installer", "--text=" + message, "--ok-label=Yes", "--cancel-label=No"}
+		err := exec.CommandContext(ctx, "zenity", args...).Run()
+		if err == nil {
+			return true, nil
+		}
+		if exit, ok := err.(*exec.ExitError); ok && exit.ExitCode() == 1 {
+			return false, nil
+		}
+		return false, ErrCancelled
+	}
+	suffix := " [y/N] "
+	if defaultYes {
+		suffix = " [Y/n] "
+	}
+	fmt.Fprint(u.Out, message+suffix)
+	line, err := u.Reader.ReadString('\n')
+	if err != nil {
+		return false, err
+	}
+	value := strings.ToLower(strings.TrimSpace(line))
+	if value == "" {
+		return defaultYes, nil
+	}
+	return value == "y" || value == "yes", nil
+}
+
+// SecureBootFirmwareHandoff presents the security-sensitive firmware
+// ownership-transfer instructions as GTK dialogs when GTK/Zenity is
+// available. The user must explicitly understand the instructions and then
+// decline another review before the installer may reboot into firmware.
+func (u UI) SecureBootFirmwareHandoff(ctx context.Context) error {
+	const instructions = `GjallarOS Secure Boot — Firmware Action Required
+
+GjallarOS has prepared and signed the new Secure Boot configuration.
+
+In Framework firmware setup:
+
+1. Open the Secure Boot settings.
+
+2. Clear PK individually.
+
+3. Clear KEK individually.
+
+4. Clear DB individually.
+
+IMPORTANT:
+
+• DO NOT clear DBX.
+• DO NOT use "Erase All Secure Boot Settings".
+• DO NOT enable Secure Boot yet.
+
+After clearing PK, KEK and DB:
+
+• Save the firmware configuration.
+• Leave Secure Boot disabled.
+• Boot GjallarOS normally.
+
+GjallarOS will then automatically:
+
+• detect UEFI Setup Mode
+• install the GjallarOS Platform Key
+• retain Framework/Microsoft KEK and DB trust
+• leave DBX untouched
+• verify the signed boot chain
+• reboot back into firmware
+
+On the SECOND firmware visit:
+
+• Enable Secure Boot
+• Save
+• Boot GjallarOS
+
+Do you understand these firmware instructions?`
+
+	const explanation = `Why these steps matter
+
+PK — Platform Key
+This is the root owner of the Secure Boot configuration.
+Clearing it allows the firmware to enter Setup Mode so GjallarOS can become
+the new Secure Boot owner.
+
+KEK — Key Exchange Key database
+GjallarOS replaces the active KEK database with its own key while retaining
+the required Framework/Microsoft firmware trust.
+
+DB — Allowed-signature database
+GjallarOS installs its own signing certificate while retaining the
+Framework/Microsoft certificates required for compatible firmware and
+UEFI components.
+
+DBX — Revoked-signature database
+DO NOT CLEAR THIS.
+
+DBX contains revoked and known-bad signatures. Removing it would discard
+important Secure Boot revocation protections and is not required for
+GjallarOS ownership.
+
+Also DO NOT choose "Erase All Secure Boot Settings".
+Use the individual PK, KEK and DB clear actions only.
+
+Secure Boot must remain DISABLED during the first reboot because GjallarOS
+still needs to enroll its prepared keys while the firmware is in Setup Mode.
+
+After that enrollment succeeds, GjallarOS automatically sends you back into
+firmware. Only then should Secure Boot be enabled.`
+
+	for {
+		var understood bool
+		var err error
+
+		if u.GTK {
+			args := []string{
+				"--question",
+				"--title=GjallarOS Secure Boot",
+				"--width=720",
+				"--text=" + instructions,
+				"--ok-label=Yes, I understand",
+				"--cancel-label=No",
+			}
+
+			err = exec.CommandContext(ctx, "zenity", args...).Run()
+
+			switch {
+			case err == nil:
+				understood = true
+
+			default:
+				if exit, ok := err.(*exec.ExitError); ok && exit.ExitCode() == 1 {
+					understood = false
+				} else {
+					return fmt.Errorf("Secure Boot GTK instructions: %w", ErrCancelled)
+				}
+			}
+		} else {
+			// Keep a safe terminal fallback for non-graphical provisioning.
+			fmt.Fprintln(u.Out)
+			fmt.Fprintln(u.Out, instructions)
+
+			understood, err = u.Confirm(
+				ctx,
+				"Do you understand these firmware instructions?",
+				false,
+			)
+			if err != nil {
+				return err
+			}
+		}
+
+		if !understood {
+			if u.GTK {
+				err := exec.CommandContext(
+					ctx,
+					"zenity",
+					"--info",
+					"--title=GjallarOS Secure Boot — Explanation",
+					"--width=720",
+					"--text="+explanation,
+					"--ok-label=Back to instructions",
+				).Run()
+				if err != nil {
+					return fmt.Errorf("Secure Boot GTK explanation: %w", ErrCancelled)
+				}
+			} else {
+				fmt.Fprintln(u.Out)
+				fmt.Fprintln(u.Out, explanation)
+				fmt.Fprintln(u.Out)
+			}
+
+			// They said they did not understand, so always return to the
+			// original instructions after giving the expanded explanation.
+			continue
+		}
+
+		var showAgain bool
+
+		if u.GTK {
+			err := exec.CommandContext(
+				ctx,
+				"zenity",
+				"--question",
+				"--title=GjallarOS Secure Boot",
+				"--width=520",
+				"--text=Would you like to see the previous Secure Boot instructions again before rebooting into firmware?",
+				"--ok-label=Yes, show them again",
+				"--cancel-label=No, continue",
+			).Run()
+
+			switch {
+			case err == nil:
+				showAgain = true
+
+			default:
+				if exit, ok := err.(*exec.ExitError); ok && exit.ExitCode() == 1 {
+					showAgain = false
+				} else {
+					return fmt.Errorf("Secure Boot GTK review confirmation: %w", ErrCancelled)
+				}
+			}
+		} else {
+			var err error
+			showAgain, err = u.Confirm(
+				ctx,
+				"Would you like to see the previous Secure Boot instructions again?",
+				false,
+			)
+			if err != nil {
+				return err
+			}
+		}
+
+		if showAgain {
+			continue
+		}
+
+		return nil
+	}
+}
+
+func (u UI) Value(ctx context.Context, label, def string) (string, error) {
+	if u.GTK {
+		out, err := exec.CommandContext(ctx, "zenity", "--entry", "--title=GjallarOS installer", "--text="+label, "--entry-text="+def).Output()
+		if err != nil {
+			return "", ErrCancelled
+		}
+		return strings.TrimSpace(string(out)), nil
+	}
+	fmt.Fprintf(u.Out, "%s [%s]: ", label, def)
+	line, err := u.Reader.ReadString('\n')
+	if err != nil {
+		return "", err
+	}
+	line = strings.TrimSpace(line)
+	if line == "" {
+		line = def
+	}
+	return line, nil
+}
+
+func (u UI) Choice(ctx context.Context, label, def string, options []string) (string, error) {
+	if len(options) == 0 {
+		return "", fmt.Errorf("no options for %s", label)
+	}
+	if u.GTK {
+		args := []string{"--list", "--radiolist", "--title=GjallarOS installer", "--text=" + label, "--column=Selected", "--column=Value"}
+		for _, v := range options {
+			args = append(args, strconv.FormatBool(v == def), v)
+		}
+		out, err := exec.CommandContext(ctx, "zenity", args...).Output()
+		if err != nil {
+			return "", ErrCancelled
+		}
+		value := strings.TrimSpace(string(out))
+		if value == "" {
+			return "", ErrCancelled
+		}
+		return value, nil
+	}
+	for i, v := range options {
+		fmt.Fprintf(u.Out, "  %d) %s\n", i+1, v)
+	}
+	for {
+		value, err := u.Value(ctx, label, def)
+		if err != nil {
+			return "", err
+		}
+		for _, candidate := range options {
+			if value == candidate {
+				return value, nil
+			}
+		}
+		if n, e := strconv.Atoi(value); e == nil && n > 0 && n <= len(options) {
+			return options[n-1], nil
+		}
+		fmt.Fprintln(u.Out, "Choose one listed value.")
+	}
+}
+
+func (u UI) Multi(ctx context.Context, label string, defaults, options []string) ([]string, error) {
+	selected := map[string]bool{}
+	for _, v := range defaults {
+		selected[v] = true
+	}
+	if u.GTK {
+		args := []string{"--list", "--checklist", "--title=GjallarOS installer", "--text=" + label, "--separator=\n", "--column=Selected", "--column=Value"}
+		for _, v := range options {
+			args = append(args, strconv.FormatBool(selected[v]), v)
+		}
+		out, err := exec.CommandContext(ctx, "zenity", args...).Output()
+		if err != nil {
+			return nil, ErrCancelled
+		}
+		values := strings.Fields(string(out))
+		if len(values) == 0 {
+			return nil, fmt.Errorf("select at least one value")
+		}
+		return values, nil
+	}
+	fmt.Fprintf(u.Out, "%s (comma-separated) [%s]: ", label, strings.Join(defaults, ","))
+	line, err := u.Reader.ReadString('\n')
+	if err != nil {
+		return nil, err
+	}
+	line = strings.TrimSpace(line)
+	if line == "" {
+		return defaults, nil
+	}
+	allowed := map[string]bool{}
+	for _, v := range options {
+		allowed[v] = true
+	}
+	values := []string{}
+	for _, v := range strings.Split(line, ",") {
+		v = strings.TrimSpace(v)
+		if !allowed[v] {
+			return nil, fmt.Errorf("unsupported selection %q", v)
+		}
+		values = append(values, v)
+	}
+	if len(values) == 0 {
+		return nil, fmt.Errorf("select at least one value")
+	}
+	return values, nil
+}

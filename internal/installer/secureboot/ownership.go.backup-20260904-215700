@@ -1,0 +1,406 @@
+package secureboot
+
+import (
+	"bytes"
+	"context"
+	"crypto/sha256"
+	"encoding/hex"
+	"encoding/json"
+	"encoding/pem"
+	"fmt"
+	"os"
+	"os/exec"
+	"path/filepath"
+	"strings"
+	"time"
+)
+
+const OwnershipPath = "/var/lib/gjallarOS/secure-boot/ownership.json"
+
+type State string
+
+const (
+	StateOEMFactoryDerived State = "oem-factory-derived"
+	StateGjallarManaged    State = "gjallar-managed"
+	StatePendingEnrollment State = "gjallar-pending-enrollment"
+	StateSetupModeUnknown  State = "setup-mode-unknown"
+	StateForeignManaged    State = "foreign-managed"
+	StateInconsistent      State = "inconsistent"
+)
+
+type Inspection struct {
+	State       State
+	SetupMode   bool
+	SecureBoot  bool
+	Recorded    bool
+	OwnerGUID   string
+	Description string
+}
+
+type ownershipRecord struct {
+	Schema         int    `json:"schema"`
+	Manager        string `json:"manager"`
+	Stage          string `json:"stage"`
+	SbctlOwnerGUID string `json:"sbctlOwnerGuid"`
+	PKSHA256       string `json:"pkSha256"`
+	KEKSHA256      string `json:"kekSha256"`
+	DbSHA256       string `json:"dbSha256"`
+	UpdatedAt      string `json:"updatedAt"`
+}
+
+type localKeys struct {
+	ownerGUID string
+	pkDER     []byte
+	kekDER    []byte
+	dbDER     []byte
+	pkHash    string
+	kekHash   string
+	dbHash    string
+}
+
+func Inspect(ctx context.Context) (Inspection, error) {
+	setupMode, err := efivarBool("SetupMode")
+	if err != nil {
+		return Inspection{}, fmt.Errorf("read UEFI SetupMode: %w", err)
+	}
+
+	secureBoot, err := efivarBool("SecureBoot")
+	if err != nil {
+		return Inspection{}, fmt.Errorf("read UEFI SecureBoot: %w", err)
+	}
+
+	record, recorded, err := readOwnership(ctx)
+	if err != nil {
+		return Inspection{}, err
+	}
+
+	keys, haveKeys, err := readLocalKeys(ctx)
+	if err != nil {
+		return Inspection{}, err
+	}
+
+	recordValid := false
+	if recorded && haveKeys {
+		recordValid =
+			record.Schema == 1 &&
+				record.Manager == "gjallarOS" &&
+				record.SbctlOwnerGUID == keys.ownerGUID &&
+				record.PKSHA256 == keys.pkHash &&
+				record.KEKSHA256 == keys.kekHash &&
+				record.DbSHA256 == keys.dbHash
+	}
+
+	if recorded && !recordValid {
+		return Inspection{
+			State:       StateInconsistent,
+			SetupMode:   setupMode,
+			SecureBoot:  secureBoot,
+			Recorded:    true,
+			Description: "GjallarOS ownership metadata exists but does not match the current local sbctl key set.",
+		}, nil
+	}
+
+	if setupMode {
+		if recordValid {
+			return Inspection{
+				State:       StatePendingEnrollment,
+				SetupMode:   true,
+				SecureBoot:  secureBoot,
+				Recorded:    true,
+				OwnerGUID:   keys.ownerGUID,
+				Description: "Firmware is in Setup Mode and the pending GjallarOS ownership record matches the local key set.",
+			}, nil
+		}
+
+		return Inspection{
+			State:       StateSetupModeUnknown,
+			SetupMode:   true,
+			SecureBoot:  secureBoot,
+			Recorded:    recorded,
+			Description: "Firmware is already in Setup Mode without a verified GjallarOS pending-ownership record.",
+		}, nil
+	}
+
+	pk, pkPresent, err := efivarPayload("PK")
+	if err != nil {
+		return Inspection{}, err
+	}
+	kek, _, err := efivarPayload("KEK")
+	if err != nil {
+		return Inspection{}, err
+	}
+	db, _, err := efivarPayload("db")
+	if err != nil {
+		return Inspection{}, err
+	}
+
+	// A legacy GjallarOS/sbctl installation may predate ownership.json.
+	// If the exact local PK, KEK and db certificates are already enrolled,
+	// the machine is using this local sbctl key hierarchy and can be adopted
+	// into the explicit GjallarOS ownership record without rotating keys.
+	if haveKeys &&
+		pkPresent &&
+		bytes.Contains(pk, keys.pkDER) &&
+		bytes.Contains(kek, keys.kekDER) &&
+		bytes.Contains(db, keys.dbDER) {
+		return Inspection{
+			State:       StateGjallarManaged,
+			SetupMode:   false,
+			SecureBoot:  secureBoot,
+			Recorded:    recorded,
+			OwnerGUID:   keys.ownerGUID,
+			Description: "The active PK/KEK/db contain the current GjallarOS sbctl certificates.",
+		}, nil
+	}
+
+	// A valid pending record plus an unchanged OEM PK means GjallarOS has
+	// prepared its keys but firmware ownership has not been transferred yet.
+	if recordValid {
+		return Inspection{
+			State:       StatePendingEnrollment,
+			SetupMode:   false,
+			SecureBoot:  secureBoot,
+			Recorded:    true,
+			OwnerGUID:   keys.ownerGUID,
+			Description: "GjallarOS keys are prepared and recorded, but the active firmware PK has not yet been replaced.",
+		}, nil
+	}
+
+	// The PK is the root of the Secure Boot hierarchy.  Microsoft/Framework
+	// may legitimately update KEK/db/dbx over time, so factory-derived state
+	// is deliberately based on the active PK matching PKDefault rather than
+	// requiring byte-identical KEK/db databases.
+	if pkPresent {
+		pkDefault, defaultPresent, err := efivarPayload("PKDefault")
+		if err != nil {
+			return Inspection{}, err
+		}
+		if defaultPresent && bytes.Equal(pk, pkDefault) {
+			return Inspection{
+				State:       StateOEMFactoryDerived,
+				SetupMode:   false,
+				SecureBoot:  secureBoot,
+				Recorded:    false,
+				Description: "The active Platform Key exactly matches the firmware PKDefault; KEK/db updates do not change OEM-root classification.",
+			}, nil
+		}
+	}
+
+	return Inspection{
+		State:       StateForeignManaged,
+		SetupMode:   false,
+		SecureBoot:  secureBoot,
+		Recorded:    recorded,
+		Description: "The active Secure Boot hierarchy is neither the firmware default PK nor the current GjallarOS key hierarchy.",
+	}, nil
+}
+
+func RecordOwnership(ctx context.Context, stage string) error {
+	keys, ok, err := readLocalKeys(ctx)
+	if err != nil {
+		return err
+	}
+	if !ok {
+		return fmt.Errorf("cannot record GjallarOS Secure Boot ownership: sbctl keys are incomplete")
+	}
+
+	rec := ownershipRecord{
+		Schema:         1,
+		Manager:        "gjallarOS",
+		Stage:          stage,
+		SbctlOwnerGUID: keys.ownerGUID,
+		PKSHA256:       keys.pkHash,
+		KEKSHA256:      keys.kekHash,
+		DbSHA256:       keys.dbHash,
+		UpdatedAt:      time.Now().UTC().Format(time.RFC3339),
+	}
+
+	data, err := json.MarshalIndent(rec, "", "  ")
+	if err != nil {
+		return err
+	}
+	data = append(data, '\n')
+
+	tmp, err := os.CreateTemp("", "gjallar-secure-boot-ownership-*")
+	if err != nil {
+		return err
+	}
+	tmpPath := tmp.Name()
+	defer os.Remove(tmpPath)
+
+	if err := tmp.Chmod(0600); err != nil {
+		tmp.Close()
+		return err
+	}
+	if _, err := tmp.Write(data); err != nil {
+		tmp.Close()
+		return err
+	}
+	if err := tmp.Close(); err != nil {
+		return err
+	}
+
+	if err := command(ctx, "sudo", "install", "-d", "-m", "0700",
+		filepath.Dir(OwnershipPath)); err != nil {
+		return fmt.Errorf("create Secure Boot ownership directory: %w", err)
+	}
+	if err := command(ctx, "sudo", "install", "-m", "0600",
+		tmpPath, OwnershipPath); err != nil {
+		return fmt.Errorf("install Secure Boot ownership record: %w", err)
+	}
+
+	return nil
+}
+
+func readOwnership(ctx context.Context) (ownershipRecord, bool, error) {
+	ok, err := sudoTestFile(ctx, OwnershipPath)
+	if err != nil {
+		return ownershipRecord{}, false, err
+	}
+	if !ok {
+		return ownershipRecord{}, false, nil
+	}
+
+	data, err := sudoReadFile(ctx, OwnershipPath)
+	if err != nil {
+		return ownershipRecord{}, false, fmt.Errorf("read Secure Boot ownership record: %w", err)
+	}
+
+	var rec ownershipRecord
+	if err := json.Unmarshal(data, &rec); err != nil {
+		return ownershipRecord{}, false, fmt.Errorf("parse Secure Boot ownership record: %w", err)
+	}
+	return rec, true, nil
+}
+
+func readLocalKeys(ctx context.Context) (localKeys, bool, error) {
+	paths := map[string]string{
+		"PK":  "/var/lib/sbctl/keys/PK/PK.pem",
+		"KEK": "/var/lib/sbctl/keys/KEK/KEK.pem",
+		"db":  "/var/lib/sbctl/keys/db/db.pem",
+	}
+
+	for _, p := range paths {
+		ok, err := sudoTestFile(ctx, p)
+		if err != nil {
+			return localKeys{}, false, err
+		}
+		if !ok {
+			return localKeys{}, false, nil
+		}
+	}
+
+	guidBytes, err := sudoReadFile(ctx, "/var/lib/sbctl/GUID")
+	if err != nil {
+		return localKeys{}, false, fmt.Errorf("read sbctl owner GUID: %w", err)
+	}
+
+	pkDER, pkHash, err := readPEMCertificate(ctx, paths["PK"])
+	if err != nil {
+		return localKeys{}, false, err
+	}
+	kekDER, kekHash, err := readPEMCertificate(ctx, paths["KEK"])
+	if err != nil {
+		return localKeys{}, false, err
+	}
+	dbDER, dbHash, err := readPEMCertificate(ctx, paths["db"])
+	if err != nil {
+		return localKeys{}, false, err
+	}
+
+	return localKeys{
+		ownerGUID: strings.TrimSpace(string(guidBytes)),
+		pkDER:     pkDER,
+		kekDER:    kekDER,
+		dbDER:     dbDER,
+		pkHash:    pkHash,
+		kekHash:   kekHash,
+		dbHash:    dbHash,
+	}, true, nil
+}
+
+func readPEMCertificate(ctx context.Context, path string) ([]byte, string, error) {
+	data, err := sudoReadFile(ctx, path)
+	if err != nil {
+		return nil, "", fmt.Errorf("read %s: %w", path, err)
+	}
+	block, _ := pem.Decode(data)
+	if block == nil || block.Type != "CERTIFICATE" {
+		return nil, "", fmt.Errorf("%s does not contain an X.509 CERTIFICATE PEM block", path)
+	}
+	sum := sha256.Sum256(block.Bytes)
+	return block.Bytes, hex.EncodeToString(sum[:]), nil
+}
+
+func efivarBool(name string) (bool, error) {
+	payload, present, err := efivarPayload(name)
+	if err != nil {
+		return false, err
+	}
+	if !present || len(payload) < 1 {
+		return false, fmt.Errorf("%s EFI variable is missing", name)
+	}
+	switch payload[0] {
+	case 0:
+		return false, nil
+	case 1:
+		return true, nil
+	default:
+		return false, fmt.Errorf("%s has unexpected value %d", name, payload[0])
+	}
+}
+
+func efivarPayload(name string) ([]byte, bool, error) {
+	matches, err := filepath.Glob("/sys/firmware/efi/efivars/" + name + "-*")
+	if err != nil {
+		return nil, false, err
+	}
+	if len(matches) == 0 {
+		return nil, false, nil
+	}
+	if len(matches) != 1 {
+		return nil, false, fmt.Errorf("expected one %s EFI variable, found %d", name, len(matches))
+	}
+
+	raw, err := os.ReadFile(matches[0])
+	if err != nil {
+		return nil, false, fmt.Errorf("read %s: %w", matches[0], err)
+	}
+	if len(raw) < 4 {
+		return nil, false, fmt.Errorf("%s is shorter than the efivarfs attribute header", matches[0])
+	}
+	return raw[4:], true, nil
+}
+
+func sudoTestFile(ctx context.Context, path string) (bool, error) {
+	cmd := exec.CommandContext(ctx, "sudo", "test", "-f", path)
+	cmd.Stdin = os.Stdin
+	err := cmd.Run()
+	if err == nil {
+		return true, nil
+	}
+	if exit, ok := err.(*exec.ExitError); ok && exit.ExitCode() == 1 {
+		return false, nil
+	}
+	return false, fmt.Errorf("sudo test -f %s: %w", path, err)
+}
+
+func sudoReadFile(ctx context.Context, path string) ([]byte, error) {
+	cmd := exec.CommandContext(ctx, "sudo", "cat", "--", path)
+	cmd.Stdin = os.Stdin
+	var stderr bytes.Buffer
+	cmd.Stderr = &stderr
+	out, err := cmd.Output()
+	if err != nil {
+		return nil, fmt.Errorf("%w: %s", err, strings.TrimSpace(stderr.String()))
+	}
+	return out, nil
+}
+
+func command(ctx context.Context, name string, args ...string) error {
+	cmd := exec.CommandContext(ctx, name, args...)
+	cmd.Stdin = os.Stdin
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+	return cmd.Run()
+}

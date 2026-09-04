@@ -134,7 +134,7 @@ let
         ${lib.getExe config.programs.noctalia.package} config validate || true
         ${lib.getExe config.programs.noctalia.package} msg status || true
         ${pkgs.systemd}/bin/journalctl --user -b --no-pager -u gjallar-hyprland-session-diagnostics.service || true
-        ${pkgs.procps}/bin/pgrep -a -u "$USER" 'Hyprland|noctalia|fuzzel|kitty|swaybg|waybar|ags' || true
+        ${pkgs.procps}/bin/pgrep -f -a -u "$USER" 'Hyprland|noctalia|fuzzel|kitty|swaybg|waybar|ags' || true
         log 'end'
       '';
     in
@@ -187,27 +187,31 @@ in
       systemd.services.plymouth-quit.enable = false;
       systemd.services.plymouth-quit-wait.enable = false;
 
-      systemd.services.noctalia-greeter-plymouth = {
-        description = "Wait for Noctalia Greeter before quitting Plymouth";
-        wantedBy = [ "graphical.target" ];
-        after = [ "greetd.service" ];
-        wants = [ "greetd.service" ];
-        serviceConfig = {
-          Type = "oneshot";
-          ExecStart = pkgs.writeShellScript "wait-for-noctalia-greeter" ''
-            for i in $(seq 1 600); do
-              if ${pkgs.procps}/bin/pgrep -x noctalia-greeter-compositor >/dev/null \
-                && ${pkgs.procps}/bin/pgrep -x noctalia-greeter >/dev/null; then
-                ${pkgs.coreutils}/bin/sleep 0.3
-                ${pkgs.plymouth}/bin/plymouth quit --wait || true
-                exit 0
-              fi
-              ${pkgs.coreutils}/bin/sleep 0.1
-            done
-            ${pkgs.plymouth}/bin/plymouth quit --wait || true
-            exit 0
-          '';
-        };
+      # Stop Plymouth immediately before greetd launches, retaining its last
+      # frame. This releases DRM without the multi-second blocking delay of
+      # `plymouth deactivate`; the greeter then overwrites the retained frame.
+      systemd.services.greetd.serviceConfig.ExecStartPre = pkgs.writeShellScript "handoff-plymouth-to-greetd" ''
+        ${pkgs.plymouth}/bin/plymouth quit --retain-splash || true
+      '';
+
+      # Start the shutdown splash before systemd tears down normal services.
+      # Stopping the display manager first releases DRM for Plymouth; from
+      # that point its shutdown renderer stays up through final poweroff.
+      systemd.services.plymouth-poweroff = {
+        before = [ "shutdown.target" ];
+        conflicts = [ "display-manager.service" ];
+      };
+      systemd.services.plymouth-reboot = {
+        before = [ "shutdown.target" ];
+        conflicts = [ "display-manager.service" ];
+      };
+      systemd.services.plymouth-halt = {
+        before = [ "shutdown.target" ];
+        conflicts = [ "display-manager.service" ];
+      };
+      systemd.services.plymouth-kexec = {
+        before = [ "shutdown.target" ];
+        conflicts = [ "display-manager.service" ];
       };
 
       programs.nh = {
@@ -216,6 +220,7 @@ in
         flake = settings.dotfilesDir;
       };
       environment.systemPackages = with pkgs; [
+        gh
         go_1_26
         nixfmt
         python3

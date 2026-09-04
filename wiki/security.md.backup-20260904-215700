@@ -19,7 +19,9 @@ saved, installs a signed Lanzaboote generation, verifies the signed EFI
 artifacts, and arms boot-time enrollment.
 
 The installer can reboot directly into Framework firmware settings. Firmware
-still requires one physical action: delete ONLY PK to enter Setup Mode. Keep KEK, DB, and DBX intact. Do not select **Erase All Secure Boot Settings**. Do not clear KEK, DB, or DBX. Exit with Secure Boot disabled and boot GjallarOS normally.
+still requires one physical action: delete PK, KEK, and DB individually to
+enter Setup Mode. Do not select **Erase All Secure Boot Settings**. Exit with
+Secure Boot disabled and boot GjallarOS normally.
 
 On that boot, `gjallar-secure-boot-enroll.service` detects Setup Mode, enrolls
 the per-device keys with `sbctl enroll-keys --firmware-builtin`, verifies the
@@ -38,13 +40,3 @@ systemctl status gjallar-secure-boot-enroll.service
 `endpointManagedDevice=true` suppresses all interactive enrollment and recovery
 material prompts. JODS must provision and escrow unique per-device keys before
 managed enrollment is enabled; fleet-wide shared private keys are forbidden.
-
-
-### Lanzaboote external kernel
-
-Do not individually sign `/boot/EFI/nixos/kernel-*.efi`.
-
-GjallarOS/Lanzaboote keeps this external kernel byte-identical to the Nix-store
-kernel. The signed generation stub verifies its hash. Adding an Authenticode
-signature changes the kernel bytes and causes `Kernel hash does not match` /
-`SECURITY_VIOLATION`.

@@ -168,7 +168,7 @@ func Apply(ctx context.Context, configPath string, updated []byte, now time.Time
 	if err := run(ctx, "sudo", "install", "-m", "0644", name, configPath); err != nil {
 		return backup, err
 	}
-	if err := run(ctx, "sudo", "nixos-rebuild", "switch"); err != nil {
+	if err := run(ctx, "sudo", "nixos-rebuild", "switch", "-I", "nixos-config="+configPath); err != nil {
 		if restore := run(ctx, "sudo", "cp", "-a", "--", backup, configPath); restore != nil {
 			return backup, fmt.Errorf("rebuild failed: %v; restore failed: %v", err, restore)
 		}

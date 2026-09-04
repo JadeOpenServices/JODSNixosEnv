@@ -182,7 +182,7 @@ gjallar-secure-boot create-keys
 set secureBootEnable=true and rebuild
 verify with gjallar-secure-boot status
 installer arms enrollment and opens Framework firmware setup
-delete ONLY PK, keep KEK, DB, and DBX intact, then boot with Secure Boot disabled
+delete PK, KEK, and DB individually, then boot with Secure Boot disabled
 boot service enrolls per-device keys and verifies signed artifacts
 reboot and verify again
 ```
@@ -199,7 +199,8 @@ unmanaged device, the installer creates an encrypted recovery archive under
 `/var/lib/gjallarOS/recovery`, displays its generated passphrase outside shell
 history before rebuild or reboot, and requires two save confirmations.
 After a successful installer rebuild, a root-only marker arms automatic
-enrollment. The installer can reboot directly into firmware settings. Framework Setup Mode requires clearing ONLY PK while keeping KEK, DB, and DBX intact; once Linux boots in Setup
+enrollment. The installer can reboot directly into firmware settings. Firmware
+Setup Mode still requires physical confirmation; once Linux boots in Setup
 Mode, `gjallar-secure-boot-enroll.service` enrolls the keys with
 `--firmware-builtin=db,KEK`, verifies the signed artifacts, and deletes its
 marker. Rerunning the installer detects keys already enrolled by an interrupted
@@ -231,8 +232,3 @@ keep dependency/build trees out of indexing and AI context.
 Microsoft Teams is provided as an Edge app with its own persistent profile.
 HTTP(S) links to Teams open a small chooser: Microsoft Teams, the normal
 browser, or cancel. Other links go straight to the configured browser.
-
-
-Secure Boot note: the Lanzaboote external `/boot/EFI/nixos/kernel-*.efi` must
-not be individually signed. It must remain byte-identical to the Nix-store
-kernel because the signed generation stub verifies its hash.

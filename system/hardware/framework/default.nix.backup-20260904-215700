@@ -12,193 +12,6 @@ if settings.frameworkEnable then
       strategyOnDischarging = profile.strategyOnDischarging;
       strategies = profile.strategies;
     };
-
-    secureBootArtifactVerifier = pkgs.writeShellApplication {
-      name = "gjallar-verify-secure-boot-artifacts";
-      runtimeInputs = [
-        pkgs.sbctl
-        pkgs.coreutils
-        pkgs.gnugrep
-      ];
-      text = ''
-        set -u
-        export LC_ALL=C
-
-        output="$(sbctl verify 2>&1)"
-        rc=$?
-
-        printf '%s\n' "$output"
-
-        unexpected="$(
-          printf '%s\n' "$output" |
-            grep -F 'is not signed' |
-            grep -Ev '/boot/EFI/nixos/kernel-[^ ]+\.efi is not signed$' ||
-            true
-        )"
-
-        if [ -n "$unexpected" ]; then
-          printf '%s\n' \
-            'ERROR: unexpected unsigned EFI artifact:' \
-            "$unexpected" >&2
-          exit 1
-        fi
-
-        if [ "$rc" -ne 0 ]; then
-          allowed="$(
-            printf '%s\n' "$output" |
-              grep -E '/boot/EFI/nixos/kernel-[^ ]+\.efi is not signed$' ||
-              true
-          )"
-
-          if [ -z "$allowed" ]; then
-            printf '%s\n' \
-              'ERROR: sbctl verify failed for an unexpected reason.' >&2
-            exit "$rc"
-          fi
-        fi
-
-        printf '%s\n' \
-          'GjallarOS boot artifact verification passed.' \
-          'The external Lanzaboote kernel remains byte-identical and is hash-verified by the signed generation stub.'
-      '';
-    };
-    secureBootOwnershipVerifier = pkgs.writeShellApplication {
-      name = "gjallar-verify-secure-boot-ownership";
-      runtimeInputs = [
-        pkgs.python3
-      ];
-
-      text = ''
-        set -euo pipefail
-
-        python3 - "''${1:-}" <<'PYEOF'
-import base64
-import glob
-import hashlib
-import json
-import re
-import sys
-from pathlib import Path
-
-expected_stage = sys.argv[1] or None
-ownership = Path("/var/lib/gjallarOS/secure-boot/ownership.json")
-
-if not ownership.is_file():
-    raise SystemExit(
-        "ERROR: GjallarOS Secure Boot ownership metadata is missing."
-    )
-
-doc = json.loads(ownership.read_text())
-
-if doc.get("schema") != 1:
-    raise SystemExit(
-        f"ERROR: unsupported ownership schema: {doc.get('schema')!r}"
-    )
-
-if doc.get("manager") != "gjallarOS":
-    raise SystemExit(
-        f"ERROR: unexpected Secure Boot manager: {doc.get('manager')!r}"
-    )
-
-if expected_stage is not None and doc.get("stage") != expected_stage:
-    raise SystemExit(
-        "ERROR: ownership stage is "
-        f"{doc.get('stage')!r}; expected {expected_stage!r}."
-    )
-
-guid_path = Path("/var/lib/sbctl/GUID")
-if not guid_path.is_file():
-    raise SystemExit("ERROR: /var/lib/sbctl/GUID is missing.")
-
-guid = guid_path.read_text().strip()
-
-if doc.get("sbctlOwnerGuid") != guid:
-    raise SystemExit(
-        "ERROR: ownership record GUID does not match the current sbctl GUID."
-    )
-
-certs = {
-    "PK": (
-        Path("/var/lib/sbctl/keys/PK/PK.pem"),
-        "pkSha256",
-    ),
-    "KEK": (
-        Path("/var/lib/sbctl/keys/KEK/KEK.pem"),
-        "kekSha256",
-    ),
-    "db": (
-        Path("/var/lib/sbctl/keys/db/db.pem"),
-        "dbSha256",
-    ),
-}
-
-def pem_der(path):
-    text = path.read_text()
-    match = re.search(
-        r"-----BEGIN CERTIFICATE-----\s*(.*?)\s*-----END CERTIFICATE-----",
-        text,
-        re.S,
-    )
-    if not match:
-        raise SystemExit(
-            f"ERROR: {path} does not contain an X.509 certificate."
-        )
-
-    payload = re.sub(r"\s+", "", match.group(1))
-
-    try:
-        return base64.b64decode(payload, validate=True)
-    except Exception as exc:
-        raise SystemExit(
-            f"ERROR: failed decoding certificate {path}: {exc}"
-        )
-
-for variable, (pem_path, hash_field) in certs.items():
-    if not pem_path.is_file():
-        raise SystemExit(
-            f"ERROR: local Secure Boot certificate is missing: {pem_path}"
-        )
-
-    der = pem_der(pem_path)
-    actual_hash = hashlib.sha256(der).hexdigest()
-    recorded_hash = doc.get(hash_field)
-
-    if actual_hash != recorded_hash:
-        raise SystemExit(
-            f"ERROR: local {variable} certificate does not match "
-            "GjallarOS ownership metadata."
-        )
-
-    matches = glob.glob(
-        f"/sys/firmware/efi/efivars/{variable}-*"
-    )
-
-    if len(matches) != 1:
-        raise SystemExit(
-            f"ERROR: expected exactly one active {variable} EFI variable; "
-            f"found {len(matches)}."
-        )
-
-    raw = Path(matches[0]).read_bytes()
-
-    if len(raw) < 4:
-        raise SystemExit(
-            f"ERROR: active {variable} EFI variable is malformed."
-        )
-
-    payload = raw[4:]
-
-    if der not in payload:
-        raise SystemExit(
-            f"ERROR: active firmware {variable} does not contain "
-            "the current GjallarOS certificate."
-        )
-
-print("PASS: active GjallarOS PK/KEK/db ownership verified.")
-PYEOF
-      '';
-    };
-
     secureBootTool = pkgs.writeShellApplication {
       name = "gjallar-secure-boot";
       runtimeInputs = [
@@ -215,7 +28,7 @@ PYEOF
             printf '\n'
             sudo sbctl status
             printf '\nSigned boot artifacts:\n'
-            sudo gjallar-verify-secure-boot-artifacts
+            sudo sbctl verify
             ;;
           create-keys)
             if [ -e /var/lib/sbctl/keys/db/db.key ]; then
@@ -231,17 +44,17 @@ PYEOF
           enroll-framework)
             printf '%s\n' \
               'DANGER: firmware must already be in Secure Boot Setup Mode.' \
-              'Framework: delete ONLY PK. Keep KEK, DB, and DBX intact.' \
+              'Framework: delete PK, KEK, and DB entries individually.' \
               'Do not use the firmware Erase All Secure Boot Settings action.' \
               'This keeps Framework firmware-builtin keys for devices and fwupd.'
             printf 'Type ENROLL to write keys into firmware: '
             read -r answer
             [ "$answer" = ENROLL ] || exit 1
             sudo sbctl enroll-keys --firmware-builtin=db,KEK
-            sudo gjallar-verify-secure-boot-artifacts
+            sudo sbctl verify
             ;;
           arm-enrollment)
-            sudo gjallar-verify-secure-boot-artifacts
+            sudo sbctl verify
             sudo install -d -m 0700 /var/lib/gjallarOS
             sudo install -m 0600 /dev/null /var/lib/gjallarOS/secure-boot-enrollment-armed
             printf 'Enrollment armed. Reboot into firmware setup and enter Setup Mode.\n'
@@ -268,8 +81,6 @@ PYEOF
       pkgs.fw-fanctrl
       pkgs.sbctl
       secureBootTool
-      secureBootArtifactVerifier
-      secureBootOwnershipVerifier
     ];
 
     # The Framework USB-C expansion-card controller at c1:00.3 can fail its
@@ -306,8 +117,6 @@ PYEOF
         pkgs.systemd
         pkgs.python3
         pkgs.util-linux
-        secureBootArtifactVerifier
-        secureBootOwnershipVerifier
       ];
 
       script = ''
@@ -323,24 +132,9 @@ PYEOF
         if ! printf '%s\n' "$status" | grep -Eq 'Setup Mode:.*Enabled'; then
           printf '%s\n' \
             'Enrollment remains armed: firmware is not in Setup Mode.' \
-            'Clear ONLY PK in firmware.' \
-            'Keep KEK, db, and dbx intact; never use Erase All Secure Boot Settings.' >&2
+            'Clear PK, KEK, and db individually in firmware.' \
+            'Do not clear dbx and do not use Erase All Secure Boot Settings.' >&2
           exit 0
-        fi
-
-        if ! compgen -G '/sys/firmware/efi/efivars/KEK-*' >/dev/null; then
-          printf '%s\n' 'ERROR: KEK is missing. Restore factory Secure Boot keys and restart provisioning.' >&2
-          exit 1
-        fi
-
-        if ! compgen -G '/sys/firmware/efi/efivars/db-*' >/dev/null; then
-          printf '%s\n' 'ERROR: db is missing. Restore factory Secure Boot keys and restart provisioning.' >&2
-          exit 1
-        fi
-
-        if ! compgen -G '/sys/firmware/efi/efivars/dbx-*' >/dev/null; then
-          printf '%s\n' 'ERROR: dbx is missing. Restore factory Secure Boot keys and restart provisioning.' >&2
-          exit 1
         fi
 
         if [ ! -s "$ownership" ]; then
@@ -355,7 +149,7 @@ PYEOF
         # Platform Key owner while retaining Framework/Microsoft compatibility.
         sbctl enroll-keys --firmware-builtin=db,KEK
 
-        gjallar-verify-secure-boot-artifacts
+        sbctl verify
 
         status="$(sbctl status)"
 
@@ -402,8 +196,6 @@ finally:
         os.unlink(tmp)
 PYEOF
 
-        gjallar-verify-secure-boot-ownership enrolled
-
         install -m 0600 /dev/null "$final_marker"
 
         # Remove this FIRST so a reboot can never re-enroll in a loop.
@@ -437,8 +229,6 @@ PYEOF
         pkgs.sbctl
         pkgs.coreutils
         pkgs.gnugrep
-        secureBootArtifactVerifier
-        secureBootOwnershipVerifier
       ];
 
       script = ''
@@ -462,8 +252,7 @@ PYEOF
           exit 1
         fi
 
-        gjallar-verify-secure-boot-artifacts
-        gjallar-verify-secure-boot-ownership enrolled
+        sbctl verify
 
         rm -f -- "$marker"
 
