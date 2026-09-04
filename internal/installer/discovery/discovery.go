@@ -1,0 +1,101 @@
+package discovery
+
+import (
+	"os"
+	"path/filepath"
+	"sort"
+	"strings"
+)
+
+type Hardware struct{ FormFactor, LaptopVendor string }
+type Options struct{ Profiles, Shells, Editors, Browsers, Themes []string }
+
+func DetectHardware(sysRoot string) Hardware {
+	h := Hardware{FormFactor: "laptop", LaptopVendor: "generic"}
+	batteries, _ := filepath.Glob(filepath.Join(sysRoot, "class", "power_supply", "BAT*"))
+	if len(batteries) == 0 {
+		if data, err := os.ReadFile(filepath.Join(sysRoot, "class", "dmi", "id", "chassis_type")); err == nil {
+			switch strings.TrimSpace(string(data)) {
+			case "3", "4", "5", "6", "7", "15", "16", "17", "18", "19", "20", "21", "22", "23", "24", "25", "26", "27", "28", "29", "30", "31", "32":
+				h.FormFactor = "desktop"
+			}
+		}
+	}
+	if data, err := os.ReadFile(filepath.Join(sysRoot, "class", "dmi", "id", "product_name")); err == nil {
+		product := strings.ToLower(string(data))
+		if strings.Contains(product, "thinkpad") {
+			h.FormFactor = "laptop"
+			h.LaptopVendor = "thinkpad"
+		} else if strings.Contains(product, "framework") {
+			h.FormFactor = "laptop"
+			h.LaptopVendor = "framework"
+		}
+	}
+	return h
+}
+
+func Discover(repo string, preset bool, hardware Hardware) (Options, error) {
+	profiles, err := directories(filepath.Join(repo, "profiles"))
+	if err != nil {
+		return Options{}, err
+	}
+	if !preset {
+		filtered := profiles[:0]
+		for _, v := range profiles {
+			if hardware.FormFactor == "desktop" {
+				if v == "desktop" {
+					filtered = append(filtered, v)
+				}
+			} else if v != "desktop" && v != "work" && v != "work-user" {
+				filtered = append(filtered, v)
+			}
+		}
+		profiles = filtered
+	}
+	shells, err := nixFiles(filepath.Join(repo, "user", "shells"))
+	if err != nil {
+		return Options{}, err
+	}
+	editors, err := directories(filepath.Join(repo, "user", "editors"))
+	if err != nil {
+		return Options{}, err
+	}
+	browsers, err := nixFiles(filepath.Join(repo, "user", "browsers"))
+	if err != nil {
+		return Options{}, err
+	}
+	themes, err := nixFiles(filepath.Join(repo, "themes"))
+	if err != nil {
+		return Options{}, err
+	}
+	return Options{profiles, shells, editors, browsers, themes}, nil
+}
+
+func directories(path string) ([]string, error) {
+	entries, err := os.ReadDir(path)
+	if err != nil {
+		return nil, err
+	}
+	out := []string{}
+	for _, entry := range entries {
+		if entry.IsDir() {
+			out = append(out, entry.Name())
+		}
+	}
+	sort.Strings(out)
+	return out, nil
+}
+func nixFiles(path string) ([]string, error) {
+	entries, err := os.ReadDir(path)
+	if err != nil {
+		return nil, err
+	}
+	out := []string{}
+	for _, entry := range entries {
+		if !entry.IsDir() && filepath.Ext(entry.Name()) == ".nix" {
+			out = append(out, strings.TrimSuffix(entry.Name(), ".nix"))
+		}
+	}
+	sort.Strings(out)
+	return out, nil
+}

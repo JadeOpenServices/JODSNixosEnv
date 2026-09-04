@@ -8,7 +8,6 @@ import (
 	"fmt"
 	"io"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"regexp"
 	"sort"
@@ -80,7 +79,6 @@ func Check(ctx context.Context, root string) Report {
 
 	checkRequiredFiles(&r, root)
 	checkNativeGraphics(ctx, &r, root)
-	checkBashSyntax(ctx, &r, filepath.Join(root, "scripts/installation/functions/hardware/detect_graphics.sh"))
 	checkRegistration(&r, root)
 	return r
 }
@@ -251,7 +249,8 @@ var installerManagedFields = map[string]bool{
 func checkRequiredFiles(r *Report, root string) {
 	for _, relative := range []string{
 		"scripts/installation/install.sh",
-		"scripts/installation/functions/configuration/render_settings.sh",
+		"cmd/gjallar-installer/main.go",
+		"internal/installer/app/app.go",
 		"system/apps/ollama.nix",
 		"system/tools/scripts/default.nix",
 	} {
@@ -263,21 +262,6 @@ func checkRequiredFiles(r *Report, root string) {
 	}
 }
 
-func checkBashSyntax(ctx context.Context, r *Report, script string) {
-	bash, err := exec.LookPath("bash")
-	if err != nil {
-		r.Findings = append(r.Findings, Finding{Warn, "bash unavailable; skipped legacy syntax check"})
-		return
-	}
-	command := exec.CommandContext(ctx, bash, "-n", script)
-	output, err := command.CombinedOutput()
-	if err != nil {
-		r.Findings = append(r.Findings, Finding{Error, fmt.Sprintf("legacy graphics detector syntax failed: %s", strings.TrimSpace(string(output)))})
-		return
-	}
-	r.Findings = append(r.Findings, Finding{OK, "legacy graphics detector syntax"})
-}
-
 func checkRegistration(r *Report, root string) {
 	for _, relative := range []string{"system/tools/scripts/default.nix", "system/tools/scripts/help.sh"} {
 		contents, err := os.ReadFile(filepath.Join(root, relative))
@@ -285,9 +269,9 @@ func checkRegistration(r *Report, root string) {
 			continue
 		}
 		if strings.Contains(string(contents), "check-installer") {
-			r.Findings = append(r.Findings, Finding{OK, fmt.Sprintf("legacy checker registered in %s", relative)})
+			r.Findings = append(r.Findings, Finding{OK, fmt.Sprintf("installer checker registered in %s", relative)})
 		} else {
-			r.Findings = append(r.Findings, Finding{Warn, fmt.Sprintf("legacy checker not registered in %s", relative)})
+			r.Findings = append(r.Findings, Finding{Warn, fmt.Sprintf("installer checker not registered in %s", relative)})
 		}
 	}
 }
