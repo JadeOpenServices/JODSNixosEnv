@@ -2,3 +2,7 @@
 settings.nix.tmp*
 .*-backup-*
 .*-backup
+*.go.backup-*
+*.go.broken-*
+*.nix.backup-*
+*.md.backup-*

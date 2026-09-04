@@ -155,7 +155,7 @@ let
     };
 in
 {
-  imports = [ ./scripts/default.nix ];
+  imports = [ ./commands/default.nix ];
   config = lib.mkMerge [
     {
       services.usbguard = {
