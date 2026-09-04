@@ -10,6 +10,7 @@ import (
 )
 
 const ArchivePath = "/var/lib/gjallarOS/recovery/secure-boot-keys.tar.enc"
+const EnrollmentMarkerPath = "/var/lib/gjallarOS/secure-boot-enrollment-armed"
 
 type Recovery struct {
 	ArchivePath string
@@ -60,6 +61,21 @@ func Provision(ctx context.Context) (Recovery, error) {
 		return Recovery{}, err
 	}
 	return Recovery{ArchivePath: ArchivePath, Passphrase: passphrase}, nil
+}
+
+// VerifyAndArmEnrollment only arms the boot-time enrollment service after the
+// installed EFI artifacts have been signed successfully.
+func VerifyAndArmEnrollment(ctx context.Context) error {
+	if err := run(ctx, "sudo", "sbctl", "verify"); err != nil {
+		return fmt.Errorf("verify signed Secure Boot artifacts: %w", err)
+	}
+	if err := run(ctx, "sudo", "install", "-d", "-m", "0700", "/var/lib/gjallarOS"); err != nil {
+		return fmt.Errorf("create Secure Boot state directory: %w", err)
+	}
+	if err := run(ctx, "sudo", "install", "-m", "0600", "/dev/null", EnrollmentMarkerPath); err != nil {
+		return fmt.Errorf("arm firmware enrollment: %w", err)
+	}
+	return nil
 }
 
 func generatePassphrase() (string, error) {
