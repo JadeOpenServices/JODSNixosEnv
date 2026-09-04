@@ -25,6 +25,7 @@
     ../../system/security/sops.nix
     ../../system/tools
     ../../system/users/work.nix
+    ../../system/users/privilege.nix
     ../../system/hardware/framework
     ../../system/apps/thunar.nix
     # ../../system/apps/open-webui.nix
@@ -66,18 +67,16 @@
   # Users.
   nix.settings.trusted-users = [
     "root"
-    settings.username
   ];
   users.users.${settings.username} = {
     isNormalUser = true;
     shell = pkgs.${settings.shell};
     description = settings.username;
     extraGroups = [
-      "wheel"
       "networkmanager"
       "gamemode"
       "dialout"
-    ];
+    ] ++ lib.optionals (!settings.endpointManagedDevice && !builtins.pathExists settings.rootPasswordFile) [ "wheel" ];
   };
 
   # See https://nix.dev/permalink/stub-ld.

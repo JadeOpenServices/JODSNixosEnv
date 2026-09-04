@@ -53,12 +53,18 @@ if settings.frameworkEnable then
             sudo sbctl enroll-keys --firmware-builtin
             sudo sbctl verify
             ;;
+          arm-enrollment)
+            sudo sbctl verify
+            sudo install -d -m 0700 /var/lib/gjallarOS
+            sudo install -m 0600 /dev/null /var/lib/gjallarOS/secure-boot-enrollment-armed
+            printf 'Enrollment armed. Reboot into firmware setup and enter Setup Mode.\n'
+            ;;
           firmware)
             fwupdmgr get-devices
             ;;
           *)
             printf '%s\n' \
-              'Usage: gjallar-secure-boot {status|create-keys|enroll-framework|firmware}'
+              'Usage: gjallar-secure-boot {status|create-keys|arm-enrollment|enroll-framework|firmware}'
             exit 2
             ;;
         esac
@@ -86,6 +92,32 @@ if settings.frameworkEnable then
       enable = true;
       pkiBundle = "/var/lib/sbctl";
       configurationLimit = 8;
+    };
+    systemd.services.gjallar-secure-boot-enroll = lib.mkIf settings.secureBootEnable {
+      description = "Enroll GjallarOS Secure Boot keys in firmware Setup Mode";
+      wantedBy = [ "multi-user.target" ];
+      after = [ "local-fs.target" ];
+      unitConfig.ConditionPathExists = "/var/lib/gjallarOS/secure-boot-enrollment-armed";
+      serviceConfig = {
+        Type = "oneshot";
+        UMask = "0077";
+      };
+      path = [ pkgs.sbctl pkgs.coreutils pkgs.gnugrep ];
+      script = ''
+        set -euo pipefail
+        export LC_ALL=C
+
+        status="$(sbctl status)"
+        if ! printf '%s\n' "$status" | grep -Eq 'Setup Mode:.*Enabled'; then
+          printf '%s\n' 'Enrollment remains armed: firmware is not in Setup Mode.' >&2
+          exit 0
+        fi
+
+        sbctl enroll-keys --firmware-builtin
+        sbctl verify
+        rm -f -- /var/lib/gjallarOS/secure-boot-enrollment-armed
+        printf '%s\n' 'GjallarOS Secure Boot keys enrolled and signed artifacts verified.'
+      '';
     };
     systemd.services.gjallar-framework-fan-curve = {
       description = "Framework fan curve control";

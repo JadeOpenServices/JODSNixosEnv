@@ -136,16 +136,34 @@ func Run(ctx context.Context, args []string, in io.Reader, out, errOut io.Writer
 		fmt.Fprintln(out, "Nothing changed.")
 		return 0
 	}
-	if s.render.WorkUserEnable {
-		path, err := controlOutput(ctx, s.control, errOut, "installer", "work-password", "--username", s.render.WorkUsername, "--apply")
+	if !s.render.EndpointManagedDevice {
+		path, err := controlOutput(ctx, s.control, errOut, "installer", "work-password", "--username", "root", "--apply")
 		if err != nil {
 			return fail(errOut, err)
 		}
 		lines := strings.Fields(strings.TrimSpace(path))
 		if len(lines) > 0 {
-			s.render.WorkUserPasswordFile = lines[len(lines)-1]
+			s.render.RootPasswordFile = lines[len(lines)-1]
 		}
 		fmt.Fprint(out, path)
+	}
+	if s.render.WorkUserEnable {
+		if s.render.EndpointManagedDevice {
+			if s.user.WorkUserPasswordFile == "" {
+				return fail(errOut, errors.New("managed work account requires workUserPasswordFile provisioned by JODS"))
+			}
+			s.render.WorkUserPasswordFile = s.user.WorkUserPasswordFile
+		} else {
+			path, err := controlOutput(ctx, s.control, errOut, "installer", "work-password", "--username", s.render.WorkUsername, "--apply")
+			if err != nil {
+				return fail(errOut, err)
+			}
+			lines := strings.Fields(strings.TrimSpace(path))
+			if len(lines) > 0 {
+				s.render.WorkUserPasswordFile = lines[len(lines)-1]
+			}
+			fmt.Fprint(out, path)
+		}
 	}
 	settingsPath := filepath.Join(root, "settings.nix")
 	if err := nixrender.WriteAtomic(settingsPath, s.render); err != nil {
@@ -162,17 +180,23 @@ func Run(ctx context.Context, args []string, in io.Reader, out, errOut io.Writer
 		} else if backup != "" {
 			fmt.Fprintln(out, "Backup:", backup)
 		}
-		tpmOut, err := controlOutput(ctx, s.control, errOut, "installer", "tpm2", "--repo", root, "--hardware", hardwarePath)
-		if err != nil {
-			return fail(errOut, err)
+		if s.render.EndpointManagedDevice {
+			s.render.LUKSTPM2Enable = s.user.LUKSTPM2Enable
+		} else {
+			tpmOut, err := controlOutput(ctx, s.control, errOut, "installer", "tpm2", "--repo", root, "--hardware", hardwarePath)
+			if err != nil {
+				return fail(errOut, err)
+			}
+			fmt.Fprint(out, tpmOut)
+			s.render.LUKSTPM2Enable = strings.Contains(tpmOut, "luks_tpm2_enable=true")
 		}
-		fmt.Fprint(out, tpmOut)
-		s.render.LUKSTPM2Enable = strings.Contains(tpmOut, "luks_tpm2_enable=true")
 		if err := nixrender.WriteAtomic(settingsPath, s.render); err != nil {
 			return fail(errOut, err)
 		}
-		if err := controlAttached(ctx, s.control, "installer", "luks", "--repo", root, "--hardware", hardwarePath); err != nil {
-			return fail(errOut, err)
+		if !s.render.EndpointManagedDevice {
+			if err := controlAttached(ctx, s.control, "installer", "luks", "--repo", root, "--hardware", hardwarePath); err != nil {
+				return fail(errOut, err)
+			}
 		}
 	}
 	fmt.Fprintln(out, "PLAN: atomically update local Git excludes and protect generated machine configuration")
@@ -216,7 +240,23 @@ func Run(ctx context.Context, args []string, in io.Reader, out, errOut io.Writer
 		if err := deploy.Apply(ctx, target); err != nil {
 			return fail(errOut, err)
 		}
-		if s.user.AutoReboot {
+		if s.render.SecureBootEnable && !s.render.EndpointManagedDevice {
+			if err := secureboot.VerifyAndArmEnrollment(ctx); err != nil {
+				return fail(errOut, err)
+			}
+			fmt.Fprintln(out, "Secure Boot enrollment armed and signed artifacts verified.")
+			fmt.Fprintln(out, "Firmware step: clear PK, KEK, and DB entries individually to enter Setup Mode; do not use Erase All Secure Boot Settings.")
+			fmt.Fprintln(out, "Then exit firmware with Secure Boot still disabled. GjallarOS will enroll its per-device keys on the next boot.")
+			if s.user.AutoReboot {
+				_ = attached(ctx, "sudo", "systemctl", "reboot", "--firmware-setup")
+				return 0
+			}
+			if yes, _ := ui.Confirm(ctx, "Reboot into firmware setup now?", false); yes {
+				_ = attached(ctx, "sudo", "systemctl", "reboot", "--firmware-setup")
+				return 0
+			}
+			fmt.Fprintln(out, "Later, run: sudo systemctl reboot --firmware-setup")
+		} else if s.user.AutoReboot {
 			_ = attached(ctx, "sudo", "systemctl", "reboot")
 		} else if yes, _ := ui.Confirm(ctx, "Deployment complete. Reboot now?", false); yes {
 			_ = attached(ctx, "sudo", "systemctl", "reboot")
@@ -234,6 +274,9 @@ func prepareHost(ctx context.Context, ui prompt.UI, opt options, s state, out, e
 	if expected != actual {
 		fmt.Fprintf(out, "NixOS %s detected; target is %s.\n", actual, expected)
 		fmt.Fprintf(out, "PLAN: sudo nix-channel --add https://channels.nixos.org/nixos-%s nixos\nPLAN: sudo nix-channel --update nixos\nPLAN: sudo nixos-rebuild switch --upgrade\n", expected)
+		if s.user.EndpointManagedDevice {
+			return fail(errOut, errors.New("managed device release mismatch; JODS must align the base system"))
+		}
 		yes, err := ui.Confirm(ctx, "Align the NixOS channel and rebuild?", false)
 		if err != nil || !yes {
 			return fail(errOut, errors.New("release mismatch not approved"))
@@ -254,12 +297,14 @@ func prepareHost(ctx context.Context, ui prompt.UI, opt options, s state, out, e
 	plan := bootstrap.Build(data, s.preset)
 	if len(plan.Missing) > 0 {
 		fmt.Fprintf(out, "Missing helpers/options: %s\nProposed configuration:\n%s\n", strings.Join(plan.Missing, ", "), plan.Updated)
-		yes, err := ui.Confirm(ctx, "Apply prerequisite configuration and rebuild?", false)
-		if err != nil {
-			return fail(errOut, err)
-		}
-		if !yes {
-			return fail(errOut, errors.New("required persistent prerequisites were not approved"))
+		if !s.user.EndpointManagedDevice {
+			yes, err := ui.Confirm(ctx, "Apply prerequisite configuration and rebuild?", false)
+			if err != nil {
+				return fail(errOut, err)
+			}
+			if !yes {
+				return fail(errOut, errors.New("required persistent prerequisites were not approved"))
+			}
 		}
 		if _, err := bootstrap.Apply(ctx, configPath, plan.Updated, time.Now()); err != nil {
 			return fail(errOut, err)

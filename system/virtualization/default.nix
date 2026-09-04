@@ -139,7 +139,7 @@ in
   environment.systemPackages =
     with pkgs;
     [
-      docker-compose
+      podman-compose
       distrobox
       libvirt
       qemu
@@ -199,9 +199,13 @@ in
     text = lib.concatStringsSep "\n" settings.nemuGpuIds + "\n";
   };
 
-  virtualisation.docker.enable = settings.dockerEnable;
+  # Never expose a root Docker daemon. `dockerEnable` provides Docker-compatible
+  # commands backed by the calling user's rootless Podman storage and namespace.
+  virtualisation.docker.enable = false;
 
-  virtualisation.podman.enable = true;
-
-  virtualisation.podman.defaultNetwork.settings.dns_enabled = true;
+  virtualisation.podman = {
+    enable = true;
+    dockerCompat = settings.dockerEnable;
+    defaultNetwork.settings.dns_enabled = true;
+  };
 }

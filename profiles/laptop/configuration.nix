@@ -24,6 +24,7 @@
     ../../themes/lib/common.nix
     ../../system/tools
     ../../system/users/work.nix
+    ../../system/users/privilege.nix
     ../../system/hardware/framework
     ../../system/apps/ollama.nix
   ]
@@ -60,12 +61,11 @@
     shell = pkgs.${settings.shell};
     description = settings.username;
     extraGroups = [
-      "wheel"
       "networkmanager"
       "kvm"
       "vhost"
       "usb"
-    ];
+    ] ++ lib.optionals (!settings.endpointManagedDevice && !builtins.pathExists settings.rootPasswordFile) [ "wheel" ];
   };
 
   # See https://nix.dev/permalink/stub-ld.
