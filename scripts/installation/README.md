@@ -179,8 +179,9 @@ Framework provisioning sequence is:
 gjallar-secure-boot create-keys
 set secureBootEnable=true and rebuild
 verify with gjallar-secure-boot status
-put Framework firmware into Secure Boot Setup Mode
-gjallar-secure-boot enroll-framework
+installer arms enrollment and opens Framework firmware setup
+delete PK, KEK, and DB individually, then boot with Secure Boot disabled
+boot service enrolls per-device keys and verifies signed artifacts
 reboot and verify again
 ```
 
@@ -195,6 +196,11 @@ that prompt: JODS must provision and escrow per-device keys itself. On an
 unmanaged device, the installer creates an encrypted recovery archive under
 `/var/lib/gjallarOS/recovery`, displays its generated passphrase outside shell
 history before rebuild or reboot, and requires two save confirmations.
+After a successful installer rebuild, a root-only marker arms automatic
+enrollment. The installer can reboot directly into firmware settings. Firmware
+Setup Mode still requires physical confirmation; once Linux boots in Setup
+Mode, `gjallar-secure-boot-enroll.service` enrolls the keys with
+`--firmware-builtin`, verifies the signed artifacts, and deletes its marker.
 
 Laptop profiles include `thermald`, `auto-cpufreq`, UPower, conservative
 battery charge thresholds, and dock-friendly lid behavior. Fan curves are not
@@ -209,6 +215,10 @@ The installer also detects the graphics and Wi-Fi hardware with `lspci`. It
 selects AMD, Intel, or NVIDIA graphics settings and enables firmware. Wi-Fi
 drivers are left to kernel autodetection to avoid forcing a mismatched module;
 unknown hardware keeps the safe generic firmware and NetworkManager setup.
+
+`dockerEnable=true` enables Docker-compatible commands through rootless Podman
+and `podman-compose`. GjallarOS never starts the root Docker daemon and never
+adds desktop users to the root-equivalent `docker` group.
 
 Selecting `vscodium` as an editor installs VSCodium and the compatible
 development extensions from nixpkgs. Its search and file-watcher exclusions
