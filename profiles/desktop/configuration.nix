@@ -73,6 +73,7 @@
     description = settings.username;
     extraGroups = [
       "wheel"
+      "networkmanager"
       "gamemode"
       "dialout"
     ];

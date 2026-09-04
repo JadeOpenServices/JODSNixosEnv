@@ -11,10 +11,47 @@ let
   themeDetails = settings.themeDetails;
   profileDetails = settings.profileDetails;
   shellDetails = hyprlandShellDetails;
+  wallpaperDetails =
+    if builtins.isAttrs themeDetails.wallpaper then
+      themeDetails.wallpaper
+    else
+      { center = themeDetails.wallpaper; };
+  startupWallpaper =
+    if config.home.username == settings.workUsername && settings.backgroundWork != "" then
+      settings.backgroundWork
+    else if settings.backgroundNormal != "" then
+      settings.backgroundNormal
+    else
+      wallpaperDetails.center;
+  sessionStart = pkgs.writeShellScript "gjallar-hyprland-session-start" ''
+    # Noctalia stores the wallpaper selected in its UI here.  Use the same
+    # image immediately, rather than briefly showing the Nix fallback first.
+    selected_wallpaper=${lib.escapeShellArg startupWallpaper}
+    noctalia_state="''${XDG_STATE_HOME:-$HOME/.local/state}/noctalia/settings.toml"
+    if [ -r "$noctalia_state" ]; then
+      noctalia_wallpaper="$(${pkgs.gawk}/bin/awk '
+        /^\[wallpaper\.last\]$/ { in_last = 1; next }
+        /^\[/ { in_last = 0 }
+        in_last && /^path[[:space:]]*=/ {
+          sub(/^[^=]*=[[:space:]]*/, "")
+          gsub(/^"|"$/, "")
+          print
+          exit
+        }
+      ' "$noctalia_state")"
+      if [ -n "$noctalia_wallpaper" ] && [ -r "$noctalia_wallpaper" ]; then
+        selected_wallpaper="$noctalia_wallpaper"
+      fi
+    fi
+    ${pkgs.swaybg}/bin/swaybg --image "$selected_wallpaper" --mode fill &
+    ${pkgs.coreutils}/bin/sleep 0.1
+    exec ${lib.getExe inputs.noctalia.packages.${pkgs.stdenv.hostPlatform.system}.default} --daemon
+  '';
 in
 {
   home.packages = with pkgs; [
     awww
+    swaybg
     wayvnc
   ];
 
@@ -28,8 +65,7 @@ in
     ];
 
     exec-once = [
-      "${lib.getExe inputs.noctalia.packages.${pkgs.stdenv.hostPlatform.system}.default} --daemon"
-      "${lib.getExe pkgs.awww} daemon"
+      "${sessionStart}"
     ];
 
     general = {
@@ -37,8 +73,6 @@ in
       gaps_out = 16;
       border_size = 2;
       allow_tearing = true;
-      "col.active_border" = "rgba(${config.lib.stylix.colors.base0D}ff)";
-      "col.inactive_border" = "rgba(${config.lib.stylix.colors.base02}ff)";
     };
 
     cursor = {
@@ -63,7 +97,6 @@ in
         enabled = themeDetails.shadow;
         offset = "2 2";
         range = 20;
-        color = "rgba(${config.lib.stylix.colors.base00}ff)";
       };
     };
 
@@ -126,6 +159,8 @@ in
 
     misc = {
       force_default_wallpaper = -1;
+      disable_hyprland_logo = true;
+      disable_splash_rendering = true;
       exit_window_retains_fullscreen = true;
     };
   };

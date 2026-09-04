@@ -47,7 +47,7 @@ the display manager, NetworkManager, Home Manager, failed units, and
 Hyprland-config state. It also records the actual Hyprland-session environment,
 binary paths, running processes, monitors, and clients after login. Read
 `/var/lib/gjallar-diagnostics/boot-*.log` and
-`~/.local/state/gjallar-diagnostics/hyprland-session.log`.
+`~/.local/state/gjallar-diagnostics/hyprland-*.log`.
 The Hyprland report includes `hyprctl configerrors`, which exposes invalid
 configuration lines and failed commands. The report is a systemd user service
 that remains active for the logged-in Hyprland session.
