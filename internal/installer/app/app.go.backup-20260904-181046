@@ -291,95 +291,13 @@ func Run(ctx context.Context, args []string, in io.Reader, out, errOut io.Writer
 			return fail(errOut, err)
 		}
 		if s.render.SecureBootEnable && !s.render.EndpointManagedDevice {
-			// FINAL SECURE BOOT RECOVERY GATE
-			//
-			// This intentionally runs immediately before firmware handoff.
-			// Existing sbctl keys are reused; they are NOT regenerated.
-			recovery, err := secureboot.Provision(ctx)
-			if err != nil {
-				return fail(
-					errOut,
-					fmt.Errorf("prepare Secure Boot recovery material: %w", err),
-				)
-			}
-
-			for {
-				if err := ui.ShowSecureBootRecovery(
-					ctx,
-					recovery.ArchivePath,
-					recovery.Passphrase,
-				); err != nil {
-					return fail(
-						errOut,
-						fmt.Errorf("display Secure Boot recovery material: %w", err),
-					)
-				}
-
-				saved, err := ui.Confirm(
-					ctx,
-					"Have you saved BOTH the Secure Boot recovery archive and passphrase?",
-					false,
-				)
-				if err != nil {
-					return fail(errOut, err)
-				}
-
-				if !saved {
-					fmt.Fprintln(
-						out,
-						"Recovery material not confirmed saved; showing it again.",
-					)
-					continue
-				}
-
-				savedAgain, err := ui.Confirm(
-					ctx,
-					"Are you absolutely sure the Secure Boot recovery material is saved offline?",
-					false,
-				)
-				if err != nil {
-					return fail(errOut, err)
-				}
-
-				if !savedAgain {
-					fmt.Fprintln(
-						out,
-						"Second confirmation declined; showing the recovery material again.",
-					)
-					continue
-				}
-
-				break
-			}
-
-			recovery.Passphrase = ""
-
-			next, err := secureboot.VerifyAndArmEnrollment(ctx)
-			if err != nil {
+			if err := secureboot.VerifyAndArmEnrollment(ctx); err != nil {
 				return fail(errOut, err)
 			}
+			fmt.Fprintln(out, "Secure Boot enrollment armed and signed artifacts verified.")
 
-			switch next {
-			case secureboot.ContinuationNone:
-				fmt.Fprintln(out, "Secure Boot is active and the GjallarOS boot chain is verified.")
-				fmt.Fprintln(out, "GjallarOS installation complete.")
-				return 0
-
-			case secureboot.ContinuationEnable:
-				fmt.Fprintln(out, "GjallarOS Secure Boot ownership is already enrolled.")
-				fmt.Fprintln(out, "Only Secure Boot enforcement still needs to be enabled in firmware.")
-				if err := ui.SecureBootEnableHandoff(ctx); err != nil {
-					return fail(errOut, fmt.Errorf("Secure Boot enable handoff: %w", err))
-				}
-
-			case secureboot.ContinuationEnroll:
-				fmt.Fprintln(out, "Secure Boot ownership transfer armed and boot artifacts verified.")
-				if err := ui.SecureBootFirmwareHandoff(ctx); err != nil {
-					return fail(errOut, fmt.Errorf("Secure Boot firmware handoff: %w", err))
-				}
-
-			default:
-				return fail(errOut, fmt.Errorf("unknown Secure Boot continuation state %q", next))
+			if err := ui.SecureBootFirmwareHandoff(ctx); err != nil {
+				return fail(errOut, fmt.Errorf("Secure Boot firmware handoff: %w", err))
 			}
 
 			fmt.Fprintln(out, "Secure Boot firmware instructions acknowledged.")
@@ -391,11 +309,8 @@ func Run(ctx context.Context, args []string, in io.Reader, out, errOut io.Writer
 			return 0
 		} else if s.user.AutoReboot {
 			_ = attached(ctx, "sudo", "systemctl", "reboot")
-		} else if !s.render.EndpointManagedDevice {
-			yes, _ := ui.Confirm(ctx, "Deployment complete. Reboot now?", false)
-			if yes {
-				_ = attached(ctx, "sudo", "systemctl", "reboot")
-			}
+		} else if yes, _ := ui.Confirm(ctx, "Deployment complete. Reboot now?", false); yes {
+			_ = attached(ctx, "sudo", "systemctl", "reboot")
 		}
 	}
 	fmt.Fprintln(out, "GjallarOS installation complete.")
@@ -425,33 +340,25 @@ func prepareHost(ctx context.Context, ui prompt.UI, opt options, s state, out, e
 			return fail(errOut, fmt.Errorf("rebuild completed, but NixOS %s is not active", expected))
 		}
 	}
-	// A completed GjallarOS installation is flake-owned. Rebuilding the
-	// bootstrap /etc/nixos/configuration.nix on a rerun would switch the live
-	// machine back to its pre-install base generation before deploying the
-	// requested flake generation.
-	if s.existing {
-		fmt.Fprintln(out, "Existing GjallarOS installation detected; skipping /etc/nixos bootstrap rebuild.")
-	} else {
-		configPath := "/etc/nixos/configuration.nix"
-		data, err := os.ReadFile(configPath)
-		if err != nil {
-			return fail(errOut, err)
-		}
-		plan := bootstrap.Build(data, s.preset)
-		if len(plan.Missing) > 0 {
-			fmt.Fprintf(out, "Missing helpers/options: %s\nProposed configuration:\n%s\n", strings.Join(plan.Missing, ", "), plan.Updated)
-			if !s.user.EndpointManagedDevice {
-				yes, err := ui.Confirm(ctx, "Apply prerequisite configuration and rebuild?", false)
-				if err != nil {
-					return fail(errOut, err)
-				}
-				if !yes {
-					return fail(errOut, errors.New("required persistent prerequisites were not approved"))
-				}
-			}
-			if _, err := bootstrap.Apply(ctx, configPath, plan.Updated, time.Now()); err != nil {
+	configPath := "/etc/nixos/configuration.nix"
+	data, err := os.ReadFile(configPath)
+	if err != nil {
+		return fail(errOut, err)
+	}
+	plan := bootstrap.Build(data, s.preset)
+	if len(plan.Missing) > 0 {
+		fmt.Fprintf(out, "Missing helpers/options: %s\nProposed configuration:\n%s\n", strings.Join(plan.Missing, ", "), plan.Updated)
+		if !s.user.EndpointManagedDevice {
+			yes, err := ui.Confirm(ctx, "Apply prerequisite configuration and rebuild?", false)
+			if err != nil {
 				return fail(errOut, err)
 			}
+			if !yes {
+				return fail(errOut, errors.New("required persistent prerequisites were not approved"))
+			}
+		}
+		if _, err := bootstrap.Apply(ctx, configPath, plan.Updated, time.Now()); err != nil {
+			return fail(errOut, err)
 		}
 	}
 	check := s.user.RunUpdateChecks

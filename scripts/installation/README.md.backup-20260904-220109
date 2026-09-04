@@ -182,7 +182,7 @@ gjallar-secure-boot create-keys
 set secureBootEnable=true and rebuild
 verify with gjallar-secure-boot status
 installer arms enrollment and opens Framework firmware setup
-delete ONLY PK, keep KEK, DB, and DBX intact, then boot with Secure Boot disabled
+delete PK, KEK, and DB individually, then boot with Secure Boot disabled
 boot service enrolls per-device keys and verifies signed artifacts
 reboot and verify again
 ```

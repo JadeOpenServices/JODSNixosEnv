@@ -17,11 +17,7 @@ let
 
     unset WINEDLLOVERRIDES
 
-    mkdir -p "$WINEPREFIX"
-
-    # Fully grant write and execute permissions on prefix
-    chmod -R 755 "$WINEPREFIX" 2>/dev/null || true
-    chmod -R +w "$WINEPREFIX" 2>/dev/null || true
+    install -d -m 0700 "$WINEPREFIX"
 
     # Kill lingering wineserver processes to release file locks
     ${winePackage}/bin/wineserver -k || true
@@ -29,9 +25,6 @@ let
     # Phase 1: Initialize prefix cleanly
     ${winePackage}/bin/wineboot -u
     ${winePackage}/bin/wineserver -w || true
-
-    # Re-apply write permissions after store files are linked
-    chmod -R +w "$WINEPREFIX"
 
     # Set driver registry keys & disable DirectComposition hardware acceleration
     ${winePackage}/bin/wine reg add "HKCU\\Software\\Wine\\X11 Driver" /v ClientSideWithRender /t REG_SZ /d "N" /f || true
@@ -47,16 +40,16 @@ let
     # Phase 2: System DLLs, Fonts, and VC++ Redistributable
     ${pkgs.winetricks}/bin/winetricks -q corefonts comctl32 gdiplus vcrun2022 || true
     ${winePackage}/bin/wineserver -w || true
-    chmod -R +w "$WINEPREFIX"
 
     # Phase 3: DirectX components & DComp override support
     ${pkgs.winetricks}/bin/winetricks -q dxvk vkd3d d3dcompiler_43 d3dcompiler_47 d3dx9 dcomp || true
     ${winePackage}/bin/wineserver -w || true
-    chmod -R +w "$WINEPREFIX"
 
     # Phase 4: .NET Framework & Modern .NET Runtimes
     ${pkgs.winetricks}/bin/winetricks -q dotnet48 dotnetdesktop6 dotnetdesktop8 || true
     ${winePackage}/bin/wineserver -w || true
+
+    touch "$WINEPREFIX/.gjallar-wine-initialized"
   '';
 
   wineWin11 = pkgs.writeShellScriptBin "wine-win11" ''
@@ -96,11 +89,15 @@ let
     export WINEDEBUG="-fixme"
     export WINEDLLOVERRIDES="winhttp=n,b;d3dcompiler_47=n,b;d3dcompiler_43=n,b;gdiplus=n,b;dxgi=n,b;d3d11=n,b;d3d10core=n,b;d3d9=n,b;dcomp=n,b"
 
-    # Auto-initialize if prefix directory does NOT exist or lacks initialization marker
+    # Initialize on first actual use. Locking prevents two file-open events from
+    # corrupting a prefix while Wine and winetricks are still configuring it.
     if [[ ! -d "$prefix" ]] || [[ ! -f "$prefix/.gjallar-wine-initialized" ]]; then
-      mkdir -p "$prefix"
-      ${wineInit}/bin/wine-win11-init
-      touch "$prefix/.gjallar-wine-initialized"
+      mkdir -p "$(dirname "$prefix")"
+      exec 9>"$prefix.gjallar-init.lock"
+      ${pkgs.util-linux}/bin/flock 9
+      if [[ ! -f "$prefix/.gjallar-wine-initialized" ]]; then
+        ${wineInit}/bin/wine-win11-init
+      fi
     fi
 
     # Execute wine binary if arguments are passed, otherwise stop after init check
@@ -167,17 +164,6 @@ in
     "application/x-ms-dos-executable" = "wine-win11.desktop";
     "application/x-msi" = "wine-win11.desktop";
     "application/x-ms-shortcut" = "wine-win11.desktop";
-  };
-
-  # Automatically run pre-initialization on login if prefix doesn't exist
-  systemd.user.services.wine-win11-preinit = {
-    description = "Pre-initialize Wine Win11 Prefix";
-    wantedBy = [ "default.target" ];
-    serviceConfig = {
-      Type = "oneshot";
-      ExecStart = "${wineWin11}/bin/wine-win11";
-      RemainAfterExit = true;
-    };
   };
 
   boot.kernelParams = lib.optionals settings.nemuGpuPassthrough (

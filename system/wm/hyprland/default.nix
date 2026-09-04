@@ -43,9 +43,11 @@ EOF
     done
 
     export HYPRLAND_CONFIG="$hypr_config_dir/hyprland.conf"
-    exec ${pkgs.hyprland}/bin/Hyprland >>"$state_dir/startup.log" 2>&1
+    exec ${pkgs.hyprland}/bin/start-hyprland >>"$state_dir/startup.log" 2>&1
   '';
-  hyprlandSessionEntry = pkgs.runCommand "gjallar-hyprland-session-entry" { } ''
+  hyprlandSessionEntry = pkgs.runCommand "gjallar-hyprland-session-entry" {
+    passthru.providedSessions = [ "gjallar-hyprland" ];
+  } ''
     install -Dm444 ${pkgs.writeText "gjallar-hyprland.desktop" ''
       [Desktop Entry]
       Name=GjallarOS Hyprland
@@ -57,7 +59,11 @@ EOF
   '';
 in
 {
-  environment.systemPackages = [ hyprlandSession hyprlandSessionEntry ];
+  environment.systemPackages = [ hyprlandSession ];
+
+  # Make the wrapper a display-manager session. Otherwise greeters can miss it
+  # and silently launch upstream's bare Hyprland session.
+  services.displayManager.sessionPackages = [ hyprlandSessionEntry ];
 
   imports = [
     ../common/wayland.nix

@@ -1,12 +1,22 @@
 { config, lib, ... }:
 {
   services.fprintd.enable = true;
+  services.gnome.gnome-keyring.enable = true;
 
-  # Fingerprints supplement passwords; the normal PAM password rules remain.
+  # A fingerprint cannot provide the login password needed to decrypt GNOME
+  # Keyring. Require a password for new login sessions so Chromium/Edge/Teams
+  # receive an unlocked Secret Service. Fingerprints remain available after
+  # login for the lock screen and privilege elevation.
   security.pam.services = {
-    greetd.fprintAuth = true;
+    greetd = {
+      fprintAuth = false;
+      enableGnomeKeyring = true;
+    };
     hyprlock.fprintAuth = true;
-    login.fprintAuth = true;
+    login = {
+      fprintAuth = false;
+      enableGnomeKeyring = true;
+    };
     sudo.fprintAuth = true;
     swaylock.fprintAuth = true;
   };
