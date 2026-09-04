@@ -26,3 +26,17 @@ func TestStrings(t *testing.T) {
 		t.Fatalf("Strings() = %q", got)
 	}
 }
+
+func TestRenderRecoveryPolicyDefaultsDisabled(t *testing.T) {
+	got := string(Render(Settings{}))
+	for _, want := range []string{
+		"recoveryEnable = false;",
+		"jodsPrebootLockEnable = false;",
+		"secureBootEnable = false;",
+		"endpointManagedDevice = false;",
+	} {
+		if !strings.Contains(got, want) {
+			t.Fatalf("missing %q from settings:\n%s", want, got)
+		}
+	}
+}

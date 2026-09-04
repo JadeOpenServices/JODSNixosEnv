@@ -16,6 +16,7 @@
     ../../system/hardware/input.nix
     ../../system/hardware/desktop/mouse.nix
     ../../system/hardware/desktop/boot.nix
+    ../../system/recovery
     ../../system/hardware/desktop/nfs.nix
     ../../system/security/desktop/firewall.nix
     ../../system/virtualization

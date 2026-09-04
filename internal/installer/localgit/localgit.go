@@ -95,26 +95,51 @@ func updateExclude(path string) error {
 		return fmt.Errorf("create Git info directory: %w", err)
 	}
 	existing := map[string]bool{}
-	if f, err := os.Open(path); err == nil {
-		scanner := bufio.NewScanner(f)
-		for scanner.Scan() {
-			existing[scanner.Text()] = true
-		}
-		f.Close()
+	contents, err := os.ReadFile(path)
+	if err != nil && !os.IsNotExist(err) {
+		return fmt.Errorf("read Git exclude: %w", err)
 	}
-	f, err := os.OpenFile(path, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0644)
-	if err != nil {
-		return fmt.Errorf("open Git exclude: %w", err)
+	scanner := bufio.NewScanner(strings.NewReader(string(contents)))
+	for scanner.Scan() {
+		existing[scanner.Text()] = true
 	}
-	defer f.Close()
+	if err := scanner.Err(); err != nil {
+		return err
+	}
+	updated := append([]byte(nil), contents...)
+	if len(updated) > 0 && updated[len(updated)-1] != '\n' {
+		updated = append(updated, '\n')
+	}
 	for _, pattern := range excludePatterns {
 		if !existing[pattern] {
-			if _, err := fmt.Fprintln(f, pattern); err != nil {
-				return fmt.Errorf("write Git exclude: %w", err)
-			}
+			updated = append(updated, []byte(pattern+"\n")...)
 		}
 	}
-	return f.Sync()
+	tmp, err := os.CreateTemp(filepath.Dir(path), ".exclude-*")
+	if err != nil {
+		return fmt.Errorf("create Git exclude: %w", err)
+	}
+	name := tmp.Name()
+	defer os.Remove(name)
+	if err := tmp.Chmod(0644); err != nil {
+		tmp.Close()
+		return err
+	}
+	if _, err := tmp.Write(updated); err != nil {
+		tmp.Close()
+		return err
+	}
+	if err := tmp.Sync(); err != nil {
+		tmp.Close()
+		return err
+	}
+	if err := tmp.Close(); err != nil {
+		return err
+	}
+	if err := os.Rename(name, path); err != nil {
+		return fmt.Errorf("replace Git exclude: %w", err)
+	}
+	return nil
 }
 
 func git(ctx context.Context, root string, args ...string) ([]byte, error) {

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Small bootstrap only. The installer itself is cmd/gjallar-installer.
+# Build and launch the installer without changing the caller's environment.
 set -euo pipefail
 
 script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -10,10 +10,8 @@ command -v nix >/dev/null 2>&1 || {
     exit 1
 }
 
-exec nix --extra-experimental-features 'nix-command flakes' shell \
-    "path:$repo#gjallar-installer" \
-    nixpkgs#go_1_26 nixpkgs#pciutils nixpkgs#git nixpkgs#fwupd \
-    nixpkgs#curl nixpkgs#zenity nixpkgs#sops nixpkgs#age \
-    nixpkgs#whois nixpkgs#openssl nixpkgs#cryptsetup \
-    nixpkgs#util-linux nixpkgs#systemd \
-    -c gjallar-installer --repo "$repo" "$@"
+printf 'Building the GjallarOS installer...\n'
+installer_path="$(nix --extra-experimental-features 'nix-command flakes' build \
+    --no-link --print-out-paths "path:$repo#gjallar-installer")"
+
+exec "$installer_path/bin/gjallar-installer" --repo "$repo" "$@"

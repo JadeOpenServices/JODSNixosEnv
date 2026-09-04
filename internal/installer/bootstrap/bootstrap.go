@@ -16,17 +16,30 @@ type Plan struct {
 	Updated           []byte
 }
 
-func Build(config []byte, preset bool) Plan {
-	requirements := map[string]string{"lspci": "pciutils", "git": "git", "fwupdmgr": "fwupd", "curl": "curl"}
-	if !preset {
-		requirements["zenity"] = "zenity"
+func Build(config []byte, _ bool) Plan {
+	requirements := map[string]string{
+		"age-keygen":          "age",
+		"cryptsetup":          "cryptsetup",
+		"curl":                "curl",
+		"fwupdmgr":            "fwupd",
+		"git":                 "git",
+		"go":                  "go_1_26",
+		"lspci":               "pciutils",
+		"lsblk":               "util-linux",
+		"mkpasswd":            "whois",
+		"openssl":             "openssl",
+		"sbctl":               "sbctl",
+		"sops":                "sops",
+		"systemd-cryptenroll": "systemd",
+		"tar":                 "gnutar",
+		"zenity":              "zenity",
 	}
 	packages := map[string]bool{}
 	missing := []string{}
 	for command, pkg := range requirements {
-		if _, err := exec.LookPath(command); err != nil {
+		if _, err := exec.LookPath(command); err != nil || !declaresPackage(config, pkg) {
 			packages[pkg] = true
-			missing = append(missing, command)
+			missing = append(missing, command+" ("+pkg+")")
 		}
 	}
 	text := string(config)
@@ -49,6 +62,22 @@ func Build(config []byte, preset bool) Plan {
 	sort.Strings(list)
 	sort.Strings(missing)
 	return Plan{Packages: list, Missing: missing, Updated: Transform(config, list)}
+}
+
+func declaresPackage(config []byte, pkg string) bool {
+	lines := strings.Split(string(config), "\n")
+	for i, line := range lines {
+		if !regexp.MustCompile(`^\s*environment\.systemPackages\s*=`).MatchString(line) {
+			continue
+		}
+		region := line
+		for !strings.Contains(region, "];") && i+1 < len(lines) {
+			i++
+			region += " " + lines[i]
+		}
+		return regexp.MustCompile(`(^|\s)` + regexp.QuoteMeta(pkg) + `(\s|\]|$)`).MatchString(region)
+	}
+	return false
 }
 
 func Transform(config []byte, packages []string) []byte {
