@@ -27,8 +27,13 @@ func EnsureAgeKey(ctx context.Context, username string) (keyPath, recipient stri
 			return "", "", err
 		}
 		tmp, err := os.CreateTemp(filepath.Dir(keyPath), ".age-key-*")
-		if err != nil { return "", "", err }
-		tmpPath := tmp.Name(); tmp.Close(); os.Remove(tmpPath); defer os.Remove(tmpPath)
+		if err != nil {
+			return "", "", err
+		}
+		tmpPath := tmp.Name()
+		tmp.Close()
+		os.Remove(tmpPath)
+		defer os.Remove(tmpPath)
 		cmd := exec.CommandContext(ctx, "age-keygen", "-o", tmpPath)
 		cmd.Stdout = os.Stdout
 		cmd.Stderr = os.Stderr
@@ -38,7 +43,9 @@ func EnsureAgeKey(ctx context.Context, username string) (keyPath, recipient stri
 		if err := os.Chmod(tmpPath, 0600); err != nil {
 			return "", "", err
 		}
-		if err := os.Rename(tmpPath, keyPath); err != nil { return "", "", err }
+		if err := os.Rename(tmpPath, keyPath); err != nil {
+			return "", "", err
+		}
 	}
 	f, err := os.Open(keyPath)
 	if err != nil {
@@ -92,15 +99,21 @@ func EncryptScrobbling(ctx context.Context, repo, recipient, lastfm, listenbrain
 	}
 	target := filepath.Join(repo, "secrets", "default.yaml")
 	encrypted, err := os.CreateTemp(filepath.Dir(target), ".default-encrypted-*.yaml")
-	if err != nil { return err }
-	encryptedPath := encrypted.Name(); encrypted.Close(); defer os.Remove(encryptedPath)
+	if err != nil {
+		return err
+	}
+	encryptedPath := encrypted.Name()
+	encrypted.Close()
+	defer os.Remove(encryptedPath)
 	cmd := exec.CommandContext(ctx, "sops", "--encrypt", "--age", recipient, "--output", encryptedPath, name)
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
 	if err := cmd.Run(); err != nil {
 		return fmt.Errorf("encrypt scrobbling credentials: %w", err)
 	}
-	if err := os.Rename(encryptedPath, target); err != nil { return fmt.Errorf("replace encrypted credentials: %w", err) }
+	if err := os.Rename(encryptedPath, target); err != nil {
+		return fmt.Errorf("replace encrypted credentials: %w", err)
+	}
 	config := []byte("# Managed by gjallarctl.\ncreation_rules:\n  - path_regex: secrets/[^/]+\\.(yaml|json|env|ini)$\n    age: " + recipient + "\n")
 	return atomicWrite(filepath.Join(repo, ".sops.yaml"), config, 0644)
 }

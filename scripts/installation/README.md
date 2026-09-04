@@ -6,6 +6,12 @@ Run this from the repository root on an existing NixOS installation:
 ./scripts/installation/install.sh
 ```
 
+The short bootstrapper requires only Nix. It builds and starts
+`gjallar-installer` without changing the current shell environment. After one
+approval, the Go preflight persistently adds Go, PCI/firmware tools, Git,
+HTTPS/GTK helpers, SOPS/Age, password hashing, and disk-encryption tooling to
+`/etc/nixos/configuration.nix`, rebuilds, then resumes the installation.
+
 ## Preset automation
 
 Copy the preset with:
@@ -144,13 +150,51 @@ automatically after a successful rebuild. That file is treated as local
 machine configuration and is added to Git's local exclude list automatically.
 
 `gjallar-installer` owns discovery, terminal/GTK prompts, policy, rendering, and
-action sequencing. `install.sh` only launches that binary directly or through
-the flake. The old sourced Bash implementation is inactive and retained under
-`legacy-functions/` only as a historical compatibility reference.
+action sequencing. `install.sh` builds that binary without changing the current
+shell environment. The Go preflight proposes persistent prerequisite additions
+to `/etc/nixos/configuration.nix`, applies them only after approval, rebuilds,
+then continues automatically. The former sourced Bash implementation has been
+removed.
 
 The installed helper commands (`helpme`, `update`, `rebuild`, `cleanup`,
 `thermal-status`, and `thermal-test`) are provided by `system/tools/` and use
 the configured repository and hostname automatically.
+
+## Recovery and JODS preboot policy
+
+`recoveryEnable` is disabled by default. When enabled, the bootloader exposes a
+console-only `gjallar-recovery` specialisation with `gjallar-recover list` and
+`gjallar-recover rollback`. It uses NixOS generations already stored on disk;
+it does not repartition an enrolled endpoint.
+
+`jodsPrebootLockEnable` is also disabled. It publishes declarative JODS policy
+intent at `/etc/jods/preboot-policy`, but does not claim to be an anti-theft
+lock. That requires a later Secure Boot, measured-boot, remote-attestation, and
+revocable LUKS-key-release design; a local boot flag alone is bypassable.
+
+Framework profiles also expose `secureBootEnable`, disabled by default. The
+Framework provisioning sequence is:
+
+```text
+gjallar-secure-boot create-keys
+set secureBootEnable=true and rebuild
+verify with gjallar-secure-boot status
+put Framework firmware into Secure Boot Setup Mode
+gjallar-secure-boot enroll-framework
+reboot and verify again
+```
+
+The Linux-only enrollment command does not add Microsoft keys. It retains the
+Framework firmware-builtin keys needed by platform devices and firmware update
+flows. Keep `/var/lib/sbctl` private and backed up; JODS should escrow recovery
+material without distributing a shared fleet-wide private signing key.
+
+`secureBootPrompt=true` asks unmanaged Framework users whether to prepare
+Secure Boot, including when a preset is loaded. `endpointManagedDevice=true` suppresses
+that prompt: JODS must provision and escrow per-device keys itself. On an
+unmanaged device, the installer creates an encrypted recovery archive under
+`/var/lib/gjallarOS/recovery`, displays its generated passphrase outside shell
+history before rebuild or reboot, and requires two save confirmations.
 
 Laptop profiles include `thermald`, `auto-cpufreq`, UPower, conservative
 battery charge thresholds, and dock-friendly lid behavior. Fan curves are not

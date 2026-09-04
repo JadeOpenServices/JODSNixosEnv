@@ -15,6 +15,7 @@
     ../../system/hardware/fingerprint.nix
     ../../system/hardware/input.nix
     ../../system/hardware/thinkpad/boot.nix
+    ../../system/recovery
     ../../system/security/laptop/firewall.nix
     ../../system/hardware/laptop/battery.nix
     ../../system/virtualization

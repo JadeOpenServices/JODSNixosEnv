@@ -15,6 +15,7 @@
     ../../system/hardware/fingerprint.nix
     ../../system/hardware/input.nix
     ../../system/hardware/work/boot.nix
+    ../../system/recovery
     ../../system/hardware/laptop/battery.nix
     ../../system/security/laptop/firewall.nix
     ../../system/virtualization
