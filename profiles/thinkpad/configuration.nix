@@ -16,6 +16,7 @@
     ../../system/hardware/input.nix
     ../../system/hardware/thinkpad/boot.nix
     ../../system/recovery
+    ../../system/management/jods
     ../../system/security/laptop/firewall.nix
     ../../system/hardware/laptop/battery.nix
     ../../system/virtualization
@@ -59,7 +60,7 @@
     isNormalUser = true;
     shell = pkgs.${settings.shell};
     description = settings.username;
-    extraGroups = [ "networkmanager" ] ++ lib.optionals (!settings.endpointManagedDevice && !builtins.pathExists settings.rootPasswordFile) [ "wheel" ];
+    extraGroups = [ "networkmanager" ] ++ lib.optionals (!builtins.pathExists settings.rootPasswordFile) [ "wheel" ];
   };
 
   # See https://nix.dev/permalink/stub-ld.
