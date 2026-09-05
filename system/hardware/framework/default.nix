@@ -1,4 +1,5 @@
 {
+  config,
   lib,
   pkgs,
   settings,
@@ -12,6 +13,8 @@ if settings.frameworkEnable then
       strategyOnDischarging = profile.strategyOnDischarging;
       strategies = profile.strategies;
     };
+    luksMappings = builtins.attrValues config.boot.initrd.luks.devices;
+    luksDevice = if builtins.length luksMappings == 1 then (builtins.head luksMappings).device else "";
 
     secureBootArtifactVerifier = pkgs.writeShellApplication {
       name = "gjallar-verify-secure-boot-artifacts";
@@ -291,6 +294,13 @@ PYEOF
       enable = true;
       pkiBundle = "/var/lib/sbctl";
       configurationLimit = 8;
+      measuredBoot = lib.mkIf settings.luksTpm2Enable {
+        enable = true;
+        # PCR 4 covers the complete Lanzaboote boot chain; PCR 7 covers the
+        # Secure Boot policy. PCR 0 also binds firmware code. Lanzaboote keeps
+        # the pcrlock policy current across generation updates.
+        pcrs = [ 0 4 7 ];
+      };
     };
     systemd.services.gjallar-secure-boot-enroll = lib.mkIf settings.secureBootEnable {
       description = "Enroll GjallarOS Secure Boot keys in firmware Setup Mode";
@@ -509,6 +519,92 @@ done
       '';
     };
 
+    assertions = lib.optionals settings.luksTpm2Enable [
+      {
+        assertion = settings.secureBootEnable;
+        message = "GjallarOS TPM2 unlock requires Secure Boot.";
+      }
+      {
+        assertion = builtins.length luksMappings == 1 && lib.hasPrefix "/dev/disk/by-uuid/" luksDevice;
+        message = "GjallarOS TPM2 enrollment requires exactly one LUKS device addressed by /dev/disk/by-uuid/.";
+      }
+    ];
+
+    systemd.services.gjallar-tpm2-enroll = lib.mkIf (settings.secureBootEnable && settings.luksTpm2Enable) {
+      description = "Enroll GjallarOS measured-boot TPM2 LUKS token";
+      wantedBy = [ "multi-user.target" ];
+      after = [ "gjallar-secure-boot-finalize.service" "systemd-pcrlock-make-policy.service" ];
+      requires = [ "systemd-pcrlock-make-policy.service" ];
+      unitConfig = {
+        ConditionSecurity = "uefi-secureboot";
+        ConditionPathExists = [
+          "!/var/lib/gjallarOS/tpm2-enrollment-complete"
+          "/var/lib/systemd/pcrlock.json"
+          "/var/lib/gjallarOS/secure-boot/ownership.json"
+        ];
+      };
+      serviceConfig = { Type = "oneshot"; UMask = "0077"; };
+      path = [ pkgs.cryptsetup pkgs.systemd pkgs.coreutils pkgs.gnugrep pkgs.python3 secureBootArtifactVerifier secureBootOwnershipVerifier ];
+      script = ''
+        set -euo pipefail
+        device=${lib.escapeShellArg luksDevice}
+        state=/var/lib/gjallarOS
+        keyfile="$(mktemp /run/gjallar-luks-key.XXXXXX)"
+        trap 'rm -f -- "$keyfile"' EXIT
+
+        [ ! -e "$state/secure-boot-enable-required" ] || exit 0
+        gjallar-verify-secure-boot-artifacts
+        gjallar-verify-secure-boot-ownership enrolled
+
+        systemd-ask-password --timeout=0 \
+          "GjallarOS: enter the human LUKS recovery passphrase to enroll measured-boot TPM2 unlock" >"$keyfile"
+        chmod 0600 "$keyfile"
+        cryptsetup open --test-passphrase --type luks "$device" --key-file "$keyfile"
+
+        # Fresh installs must not inherit an unidentified TPM token. Refuse an
+        # ambiguous state instead of deleting any unknown slot.
+        before="$(cryptsetup luksDump --dump-json-metadata "$device")"
+        if printf '%s' "$before" | grep -q 'systemd-tpm2'; then
+          printf '%s\n' 'ERROR: an existing TPM2 token needs explicit audited migration; no slot was changed.' >&2
+          exit 1
+        fi
+
+        systemd-cryptenroll --unlock-key-file="$keyfile" --tpm2-device=auto \
+          --tpm2-pcrlock=/var/lib/systemd/pcrlock.json "$device"
+
+        mkdir -p "$state/luks"
+        cryptsetup luksDump --dump-json-metadata "$device" >"$state/luks/metadata.json.tmp"
+        token_id="$(python3 - "$state/luks/metadata.json.tmp" <<'PYEOF'
+import json, sys
+tokens = json.load(open(sys.argv[1], encoding="utf-8")).get("tokens", {})
+ids = [key for key, value in tokens.items() if value.get("type") == "systemd-tpm2"]
+if len(ids) != 1:
+    raise SystemExit(f"expected exactly one TPM2 token, found {len(ids)}")
+print(ids[0])
+PYEOF
+)"
+        cryptsetup open --test-passphrase --token-only --token-id "$token_id" "$device"
+        python3 - "$state/luks/metadata.json.tmp" "$state/luks/keyslots.json" <<'PYEOF'
+import json, os, sys
+source, target = sys.argv[1:]
+doc = json.load(open(source, encoding="utf-8"))
+tokens = doc.get("tokens", {})
+tpm = {k: v.get("keyslots", []) for k, v in tokens.items() if v.get("type") == "systemd-tpm2"}
+if len(tpm) != 1:
+    raise SystemExit(f"expected exactly one TPM2 token after enrollment, found {len(tpm)}")
+record = {"schema": 1, "device": ${builtins.toJSON luksDevice}, "tpm2Tokens": tpm,
+          "policy": "/var/lib/systemd/pcrlock.json", "humanRecoveryVerified": True}
+with open(target + ".tmp", "w", encoding="utf-8") as f:
+    json.dump(record, f, indent=2); f.write("\n"); f.flush(); os.fsync(f.fileno())
+os.replace(target + ".tmp", target)
+PYEOF
+        rm -f -- "$state/luks/metadata.json.tmp"
+        chmod 0600 "$state/luks/keyslots.json"
+        install -m 0600 /dev/null "$state/tpm2-enrollment-complete"
+        printf '%s\n' 'GjallarOS measured-boot TPM2 enrollment completed; human recovery keyslots were preserved.'
+      '';
+    };
+
     systemd.services.gjallar-installer-post-secure-boot = lib.mkIf settings.secureBootEnable {
       description = "Finish GjallarOS installer after Secure Boot provisioning";
 
@@ -518,7 +614,9 @@ done
         "local-fs.target"
         "systemd-remount-fs.service"
         "gjallar-secure-boot-finalize.service"
-      ];
+      ] ++ lib.optional settings.luksTpm2Enable "gjallar-tpm2-enroll.service";
+
+      requires = lib.optional settings.luksTpm2Enable "gjallar-tpm2-enroll.service";
 
       unitConfig.ConditionPathExists =
         "/var/lib/gjallarOS/installer-resume-after-secure-boot";
@@ -545,6 +643,7 @@ done
         export LC_ALL=C
 
         resume=/var/lib/gjallarOS/installer-resume-after-secure-boot
+        sb_enrollment=/var/lib/gjallarOS/secure-boot-enrollment-armed
         sb_final=/var/lib/gjallarOS/secure-boot-enable-required
         status_file=/var/lib/gjallarOS/installer-status.txt
         complete=/var/lib/gjallarOS/installation-complete
@@ -668,7 +767,7 @@ done
           return 0
         }
 
-        fail_visible() {
+        pause_visible() {
           message="$1"
 
           write_status "INSTALLER PAUSED: $message"
@@ -678,53 +777,54 @@ $message
 
 The continuation marker was kept so the operation can be resumed safely."
 
-          exit 1
+          # This is an incomplete installer transaction, not a failed NixOS
+          # activation. Keep the resume marker and report success so
+          # switch-to-configuration does not mislabel the rebuild as failed.
+          exit 0
         }
 
         write_status \
-          "Secure Boot is enabled. GjallarOS is running final installer verification."
+          "GjallarOS is checking the pending Secure Boot installation stage."
 
-        gtk_message "Secure Boot is enabled.
-
-GjallarOS is now finishing installation and verifying the boot chain.
-
-No action is required unless an error is shown." 5
+        if [ -e "$sb_enrollment" ]; then
+          pause_visible "Firmware action required: clear/delete ONLY the Platform Key (PK), keep KEK, DB and DBX, leave Secure Boot disabled, then boot GjallarOS. Never use Erase All Secure Boot Settings."
+        fi
 
         # The Secure Boot finalizer must have completed first.
         if [ -e "$sb_final" ]; then
-          fail_visible \
-            "Secure Boot final verification has not completed successfully yet."
+          pause_visible \
+            "GjallarOS keys are enrolled. Enable Secure Boot in firmware, save, then boot GjallarOS for final verification. Do not clear or replace PK, KEK, DB or DBX."
         fi
 
         status="$(sbctl status 2>&1)" ||
-          fail_visible "Unable to read Secure Boot status."
+          pause_visible "Unable to read Secure Boot status."
 
         printf '%s\n' "$status" |
           grep -Eq 'Secure Boot:.*Enabled' ||
-          fail_visible "Secure Boot is not enforcing."
+          pause_visible "Secure Boot is not enforcing."
 
         if printf '%s\n' "$status" |
           grep -Eq 'Setup Mode:.*Enabled'; then
-          fail_visible "Firmware is unexpectedly still in Secure Boot Setup Mode."
+          pause_visible "Firmware is unexpectedly still in Secure Boot Setup Mode."
         fi
 
         write_status "Verifying signed GjallarOS boot artifacts..."
 
         gjallar-verify-secure-boot-artifacts ||
-          fail_visible "GjallarOS boot artifact verification failed."
+          pause_visible "GjallarOS boot artifact verification failed."
 
         write_status "Verifying GjallarOS Secure Boot ownership..."
 
         gjallar-verify-secure-boot-ownership enrolled ||
-          fail_visible "GjallarOS PK/KEK/db ownership verification failed."
+          pause_visible "GjallarOS PK/KEK/db ownership verification failed."
 
         # Basic installed-system sanity. Do not declare completion unless the
         # active system and booted-system links exist and are readable.
         [ -e /run/current-system ] ||
-          fail_visible "/run/current-system is missing."
+          pause_visible "/run/current-system is missing."
 
         [ -e /run/booted-system ] ||
-          fail_visible "/run/booted-system is missing."
+          pause_visible "/run/booted-system is missing."
 
         write_status "Final GjallarOS installer checks passed."
 

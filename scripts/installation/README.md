@@ -27,6 +27,10 @@ Last.fm/ListenBrainz usernames and tokens are always requested in the terminal;
 never place those credentials in this file. Remove or rename the file to return
 to fully interactive mode.
 
+The installer estimates the weather location from the current public network
+address and asks the user to confirm it. If rejected or unavailable, it asks
+for city and country explicitly. The detected value is never accepted silently.
+
 In the preset, `username` is the Linux account and the single identity input.
 `dotfilesDir` is derived automatically as `/home/<username>/Documents/gjallarOS`.
 `workUserEnable` controls the optional work account, whose default name is
@@ -99,11 +103,9 @@ Zenity. Zenity is bootstrapped into the NixOS configuration automatically;
 TTY, SSH, live-media, and headless runs continue using the terminal interface.
 On an existing install, a missing Zenity package also triggers the small
 prerequisite bootstrap so the next installer prompts can use GTK.
-The same bootstrap installs `catppuccin-gtk` and sets
-`environment.variables.GTK_THEME` to `Adwaita:dark`, a predictable GTK engine
-for installer dialogs, while the
-installer stylesheet supplies the Catppuccin palette and spacing. This avoids
-theme-engine-specific rendering differences in Zenity.
+The same bootstrap sets `environment.variables.GTK_THEME` to `Adwaita:dark`,
+a predictable GTK engine for installer dialogs. The active Noctalia/Stylix
+palette owns normal desktop theming.
 Closing or pressing Escape in a GTK prompt opens a quit confirmation; choosing
 No returns to the interrupted prompt.
 
@@ -238,6 +240,18 @@ unknown hardware keeps the safe generic firmware and NetworkManager setup.
 `dockerEnable=true` enables Docker-compatible commands through rootless Podman
 and `podman-compose`. GjallarOS never starts the root Docker daemon and never
 adds desktop users to the root-equivalent `docker` group.
+
+The rootless Podman user socket is available on demand for explicit local use,
+but GjallarOS does not export it globally or keep it alive through user
+lingering. Services must not mount the socket merely to collect status or logs.
+Compose files should publish host ports `>= 1024`; GjallarOS does not weaken
+`net.ipv4.ip_unprivileged_port_start` just to make rootless containers claim
+ports 80 or 443. Put a system reverse proxy in front when standard public ports
+are required.
+
+OCI short names resolve only against `docker.io`, preventing Podman from asking
+which registry to use. Repository-owned Dockerfiles and Compose files should
+still use fully qualified references such as `docker.io/library/alpine:3.22`.
 
 Selecting `vscodium` as an editor installs VSCodium and the compatible
 development extensions from nixpkgs. Its search and file-watcher exclusions

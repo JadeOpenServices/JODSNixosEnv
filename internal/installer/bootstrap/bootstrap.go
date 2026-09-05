@@ -43,12 +43,7 @@ func Build(config []byte, _ bool) Plan {
 		}
 	}
 	text := string(config)
-	if !strings.Contains(text, "catppuccin-gtk") {
-		packages["catppuccin-gtk"] = true
-		missing = append(missing, "catppuccin-gtk theme")
-	}
 	if !strings.Contains(text, "GTK_THEME") {
-		packages["catppuccin-gtk"] = true
 		missing = append(missing, "GTK_THEME")
 	}
 	if !regexp.MustCompile(`services\.fwupd\.enable\s*=\s*true`).MatchString(text) {

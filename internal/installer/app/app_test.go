@@ -1,12 +1,18 @@
 package app
 
 import (
+	"bytes"
+	"context"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/bakanura/gjallarOS/internal/installer/config"
 	"github.com/bakanura/gjallarOS/internal/installer/discovery"
+	"github.com/bakanura/gjallarOS/internal/installer/geolocation"
+	"github.com/bakanura/gjallarOS/internal/installer/prompt"
+	"github.com/bakanura/gjallarOS/internal/installer/secureboot"
 )
 
 func TestRequireNixOS(t *testing.T) {
@@ -18,6 +24,24 @@ func TestRequireNixOS(t *testing.T) {
 	os.WriteFile(path, []byte("ID=other\n"), 0644)
 	if err := requireNixOS(path); err == nil {
 		t.Fatal("accepted non-NixOS")
+	}
+}
+
+func TestConfigureWeatherLocationRejectsDetectionAndPrompts(t *testing.T) {
+	original := detectNetworkLocation
+	detectNetworkLocation = func(context.Context) (geolocation.Location, error) {
+		return geolocation.Location{City: "Wrong", Country: "Place"}, nil
+	}
+	t.Cleanup(func() { detectNetworkLocation = original })
+
+	var output bytes.Buffer
+	ui := prompt.New(strings.NewReader("n\nBerlin\nGermany\n"), &output)
+	var user config.User
+	if err := configureWeatherLocation(context.Background(), ui, &user, &output); err != nil {
+		t.Fatal(err)
+	}
+	if user.WeatherCity != "Berlin" || user.WeatherCountry != "Germany" {
+		t.Fatalf("unexpected weather location: %+v", user)
 	}
 }
 
@@ -47,9 +71,25 @@ func TestExistingInstallRejectsUnmarkedSettings(t *testing.T) {
 	}
 }
 
+func TestExistingInstallMissingSettingsIsNew(t *testing.T) {
+	if existingInstall(t.TempDir()) {
+		t.Fatal("missing settings.nix detected as an existing GjallarOS install")
+	}
+}
+
+func TestCompletedSecureBootDoesNotRebootFirmware(t *testing.T) {
+	if secureBootNeedsFirmwareReboot(secureboot.ContinuationNone) {
+		t.Fatal("completed Secure Boot transaction requested a firmware reboot")
+	}
+	if !secureBootNeedsFirmwareReboot(secureboot.ContinuationEnroll) ||
+		!secureBootNeedsFirmwareReboot(secureboot.ContinuationEnable) {
+		t.Fatal("incomplete Secure Boot transaction did not request its firmware handoff")
+	}
+}
+
 func TestValidateSelections(t *testing.T) {
-	o := discovery.Options{Profiles: []string{"laptop"}, Shells: []string{"zsh"}, Editors: []string{"vscodium"}, Browsers: []string{"librewolf"}, Themes: []string{"catppuccin"}}
-	u := config.User{Profile: "laptop", Shell: "zsh", Editors: []string{"vscodium"}, Browsers: []string{"librewolf"}, Theme: "catppuccin", DotfilesDir: "/repo"}
+	o := discovery.Options{Profiles: []string{"laptop"}, Shells: []string{"zsh"}, Editors: []string{"vscodium"}, Browsers: []string{"librewolf"}, Themes: []string{"noctalia"}}
+	u := config.User{Profile: "laptop", Shell: "zsh", Editors: []string{"vscodium"}, Browsers: []string{"librewolf"}, Theme: "noctalia", DotfilesDir: "/repo"}
 	if err := validateSelections(u, o); err != nil {
 		t.Fatal(err)
 	}

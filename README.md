@@ -25,7 +25,7 @@ Git.
 ## Included
 
 - Hyprland-only desktop with Home Manager-managed user configuration.
-- Catppuccin GTK styling and Catppuccin Mocha/Mauve SDDM login theme.
+- Noctalia shell styling with Stylix propagation for system applications.
 - Laptop, ThinkPad, Framework, and desktop profiles.
 - Graphics, Wi-Fi, firmware, touchscreen, battery, and clamshell detection.
 - VSCodium, Teams web app, system-wide Wine, and optional Nemu.
