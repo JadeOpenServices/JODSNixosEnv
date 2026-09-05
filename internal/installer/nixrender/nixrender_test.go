@@ -49,3 +49,36 @@ func TestRenderWeatherLocation(t *testing.T) {
 		}
 	}
 }
+
+func TestRenderJODSSettings(t *testing.T) {
+	got := string(Render(Settings{
+		EndpointManagedDevice:      true,
+		JODSEndpoint:               "https://jods.example.test:1666",
+		JODSPolicySigningPublicKey: strings.Repeat("ab", 32),
+		JODSEnrollmentMode:         "jade-registry-only",
+		JODSAllowInsecureTLS:       false,
+		JODSDeviceClass:            "laptop",
+		JODSDesktopProfile:         "headless",
+	}))
+	for _, want := range []string{
+		"endpointManagedDevice = true;",
+		`jodsEndpoint = "https://jods.example.test:1666";`,
+		`jodsEnrollmentMode = "jade-registry-only";`,
+		"jodsAllowInsecureTls = false;",
+		`jodsDeviceClass = "laptop";`,
+		`jodsDesktopProfile = "headless";`,
+	} {
+		if !strings.Contains(got, want) {
+			t.Fatalf("missing %q from settings:\n%s", want, got)
+		}
+	}
+}
+
+func TestRenderJODSDoesNotContainSecretFields(t *testing.T) {
+	got := string(Render(Settings{}))
+	for _, forbidden := range []string{"devicePrivateKey", "apiToken", "luksRecoveryKey"} {
+		if strings.Contains(got, forbidden) {
+			t.Fatalf("generated settings contain secret field %q", forbidden)
+		}
+	}
+}

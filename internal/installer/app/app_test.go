@@ -3,6 +3,7 @@ package app
 import (
 	"bytes"
 	"context"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -24,6 +25,48 @@ func TestRequireNixOS(t *testing.T) {
 	os.WriteFile(path, []byte("ID=other\n"), 0644)
 	if err := requireNixOS(path); err == nil {
 		t.Fatal("accepted non-NixOS")
+	}
+}
+
+func TestJODSEnrollmentStartsOnlyAfterSuccessfulInstallation(t *testing.T) {
+	original := runJODSCommand
+	var calls [][]string
+	runJODSCommand = func(_ context.Context, name string, args ...string) error {
+		calls = append(calls, append([]string{name}, args...))
+		return nil
+	}
+	t.Cleanup(func() { runJODSCommand = original })
+
+	if err := activateJODSEnrollment(context.Background(), false); err != nil {
+		t.Fatal(err)
+	}
+	if len(calls) != 0 {
+		t.Fatalf("failed installation contacted JODS: %v", calls)
+	}
+	if err := activateJODSEnrollment(context.Background(), true); err != nil {
+		t.Fatal(err)
+	}
+	joined := fmt.Sprint(calls)
+	if !strings.Contains(joined, "jods-mdm-agent-enroll.service") || !strings.Contains(joined, "jods-mdm-agent-enroll.timer") {
+		t.Fatalf("successful installation did not activate enrollment lifecycle: %v", calls)
+	}
+}
+
+func TestInsecureJODSRequiresExplicitConfirmation(t *testing.T) {
+	var output bytes.Buffer
+	if err := confirmInsecureJODS(context.Background(), prompt.New(strings.NewReader("n\n"), &output)); err == nil {
+		t.Fatal("insecure TLS accepted without explicit confirmation")
+	}
+	if err := confirmInsecureJODS(context.Background(), prompt.New(strings.NewReader("yes\n"), &output)); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestUnmanagedPresetForcesJODSPrebootLockOff(t *testing.T) {
+	u := config.User{EndpointManagedDevice: false, RecoveryEnable: true, JODSPrebootLockEnable: true}
+	normalizeManagementSafety(&u)
+	if u.JODSPrebootLockEnable {
+		t.Fatal("unmanaged preset retained JODS preboot lock")
 	}
 }
 

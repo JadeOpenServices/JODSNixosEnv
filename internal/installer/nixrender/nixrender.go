@@ -62,6 +62,10 @@ type Settings struct {
 	RecoveryEnable, JODSPrebootLockEnable                 bool
 	SecureBootEnable                                      bool
 	EndpointManagedDevice                                 bool
+	JODSEndpoint, JODSPolicySigningPublicKey              string
+	JODSEnrollmentMode                                    string
+	JODSAllowInsecureTLS                                  bool
+	JODSDeviceClass, JODSDesktopProfile                   string
 	WMs                                                   []string
 	Theme                                                 string
 }
@@ -133,6 +137,12 @@ func Render(s Settings) []byte {
 	boolean("jodsPrebootLockEnable", s.JODSPrebootLockEnable)
 	boolean("secureBootEnable", s.SecureBootEnable)
 	boolean("endpointManagedDevice", s.EndpointManagedDevice)
+	str("jodsEndpoint", s.JODSEndpoint)
+	str("jodsPolicySigningPublicKey", s.JODSPolicySigningPublicKey)
+	str("jodsEnrollmentMode", s.JODSEnrollmentMode)
+	boolean("jodsAllowInsecureTls", s.JODSAllowInsecureTLS)
+	str("jodsDeviceClass", s.JODSDeviceClass)
+	str("jodsDesktopProfile", s.JODSDesktopProfile)
 	list("wms", s.WMs)
 	str("theme", s.Theme)
 	fmt.Fprintln(&b, "    profileDetails = import (./. + \"/profiles/${profile}/details.nix\") {};")

@@ -16,6 +16,7 @@
     ../../system/hardware/input.nix
     ../../system/hardware/work/boot.nix
     ../../system/recovery
+    ../../system/management/jods
     ../../system/hardware/laptop/battery.nix
     ../../system/security/laptop/firewall.nix
     ../../system/virtualization
@@ -58,7 +59,7 @@
     shell = pkgs.${settings.shell};
     isNormalUser = true;
     description = settings.username;
-    extraGroups = [ "networkmanager" ] ++ lib.optionals (!settings.endpointManagedDevice && !builtins.pathExists settings.rootPasswordFile) [ "wheel" ];
+    extraGroups = [ "networkmanager" ] ++ lib.optionals (!builtins.pathExists settings.rootPasswordFile) [ "wheel" ];
   };
 
   # See https://nix.dev/permalink/stub-ld.

@@ -17,6 +17,7 @@
     ../../system/hardware/desktop/mouse.nix
     ../../system/hardware/desktop/boot.nix
     ../../system/recovery
+    ../../system/management/jods
     ../../system/hardware/desktop/nfs.nix
     ../../system/security/desktop/firewall.nix
     ../../system/virtualization
@@ -76,7 +77,7 @@
       "networkmanager"
       "gamemode"
       "dialout"
-    ] ++ lib.optionals (!settings.endpointManagedDevice && !builtins.pathExists settings.rootPasswordFile) [ "wheel" ];
+    ] ++ lib.optionals (!builtins.pathExists settings.rootPasswordFile) [ "wheel" ];
   };
 
   # See https://nix.dev/permalink/stub-ld.
