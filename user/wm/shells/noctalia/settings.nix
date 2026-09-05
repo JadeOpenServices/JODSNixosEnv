@@ -117,39 +117,30 @@
 
     volume = {
       show_label = false;
-      scroll_step = 2;
     };
 
     brightness = {
-      scroll_step = 5;
     };
 
     power_profile = {
-      show_text = false;
     };
 
     privacy = {
-      show_text = false;
     };
 
     notifications = {
-      show_text = false;
     };
 
     clipboard = {
-      show_text = false;
     };
 
     battery = {
-      show_text = false;
     };
 
     network = {
-      show_text = false;
     };
 
     bluetooth = {
-      show_text = false;
     };
 
     tray = {
