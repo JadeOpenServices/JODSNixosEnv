@@ -87,7 +87,6 @@ in
     package = inputs.noctalia.packages.${pkgs.stdenv.hostPlatform.system}.default;
 
     settings = lib.recursiveUpdate (import ./settings.nix) {
-      corner_radius_scale = 2.0;
 
       theme = {
         mode = "dark";
@@ -111,6 +110,7 @@ in
         ui_scale = 1.4;
       };
       shell = {
+        corner_radius_scale = 2.0;
         font_family = themeDetails.font;
         avatar_path = avatarPath;
         polkit_agent = true;
@@ -133,23 +133,16 @@ in
           scale = 1.25;
         };
         keyboard_layout = {
-          show_icon = false;
-        };
-        media = {
-          hide_album_art = true;
+          scale = 0.98;
+          show_glyph = false;
         };
         volume = {
+          scale = 0.98;
           show_label = false;
-          scroll_step = 2;
         };
         spacer_default = {
           type = "spacer";
           length = 15;
-        };
-        workspaces = {
-          style = "minimal";
-          occupied_color = "on_surface";
-          scale = 1.2;
         };
         audio_visualizer = {
           width = 120;
@@ -157,7 +150,132 @@ in
         tray = {
           drawer = true;
         };
-      };
+              cpu_usage = {
+          type = "sysmon";
+          stat = "cpu_usage";
+          scale = 0.98;
+        };
+
+        cpu_temp = {
+          type = "sysmon";
+          stat = "cpu_temp";
+          scale = 0.98;
+        };
+
+        gpu_vram = {
+          type = "sysmon";
+          stat = "gpu_vram";
+          scale = 0.98;
+        };
+
+
+        power_profile = {
+          type = "power_profile";
+          scale = 1.0;
+        
+
+          actions = {
+            left = "panel-toggle control-center power";
+            right = "power-cycle";
+          };
+};
+
+        battery = {
+          type = "battery";
+          display_mode = "glyph";
+          show_label = true;
+          label_content = "percent";
+          scale = 0.98;
+        };
+
+
+
+        divider_left = {
+          type = "text";
+          text = "│";
+          scale = 0.72;
+          font_scale = 0.9;
+          interactive = false;
+        };
+
+        divider_diag = {
+          type = "text";
+          text = "│";
+          scale = 0.72;
+          font_scale = 0.9;
+          interactive = false;
+        };
+
+
+
+        divider_media = {
+          type = "text";
+          text = "│";
+          scale = 0.72;
+          font_scale = 0.9;
+          interactive = false;
+        };
+
+
+
+        workspaces = {
+          type = "workspaces";
+          style = "focus_hint";
+          show_labels = false;
+          scale = 0.98;
+          pill_scale = 0.88;
+          active_pill_size = 1.8;
+          inactive_pill_size = 0.72;
+        };
+
+        active_window = {
+          type = "active_window";
+          scale = 1.0;
+          font_scale = 1.0;
+        };
+
+        weather = {
+          type = "weather";
+          scale = 0.98;
+        };
+
+        media = {
+          type = "media";
+
+          # Keep the far-right media widget compact.
+          max_width = 220;
+          min_width = 80;
+          art_size = 16;
+          hide_when_no_media = false;
+
+          scale = 0.98;
+        };
+
+        divider_center_left = {
+          type = "text";
+          text = "│";
+          scale = 0.72;
+          font_scale = 0.9;
+          interactive = false;
+        };
+
+        divider_center_right = {
+          type = "text";
+          text = "│";
+          scale = 0.72;
+          font_scale = 0.9;
+          interactive = false;
+        };
+
+        center_clock = {
+          type = "clock";
+          format = "{:%a %d %b  %H:%M}";
+          scale = 0.97;
+          font_scale = 1.0;
+          anchor = true;
+        };
+
+};
       location = {
         auto_locate = false;
         address = "${settings.weatherCity}, ${settings.weatherCountry}";
@@ -169,30 +287,76 @@ in
           keyboard_layout = false;
         };
       };
+      # gjallarOS Noctalia bar services BEGIN
+      weather.enabled = true;
+
+      system.monitor = {
+        enabled = true;
+
+        # CPU usage + Tctl temperature.
+        cpu_poll_seconds = 2.0;
+
+        # GPU usage/temperature/VRAM. Noctalia only actively probes
+        # GPU data while a GPU sysmon stat is actually displayed.
+        gpu_poll_seconds = 5.0;
+
+        memory_poll_seconds = 2.0;
+        network_poll_seconds = 3.0;
+        disk_poll_seconds = 10.0;
+      };
+      # gjallarOS Noctalia bar services END
+
       bar.default = {
-        scale = 1.4;
+        capsule_thickness = 0.78;
+        font_scale = 1.0;
+        widget_spacing = 6;
+        scale = 1.06;
         thickness = 40;
         margin_edge = 0;
-        margin_ends = 0;
+        margin_ends = 20;
+        margin_opposite_edge = 0;
+
+        # Remove the old outer content padding.
+        padding = 14;
+
+        # Top corners touch the physical screen corners.
+        radius = 12;
+        radius_top_left = 20;
+        radius_top_right = 20;
+
+        # Smooth inner wave.
+        radius_bottom_left = 12;
+        radius_bottom_right = 12;
+        concave_edge_corners = true;
+        background_opacity = 0.94;
+        shadow = false;
+
+        # Catppuccin-like card/capsule feel, but colors still come from
+        # Noctalia's current palette/theme.
         start = [
-          "launcher"
-          "spacer_default"
-          "media"
+          "active_window"
+          "divider_left"
+          "workspaces"
         ];
         center = [
-          "audio_visualizer"
-          "workspaces"
-          "audio_visualizer"
-        ];
-        end = [
+          "cpu_usage"
+          "cpu_temp"
+          "gpu_vram"
+          "divider_center_left"
+          "center_clock"
+          "divider_center_right"
           "tray"
           "keyboard_layout"
           "notifications"
           "clipboard"
           "volume"
+          "power_profile"
           "battery"
-          "spacer_default"
-          "clock"
+        ];
+        end = [
+          "weather"
+          "divider_media"
+          "media"
         ];
       };
       wallpaper = {
