@@ -83,8 +83,8 @@ in
 {
   programs.noctalia = {
     enable = true;
-    systemd.enable = true;
-        package = inputs.noctalia.packages.${pkgs.stdenv.hostPlatform.system}.default;
+    systemd.enable = false;
+    package = inputs.noctalia.packages.${pkgs.stdenv.hostPlatform.system}.default;
 
     settings = lib.recursiveUpdate (import ./settings.nix) {
 
@@ -95,7 +95,7 @@ in
         templates.user.hyprland = {
           input_path = "$XDG_CONFIG_HOME/noctalia/templates/hyprland.conf";
           output_path = "$XDG_STATE_HOME/noctalia/hyprland-colors.conf";
-          post_hook = "${pkgs.hyprland}/bin/hyprctl reload; ${lib.getExe config.programs.noctalia.package} msg greeter-sync";
+          post_hook = "${pkgs.hyprland}/bin/hyprctl reload; if ${lib.getExe config.programs.noctalia.package} msg status >/dev/null 2>&1; then ${lib.getExe config.programs.noctalia.package} msg greeter-sync >/dev/null 2>&1 || true; fi";
         };
         templates.user.superfile = {
           input_path = "$XDG_CONFIG_HOME/noctalia/templates/superfile.toml";
@@ -172,6 +172,14 @@ in
         power_profile = {
           type = "power_profile";
           scale = 1.0;
+
+          actions = {
+            # Fast profile switching directly from the bar.
+            left = "power-cycle";
+
+            # Explicit profile selection / full power settings.
+            right = "panel-toggle control-center power";
+          };
         
 
 };
@@ -215,19 +223,148 @@ in
 
 
         workspaces = {
-          type = "workspaces";
-          style = "focus_hint";
-          show_labels = false;
-          scale = 0.98;
-          pill_scale = 0.88;
-          active_pill_size = 1.8;
-          inactive_pill_size = 0.72;
+
+
+
+          # Native workspace-aware application indicators.
+
+
+
+          # Occupied workspaces show their application icons instead of dots.
+
+
+
+          type = "taskbar";
+
+
+
+
+          group_by_workspace = true;
+
+
+
+          workspace_group_content = "icons";
+
+
+
+
+          # Keep the bar compact: the icons themselves represent occupied
+
+
+
+          # workspaces, without the numbered workspace badge.
+
+
+
+          show_workspace_label = false;
+
+
+
+          workspace_group_capsule = false;
+
+
+
+
+          # Collapse multiple windows from the same application.
+
+
+
+          group_single_icon_per_app = true;
+
+
+
+
+          # Show all persistent workspaces rather than only the current one.
+
+
+
+          only_active_workspace = false;
+
+
+
+          hide_empty_workspaces = false;
+
+
+
+
+          # Slightly larger, readable icons without making the 40px bar huge.
+
+
+
+          icon_scale = 1.20;
+
+
+
+          scale = 1.0;
+
+
+
+
+          show_active_indicator = true;
+
+
+
+          active_opacity = 1.0;
+
+
+
+          inactive_opacity = 0.88;
+
+
+
         };
 
         active_window = {
-          type = "active_window";
+
+          # Use Noctalia's supported taskbar title rendering instead of the
+
+          # active_window widget, whose title width is not configurable in v5.
+
+          type = "taskbar";
+
+
+          # Behave like an active-workspace application title strip.
+
+          only_active_workspace = true;
+
+          show_all_outputs = false;
+
+          group_by_workspace = false;
+
+
+          # Show the application icon and its window title.
+
+          show_window_title = true;
+
+
+          # Enough room for normal application names/titles without allowing
+
+          # pathological browser/document titles to invade the centre widgets.
+
+          window_title_max_width = 360;
+
+          taskbar_max_width = 430;
+
+
+          # Slightly larger, readable app icon.
+
+          icon_scale = 1.18;
+
+
+          item_spacing = 5;
+
+          show_active_indicator = false;
+
+
+          active_opacity = 1.0;
+
+          inactive_opacity = 0.92;
+
+
           scale = 1.0;
+
           font_scale = 1.0;
+
         };
 
         weather = {
@@ -239,8 +376,6 @@ in
           type = "media";
 
           # Keep the far-right media widget compact.
-          max_width = 220;
-          min_width = 80;
           art_size = 16;
           hide_when_no_media = false;
 
@@ -305,7 +440,7 @@ in
       bar.default = {
         capsule_thickness = 0.78;
         font_scale = 1.0;
-        widget_spacing = 6;
+        widget_spacing = 5;
         scale = 1.06;
         thickness = 40;
         margin_edge = 0;

@@ -132,7 +132,7 @@ let
         ${pkgs.hyprland}/bin/hyprctl monitors || true
         ${pkgs.hyprland}/bin/hyprctl clients || true
         ${lib.getExe config.programs.noctalia.package} config validate || true
-        ${lib.getExe config.programs.noctalia.package} msg status || true
+        ${lib.getExe config.programs.noctalia.package} msg status >/dev/null 2>&1 || true
         ${pkgs.systemd}/bin/journalctl --user -b --no-pager -u gjallar-hyprland-session-diagnostics.service || true
         ${pkgs.procps}/bin/pgrep -f -a -u "$USER" 'Hyprland|noctalia|fuzzel|kitty|swaybg|waybar|ags' || true
         log 'end'
