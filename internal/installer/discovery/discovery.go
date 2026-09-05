@@ -7,7 +7,10 @@ import (
 	"strings"
 )
 
-type Hardware struct{ FormFactor, LaptopVendor string }
+type Hardware struct {
+	FormFactor, LaptopVendor string
+	Touchscreen, PenTablet   bool
+}
 type Options struct{ Profiles, Shells, Editors, Browsers, Themes []string }
 
 func DetectHardware(sysRoot string) Hardware {
@@ -31,7 +34,71 @@ func DetectHardware(sysRoot string) Hardware {
 			h.LaptopVendor = "framework"
 		}
 	}
+	h.Touchscreen = detectTouchscreen(sysRoot)
+	h.PenTablet = detectPenTablet(sysRoot)
 	return h
+}
+
+func detectPenTablet(sysRoot string) bool {
+	devices, _ := filepath.Glob(filepath.Join(sysRoot, "class", "input", "event*", "device"))
+	for _, device := range devices {
+		name, _ := os.ReadFile(filepath.Join(device, "name"))
+		lowerName := strings.ToLower(string(name))
+		if strings.Contains(lowerName, "stylus") || strings.Contains(lowerName, " pen") {
+			return true
+		}
+		keys, keysErr := os.ReadFile(filepath.Join(device, "capabilities", "key"))
+		absolute, absoluteErr := os.ReadFile(filepath.Join(device, "capabilities", "abs"))
+		if keysErr == nil && absoluteErr == nil &&
+			capabilityBit(string(keys), 320) && // BTN_TOOL_PEN
+			capabilityBit(string(absolute), 0) && // ABS_X
+			capabilityBit(string(absolute), 1) { // ABS_Y
+			return true
+		}
+	}
+	return false
+}
+
+func detectTouchscreen(sysRoot string) bool {
+	devices, _ := filepath.Glob(filepath.Join(sysRoot, "class", "input", "event*", "device"))
+	for _, device := range devices {
+		name, _ := os.ReadFile(filepath.Join(device, "name"))
+		if strings.Contains(strings.ToLower(string(name)), "touchscreen") {
+			return true
+		}
+		properties, propertiesErr := os.ReadFile(filepath.Join(device, "properties"))
+		absolute, absoluteErr := os.ReadFile(filepath.Join(device, "capabilities", "abs"))
+		if propertiesErr == nil && absoluteErr == nil &&
+			capabilityBit(string(properties), 1) && // INPUT_PROP_DIRECT
+			capabilityBit(string(absolute), 53) && // ABS_MT_POSITION_X
+			capabilityBit(string(absolute), 54) { // ABS_MT_POSITION_Y
+			return true
+		}
+	}
+	return false
+}
+
+// Linux exposes input capability bitsets as hexadecimal, most-significant
+// word first. Reading from the right keeps this independent of word size.
+func capabilityBit(value string, bit uint) bool {
+	hex := strings.ReplaceAll(strings.TrimSpace(value), " ", "")
+	nibble := int(bit / 4)
+	if nibble >= len(hex) {
+		return false
+	}
+	digit := hex[len(hex)-1-nibble]
+	var number byte
+	switch {
+	case digit >= '0' && digit <= '9':
+		number = digit - '0'
+	case digit >= 'a' && digit <= 'f':
+		number = digit - 'a' + 10
+	case digit >= 'A' && digit <= 'F':
+		number = digit - 'A' + 10
+	default:
+		return false
+	}
+	return number&(1<<(bit%4)) != 0
 }
 
 func Discover(repo string, preset bool, hardware Hardware) (Options, error) {

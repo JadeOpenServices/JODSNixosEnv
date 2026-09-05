@@ -40,3 +40,12 @@ func TestRenderRecoveryPolicyDefaultsDisabled(t *testing.T) {
 		}
 	}
 }
+
+func TestRenderWeatherLocation(t *testing.T) {
+	got := string(Render(Settings{WeatherCity: "Berlin", WeatherCountry: "Germany"}))
+	for _, want := range []string{`weatherCity = "Berlin";`, `weatherCountry = "Germany";`} {
+		if !strings.Contains(got, want) {
+			t.Fatalf("missing %q from settings:\n%s", want, got)
+		}
+	}
+}

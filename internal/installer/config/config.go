@@ -19,6 +19,8 @@ type User struct {
 	Locale                 string   `json:"locale"`
 	KeyboardLayout         string   `json:"keyboardLayout"`
 	KeyboardVariant        string   `json:"keyboardVariant"`
+	WeatherCity            string   `json:"weatherCity"`
+	WeatherCountry         string   `json:"weatherCountry"`
 	TouchpadWorkspaceSwipe bool     `json:"touchpadWorkspaceSwipe"`
 	ClamshellEnable        bool     `json:"clamshellEnable"`
 	USBGuardEnable         bool     `json:"usbguardEnable"`

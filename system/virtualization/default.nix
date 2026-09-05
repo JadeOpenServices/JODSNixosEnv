@@ -194,4 +194,9 @@ in
     dockerCompat = settings.dockerEnable;
     defaultNetwork.settings.dns_enabled = true;
   };
+
+  # Resolve any remaining OCI short names deterministically. Project-owned
+  # Containerfiles should still use fully qualified image references.
+  virtualisation.containers.registries.search = [ "docker.io" ];
+
 }

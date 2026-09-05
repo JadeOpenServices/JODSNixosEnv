@@ -24,6 +24,7 @@ import (
 	"github.com/bakanura/gjallarOS/internal/installer/deploy"
 	"github.com/bakanura/gjallarOS/internal/installer/discovery"
 	"github.com/bakanura/gjallarOS/internal/installer/firmware"
+	"github.com/bakanura/gjallarOS/internal/installer/geolocation"
 	"github.com/bakanura/gjallarOS/internal/installer/hardwareconfig"
 	"github.com/bakanura/gjallarOS/internal/installer/localgit"
 	"github.com/bakanura/gjallarOS/internal/installer/nixrender"
@@ -35,8 +36,8 @@ import (
 )
 
 type options struct {
-	repo                                     string
-	skipHardware, refreshHardware, noRebuild bool
+	repo                                                     string
+	skipHardware, refreshHardware, noRebuild, acceptExisting bool
 }
 type state struct {
 	user             config.User
@@ -44,9 +45,13 @@ type state struct {
 	passthroughIDs   []string
 	preset, existing bool
 	control          string
+	touchscreen      bool
+	penTablet        bool
 }
 
 const installerSecureBootResumeMarker = "/var/lib/gjallarOS/installer-resume-after-secure-boot"
+
+var detectNetworkLocation = geolocation.Detect
 
 func Run(ctx context.Context, args []string, in io.Reader, out, errOut io.Writer) int {
 	f := flag.NewFlagSet("gjallar-installer", flag.ContinueOnError)
@@ -57,6 +62,7 @@ func Run(ctx context.Context, args []string, in io.Reader, out, errOut io.Writer
 	f.BoolVar(&opt.skipHardware, "skip-hardware", false, "skip hardware generation")
 	f.BoolVar(&opt.refreshHardware, "refresh-hardware", false, "regenerate hardware configuration")
 	f.BoolVar(&opt.noRebuild, "no-rebuild", false, "do not install a boot generation")
+	f.BoolVar(&opt.acceptExisting, "accept-existing", false, "allow an existing GjallarOS installation to be updated")
 	if err := f.Parse(args); err != nil {
 		if errors.Is(err, flag.ErrHelp) {
 			return 0
@@ -85,10 +91,24 @@ func Run(ctx context.Context, args []string, in io.Reader, out, errOut io.Writer
 		s.preset = true
 	}
 	s.existing = existingInstall(root)
+	if s.existing && !opt.acceptExisting {
+		approved, err := ui.Confirm(ctx, "Existing GjallarOS installation detected. Update it in place while preserving passwords, disk keys, and hardware configuration?", false)
+		if err != nil {
+			return fail(errOut, err)
+		}
+		if !approved {
+			fmt.Fprintln(out, "Existing installation left unchanged.")
+			return 0
+		}
+	}
 	if code := prepareHost(ctx, ui, opt, s, out, errOut); code != 0 {
 		return code
 	}
 	hardware := discovery.DetectHardware("/sys")
+	s.touchscreen = hardware.Touchscreen
+	s.penTablet = hardware.PenTablet
+	fmt.Fprintf(out, "Touchscreen detected: %t\n", hardware.Touchscreen)
+	fmt.Fprintf(out, "Pen/tablet detected: %t\n", hardware.PenTablet)
 	choices, err := discovery.Discover(root, s.preset, hardware)
 	if err != nil {
 		return fail(errOut, err)
@@ -96,6 +116,9 @@ func Run(ctx context.Context, args []string, in io.Reader, out, errOut io.Writer
 	if s.preset {
 		normalizePreset(&s.user, root)
 	} else if err := collectInteractive(ctx, ui, root, hardware, choices, &s.user); err != nil {
+		return fail(errOut, err)
+	}
+	if err := configureWeatherLocation(ctx, ui, &s.user, out); err != nil {
 		return fail(errOut, err)
 	}
 	if s.user.FrameworkEnable && s.user.SecureBootPrompt && !s.user.EndpointManagedDevice {
@@ -138,7 +161,11 @@ func Run(ctx context.Context, args []string, in io.Reader, out, errOut io.Writer
 		fmt.Fprintln(out, "Nothing changed.")
 		return 0
 	}
-	if !s.render.EndpointManagedDevice {
+	rootPasswordPath := "/var/lib/gjallarOS/passwords/root.hash"
+	if s.existing && privilegedFileExists(ctx, rootPasswordPath) {
+		s.render.RootPasswordFile = rootPasswordPath
+		fmt.Fprintln(out, "Existing root password hash retained.")
+	} else if !s.render.EndpointManagedDevice {
 		path, err := controlOutput(ctx, s.control, errOut, "installer", "work-password", "--username", "root", "--apply")
 		if err != nil {
 			return fail(errOut, err)
@@ -155,6 +182,9 @@ func Run(ctx context.Context, args []string, in io.Reader, out, errOut io.Writer
 				return fail(errOut, errors.New("managed work account requires workUserPasswordFile provisioned by JODS"))
 			}
 			s.render.WorkUserPasswordFile = s.user.WorkUserPasswordFile
+		} else if workPasswordPath := filepath.Join("/var/lib/gjallarOS/passwords", s.render.WorkUsername+".hash"); s.existing && privilegedFileExists(ctx, workPasswordPath) {
+			s.render.WorkUserPasswordFile = workPasswordPath
+			fmt.Fprintln(out, "Existing work-account password hash retained.")
 		} else {
 			path, err := controlOutput(ctx, s.control, errOut, "installer", "work-password", "--username", s.render.WorkUsername, "--apply")
 			if err != nil {
@@ -173,8 +203,7 @@ func Run(ctx context.Context, args []string, in io.Reader, out, errOut io.Writer
 	}
 	fmt.Fprintln(out, "Wrote", settingsPath)
 	hardwarePath := filepath.Join(root, "profiles", s.user.Profile, "hardware-configuration.nix")
-	_, hardwareErr := os.Stat(hardwarePath)
-	skip := opt.skipHardware || (s.existing && !opt.refreshHardware && hardwareErr == nil)
+	skip := opt.skipHardware || (s.existing && !opt.refreshHardware)
 	if !skip {
 		fmt.Fprintln(out, "PLAN: generate and atomically replace", hardwarePath)
 		if backup, err := hardwareconfig.Generate(ctx, root, hardwarePath, time.Now()); err != nil {
@@ -195,10 +224,12 @@ func Run(ctx context.Context, args []string, in io.Reader, out, errOut io.Writer
 		if err := nixrender.WriteAtomic(settingsPath, s.render); err != nil {
 			return fail(errOut, err)
 		}
-		if !s.render.EndpointManagedDevice {
+		if !s.render.EndpointManagedDevice && !s.existing {
 			if err := controlAttached(ctx, s.control, "installer", "luks", "--repo", root, "--hardware", hardwarePath); err != nil {
 				return fail(errOut, err)
 			}
+		} else if s.existing {
+			fmt.Fprintln(out, "Existing LUKS keyslots retained; disk-key migration was not rerun.")
 		}
 	}
 	fmt.Fprintln(out, "PLAN: atomically update local Git excludes and protect generated machine configuration")
@@ -299,7 +330,8 @@ func Run(ctx context.Context, args []string, in io.Reader, out, errOut io.Writer
 
 		needsRecoveryGate :=
 			inspection.State == secureboot.StateOEMFactoryDerived ||
-				inspection.State == secureboot.StatePendingEnrollment
+				inspection.State == secureboot.StatePendingEnrollment ||
+				inspection.State == secureboot.StateGjallarManaged
 
 		if needsRecoveryGate {
 			confirmed, err := secureboot.RecoveryConfirmed(ctx)
@@ -447,67 +479,71 @@ func Run(ctx context.Context, args []string, in io.Reader, out, errOut io.Writer
 			)
 		}
 
-		if err := attached(
-			ctx,
-			"sudo", "install",
-			"-d", "-m", "0700",
-			"/var/lib/gjallarOS",
-		); err != nil {
-			return fail(
-				errOut,
-				fmt.Errorf(
-					"create installer continuation directory: %w",
-					err,
-				),
+		// A completed Secure Boot transaction needs no marker, firmware
+		// handoff, or reboot. This is especially important on installer reruns.
+		if secureBootNeedsFirmwareReboot(next) {
+			if err := attached(
+				ctx,
+				"sudo", "install",
+				"-d", "-m", "0700",
+				"/var/lib/gjallarOS",
+			); err != nil {
+				return fail(
+					errOut,
+					fmt.Errorf(
+						"create installer continuation directory: %w",
+						err,
+					),
+				)
+			}
+
+			if err := attached(
+				ctx,
+				"sudo", "install",
+				"-m", "0600",
+				"/dev/null",
+				installerSecureBootResumeMarker,
+			); err != nil {
+				return fail(
+					errOut,
+					fmt.Errorf(
+						"arm installer continuation across Secure Boot reboot: %w",
+						err,
+					),
+				)
+			}
+
+			fmt.Fprintln(
+				out,
+				"Installer continuation armed across Secure Boot reboot.",
 			)
-		}
-
-		if err := attached(
-			ctx,
-			"sudo", "install",
-			"-m", "0600",
-			"/dev/null",
-			installerSecureBootResumeMarker,
-		); err != nil {
-			return fail(
-				errOut,
-				fmt.Errorf(
-					"arm installer continuation across Secure Boot reboot: %w",
-					err,
-				),
+			fmt.Fprintln(
+				out,
+				"After Secure Boot is verified, GjallarOS will automatically run the final installer checks.",
 			)
-		}
 
-		fmt.Fprintln(
-			out,
-			"Installer continuation armed across Secure Boot reboot.",
-		)
-		fmt.Fprintln(
-			out,
-			"After Secure Boot is verified, GjallarOS will automatically run the final installer checks.",
-		)
-
-		fmt.Fprintln(
-			out,
-			"Secure Boot firmware instructions acknowledged.",
-		)
-		fmt.Fprintln(
-			out,
-			"Rebooting directly into firmware setup...",
-		)
-
-		if err := attached(
-			ctx,
-			"sudo", "systemctl",
-			"reboot", "--firmware-setup",
-		); err != nil {
-			return fail(
-				errOut,
-				fmt.Errorf("reboot into firmware setup: %w", err),
+			fmt.Fprintln(
+				out,
+				"Secure Boot firmware instructions acknowledged.",
 			)
-		}
+			fmt.Fprintln(
+				out,
+				"Rebooting directly into firmware setup...",
+			)
 
-		return 0
+			if err := attached(
+				ctx,
+				"sudo", "systemctl",
+				"reboot", "--firmware-setup",
+			); err != nil {
+				return fail(
+					errOut,
+					fmt.Errorf("reboot into firmware setup: %w", err),
+				)
+			}
+
+			return 0
+		}
 	}
 
 	if runRebuild {
@@ -752,6 +788,38 @@ func normalizePreset(u *config.User, root string) {
 	}
 }
 
+func configureWeatherLocation(ctx context.Context, ui prompt.UI, u *config.User, out io.Writer) error {
+	detected, detectErr := detectNetworkLocation(ctx)
+	if detectErr == nil {
+		fmt.Fprintf(out, "Approximate network location detected: %s, %s\n", detected.City, detected.Country)
+		correct, err := ui.Confirm(ctx, "Is this the correct weather location: "+detected.City+", "+detected.Country+"?", true)
+		if err != nil {
+			return err
+		}
+		if correct {
+			u.WeatherCity, u.WeatherCountry = detected.City, detected.Country
+			return nil
+		}
+	} else {
+		fmt.Fprintf(out, "Network location detection unavailable: %v\n", detectErr)
+	}
+
+	city, err := ui.Value(ctx, "Weather city", u.WeatherCity)
+	if err != nil {
+		return err
+	}
+	country, err := ui.Value(ctx, "Weather country", u.WeatherCountry)
+	if err != nil {
+		return err
+	}
+	city, country = strings.TrimSpace(city), strings.TrimSpace(country)
+	if city == "" || country == "" {
+		return errors.New("weather city and country are required")
+	}
+	u.WeatherCity, u.WeatherCountry = city, country
+	return nil
+}
+
 func detectAndRenderState(ctx context.Context, root string, s *state) error {
 	u := s.user
 	for _, item := range []struct {
@@ -786,7 +854,7 @@ func detectAndRenderState(ctx context.Context, root string, s *state) error {
 	}
 	s.passthroughIDs = append([]string(nil), g.PassthroughIDs...)
 	passthrough := u.NemuGPUPassthrough && len(g.PassthroughIDs) > 0
-	s.render = nixrender.Settings{System: u.System, Profile: u.Profile, Hostname: u.Hostname, Username: u.Username, Timezone: u.Timezone, Locale: u.Locale, KeyboardLayout: u.KeyboardLayout, KeyboardVariant: u.KeyboardVariant, TouchpadWorkspaceSwipe: u.TouchpadWorkspaceSwipe, ClamshellEnable: u.ClamshellEnable, USBGuardEnable: u.USBGuardEnable, Name: u.Name, Email: u.Email, GitHubUsername: u.GitHubUsername, DotfilesDir: u.DotfilesDir, WorkUserEnable: u.WorkUserEnable, WorkUsername: u.WorkUsername, DockerEnable: u.DockerEnable, DebugFunctions: u.DebugFunctions, Shell: u.Shell, Editors: u.Editors, Browsers: u.Browsers, PreferredEditor: u.PreferredEditor, PreferredBrowser: u.PreferredBrowser, BackgroundNormal: u.BackgroundNormal, BackgroundWork: u.BackgroundWork, BackgroundGaming: u.BackgroundGaming, EnableScrobbling: u.EnableScrobbling, EnableLastfm: u.EnableLastfm, EnableListenbrainz: u.EnableListenbrainz, LastfmUsername: u.LastfmUsername, ListenbrainzUsername: u.ListenbrainzUsername, FrameworkEnable: u.FrameworkEnable, FrameworkModel: u.FrameworkModel, GraphicsVendor: g.Vendor, GraphicsType: g.Type, GraphicsCompute: g.Compute, GraphicsBusID: g.BusID, GraphicsIntegratedBusID: g.IntegratedBusID, WiFiDriver: wifi, AIEnable: u.AIEnable, AIModel: ai.Model, AIContextTokens: ai.ContextTokens, AIVRAMMB: ai.VRAMMB, NemuEnable: u.NemuEnable, NemuGPUPassthrough: passthrough, LUKSTPM2Enable: false, RecoveryEnable: u.RecoveryEnable, JODSPrebootLockEnable: u.JODSPrebootLockEnable, SecureBootEnable: u.SecureBootEnable, EndpointManagedDevice: u.EndpointManagedDevice, WMs: []string{"hyprland"}, Theme: u.Theme}
+	s.render = nixrender.Settings{System: u.System, Profile: u.Profile, Hostname: u.Hostname, Username: u.Username, Timezone: u.Timezone, Locale: u.Locale, KeyboardLayout: u.KeyboardLayout, KeyboardVariant: u.KeyboardVariant, WeatherCity: u.WeatherCity, WeatherCountry: u.WeatherCountry, TouchpadWorkspaceSwipe: u.TouchpadWorkspaceSwipe, TouchscreenEnable: s.touchscreen, PenTabletEnable: s.penTablet, ClamshellEnable: u.ClamshellEnable, USBGuardEnable: u.USBGuardEnable, Name: u.Name, Email: u.Email, GitHubUsername: u.GitHubUsername, DotfilesDir: u.DotfilesDir, WorkUserEnable: u.WorkUserEnable, WorkUsername: u.WorkUsername, DockerEnable: u.DockerEnable, DebugFunctions: u.DebugFunctions, Shell: u.Shell, Editors: u.Editors, Browsers: u.Browsers, PreferredEditor: u.PreferredEditor, PreferredBrowser: u.PreferredBrowser, BackgroundNormal: u.BackgroundNormal, BackgroundWork: u.BackgroundWork, BackgroundGaming: u.BackgroundGaming, EnableScrobbling: u.EnableScrobbling, EnableLastfm: u.EnableLastfm, EnableListenbrainz: u.EnableListenbrainz, LastfmUsername: u.LastfmUsername, ListenbrainzUsername: u.ListenbrainzUsername, FrameworkEnable: u.FrameworkEnable, FrameworkModel: u.FrameworkModel, GraphicsVendor: g.Vendor, GraphicsType: g.Type, GraphicsCompute: g.Compute, GraphicsBusID: g.BusID, GraphicsIntegratedBusID: g.IntegratedBusID, WiFiDriver: wifi, AIEnable: u.AIEnable, AIModel: ai.Model, AIContextTokens: ai.ContextTokens, AIVRAMMB: ai.VRAMMB, NemuEnable: u.NemuEnable, NemuGPUPassthrough: passthrough, LUKSTPM2Enable: u.LUKSTPM2Enable, RecoveryEnable: u.RecoveryEnable, JODSPrebootLockEnable: u.JODSPrebootLockEnable, SecureBootEnable: u.SecureBootEnable, EndpointManagedDevice: u.EndpointManagedDevice, WMs: []string{"hyprland"}, Theme: u.Theme}
 	if passthrough {
 		s.render.NemuGPUIDs = g.PassthroughIDs
 	}
@@ -847,6 +915,12 @@ func attached(ctx context.Context, name string, args ...string) error {
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
 	return cmd.Run()
+}
+func privilegedFileExists(ctx context.Context, path string) bool {
+	return exec.CommandContext(ctx, "sudo", "test", "-s", path).Run() == nil
+}
+func secureBootNeedsFirmwareReboot(next secureboot.Continuation) bool {
+	return next == secureboot.ContinuationEnroll || next == secureboot.ContinuationEnable
 }
 func requireNixOS(path string) error {
 	data, err := os.ReadFile(path)
