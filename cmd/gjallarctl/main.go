@@ -787,6 +787,12 @@ func runRender(args []string, stdout, stderr io.Writer) int {
 	f.BoolVar(&s.JODSPrebootLockEnable, "jods-preboot-lock-enable", false, "")
 	f.BoolVar(&s.SecureBootEnable, "secure-boot-enable", false, "")
 	f.BoolVar(&s.EndpointManagedDevice, "endpoint-managed-device", false, "")
+	f.StringVar(&s.JODSEndpoint, "jods-endpoint", "", "")
+	f.StringVar(&s.JODSPolicySigningPublicKey, "jods-policy-signing-public-key", "", "")
+	f.StringVar(&s.JODSEnrollmentMode, "jods-enrollment-mode", "", "")
+	f.BoolVar(&s.JODSAllowInsecureTLS, "jods-allow-insecure-tls", false, "")
+	f.StringVar(&s.JODSDeviceClass, "jods-device-class", "", "")
+	f.StringVar(&s.JODSDesktopProfile, "jods-desktop-profile", "", "")
 	f.Var((*stringList)(&s.WMs), "wm", "repeatable window manager")
 	f.StringVar(&s.Theme, "theme", "", "")
 	if err := f.Parse(args); err != nil || f.NArg() != 0 {

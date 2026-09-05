@@ -87,6 +87,13 @@
       url = "github:mpiorowski/late-sh";
       inputs.nixpkgs.follows = "nixpkgs";
     };
+
+    # OS-neutral JODS agent protocol with the NixOS executor imported through
+    # system/management/jods. Pinned source; never a developer-machine path.
+    jods = {
+      url = "git+https://github.com/bakanura/jods.git?rev=b6dc333db1b2ba07f103504cb156c0ab728cd390&shallow=1";
+      flake = false;
+    };
   };
 
   outputs =
@@ -99,6 +106,7 @@
     let
       system = "x86_64-linux";
       lib = nixpkgs.lib;
+      releasePolicy = builtins.fromJSON (builtins.readFile ./deployment/release-policy.json);
 
       basePkgs = nixpkgs.legacyPackages.${system};
 
@@ -142,9 +150,16 @@
         "gjallar-installer" = gjallarctl.overrideAttrs (old: {
           meta = old.meta // { mainProgram = "gjallar-installer"; };
         });
+        "gjallar-recovery-iso" = self.nixosConfigurations.gjallar-recovery.config.system.build.isoImage;
       };
 
       nixosConfigurations = {
+        gjallar-recovery = nixpkgs.lib.nixosSystem {
+          inherit system;
+          modules = [ ./system/recovery/image.nix ];
+          specialArgs.releaseVersion = releasePolicy.release;
+        };
+
         ${settings.hostname} = nixpkgs.lib.nixosSystem {
           modules = [
             inputs.noctalia-greeter.nixosModules.default

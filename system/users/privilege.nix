@@ -3,12 +3,10 @@ let
   rootPasswordReady = settings.rootPasswordFile != "" && builtins.pathExists settings.rootPasswordFile;
 in
 {
-  # System activation is never delegated to desktop users. Unmanaged owners
-  # can become root with the separately configured root password; JODS-managed
-  # endpoints keep interactive root authentication locked.
+  # Merely requesting JODS enrollment must not remove the only local
+  # administrator. A verified policy may harden privileges after enrollment.
   users.users.root = lib.mkMerge [
-    (lib.mkIf settings.endpointManagedDevice { hashedPassword = "!"; })
-    (lib.mkIf (!settings.endpointManagedDevice && rootPasswordReady) {
+    (lib.mkIf rootPasswordReady {
       hashedPasswordFile = settings.rootPasswordFile;
     })
   ];
@@ -16,7 +14,6 @@ in
   nix.settings.trusted-users = lib.mkForce [ "root" ];
 
   security.polkit.adminIdentities =
-    if settings.endpointManagedDevice then [ ]
-    else if rootPasswordReady then [ "unix-user:root" ]
+    if rootPasswordReady then [ "unix-user:root" ]
     else [ "unix-group:wheel" ];
 }
