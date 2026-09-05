@@ -84,7 +84,7 @@ in
   programs.noctalia = {
     enable = true;
     systemd.enable = true;
-    package = inputs.noctalia.packages.${pkgs.stdenv.hostPlatform.system}.default;
+        package = inputs.noctalia.packages.${pkgs.stdenv.hostPlatform.system}.default;
 
     settings = lib.recursiveUpdate (import ./settings.nix) {
 
@@ -95,7 +95,7 @@ in
         templates.user.hyprland = {
           input_path = "$XDG_CONFIG_HOME/noctalia/templates/hyprland.conf";
           output_path = "$XDG_STATE_HOME/noctalia/hyprland-colors.conf";
-          post_hook = "${pkgs.hyprland}/bin/hyprctl reload; ${lib.getExe inputs.noctalia.packages.${pkgs.stdenv.hostPlatform.system}.default} msg greeter-sync";
+          post_hook = "${pkgs.hyprland}/bin/hyprctl reload; ${lib.getExe config.programs.noctalia.package} msg greeter-sync";
         };
         templates.user.superfile = {
           input_path = "$XDG_CONFIG_HOME/noctalia/templates/superfile.toml";
@@ -174,10 +174,6 @@ in
           scale = 1.0;
         
 
-          actions = {
-            left = "panel-toggle control-center power";
-            right = "power-cycle";
-          };
 };
 
         battery = {
@@ -342,9 +338,14 @@ in
           "cpu_usage"
           "cpu_temp"
           "gpu_vram"
+
           "divider_center_left"
+
           "center_clock"
+
           "divider_center_right"
+
+          "network"
           "tray"
           "keyboard_layout"
           "notifications"
