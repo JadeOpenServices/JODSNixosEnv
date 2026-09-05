@@ -194,24 +194,52 @@ in
         ${pkgs.plymouth}/bin/plymouth quit --retain-splash || true
       '';
 
-      # Start the shutdown splash before systemd tears down normal services.
-      # Stopping the display manager first releases DRM for Plymouth; from
-      # that point its shutdown renderer stays up through final poweroff.
+      # Plymouth shutdown handoff.
+      #
+      # Do not race Plymouth against greetd/Hyprland for DRM ownership.
+      # The stock Plymouth shutdown units are designed to start after the
+      # display manager has released the VT/DRM device and before the final
+      # systemd power action.  The previous conflict-only override allowed the
+      # two jobs to run concurrently, which could cause:
+      #
+      #   splash -> console -> splash/freeze -> console
+      #
+      # Keep the compositor's retained final frame on-screen while greetd
+      # exits, then let Plymouth take over exactly once.
       systemd.services.plymouth-poweroff = {
-        before = [ "shutdown.target" ];
-        conflicts = [ "display-manager.service" ];
+        after = [
+          "display-manager.service"
+          "greetd.service"
+          "plymouth-start.service"
+        ];
+        before = [ "systemd-poweroff.service" ];
       };
+
       systemd.services.plymouth-reboot = {
-        before = [ "shutdown.target" ];
-        conflicts = [ "display-manager.service" ];
+        after = [
+          "display-manager.service"
+          "greetd.service"
+          "plymouth-start.service"
+        ];
+        before = [ "systemd-reboot.service" ];
       };
+
       systemd.services.plymouth-halt = {
-        before = [ "shutdown.target" ];
-        conflicts = [ "display-manager.service" ];
+        after = [
+          "display-manager.service"
+          "greetd.service"
+          "plymouth-start.service"
+        ];
+        before = [ "systemd-halt.service" ];
       };
+
       systemd.services.plymouth-kexec = {
-        before = [ "shutdown.target" ];
-        conflicts = [ "display-manager.service" ];
+        after = [
+          "display-manager.service"
+          "greetd.service"
+          "plymouth-start.service"
+        ];
+        before = [ "systemd-kexec.service" ];
       };
 
       programs.nh = {
