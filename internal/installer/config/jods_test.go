@@ -1,0 +1,44 @@
+package config
+
+import (
+	"strings"
+	"testing"
+)
+
+func validManagedUser() User {
+	return User{
+		EndpointManagedDevice: true,
+		JODSEndpoint:          "https://jods.example.test:1666",
+		JODSPolicySigningKey:  strings.Repeat("ab", 32),
+		JODSEnrollmentMode:    "manual",
+		JODSDeviceClass:       "laptop",
+		JODSDesktopProfile:    "headless",
+	}
+}
+
+func TestValidateJODS(t *testing.T) {
+	if err := ValidateJODS(validManagedUser()); err != nil {
+		t.Fatal(err)
+	}
+	u := validManagedUser()
+	u.JODSEndpoint = "http://jods.example.test"
+	if err := ValidateJODS(u); err == nil {
+		t.Fatal("accepted non-HTTPS JODS endpoint")
+	}
+	u = validManagedUser()
+	u.JODSPolicySigningKey = "abcd"
+	if err := ValidateJODS(u); err == nil {
+		t.Fatal("accepted malformed JODS policy key")
+	}
+	u = validManagedUser()
+	u.JODSEndpoint = "https://127.0.0.1:1666"
+	if err := ValidateJODS(u); err == nil {
+		t.Fatal("accepted loopback JODS endpoint")
+	}
+}
+
+func TestUnmanagedJODSDoesNotRequireConfiguration(t *testing.T) {
+	if err := ValidateJODS(User{}); err != nil {
+		t.Fatal(err)
+	}
+}
