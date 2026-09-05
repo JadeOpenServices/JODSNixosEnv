@@ -33,4 +33,21 @@ in
   };
   hardware.enableRedistributableFirmware = true;
   hardware.wirelessRegulatoryDatabase = true;
+
+
+  # gjallarOS NetworkManager fast-start BEGIN
+  #
+  # Portable systems often have unused Ethernet adapters with no carrier.
+  # NetworkManager can otherwise wait several seconds on those devices before
+  # declaring startup complete. Keep the timeout short while leaving Wi-Fi
+  # association/DHCP behavior untouched.
+  networking.networkmanager.settings."device-gjallar-ethernet-fast-start" = {
+    match-device = "type:ethernet";
+    carrier-wait-timeout = 1000;
+  };
+
+  # Keep network-online useful, but never allow it to hold startup for a full
+  # minute. Applications which can react dynamically to connectivity still do.
+  systemd.services.NetworkManager-wait-online.environment.NM_ONLINE_TIMEOUT = "12";
+  # gjallarOS NetworkManager fast-start END
 }

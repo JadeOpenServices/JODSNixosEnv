@@ -131,7 +131,7 @@ in
   # Laptop related settings for optimization.
   powerManagement.enable = true;
   services.thermald.enable = true;
-  services.auto-cpufreq.enable = true;
+  services.auto-cpufreq.enable = false;
   services.auto-cpufreq.settings = {
     battery = {
       governor = "powersave";
@@ -191,4 +191,12 @@ in
       StandardError = "journal";
     };
   };
+
+
+  # Native desktop power profiles.
+  # Provides org.freedesktop.UPower.PowerProfiles for Noctalia.
+  services.power-profiles-daemon.enable = true;
+
+  # Ensure PPD actually starts automatically on this system.
+  systemd.services.power-profiles-daemon.wantedBy = [ "graphical.target" ];
 }
