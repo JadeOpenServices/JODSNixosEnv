@@ -45,7 +45,12 @@ let
     fi
     ${pkgs.swaybg}/bin/swaybg --image "$selected_wallpaper" --mode fill &
     ${pkgs.coreutils}/bin/sleep 0.1
-    exec ${lib.getExe inputs.noctalia.packages.${pkgs.stdenv.hostPlatform.system}.default} --daemon
+    # Give NetworkManager a brief chance to establish an actual connection.
+    # This prevents Noctalia weather/plugin/API refreshes from racing early boot.
+    # The timeout is bounded: offline use must never prevent the shell starting.
+    ${pkgs.networkmanager}/bin/nm-online -q -t 10 || true
+
+    exec ${lib.getExe inputs.noctalia.packages.${pkgs.stdenv.hostPlatform.system}.default}
   '';
   virtualKeyboard = pkgs.writeShellApplication {
     name = "gjallar-virtual-keyboard";
@@ -69,9 +74,11 @@ in
     ++ lib.optionals (settings.touchscreenEnable or false) [ virtualKeyboard pkgs.wvkbd ];
 
   wayland.windowManager.hyprland.settings = {
-    bind = [
-      "SUPER, C, exec, ${lib.getExe config.programs.noctalia.package} msg panel-toggle control-center"
-    ] ++ lib.optionals (settings.touchscreenEnable or false) [
+    bind =
+      lib.optionals config.programs.noctalia.enable [
+        "SUPER, C, exec, ${lib.getExe config.programs.noctalia.package} msg status >/dev/null 2>&1 && ${lib.getExe config.programs.noctalia.package} msg panel-toggle control-center >/dev/null 2>&1 || true"
+      ]
+      ++ lib.optionals (settings.touchscreenEnable or false) [
       "SUPER, K, exec, ${lib.getExe virtualKeyboard}"
     ];
 
@@ -79,9 +86,11 @@ in
       ",preferred,auto,1"
     ];
 
-    exec-once = [
-      "${sessionStart}"
-    ] ++ lib.optionals (settings.touchscreenEnable or false) [
+    exec-once =
+      lib.optionals config.programs.noctalia.enable [
+        "${sessionStart}"
+      ]
+      ++ lib.optionals (settings.touchscreenEnable or false) [
       "${pkgs.wvkbd}/bin/wvkbd-mobintl --hidden -H 320 -L 240"
     ];
 
