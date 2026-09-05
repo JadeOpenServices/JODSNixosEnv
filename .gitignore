@@ -10,3 +10,6 @@ settings.nix.tmp*
 *.broken-resume-*
 *.bak
 *~
+
+# Machine-local infrastructure mappings (IP hostname, /etc/hosts syntax).
+local/jods-hosts
