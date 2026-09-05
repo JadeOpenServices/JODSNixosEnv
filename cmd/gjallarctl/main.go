@@ -302,12 +302,12 @@ func runTPM2(args []string, stdout, stderr io.Writer) int {
 		fmt.Fprintf(stderr, "ERROR: %v\n", err)
 		return 2
 	}
-	mapping, err := diskcrypto.Mapping(resolved)
+	mappingInfo, err := diskcrypto.MappingDetails(resolved)
 	if err != nil {
 		fmt.Fprintf(stderr, "ERROR: %v\n", err)
 		return 1
 	}
-	if mapping == "" {
+	if mappingInfo.Name == "" {
 		fmt.Fprintln(stdout, "luks_tpm2_enable=false\n[NOTE] No LUKS mapping found for TPM2 enrollment.")
 		return 0
 	}
@@ -316,9 +316,17 @@ func runTPM2(args []string, stdout, stderr io.Writer) int {
 		return 0
 	}
 	device, err := diskcrypto.DetectDevice(context.Background())
-	if err != nil || device == "" {
+	if err != nil {
+		fmt.Fprintf(stderr, "ERROR: refusing TPM2 enrollment: %v\n", err)
+		return 1
+	}
+	if device == "" {
 		fmt.Fprintln(stdout, "luks_tpm2_enable=false\n[NOTE] No active crypto_LUKS device found; skipping TPM2 enrollment.")
 		return 0
+	}
+	if err := diskcrypto.VerifyDeviceIdentity(mappingInfo.Device, device); err != nil {
+		fmt.Fprintf(stderr, "ERROR: %v\n", err)
+		return 1
 	}
 	tty, err := os.OpenFile("/dev/tty", os.O_RDWR, 0)
 	if err != nil {
@@ -327,27 +335,16 @@ func runTPM2(args []string, stdout, stderr io.Writer) int {
 	}
 	defer tty.Close()
 	reader := bufio.NewReader(tty)
-	yes, _, err := ttyConfirm(tty, reader, "Enable TPM2 automatic unlock? The passphrase remains as recovery.")
+	yes, _, err := ttyConfirm(tty, reader, "Prepare TPM2 automatic unlock after GjallarOS Secure Boot and measured boot are verified? The passphrase remains as recovery.")
 	if err != nil || !yes {
 		fmt.Fprintln(stdout, "luks_tpm2_enable=false")
 		return 0
 	}
-	passphrase, err := workpassword.ReadSecret(tty, reader, tty, "Current LUKS passphrase for TPM enrollment: ")
-	if err != nil || passphrase == "" {
-		fmt.Fprintln(stderr, "WARN: no passphrase supplied; skipping TPM2 enrollment")
-		return 0
-	}
-	fmt.Fprintf(stdout, "PLAN: sudo systemd-cryptenroll --unlock-key-file=<temporary> --tpm2-device=auto %s\n", device)
-	if err := diskcrypto.EnrollTPM(context.Background(), device, passphrase); err != nil {
-		passphrase = ""
-		fmt.Fprintf(stderr, "ERROR: TPM2 enrollment failed; boot configuration unchanged: %v\n", err)
+	if err := diskcrypto.EnableTPMConfig(resolved, mappingInfo.Name); err != nil {
+		fmt.Fprintf(stderr, "ERROR: TPM2 preparation failed: %v\n", err)
 		return 1
 	}
-	passphrase = ""
-	if err := diskcrypto.EnableTPMConfig(resolved, mapping); err != nil {
-		fmt.Fprintf(stderr, "ERROR: TPM enrolled but hardware configuration update failed: %v\n", err)
-		return 1
-	}
+	fmt.Fprintf(stdout, "PLAN: after Secure Boot verification, request the human LUKS passphrase and enroll this TPM against PCRLock on %s\n", device)
 	fmt.Fprintln(stdout, "luks_tpm2_enable=true")
 	return 0
 }
@@ -391,15 +388,23 @@ func runLUKS(args []string, stdout, stderr io.Writer) int {
 		fmt.Fprintf(stderr, "ERROR: %v\n", err)
 		return 2
 	}
-	mapping, err := diskcrypto.Mapping(resolved)
-	if err != nil || mapping == "" {
+	mappingInfo, err := diskcrypto.MappingDetails(resolved)
+	if err != nil || mappingInfo.Name == "" {
 		fmt.Fprintln(stdout, "[NOTE] No LUKS mapping exists; skipping LUKS configuration.")
 		return 0
 	}
 	device, err := diskcrypto.DetectDevice(context.Background())
-	if err != nil || device == "" {
+	if err != nil {
+		fmt.Fprintf(stderr, "ERROR: refusing LUKS configuration: %v\n", err)
+		return 1
+	}
+	if device == "" {
 		fmt.Fprintln(stdout, "[NOTE] No LUKS-encrypted device detected; skipping LUKS configuration.")
 		return 0
+	}
+	if err := diskcrypto.VerifyDeviceIdentity(mappingInfo.Device, device); err != nil {
+		fmt.Fprintf(stderr, "ERROR: %v\n", err)
+		return 1
 	}
 	tty, err := os.OpenFile("/dev/tty", os.O_RDWR, 0)
 	if err != nil {
@@ -452,8 +457,8 @@ func runLUKS(args []string, stdout, stderr io.Writer) int {
 		fmt.Fprintln(stdout, "LUKS rotation cancelled; existing key remains unchanged.")
 		return 0
 	}
-	fmt.Fprintln(stdout, "PLAN: enroll new key; enroll recovery key; remove original key only after both enrollments succeed")
-	if err := diskcrypto.Rotate(context.Background(), device, old, newKey, recovery); err != nil {
+	fmt.Fprintln(stdout, "PLAN: add and verify new key; add and verify recovery key; preserve every existing keyslot")
+	if err := diskcrypto.AddKeysPreservingExisting(context.Background(), device, old, newKey, recovery); err != nil {
 		old = ""
 		newKey = ""
 		recovery = ""
@@ -463,7 +468,7 @@ func runLUKS(args []string, stdout, stderr io.Writer) int {
 	old = ""
 	newKey = ""
 	recovery = ""
-	fmt.Fprintln(stdout, "LUKS rotation complete: new and recovery keys enrolled; original key removed.")
+	fmt.Fprintln(stdout, "LUKS enrollment complete: new and recovery keys verified; all previous keyslots preserved.")
 	return 0
 }
 
@@ -736,6 +741,8 @@ func runRender(args []string, stdout, stderr io.Writer) int {
 	f.StringVar(&s.KeyboardLayout, "keyboard-layout", "", "keyboard layout")
 	f.StringVar(&s.KeyboardVariant, "keyboard-variant", "", "keyboard variant")
 	f.BoolVar(&s.TouchpadWorkspaceSwipe, "touchpad-workspace-swipe", false, "")
+	f.BoolVar(&s.TouchscreenEnable, "touchscreen-enable", false, "")
+	f.BoolVar(&s.PenTabletEnable, "pen-tablet-enable", false, "")
 	f.BoolVar(&s.ClamshellEnable, "clamshell-enable", false, "")
 	f.BoolVar(&s.USBGuardEnable, "usbguard-enable", false, "")
 	f.StringVar(&s.Name, "name", "", "name")

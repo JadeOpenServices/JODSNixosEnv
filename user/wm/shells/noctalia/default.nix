@@ -113,7 +113,11 @@ in
       shell = {
         font_family = themeDetails.font;
         avatar_path = avatarPath;
-        greeter_sync.auto_sync = true;
+        polkit_agent = true;
+        greeter_sync = {
+          auto_sync = true;
+          privilege_command = "/run/wrappers/bin/pkexec";
+        };
         screenshot = {
           directory = "~/Media/Pictures/Screenshots";
         };
@@ -156,7 +160,7 @@ in
       };
       location = {
         auto_locate = false;
-        address = "Moscow, RU";
+        address = "${settings.weatherCity}, ${settings.weatherCountry}";
       };
       osd = {
         orientation = "horizontal";
@@ -196,6 +200,10 @@ in
         # XDG pictures directory is ~/Media/Pictures, but downloaded/user
         # wallpapers are intentionally kept in ~/Pictures.
         directory = "${config.home.homeDirectory}/Pictures";
+        # Include image folders added below ~/Pictures as well as images in its
+        # root.  The picker still allows normal folder navigation.
+        automation.recursive = true;
+        per_monitor_directories = false;
         fill_mode = "crop";
         transition_on_startup = false;
         # This is only the initial image.  The picker persists later choices
