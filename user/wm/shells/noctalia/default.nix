@@ -110,6 +110,8 @@ in
         ui_scale = 1.4;
       };
       shell = {
+        # Privacy: Noctalia must not persist clipboard contents.
+        clipboard_enabled = false;
         corner_radius_scale = 2.0;
         font_family = themeDetails.font;
         avatar_path = avatarPath;

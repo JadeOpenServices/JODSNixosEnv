@@ -167,9 +167,59 @@ the configured repository and hostname automatically.
 ## Recovery and JODS preboot policy
 
 `recoveryEnable` is disabled by default. When enabled, the bootloader exposes a
-console-only `gjallar-recovery` specialisation with `gjallar-recover list` and
-`gjallar-recover rollback`. It uses NixOS generations already stored on disk;
-it does not repartition an enrolled endpoint.
+console-only, Secure-Boot-signed `gjallar-recovery` specialisation. A separate
+minimal recovery/installer ISO is available as
+`nix build .#gjallar-recovery-iso`. It has SSH disabled, a default-deny
+firewall, and the tools required to unlock, repair, or install GjallarOS.
+
+JODS fresh-install media should reserve one dedicated 2-4 GiB partition and
+install a signed recovery release with `scripts/recovery/install-partition.sh`.
+If a GPT disk already has sufficient unallocated space,
+`scripts/recovery/create-partition.sh DISK` can create only that partition.
+It refuses to shrink filesystems and requires a separate exact confirmation.
+The helper refuses whole disks, mounted partitions, undersized/oversized
+targets, and any image whose pinned Ed25519 signature, size, or SHA-256 digest
+does not match. It creates the FAT32 label `JODSRECOV`, extracts the ISO, and
+signs and verifies every EFI executable with the endpoint's installed Secure
+Boot key. It requires the exact destructive confirmation phrase. Existing
+enrolled machines are never repartitioned automatically. Their recovery
+partition is added only through an explicitly approved maintenance operation.
+
+Release process:
+
+```text
+nix build .#gjallar-recovery-iso
+scripts/recovery/sign-image.sh result/iso/*.iso OFFLINE-ED25519-KEY release/
+scripts/recovery/verify-image.sh IMAGE MANIFEST MANIFEST.sig PINNED-PUBLIC.pem
+sudo scripts/recovery/install-partition.sh PARTITION IMAGE MANIFEST MANIFEST.sig PINNED-PUBLIC.pem
+```
+
+The interactive installer performs this transaction after a successful NixOS
+deployment when recovery is enabled and the operator opts in. It reuses a
+detected `JODS-RECOVERY` partition or offers creation from unallocated GPT
+space. For unattended installs, pass `--recovery-partition` or
+`--recovery-disk` together with the runtime-only `--recovery-signing-key`.
+These paths are never rendered into `settings.nix`.
+
+## Optional JODS enrollment
+
+The installer asks whether JODS should manage the machine. Managed installs
+pin the JODS executor from `flake.lock`, validate an HTTPS endpoint and the
+64-hex-character Ed25519 policy key, and render only public configuration.
+Insecure TLS is limited to an explicitly confirmed local-development flow.
+
+Enabling the module does not contact JODS. After a successful rebuild the
+installer writes `/var/lib/gjallarOS/installation-complete`, starts
+`jods-mdm-agent-enroll.service` once, then enables its retry timer. Failed or
+deferred rebuilds remain `configured, not contacted`. Device identity stays in
+`/var/lib/jods-mdm-agent` and is preserved by ordinary rebuilds and in-place
+installer runs.
+
+Keep the release signing key offline. JODS stores the public key and signed
+artifacts, never the private release key. The bootable recovery specialisation
+is produced and signed by Lanzaboote using the endpoint's per-device Secure
+Boot keys; the FAT32 partition contains the independently bootable recovery
+environment used by that trusted entry.
 
 `jodsPrebootLockEnable` is also disabled. It publishes declarative JODS policy
 intent at `/etc/jods/preboot-policy`, but does not claim to be an anti-theft

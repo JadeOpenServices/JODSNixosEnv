@@ -50,8 +50,9 @@ printf 'Type CREATE-JODS-RECOVERY to modify the GPT: '
 read -r answer
 [ "$answer" = CREATE-JODS-RECOVERY ] || { echo "Cancelled." >&2; exit 1; }
 
+# Freedesktop XBOOTLDR: a dedicated boot payload partition, not a generic ESP.
 sgdisk --new="0:${free_start}:+${size_gib}G" \
-  --typecode=0:ef00 \
+  --typecode=0:bc13c2ff-59e6-4262-a352-b275fd6f7172 \
   --change-name=0:JODS-RECOVERY \
   "$disk"
 partprobe "$disk"

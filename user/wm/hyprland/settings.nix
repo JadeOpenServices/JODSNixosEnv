@@ -8,6 +8,32 @@
   ...
 }:
 let
+  gjallarPasteOnce = pkgs.writeShellScript "gjallar-paste-once" ''
+    set -eu
+
+    case "''${1:-}" in
+      ctrl-v)
+        ${pkgs.hyprland}/bin/hyprctl dispatch sendshortcut CTRL,V,activewindow >/dev/null
+        ;;
+      ctrl-shift-v)
+        ${pkgs.hyprland}/bin/hyprctl dispatch sendshortcut "CTRL SHIFT",V,activewindow >/dev/null
+        ;;
+      shift-insert)
+        ${pkgs.hyprland}/bin/hyprctl dispatch sendshortcut SHIFT,Insert,activewindow >/dev/null
+        ;;
+      *)
+        exit 2
+        ;;
+    esac
+
+    # Give the focused client enough time to consume the selection before
+    # destroying it. Keep this short enough to feel immediate.
+    ${pkgs.coreutils}/bin/sleep 0.12
+
+    # Remove both the normal clipboard and primary selection.
+    ${pkgs.wl-clipboard}/bin/wl-copy --clear >/dev/null 2>&1 || true
+    ${pkgs.wl-clipboard}/bin/wl-copy --primary --clear >/dev/null 2>&1 || true
+  '';
   themeDetails = settings.themeDetails;
   profileDetails = settings.profileDetails;
   shellDetails = hyprlandShellDetails;
@@ -80,7 +106,11 @@ in
       ]
       ++ lib.optionals (settings.touchscreenEnable or false) [
       "SUPER, K, exec, ${lib.getExe virtualKeyboard}"
-    ];
+    
+      "CTRL, V, exec, ${gjallarPasteOnce} ctrl-v"
+      "CTRL SHIFT, V, exec, ${gjallarPasteOnce} ctrl-shift-v"
+      "SHIFT, INSERT, exec, ${gjallarPasteOnce} shift-insert"
+];
 
     monitor = profileDetails.hyprlandMonitors ++ [
       ",preferred,auto,1"

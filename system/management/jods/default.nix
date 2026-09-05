@@ -34,6 +34,24 @@ let
     printf '%s\n' "$state" > /var/lib/gjallarOS/jods-status.txt
     chmod 0644 /var/lib/gjallarOS/jods-status.txt
   '';
+  statusCommand = pkgs.writeShellApplication {
+    name = "gjallar-jods-status";
+    runtimeInputs = [ pkgs.jq ];
+    text = ''
+      set -euo pipefail
+      status=/var/lib/gjallarOS/jods-status.txt
+      response=/var/lib/jods-mdm-agent/bootstrap-response.json
+      if [ -r "$status" ]; then
+        printf 'JODS: '
+        cat "$status"
+      else
+        printf '%s\n' 'JODS: configured, not contacted'
+      fi
+      if [ -r "$response" ]; then
+        jq '{status: .data.status, mode: .data.mode, device_id: .data.device_id, message: (.message // .data.message)}' "$response"
+      fi
+    '';
+  };
 in
 {
   # Provenance: github.com/bakanura/jods, pinned by flake.lock. The imported
@@ -49,6 +67,7 @@ in
     deviceClass = settings.jodsDeviceClass;
     desktopProfile = settings.jodsDesktopProfile;
   };
+  environment.systemPackages = lib.optionals enabled [ statusCommand ];
 
   # Configuration must never phone home. Only gjallar-installer starts this
   # unit after a successful deployment and installation-complete marker.

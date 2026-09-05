@@ -20,6 +20,16 @@ public_key=$(realpath "$5")
   echo "ERROR: target must be a partition, never a whole disk" >&2
   exit 1
 }
+part_label=$(lsblk -dnro PARTLABEL "$partition")
+[ "$part_label" = JODS-RECOVERY ] || {
+  echo "ERROR: target partition must have GPT label JODS-RECOVERY" >&2
+  exit 1
+}
+part_type=$(lsblk -dnro PARTTYPE "$partition" | tr '[:upper:]' '[:lower:]')
+[ "$part_type" = bc13c2ff-59e6-4262-a352-b275fd6f7172 ] || {
+  echo "ERROR: JODS-RECOVERY must use the XBOOTLDR partition type" >&2
+  exit 1
+}
 [ -z "$(lsblk -nro MOUNTPOINTS "$partition" | tr -d '[:space:]')" ] || {
   echo "ERROR: target partition is mounted" >&2
   exit 1

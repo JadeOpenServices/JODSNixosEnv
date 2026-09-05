@@ -42,3 +42,10 @@ func TestUnmanagedJODSDoesNotRequireConfiguration(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+func TestUnmanagedJODSRejectsPrebootLock(t *testing.T) {
+	u := User{JODSPrebootLockEnable: true}
+	if err := ValidateJODS(u); err == nil {
+		t.Fatal("unmanaged device accepted JODS preboot lock")
+	}
+}

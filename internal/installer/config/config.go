@@ -5,6 +5,8 @@ package config
 import (
 	"encoding/json"
 	"fmt"
+	"net"
+	"net/url"
 	"os"
 	"regexp"
 	"strings"
@@ -60,6 +62,12 @@ type User struct {
 	SecureBootEnable       bool     `json:"secureBootEnable"`
 	SecureBootPrompt       bool     `json:"secureBootPrompt"`
 	EndpointManagedDevice  bool     `json:"endpointManagedDevice"`
+	JODSEndpoint           string   `json:"jodsEndpoint"`
+	JODSPolicySigningKey   string   `json:"jodsPolicySigningPublicKey"`
+	JODSEnrollmentMode     string   `json:"jodsEnrollmentMode"`
+	JODSAllowInsecureTLS   bool     `json:"jodsAllowInsecureTls"`
+	JODSDeviceClass        string   `json:"jodsDeviceClass"`
+	JODSDesktopProfile     string   `json:"jodsDesktopProfile"`
 	AutoReboot             bool     `json:"autoReboot"`
 	RunUpdateChecks        bool     `json:"runUpdateChecks"`
 	WriteConfig            bool     `json:"writeConfig"`
@@ -103,5 +111,49 @@ func Validate(user User) error {
 	if len(user.Editors) == 0 || len(user.Browsers) == 0 {
 		return fmt.Errorf("at least one editor and browser are required")
 	}
+	if err := ValidateJODS(user); err != nil {
+		return err
+	}
 	return nil
+}
+
+var jodsPublicKeyPattern = regexp.MustCompile(`^[0-9a-fA-F]{64}$`)
+
+func ValidateJODS(user User) error {
+	if !user.EndpointManagedDevice {
+		if user.JODSPrebootLockEnable {
+			return fmt.Errorf("JODS preboot locking requires explicit JODS endpoint management enrollment")
+		}
+		return nil
+	}
+	parsed, err := url.Parse(user.JODSEndpoint)
+	if err != nil || parsed.Scheme != "https" || parsed.Host == "" || parsed.User != nil {
+		return fmt.Errorf("JODS endpoint must be an HTTPS URL without embedded credentials")
+	}
+	if !jodsPublicKeyPattern.MatchString(user.JODSPolicySigningKey) {
+		return fmt.Errorf("JODS policy-signing public key must be exactly 64 hexadecimal characters")
+	}
+	if !oneOf(user.JODSEnrollmentMode, "auto", "manual", "jade-registry-only") {
+		return fmt.Errorf("invalid JODS enrollment mode: %q", user.JODSEnrollmentMode)
+	}
+	if !oneOf(user.JODSDeviceClass, "pc", "vm", "laptop", "kiosk", "workstation") {
+		return fmt.Errorf("invalid JODS device class: %q", user.JODSDeviceClass)
+	}
+	if !oneOf(user.JODSDesktopProfile, "plasma", "gnome", "server", "headless") {
+		return fmt.Errorf("invalid JODS desktop profile: %q", user.JODSDesktopProfile)
+	}
+	host := parsed.Hostname()
+	if ip := net.ParseIP(host); ip != nil && ip.IsLoopback() {
+		return fmt.Errorf("JODS endpoint must not use a loopback address")
+	}
+	return nil
+}
+
+func oneOf(value string, allowed ...string) bool {
+	for _, candidate := range allowed {
+		if value == candidate {
+			return true
+		}
+	}
+	return false
 }
