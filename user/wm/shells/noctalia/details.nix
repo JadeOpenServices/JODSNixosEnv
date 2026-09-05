@@ -1,12 +1,11 @@
-{
-  pkgs,
+{ config, pkgs,
   inputs,
   lib,
   ...
 }:
 
 let
-  noctalia = lib.getExe inputs.noctalia.packages.${pkgs.stdenv.hostPlatform.system}.default;
+  noctalia = lib.getExe config.programs.noctalia.package;
   ipc = "${noctalia} msg";
 in
 {
