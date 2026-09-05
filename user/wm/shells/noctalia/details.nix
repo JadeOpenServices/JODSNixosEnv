@@ -6,11 +6,18 @@
 
 let
   noctalia = lib.getExe config.programs.noctalia.package;
-  ipc = "${noctalia} msg";
+  # Central safe IPC boundary. Every shell action using `${ipc}` becomes
+  # a silent no-op while Noctalia is disabled, starting, stopped or unavailable.
+  ipc = "${pkgs.writeShellScript "gjallar-noctalia-ipc" ''
+    if ${noctalia} msg status >/dev/null 2>&1; then
+      ${noctalia} msg "$@" >/dev/null 2>&1 || true
+    fi
+    exit 0
+  ''}";
 in
 {
   launchCommands = [
-    "${noctalia} --daemon"
+    "${noctalia}"
   ];
 
   binds = {

@@ -17,7 +17,13 @@
       fprintAuth = false;
       enableGnomeKeyring = true;
     };
-    sudo.fprintAuth = true;
+    sudo = {
+      fprintAuth = true;
+
+      # After fingerprint failure/timeout, start a fresh password
+      # conversation instead of reusing the fprint PAM token.
+      rules.auth.unix.args = lib.mkForce [ "likeauth" ];
+    };
     swaylock.fprintAuth = true;
   };
 
