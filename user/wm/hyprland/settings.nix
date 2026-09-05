@@ -47,17 +47,32 @@ let
     ${pkgs.coreutils}/bin/sleep 0.1
     exec ${lib.getExe inputs.noctalia.packages.${pkgs.stdenv.hostPlatform.system}.default} --daemon
   '';
+  virtualKeyboard = pkgs.writeShellApplication {
+    name = "gjallar-virtual-keyboard";
+    runtimeInputs = [ pkgs.procps pkgs.wvkbd ];
+    text = ''
+      set -euo pipefail
+      if pgrep -x wvkbd-mobintl >/dev/null; then
+        pkill -USR2 -x wvkbd-mobintl
+      else
+        ${pkgs.wvkbd}/bin/wvkbd-mobintl --hidden -H 320 -L 240 >/dev/null 2>&1 &
+        disown
+        sleep 0.1
+        pkill -USR2 -x wvkbd-mobintl
+      fi
+    '';
+  };
 in
 {
-  home.packages = with pkgs; [
-    awww
-    swaybg
-    wayvnc
-  ];
+  home.packages =
+    (with pkgs; [ awww swaybg wayvnc ])
+    ++ lib.optionals (settings.touchscreenEnable or false) [ virtualKeyboard pkgs.wvkbd ];
 
   wayland.windowManager.hyprland.settings = {
     bind = [
       "SUPER, C, exec, ${lib.getExe config.programs.noctalia.package} msg panel-toggle control-center"
+    ] ++ lib.optionals (settings.touchscreenEnable or false) [
+      "SUPER, K, exec, ${lib.getExe virtualKeyboard}"
     ];
 
     monitor = profileDetails.hyprlandMonitors ++ [
@@ -66,6 +81,8 @@ in
 
     exec-once = [
       "${sessionStart}"
+    ] ++ lib.optionals (settings.touchscreenEnable or false) [
+      "${pkgs.wvkbd}/bin/wvkbd-mobintl --hidden -H 320 -L 240"
     ];
 
     general = {
@@ -137,6 +154,12 @@ in
       touchpad = {
         natural_scroll = true;
       };
+
+      # Hyprland handles pressure, tilt, erasers, and tablet-pad buttons
+      # natively. Pens use absolute positioning by default.
+      tablet = lib.mkIf (settings.penTabletEnable or false) {
+        relative_input = false;
+      };
     };
 
     device = {
@@ -144,8 +167,14 @@ in
       sensitivity = -1.0;
     };
 
+    # Hyprland 0.55 removed gestures.workspace_swipe. The replacement is the
+    # top-level gesture keyword; native libinput remains sufficient here.
+    gesture = lib.optionals settings.touchpadWorkspaceSwipe [
+      "3, horizontal, workspace"
+    ];
+
     gestures = {
-      workspace_swipe_touch = settings.touchpadWorkspaceSwipe;
+      workspace_swipe_touch = settings.touchscreenEnable or false;
       workspace_swipe_cancel_ratio = 0.15;
       workspace_swipe_forever = true;
       workspace_swipe_distance = 200;
