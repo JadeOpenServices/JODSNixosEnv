@@ -1,4 +1,5 @@
 {
+  config,
   lib,
   pkgs,
   settings,
@@ -13,6 +14,7 @@ let
   ownerMode = agentMode != "workspace";
   gjallarctl = pkgs.callPackage ../../pkgs/gjallarctl { };
 
+
   gjallarAi = pkgs.writeShellScriptBin "gjallar-ai" ''
     set -euo pipefail
 
@@ -26,21 +28,35 @@ let
       realpath \
       systemctl \
       systemd-escape \
-      socat
+      tmux
     do
       command -v "$command" >/dev/null 2>&1 ||
         die "required command not found: $command"
     done
 
-    repo="$(
-      git rev-parse \
-        --show-toplevel \
-        2>/dev/null ||
-        true
-    )"
+    workspace="''${1-}"
+
+    if [ -n "$workspace" ]; then
+      shift
+
+      repo="$(
+        git -C "$workspace" \
+          rev-parse \
+          --show-toplevel \
+          2>/dev/null ||
+          true
+      )"
+    else
+      repo="$(
+        git rev-parse \
+          --show-toplevel \
+          2>/dev/null ||
+          true
+      )"
+    fi
 
     [ -n "$repo" ] ||
-      die "Start gjallar-ai inside a Git repository."
+      die "workspace is not a Git repository"
 
     repo="$(realpath "$repo")"
 
@@ -55,7 +71,7 @@ let
 
     unit="gjallar-ai-session@$escaped.service"
 
-    socket="/run/gjallar-ai-session-$escaped/console.sock"
+    socket="/run/gjallar-ai-session-$escaped/tmux.sock"
 
     cleanup() {
       systemctl stop "$unit" >/dev/null 2>&1 || true
@@ -111,9 +127,10 @@ let
 
     set +e
 
-    ${pkgs.socat}/bin/socat \
-      STDIO,raw,echo=0 \
-      UNIX-CONNECT:"$socket"
+    ${pkgs.tmux}/bin/tmux \
+      -S "$socket" \
+      attach-session \
+      -t gjallar-ai
 
     rc=$?
 
@@ -126,8 +143,11 @@ let
   gjallarAiDesktop = pkgs.makeDesktopItem {
     name = "gjallarOS-ai";
     desktopName = "gjallarOS AI";
-    comment = "Secure local GjallarOS engineering agent";
-    exec = "${gjallarAi}/bin/gjallar-ai";
+    comment = "Secure local gjallarCode Caveman agent";
+    exec =
+      "${gjallarAi}/bin/gjallar-ai "
+      + lib.escapeShellArg
+          "${config.home.homeDirectory}/Documents/${settings.hostname}";
     icon = "${pkgs.papirus-icon-theme}/share/icons/Papirus/64x64/apps/devassistant.svg";
     terminal = true;
     categories = [ "Development" ];
@@ -135,11 +155,14 @@ let
 
 in
 lib.mkIf aiEnabled {
+
+
   programs.opencode = {
     enable = true;
   };
 
   home.packages = [
+    pkgs.tmux
     gjallarAi
     gjallarAiDesktop
 
