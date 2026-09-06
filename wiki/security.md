@@ -39,6 +39,18 @@ systemctl status gjallar-secure-boot-enroll.service
 material prompts. JODS must provision and escrow unique per-device keys before
 managed enrollment is enabled; fleet-wide shared private keys are forbidden.
 
+## Fingerprint enrollment
+
+On an unmanaged device, the first fingerprint setup uses the account password.
+After enrollment metadata exists, every later add or delete requires a fresh
+administrator/root-password polkit authorization. Fingerprints cannot authorize
+that prompt, and authorization is not cached.
+
+On a JODS-managed device, local enrollment and deletion default to denied. The
+signed JODS policy may set `jodsFingerprintEnrollmentAllowed=true`; this permits
+the physical enrollment UI but retains the fresh administrator-password gate.
+Raw fingerprint templates remain local under fprintd and are never sent to JODS.
+
 
 ### Lanzaboote external kernel
 

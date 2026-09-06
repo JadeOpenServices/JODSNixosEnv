@@ -23,6 +23,7 @@ buildGoModule {
   };
 
   vendorHash = null;
+  env.CGO_ENABLED = "0";
   ldflags = [ "-s" "-w" ];
 
   meta = {

@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strconv"
 	"strings"
 
@@ -14,9 +15,11 @@ import (
 )
 
 type Hardware struct {
-	RAMGB   int
-	GPUType string
-	VRAMMB  int
+	RAMGB    int
+	CPUCores int
+	Arch     string
+	GPUType  string
+	VRAMMB   int
 }
 
 type Override struct {
@@ -32,6 +35,22 @@ type Result struct {
 	RAMGB         int    `json:"ramGB"`
 	GPUVendor     string `json:"gpuVendor"`
 	GPUType       string `json:"gpuType"`
+	CPUCores      int    `json:"cpuCores"`
+	Architecture  string `json:"architecture"`
+}
+
+type modelProfile struct {
+	Name, Model                                     string
+	ContextTokens, MinRAMGB, MinCPUCores, MinVRAMMB int
+	DedicatedGPU                                    bool
+}
+
+// modelProfiles is the single authoritative automatic-selection table. Order
+// is strongest to weakest; the final entry is the safe fallback.
+var modelProfiles = []modelProfile{
+	{Name: "dedicated", Model: "qwen3-coder:30b", ContextTokens: 32768, MinRAMGB: 32, MinCPUCores: 8, MinVRAMMB: 12288, DedicatedGPU: true},
+	{Name: "integrated", Model: "qwen2.5-coder:14b", ContextTokens: 16384, MinRAMGB: 16, MinCPUCores: 4},
+	{Name: "low-memory", Model: "qwen2.5-coder:7b", ContextTokens: 8192},
 }
 
 func Detect(ctx context.Context, configPath string) (Result, error) {
@@ -45,16 +64,23 @@ func Detect(ctx context.Context, configPath string) (Result, error) {
 	}
 	result := Select(hardware, override)
 	result.RAMGB, result.GPUVendor, result.GPUType = hardware.RAMGB, vendor, hardware.GPUType
+	result.CPUCores, result.Architecture = hardware.CPUCores, hardware.Arch
 	return result, nil
 }
 
 func Select(hardware Hardware, override Override) Result {
-	result := Result{Profile: "low-memory", Model: "qwen3-coder:7b", ContextTokens: 8192, VRAMMB: hardware.VRAMMB}
-	if hardware.RAMGB >= 32 && hardware.GPUType == "dedicated" && hardware.VRAMMB >= 12288 {
-		result.Profile, result.Model, result.ContextTokens = "dedicated", "qwen3-coder:30b", 32768
-	} else if hardware.RAMGB >= 16 {
-		result.Profile, result.Model, result.ContextTokens = "integrated", "qwen3-coder:14b", 16384
+	selected := modelProfiles[len(modelProfiles)-1]
+	for _, candidate := range modelProfiles {
+		if hardware.RAMGB < candidate.MinRAMGB || hardware.CPUCores < candidate.MinCPUCores || hardware.VRAMMB < candidate.MinVRAMMB {
+			continue
+		}
+		if candidate.DedicatedGPU && hardware.GPUType != "dedicated" {
+			continue
+		}
+		selected = candidate
+		break
 	}
+	result := Result{Profile: selected.Name, Model: selected.Model, ContextTokens: selected.ContextTokens, VRAMMB: hardware.VRAMMB}
 	if override.Enabled && override.Model != "" {
 		result.Profile, result.Model = "user-override", override.Model
 		switch {
@@ -91,6 +117,12 @@ func LoadOverride(path string) (Override, error) {
 	if strings.ContainsAny(model, "\x00\r\n") {
 		return Override{}, fmt.Errorf("overrideModelWith must not contain control characters")
 	}
+	if config.Enabled && model == "" {
+		return Override{}, fmt.Errorf("overrideModelWith is required when overrideAiSelection is true")
+	}
+	if model != "" && (strings.ContainsAny(model, " \t") || strings.HasPrefix(model, "-") || strings.Contains(model, "/../")) {
+		return Override{}, fmt.Errorf("overrideModelWith is not a valid Ollama model identifier")
+	}
 	return Override{Enabled: config.Enabled, Model: model}, nil
 }
 
@@ -102,7 +134,7 @@ func detectHardware(ctx context.Context) (Hardware, string, error) {
 	live, err := graphics.Detect(ctx)
 	if err != nil {
 		// Local AI remains usable without lspci; retain the low-memory fallback.
-		return Hardware{RAMGB: ramGB, GPUType: "unknown", VRAMMB: vramMB()}, "unknown", nil
+		return Hardware{RAMGB: ramGB, CPUCores: runtime.NumCPU(), Arch: runtime.GOARCH, GPUType: "unknown", VRAMMB: vramMB()}, "unknown", nil
 	}
 	gpuType := live.Type
 	if gpuType == "hybrid" {
@@ -110,7 +142,7 @@ func detectHardware(ctx context.Context) (Hardware, string, error) {
 		// dedicated profile when its discrete VRAM is sufficient.
 		gpuType = "dedicated"
 	}
-	return Hardware{RAMGB: ramGB, GPUType: gpuType, VRAMMB: vramMB()}, live.Vendor, nil
+	return Hardware{RAMGB: ramGB, CPUCores: runtime.NumCPU(), Arch: runtime.GOARCH, GPUType: gpuType, VRAMMB: vramMB()}, live.Vendor, nil
 }
 
 func memoryGB(path string) (int, error) {

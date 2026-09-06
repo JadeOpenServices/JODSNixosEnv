@@ -56,10 +56,12 @@
   "jodsAllowInsecureTls": false,
   "jodsDeviceClass": "laptop",
   "jodsDesktopProfile": "headless",
+  "jodsFingerprintEnrollmentAllowed": false,
   "autoReboot": false,
   "runUpdateChecks": false,
   "writeConfig": true,
   "runRebuild": true,
   "overrideAiSelection": false,
-  "overrideModelWith": ""
+  "overrideModelWith": "",
+  "aiAgentMode": "workspace"
 }

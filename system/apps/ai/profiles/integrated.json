@@ -1,1 +1,0 @@
-{"model":"qwen3-coder:14b","maxRamGB":24,"minRamGB":16,"minVramMB":0,"contextTokens":16384,"description":"Balanced coding model for integrated graphics and moderate-memory systems"}

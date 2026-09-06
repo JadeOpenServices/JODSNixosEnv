@@ -20,6 +20,8 @@ in
 
   stylix = {
     targets.nixvim.enable = true;
+    # Noctalia writes Kitty's live palette through its template engine.
+    targets.kitty.enable = false;
     targets.tmux.enable = false;
     targets.hyprlock.enable = false;
     targets.hyprland.enable = false;

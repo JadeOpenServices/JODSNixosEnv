@@ -9,17 +9,11 @@
   imports = [
     ../../themes/lib/common.nix
     ../../themes/lib/home.nix
-    ../../user/apps/kitty.nix
-    ../../user/apps/git.nix
-    ../../user/apps/superfile.nix
-    ../../user/apps/zathura.nix
-    ../../user/apps/cava.nix
     # ../../user/apps/github.nix
     # ../../user/apps/neofetch
     ../../user/apps/mangohud.nix
     ../../user/apps/kdeconnect.nix
     ../../user/apps/ssh.nix
-    ../../user/apps/opencode.nix
     ../../user/gaming/nethack.nix
     ../../user/gaming/oss-games.nix
     ../../user/gaming/steam.nix
@@ -28,10 +22,9 @@
     ../../user/apps/latex.nix
     ../../user/apps/btop
     ../../user/apps/mpd
-    ../../user/apps/teams.nix
-    ../../user/apps/fingerprint.nix
     ../../user/virtualization
     ../../user/shells/${settings.shell}.nix
+    ../../user/apps
   ]
   ++ (map (wm: ../../user/wm/${wm}) settings.wms)
   ++ (map (editor: ../../user/editors/${editor}) settings.editors)
