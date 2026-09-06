@@ -930,12 +930,6 @@ func runAIModelServe(args []string, stdout, stderr io.Writer) int {
 		"required system-service cgroup prefix",
 	)
 
-	peerExe := f.String(
-		"peer-exe",
-		"",
-		"required broker peer executable",
-	)
-
 	if err := f.Parse(args); err != nil || f.NArg() != 0 {
 		return 2
 	}
@@ -981,7 +975,6 @@ func runAIModelServe(args []string, stdout, stderr io.Writer) int {
 			Model:                *model,
 			AllowedUID:           uint32(uid64),
 			RequiredCgroupPrefix: *cgroupPrefix,
-			RequiredPeerExe:      *peerExe,
 			MaxRequestBytes:      16 << 20,
 			Timeout:              15 * time.Minute,
 		},
@@ -1218,14 +1211,76 @@ func runRebuild(args []string, stdout, stderr io.Writer) int {
 		fmt.Fprintf(stderr, "[GjallarOS] Error: %v\n", err)
 		return 1
 	}
-	if status := runCommand(context.Background(), stdout, stderr, "sudo", "-v"); status != 0 {
-		return status
+
+	// Managed JODS endpoints deliberately remove the desktop user from
+	// wheel. Rebuilds on those systems therefore cross the explicit root
+	// authentication boundary instead of attempting sudo.
+	configPath := filepath.Join(repo, "user.config.json")
+	document, err := preset.Load(configPath)
+	if err != nil {
+		fmt.Fprintf(stderr, "[GjallarOS] Error: read managed-device state: %v\n", err)
+		return 1
+	}
+
+	managedDevice, err := document.Bool("endpointManagedDevice")
+	if err != nil {
+		fmt.Fprintf(stderr, "[GjallarOS] Error: read endpointManagedDevice: %v\n", err)
+		return 1
+	}
+
+	if managedDevice && os.Geteuid() != 0 {
+		executable, err := os.Executable()
+		if err != nil {
+			fmt.Fprintf(stderr, "[GjallarOS] Error: resolve gjallarctl executable: %v\n", err)
+			return 1
+		}
+
+		home, _ := os.UserHomeDir()
+
+		rootArgs := []string{
+			"env",
+			"GJALLAR_REBUILD_CALLER_HOME=" + home,
+			executable,
+			"rebuild",
+		}
+		rootArgs = append(rootArgs, args...)
+
+		fmt.Fprintln(
+			stdout,
+			"[GjallarOS] Managed endpoint: authenticating as root for rebuild.",
+		)
+
+		return runCommand(
+			context.Background(),
+			stdout,
+			stderr,
+			"su",
+			"-c",
+			shellJoin(rootArgs),
+			"root",
+		)
+	}
+	if os.Geteuid() != 0 {
+		if status := runCommand(
+			context.Background(),
+			stdout,
+			stderr,
+			"sudo",
+			"-v",
+		); status != 0 {
+			return status
+		}
 	}
 
 	started := time.Now()
 	commandArgs := []string{"nixos-rebuild", "switch", "--flake", repo + "#" + host}
-	if home, err := os.UserHomeDir(); err == nil {
-		palette := filepath.Join(home, ".local", "state", "noctalia", "stylix-override.json")
+	rebuildHome := os.Getenv("GJALLAR_REBUILD_CALLER_HOME")
+	if rebuildHome == "" {
+		rebuildHome, _ = os.UserHomeDir()
+	}
+
+	if rebuildHome != "" {
+		palette := filepath.Join(rebuildHome, ".local", "state", "noctalia", "stylix-override.json")
 		if info, err := os.Stat(palette); err == nil && info.Mode().IsRegular() {
 			commandArgs = append([]string{"env", "GJALLAR_NOCTALIA_PALETTE=" + palette}, commandArgs...)
 			commandArgs = append(commandArgs, "--impure")
@@ -1239,7 +1294,12 @@ func runRebuild(args []string, stdout, stderr io.Writer) int {
 	var status int
 	if debug {
 		fmt.Fprintf(stdout, "Rebuilding NixOS for %s\n[GjallarOS] Flake: %s#%s\n\n", host, repo, host)
-		status = runCommand(context.Background(), stdout, stderr, "sudo", commandArgs...)
+		status = runPrivilegedCommand(
+			context.Background(),
+			stdout,
+			stderr,
+			commandArgs...,
+		)
 	} else {
 		status = runRebuildQuiet(stdout, stderr, host, messages, started, commandArgs)
 	}
@@ -1319,8 +1379,25 @@ func runCleanupOld(args []string, stdout, stderr io.Writer) int {
 		fmt.Fprintln(stderr, "Usage: cleanup-old-generations")
 		return 2
 	}
-	cmd := exec.Command("sudo", "nix-env", "--profile", "/nix/var/nix/profiles/system", "--list-generations")
-	data, err := cmd.Output()
+	var generationCommand *exec.Cmd
+	if os.Geteuid() == 0 {
+		generationCommand = exec.Command(
+			"nix-env",
+			"--profile",
+			"/nix/var/nix/profiles/system",
+			"--list-generations",
+		)
+	} else {
+		generationCommand = exec.Command(
+			"sudo",
+			"nix-env",
+			"--profile",
+			"/nix/var/nix/profiles/system",
+			"--list-generations",
+		)
+	}
+
+	data, err := generationCommand.Output()
 	if err != nil {
 		fmt.Fprintf(stderr, "ERROR: %v\n", err)
 		return 1
@@ -1343,7 +1420,12 @@ func runCleanupOld(args []string, stdout, stderr io.Writer) int {
 	fmt.Fprintf(stdout, "[GjallarOS] Removing %d old generations; keeping 5.\n", len(remove))
 	command := []string{"nix-env", "--profile", "/nix/var/nix/profiles/system", "--delete-generations"}
 	command = append(command, remove...)
-	return runCommand(context.Background(), stdout, stderr, "sudo", command...)
+	return runPrivilegedCommand(
+		context.Background(),
+		stdout,
+		stderr,
+		command...,
+	)
 }
 
 func runThermalStatus(args []string, stdout, stderr io.Writer) int {
@@ -1472,7 +1554,12 @@ func runRebuildQuiet(stdout, stderr io.Writer, host string, messages []string, s
 	}
 
 	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
-	status := runCommand(ctx, log, log, "sudo", commandArgs...)
+	status := runPrivilegedCommand(
+		ctx,
+		log,
+		log,
+		commandArgs...,
+	)
 	cancel()
 	if interactive {
 		close(stop)
@@ -1485,6 +1572,57 @@ func runRebuildQuiet(stdout, stderr io.Writer, host string, messages []string, s
 		}
 	}
 	return status
+}
+
+func runPrivilegedCommand(
+	ctx context.Context,
+	stdout, stderr io.Writer,
+	args ...string,
+) int {
+	if len(args) == 0 {
+		fmt.Fprintln(stderr, "ERROR: empty privileged command")
+		return 2
+	}
+
+	if os.Geteuid() == 0 {
+		return runCommand(
+			ctx,
+			stdout,
+			stderr,
+			args[0],
+			args[1:]...,
+		)
+	}
+
+	return runCommand(
+		ctx,
+		stdout,
+		stderr,
+		"sudo",
+		args...,
+	)
+}
+
+func shellJoin(args []string) string {
+	quoted := make([]string, len(args))
+
+	for i, arg := range args {
+		quoted[i] = shellQuote(arg)
+	}
+
+	return strings.Join(quoted, " ")
+}
+
+func shellQuote(value string) string {
+	if value == "" {
+		return "''"
+	}
+
+	return "'" + strings.ReplaceAll(
+		value,
+		"'",
+		"'\"'\"'",
+	) + "'"
 }
 
 func runCommand(ctx context.Context, stdout, stderr io.Writer, name string, args ...string) int {

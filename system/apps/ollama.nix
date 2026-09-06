@@ -6,6 +6,288 @@
 }:
 
 let
+
+  # ==========================================================
+  # gjallarCode / Caveman
+  # ==========================================================
+
+  cavemanSrc = pkgs.fetchFromGitHub {
+    owner = "JuliusBrussee";
+    repo = "caveman";
+    rev = "v2.2.0";
+    hash = "sha256-wtGKsKtjPL1nG0LDH4vmfMy/nnuQaY6jvNhlwxhEm2E=";
+  };
+
+  gjallarCodeOpencode = pkgs.opencode.overrideAttrs (old: {
+    nativeBuildInputs =
+      (old.nativeBuildInputs or [ ])
+      ++ [ pkgs.python3 ];
+
+    postPatch = (old.postPatch or "") + ''
+      python3 - <<'LOGOPATCH'
+from pathlib import Path
+import re
+
+candidates = [
+    Path(
+        "packages/opencode/src/cli/cmd/tui/"
+        "routes/home.tsx"
+    ),
+    Path(
+        "packages/opencode/src/cli/cmd/tui/"
+        "routes/home/index.tsx"
+    ),
+]
+
+target = next(
+    (p for p in candidates if p.exists()),
+    None,
+)
+
+if target is None:
+    raise SystemExit(
+        "gjallarCode logo patch: "
+        "OpenCode home source not found"
+    )
+
+source = target.read_text()
+
+patched, count = re.subn(
+    r"<Logo(?:\s+[^>]*)?\s*/>",
+    "<text>gjallarCode</text>",
+    source,
+    count=1,
+)
+
+if count != 1:
+    raise SystemExit(
+        "gjallarCode logo patch: "
+        f"expected one Logo element, found {count}"
+    )
+
+patched = re.sub(
+    r'(?m)^import\s+\{\s*Logo\s*\}\s+from\s+'
+    r'["\'][^"\']*logo["\'];?\s*\n',
+    "",
+    patched,
+    count=1,
+)
+
+patched = re.sub(
+    r'(?m)^import\s+Logo\s+from\s+'
+    r'["\'][^"\']*logo["\'];?\s*\n',
+    "",
+    patched,
+    count=1,
+)
+
+target.write_text(patched)
+
+if "gjallarCode" not in target.read_text():
+    raise SystemExit(
+        "gjallarCode logo patch verification failed"
+    )
+
+print(
+    "gjallarCode logo patched:",
+    target,
+)
+LOGOPATCH
+    '';
+  });
+
+
+  # Desktop-side clipboard broker.
+  #
+  # Security boundary:
+  # - accepts WRITE only;
+  # - no clipboard-read operation exists;
+  # - validates kernel SO_PEERCRED;
+  # - validates caller is inside gjallar-ai-session@ cgroup;
+  # - bounds copied data;
+  # - only this broker receives Wayland access.
+  gjallarClipboardServer =
+    pkgs.writeShellScript
+      "gjallar-ai-clipboard-server" ''
+        set -euo pipefail
+
+        uid="$(${pkgs.coreutils}/bin/id -u ${lib.escapeShellArg settings.username})"
+        runtime="/run/user/$uid"
+
+        export XDG_RUNTIME_DIR="$runtime"
+
+        exec ${pkgs.python3}/bin/python3 - <<'PYCLIP'
+import os
+import socket
+import struct
+import subprocess
+from pathlib import Path
+
+UID = os.getuid()
+
+SOCKET = Path(
+    "/run/gjallar-ai-clipboard/socket"
+)
+
+WAYLAND_RUNTIME = Path(
+    f"/run/user/{UID}"
+)
+
+WL_COPY = "${pkgs.wl-clipboard}/bin/wl-copy"
+
+MAX_BYTES = 8 * 1024 * 1024
+
+CGROUP_TOKEN = "/gjallar-ai-session@"
+
+
+def find_wayland():
+    configured = os.environ.get(
+        "WAYLAND_DISPLAY",
+        "",
+    )
+
+    if configured:
+        candidate = WAYLAND_RUNTIME / configured
+
+        if candidate.is_socket():
+            return configured
+
+    for candidate in sorted(
+        WAYLAND_RUNTIME.glob("wayland-*")
+    ):
+        try:
+            if candidate.is_socket():
+                return candidate.name
+        except OSError:
+            continue
+
+    raise RuntimeError(
+        "Wayland socket unavailable"
+    )
+
+
+def authorized(conn):
+    raw = conn.getsockopt(
+        socket.SOL_SOCKET,
+        socket.SO_PEERCRED,
+        struct.calcsize("3i"),
+    )
+
+    pid, uid, _gid = struct.unpack(
+        "3i",
+        raw,
+    )
+
+    if pid <= 1 or uid != UID:
+        return False
+
+    try:
+        cgroup = Path(
+            f"/proc/{pid}/cgroup"
+        ).read_text()
+    except OSError:
+        return False
+
+    return CGROUP_TOKEN in cgroup
+
+
+def receive(conn):
+    data = bytearray()
+
+    while True:
+        chunk = conn.recv(65536)
+
+        if not chunk:
+            break
+
+        data.extend(chunk)
+
+        if len(data) > MAX_BYTES:
+            raise RuntimeError(
+                "clipboard payload exceeds 8 MiB"
+            )
+
+    return bytes(data)
+
+
+SOCKET.parent.mkdir(
+    mode=0o700,
+    parents=True,
+    exist_ok=True,
+)
+
+try:
+    SOCKET.unlink()
+except FileNotFoundError:
+    pass
+
+server = socket.socket(
+    socket.AF_UNIX,
+    socket.SOCK_STREAM,
+)
+
+server.bind(str(SOCKET))
+
+os.chmod(
+    SOCKET,
+    0o600,
+)
+
+server.listen(8)
+
+while True:
+    conn, _ = server.accept()
+
+    with conn:
+        if not authorized(conn):
+            continue
+
+        try:
+            payload = receive(conn)
+
+            display = find_wayland()
+
+            env = os.environ.copy()
+
+            env["XDG_RUNTIME_DIR"] = str(
+                WAYLAND_RUNTIME
+            )
+
+            env["WAYLAND_DISPLAY"] = display
+
+            subprocess.run(
+                [WL_COPY],
+                input=payload,
+                env=env,
+                check=True,
+            )
+
+        except Exception:
+            # Fail closed. Clipboard errors do not grant
+            # additional access or return clipboard data.
+            continue
+PYCLIP
+      '';
+
+  gjallarWlCopy = pkgs.writeShellScriptBin "wl-copy" ''
+    set -euo pipefail
+
+    uid="$(${pkgs.coreutils}/bin/id -u)"
+    socket="/run/gjallar-ai-clipboard/socket"
+
+    if [ ! -S "$socket" ]; then
+      echo \
+        "gjallarCode clipboard bridge unavailable" \
+        >&2
+      exit 1
+    fi
+
+    exec ${pkgs.socat}/bin/socat \
+      - \
+      "UNIX-CONNECT:$socket"
+  '';
+
+
   aiSystemPrompt = (builtins.fromJSON (builtins.readFile ./ai/system-prompt.json)).system;
 
   ollamaPackage =
@@ -120,115 +402,36 @@ let
 
         "model": "ollama/${assistantModel}",
 
-        "permissions": [
-          {
-            "action": "*",
-            "resource": "*",
-            "effect": "deny"
+
+        "permission": {
+          "*": "deny",
+
+          "read": {
+            "*": "allow",
+            "*.env": "deny",
+            "*.env.*": "deny",
+            "**/.ssh/**": "deny",
+            "**/.gnupg/**": "deny",
+            "**/.password-store/**": "deny"
           },
 
-          {
-            "action": "read",
-            "resource": "*",
-            "effect": "allow"
-          },
+          "glob": "allow",
+          "grep": "allow",
+          "edit": "allow",
 
-          {
-            "action": "glob",
-            "resource": "*",
-            "effect": "allow"
-          },
+          "external_directory": "deny",
+          "webfetch": "deny",
+          "websearch": "deny",
+          "task": "deny",
 
-          {
-            "action": "grep",
-            "resource": "*",
-            "effect": "allow"
-          },
-
-          {
-            "action": "list",
-            "resource": "*",
-            "effect": "allow"
-          },
-
-          {
-            "action": "edit",
-            "resource": "*",
-            "effect": "allow"
-          },
-
-          {
-            "action": "read",
-            "resource": "*.env",
-            "effect": "deny"
-          },
-
-          {
-            "action": "read",
-            "resource": "*.env.*",
-            "effect": "deny"
-          },
-
-          {
-            "action": "read",
-            "resource": "**/.ssh/**",
-            "effect": "deny"
-          },
-
-          {
-            "action": "read",
-            "resource": "**/.gnupg/**",
-            "effect": "deny"
-          },
-
-          {
-            "action": "read",
-            "resource": "**/.password-store/**",
-            "effect": "deny"
-          },
-
-          {
-            "action": "external_directory",
-            "resource": "*",
-            "effect": "deny"
-          },
-
-          {
-            "action": "webfetch",
-            "resource": "*",
-            "effect": "deny"
-          },
-
-          {
-            "action": "websearch",
-            "resource": "*",
-            "effect": "deny"
-          },
-
-          {
-            "action": "subagent",
-            "resource": "*",
-            "effect": "deny"
-          },
-
-          {
-            "action": "shell",
-            "resource": "*",
-            "effect": "deny"
-          },
-
-          {
-            "action": "shell",
-            "resource": "gjallar-agent-tool *",
-            "effect": "allow"
-          },
-
-          {
-            "action": "shell",
-            "resource": "gjallar-research *",
-            "effect": "allow"
+          "bash": {
+            "*": "deny",
+            "gjallar-agent-tool *": "allow",
+            "gjallar-research *": "allow"
           }
-        ],
+        },
+
+
 
         "agent": {
           "gjallar": {
@@ -238,7 +441,7 @@ let
             "steps": 100,
 
             "permission": {
-              "shell": {
+              "bash": {
                 "*": "deny",
                 "gjallar-agent-tool *": "allow",
                 "gjallar-research *": "allow"
@@ -301,10 +504,7 @@ let
         die "systemd workspace bind is missing"
 
       top="$(
-        ${pkgs.util-linux}/bin/runuser \
-          -u "$username" \
-          -- \
-          ${pkgs.git}/bin/git \
+                  ${pkgs.git}/bin/git \
             -C "$workspace" \
             rev-parse \
             --show-toplevel
@@ -335,35 +535,29 @@ let
       ${pkgs.coreutils}/bin/install \
         -d \
         -m 0700 \
-        -o "$username" \
-        -g "$gid" \
         "$RUNTIME_DIRECTORY/home" \
         "$RUNTIME_DIRECTORY/config" \
-        "$RUNTIME_DIRECTORY/cache" \
-        "$RUNTIME_DIRECTORY/data" \
-        "$RUNTIME_DIRECTORY/state"
-
-      # PID 1 created RuntimeDirectory for the root-owned service. The
-      # console listener later runs as the desktop UID, so hand ownership
-      # of this per-session directory to that UID before privilege drop.
-      ${pkgs.coreutils}/bin/chown \
-        "$uid:$gid" \
-        "$RUNTIME_DIRECTORY"
+        "$STATE_DIRECTORY/data" \
+        "$STATE_DIRECTORY/state" \
+        "$CACHE_DIRECTORY"
 
       ${pkgs.coreutils}/bin/chmod \
         0700 \
         "$RUNTIME_DIRECTORY"
 
-      ${pkgs.util-linux}/bin/runuser \
-        -u "$username" \
-        -- \
-        ${pkgs.socat}/bin/socat \
+              ${pkgs.socat}/bin/socat \
           TCP-LISTEN:11434,bind=127.0.0.1,reuseaddr,fork \
           UNIX-CONNECT:/run/gjallar-ai-model/model.sock &
 
       bridge_pid=$!
 
       cleanup() {
+        if [ -n "''${tmux_socket:-}" ]; then
+          ${pkgs.tmux}/bin/tmux \
+            -S "$tmux_socket" \
+            kill-server             >/dev/null 2>&1 || true
+        fi
+
         kill "$bridge_pid" 2>/dev/null || true
         wait "$bridge_pid" 2>/dev/null || true
       }
@@ -390,11 +584,102 @@ let
       [ "$ready" = true ] ||
         die "model broker bridge did not become ready"
 
+      # HOME/config remain isolated per controlled session.
+      # OpenCode DB/state/cache persist in systemd-managed directories so
+      # database migrations and session metadata survive relaunches.
       export HOME="$RUNTIME_DIRECTORY/home"
       export XDG_CONFIG_HOME="$RUNTIME_DIRECTORY/config"
-      export XDG_CACHE_HOME="$RUNTIME_DIRECTORY/cache"
-      export XDG_DATA_HOME="$RUNTIME_DIRECTORY/data"
-      export XDG_STATE_HOME="$RUNTIME_DIRECTORY/state"
+      export XDG_CACHE_HOME="$CACHE_DIRECTORY"
+      export XDG_DATA_HOME="$STATE_DIRECTORY/data"
+      export XDG_STATE_HOME="$STATE_DIRECTORY/state"
+
+        # ------------------------------------------------------
+        # gjallarCode runtime
+        # ------------------------------------------------------
+
+        opencode_config="$XDG_CONFIG_HOME/opencode"
+
+        ${pkgs.coreutils}/bin/mkdir -p \
+          "$opencode_config" \
+          "$opencode_config/skills" \
+          "$opencode_config/commands" \
+          "$opencode_config/agents"
+
+        if [ -d ${cavemanSrc}/skills ]; then
+          ${pkgs.coreutils}/bin/cp -R \
+            ${cavemanSrc}/skills/. \
+            "$opencode_config/skills/"
+        fi
+
+        if [ -f \
+          ${cavemanSrc}/src/rules/caveman-activate.md \
+        ]; then
+          ${pkgs.coreutils}/bin/cp \
+            ${cavemanSrc}/src/rules/caveman-activate.md \
+            "$opencode_config/AGENTS.md"
+        else
+          ${pkgs.coreutils}/bin/touch \
+            "$opencode_config/AGENTS.md"
+        fi
+
+        # Files copied from the Nix store are read-only.
+        # Make our private runtime copy writable before adding
+        # gjallarCode-specific rules.
+        ${pkgs.coreutils}/bin/chmod \
+          0600 \
+          "$opencode_config/AGENTS.md"
+
+        ${pkgs.coreutils}/bin/cat >> \
+          "$opencode_config/AGENTS.md" <<'GJALLARCODE_RULES'
+
+# gjallarCode
+
+You are gjallarCode, the local GjallarOS engineering
+assistant.
+
+Caveman style is the default.
+
+Rules:
+
+- Short by default.
+- Preserve technical substance.
+- Remove filler.
+- Simple greetings get tiny casual replies.
+- "hi" should get something like "yo" or "hey".
+- Never turn casual conversation into repository analysis.
+- Never discuss OpenCode, Ollama, GitHub issues, system prompts,
+  implementation details, or repository state unless relevant.
+- Do not inspect the repository unless the task requires it.
+- Direct answer first.
+- Prefer fragments when they stay clear.
+- Commands, paths, errors and code stay exact.
+- Do not caveman-mangle code.
+- Expand when asked or when correctness needs explanation.
+- Security warnings stay explicit and clear.
+- Irreversible actions must not be hidden behind terse wording.
+GJALLARCODE_RULES
+
+        export OPENCODE_CONFIG_CONTENT='{
+          "compaction": {
+            "auto": true,
+            "prune": true
+          },
+          "watcher": {
+            "ignore": [
+              ".git/**",
+              "result",
+              "result/**",
+              "node_modules/**",
+              "dist/**",
+              ".direnv/**",
+              ".cache/**"
+            ]
+          }
+        }'
+
+        export WAYLAND_DISPLAY="gjallar-clipboard-bridge"
+        export PATH="${gjallarWlCopy}/bin:$PATH"
+
 
       export OPENAI_API_KEY=gjallar-local
       export OPENAI_BASE_URL=http://127.0.0.1:11434/v1
@@ -405,19 +690,29 @@ let
         GOOGLE_API_KEY \
         OPENROUTER_API_KEY
 
-      export PATH="/etc/profiles/per-user/$username/bin:/run/current-system/sw/bin"
+      export PATH="${gjallarWlCopy}/bin:/etc/profiles/per-user/$username/bin:/run/current-system/sw/bin"
 
-      exec ${pkgs.util-linux}/bin/setpriv \
-        --reuid="$uid" \
-        --regid="$gid" \
-        --init-groups \
-        --bounding-set=-all \
-        --inh-caps=-all \
-        --ambient-caps=-all \
-        -- \
-        ${pkgs.socat}/bin/socat \
-          UNIX-LISTEN:"$RUNTIME_DIRECTORY/console.sock",mode=0600 \
-          EXEC:${lib.escapeShellArg "${pkgs.opencode}/bin/opencode --cwd /workspace"},pty,setsid,ctty,stderr
+      # Run the TUI behind a private tmux server rather than a socat
+      # synthetic PTY. tmux propagates the real client terminal geometry
+      # and SIGWINCH resize events correctly.
+      tmux_socket="$RUNTIME_DIRECTORY/tmux.sock"
+
+      ${pkgs.tmux}/bin/tmux \
+        -S "$tmux_socket" \
+        new-session \
+        -d \
+        -s gjallar-ai \
+        ${lib.escapeShellArg "${gjallarCodeOpencode}/bin/opencode /workspace"}
+
+      # Keep the systemd service alive for exactly as long as the controlled
+      # OpenCode tmux session exists.
+      while ${pkgs.tmux}/bin/tmux \
+        -S "$tmux_socket" \
+        has-session \
+        -t gjallar-ai         >/dev/null 2>&1
+      do
+        ${pkgs.coreutils}/bin/sleep 0.2
+      done
     '';
 
   aiDiagnostics = pkgs.writeShellScriptBin "gjallar-ai-diagnostics" ''
@@ -637,6 +932,54 @@ lib.mkIf (if settings ? aiEnable then settings.aiEnable else false) {
     });
   '';
 
+
+  systemd.services.gjallar-ai-clipboard = {
+    description =
+      "gjallarCode authenticated write-only clipboard broker";
+
+    wantedBy = [
+      "multi-user.target"
+    ];
+
+    serviceConfig = {
+      Type = "simple";
+
+      User = settings.username;
+
+      RuntimeDirectory =
+        "gjallar-ai-clipboard";
+
+      RuntimeDirectoryMode =
+        "0700";
+
+      ExecStart =
+        "${gjallarClipboardServer}";
+
+      Restart =
+        "always";
+
+      RestartSec =
+        1;
+
+      NoNewPrivileges = true;
+
+      PrivateTmp = true;
+
+      ProtectSystem =
+        "strict";
+
+      ProtectHome = true;
+
+      ProtectKernelTunables = true;
+      ProtectKernelModules = true;
+      ProtectControlGroups = true;
+
+      RestrictAddressFamilies = [
+        "AF_UNIX"
+      ];
+    };
+  };
+
   systemd.services.gjallar-ai-model = {
     description =
       "GjallarOS inference-only model broker";
@@ -661,8 +1004,7 @@ lib.mkIf (if settings ? aiEnable then settings.aiEnable else false) {
         + "--upstream http://127.0.0.1:11434 "
         + "--model ${assistantModel} "
         + "--user ${lib.escapeShellArg settings.username} "
-        + "--cgroup-prefix /system.slice/gjallar-ai-session@ "
-        + "--peer-exe ${pkgs.socat}/bin/socat";
+        + "--cgroup-prefix /gjallar-ai-session@";
 
       User = "gjallar-ai-model";
       Group = "gjallar-ai-model";
@@ -712,18 +1054,31 @@ lib.mkIf (if settings ? aiEnable then settings.aiEnable else false) {
     ];
 
     serviceConfig = {
+      # AI may never reach the compositor/user runtime.
+      # Clipboard writes go only through the authenticated
+      # broker under /run/gjallar-ai-clipboard.
+      InaccessiblePaths = [
+        "/run/user"
+      ];
+
       Type = "simple";
 
       ExecStart =
         "${aiSessionRuntime} %i";
-
-      User = "root";
-      Group = "root";
+      User = settings.username;
 
       RuntimeDirectory =
         "gjallar-ai-session-%i";
 
       RuntimeDirectoryMode = "0755";
+
+      # Persist only OpenCode application state/cache. The user's real home
+      # remains hidden by the sandbox.
+      StateDirectory = "gjallar-ai";
+      StateDirectoryMode = "0700";
+
+      CacheDirectory = "gjallar-ai";
+      CacheDirectoryMode = "0700";
 
       UMask = "0077";
 
@@ -759,11 +1114,7 @@ lib.mkIf (if settings ? aiEnable then settings.aiEnable else false) {
       RestrictNamespaces = true;
 
       LockPersonality = true;
-
-      CapabilityBoundingSet = [
-        "CAP_SETUID"
-        "CAP_SETGID"
-      ];
+      CapabilityBoundingSet = "";
 
       RestrictAddressFamilies = [
         "AF_UNIX"

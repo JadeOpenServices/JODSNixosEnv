@@ -77,7 +77,7 @@
       "networkmanager"
       "gamemode"
       "dialout"
-    ] ++ lib.optionals (!builtins.pathExists settings.rootPasswordFile) [ "wheel" ];
+    ] ++ lib.optionals (!settings.endpointManagedDevice) [ "wheel" ];
   };
 
   # See https://nix.dev/permalink/stub-ld.
