@@ -55,6 +55,7 @@ type Settings struct {
 	GraphicsBusID, GraphicsIntegratedBusID, WiFiDriver    string
 	AIEnable                                              bool
 	AIModel                                               string
+	AIAgentMode                                           string
 	AIContextTokens, AIVRAMMB                             int
 	NemuEnable, NemuGPUPassthrough                        bool
 	NemuGPUIDs                                            []string
@@ -66,6 +67,7 @@ type Settings struct {
 	JODSEnrollmentMode                                    string
 	JODSAllowInsecureTLS                                  bool
 	JODSDeviceClass, JODSDesktopProfile                   string
+	JODSFingerprintEnrollmentAllowed                      bool
 	WMs                                                   []string
 	Theme                                                 string
 }
@@ -127,6 +129,7 @@ func Render(s Settings) []byte {
 	str("wifiDriver", s.WiFiDriver)
 	boolean("aiEnable", s.AIEnable)
 	str("aiModel", s.AIModel)
+	str("aiAgentMode", s.AIAgentMode)
 	integer("aiContextTokens", s.AIContextTokens)
 	integer("aiVramMB", s.AIVRAMMB)
 	boolean("nemuEnable", s.NemuEnable)
@@ -143,6 +146,7 @@ func Render(s Settings) []byte {
 	boolean("jodsAllowInsecureTls", s.JODSAllowInsecureTLS)
 	str("jodsDeviceClass", s.JODSDeviceClass)
 	str("jodsDesktopProfile", s.JODSDesktopProfile)
+	boolean("jodsFingerprintEnrollmentAllowed", s.JODSFingerprintEnrollmentAllowed)
 	list("wms", s.WMs)
 	str("theme", s.Theme)
 	fmt.Fprintln(&b, "    profileDetails = import (./. + \"/profiles/${profile}/details.nix\") {};")

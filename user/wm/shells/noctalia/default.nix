@@ -105,6 +105,10 @@ in
           input_path = "$XDG_CONFIG_HOME/noctalia/templates/kitty.conf";
           output_path = "$XDG_CONFIG_HOME/kitty/noctalia.conf";
         };
+        templates.user.gjallar_plymouth = {
+          input_path = "$XDG_CONFIG_HOME/noctalia/templates/stylix-override.json";
+          output_path = "$XDG_STATE_HOME/noctalia/stylix-override.json";
+        };
       };
       accessibility = {
         ui_scale = 1.4;
@@ -152,7 +156,7 @@ in
         tray = {
           drawer = true;
         };
-              cpu_usage = {
+        cpu_usage = {
           type = "sysmon";
           stat = "cpu_usage";
           scale = 0.98;
@@ -170,7 +174,6 @@ in
           scale = 0.98;
         };
 
-
         power_profile = {
           type = "power_profile";
           scale = 1.0;
@@ -182,9 +185,8 @@ in
             # Explicit profile selection / full power settings.
             right = "panel-toggle control-center power";
           };
-        
 
-};
+        };
 
         battery = {
           type = "battery";
@@ -193,8 +195,6 @@ in
           label_content = "percent";
           scale = 0.98;
         };
-
-
 
         divider_left = {
           type = "text";
@@ -212,8 +212,6 @@ in
           interactive = false;
         };
 
-
-
         divider_media = {
           type = "text";
           text = "│";
@@ -222,97 +220,47 @@ in
           interactive = false;
         };
 
-
-
         workspaces = {
-
-
 
           # Native workspace-aware application indicators.
 
-
-
           # Occupied workspaces show their application icons instead of dots.
-
-
 
           type = "taskbar";
 
-
-
-
           group_by_workspace = true;
-
-
 
           workspace_group_content = "icons";
 
-
-
-
           # Keep the bar compact: the icons themselves represent occupied
-
-
 
           # workspaces, without the numbered workspace badge.
 
-
-
           show_workspace_label = false;
-
-
 
           workspace_group_capsule = false;
 
-
-
-
           # Collapse multiple windows from the same application.
-
-
 
           group_single_icon_per_app = true;
 
-
-
-
           # Show all persistent workspaces rather than only the current one.
-
-
 
           only_active_workspace = false;
 
-
-
           hide_empty_workspaces = false;
-
-
-
 
           # Slightly larger, readable icons without making the 40px bar huge.
 
-
-
           icon_scale = 1.20;
-
-
 
           scale = 1.0;
 
-
-
-
           show_active_indicator = true;
-
-
 
           active_opacity = 1.0;
 
-
-
           inactive_opacity = 0.88;
-
-
 
         };
 
@@ -324,7 +272,6 @@ in
 
           type = "taskbar";
 
-
           # Behave like an active-workspace application title strip.
 
           only_active_workspace = true;
@@ -333,11 +280,9 @@ in
 
           group_by_workspace = false;
 
-
           # Show the application icon and its window title.
 
           show_window_title = true;
-
 
           # Enough room for normal application names/titles without allowing
 
@@ -347,21 +292,17 @@ in
 
           taskbar_max_width = 430;
 
-
           # Slightly larger, readable app icon.
 
           icon_scale = 1.18;
-
 
           item_spacing = 5;
 
           show_active_indicator = false;
 
-
           active_opacity = 1.0;
 
           inactive_opacity = 0.92;
-
 
           scale = 1.0;
 
@@ -408,7 +349,7 @@ in
           anchor = true;
         };
 
-};
+      };
       location = {
         auto_locate = false;
         address = "${settings.weatherCity}, ${settings.weatherCountry}";
@@ -619,31 +560,55 @@ in
     color15 {{colors.on_surface.default.hex}}
   '';
 
+  # Plymouth lives in the initrd, so it cannot consume Noctalia's runtime
+  # palette directly.  This bridge snapshots the active palette; `rebuild`
+  # passes it into Stylix while producing the next boot generation.
+  xdg.configFile."noctalia/templates/stylix-override.json".text = ''
+    {
+      "base00": "{{colors.surface.default.hex_stripped}}",
+      "base01": "{{colors.surface_variant.default.hex_stripped}}",
+      "base02": "{{colors.surface_container_lowest.default.hex_stripped}}",
+      "base03": "{{colors.outline.default.hex_stripped}}",
+      "base04": "{{colors.outline.default.hex_stripped}}",
+      "base05": "{{colors.on_surface.default.hex_stripped}}",
+      "base06": "{{colors.on_surface.default.hex_stripped}}",
+      "base07": "{{colors.on_surface.default.hex_stripped}}",
+      "base08": "{{colors.error.default.hex_stripped}}",
+      "base09": "{{colors.tertiary.default.hex_stripped}}",
+      "base0A": "{{colors.secondary.default.hex_stripped}}",
+      "base0B": "{{colors.secondary.default.hex_stripped}}",
+      "base0C": "{{colors.tertiary.default.hex_stripped}}",
+      "base0D": "{{colors.primary.default.hex_stripped}}",
+      "base0E": "{{colors.tertiary.default.hex_stripped}}",
+      "base0F": "{{colors.error.default.hex_stripped}}"
+    }
+  '';
+
   # The Noctalia daemon replaces this fallback as soon as it starts.  Creating
   # it during Home Manager activation means Hyprland's `source` is valid even
   # on the first login.
   home.activation.gjallarNoctaliaHyprlandFallback = lib.hm.dag.entryAfter [ "writeBoundary" ] ''
-    theme_file="$HOME/.local/state/noctalia/hyprland-colors.conf"
-    if [ ! -e "$theme_file" ]; then
-      mkdir -p "$(dirname "$theme_file")"
-      cat >"$theme_file" <<'EOF'
-$primary = rgb(7aa2f7)
-$surface = rgb(1a1b26)
-$secondary = rgb(7dcfff)
-$error = rgb(f7768e)
+        theme_file="$HOME/.local/state/noctalia/hyprland-colors.conf"
+        if [ ! -e "$theme_file" ]; then
+          mkdir -p "$(dirname "$theme_file")"
+          cat >"$theme_file" <<'EOF'
+    $primary = rgb(7aa2f7)
+    $surface = rgb(1a1b26)
+    $secondary = rgb(7dcfff)
+    $error = rgb(f7768e)
 
-general {
-  col.active_border = $primary
-  col.inactive_border = $surface
-}
+    general {
+      col.active_border = $primary
+      col.inactive_border = $surface
+    }
 
-group {
-  col.border_active = $secondary
-  col.border_inactive = $surface
-  col.border_locked_active = $error
-  col.border_locked_inactive = $surface
-}
-EOF
-    fi
+    group {
+      col.border_active = $secondary
+      col.border_inactive = $surface
+      col.border_locked_active = $error
+      col.border_locked_inactive = $surface
+    }
+    EOF
+        fi
   '';
 }

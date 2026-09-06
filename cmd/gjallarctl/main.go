@@ -11,9 +11,12 @@ import (
 	"fmt"
 	"io"
 	"math/rand/v2"
+	"net"
+	"net/http"
 	"os"
 	"os/exec"
 	"os/signal"
+	osuser "os/user"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -24,7 +27,11 @@ import (
 	"unicode/utf8"
 	"unsafe"
 
+	"github.com/bakanura/gjallarOS/internal/ai/agentexec"
+	"github.com/bakanura/gjallarOS/internal/ai/modelbroker"
+	aipolicy "github.com/bakanura/gjallarOS/internal/ai/policy"
 	"github.com/bakanura/gjallarOS/internal/ai/profile"
+	"github.com/bakanura/gjallarOS/internal/ai/research"
 	"github.com/bakanura/gjallarOS/internal/hardware/graphics"
 	"github.com/bakanura/gjallarOS/internal/hardware/network"
 	"github.com/bakanura/gjallarOS/internal/input/xkb"
@@ -777,6 +784,7 @@ func runRender(args []string, stdout, stderr io.Writer) int {
 	f.StringVar(&s.WiFiDriver, "wifi-driver", "", "")
 	f.BoolVar(&s.AIEnable, "ai-enable", false, "")
 	f.StringVar(&s.AIModel, "ai-model", "", "")
+	f.StringVar(&s.AIAgentMode, "ai-agent-mode", "workspace", "")
 	f.IntVar(&s.AIContextTokens, "ai-context-tokens", 0, "")
 	f.IntVar(&s.AIVRAMMB, "ai-vram-mb", 0, "")
 	f.BoolVar(&s.NemuEnable, "nemu-enable", false, "")
@@ -793,6 +801,7 @@ func runRender(args []string, stdout, stderr io.Writer) int {
 	f.BoolVar(&s.JODSAllowInsecureTLS, "jods-allow-insecure-tls", false, "")
 	f.StringVar(&s.JODSDeviceClass, "jods-device-class", "", "")
 	f.StringVar(&s.JODSDesktopProfile, "jods-desktop-profile", "", "")
+	f.BoolVar(&s.JODSFingerprintEnrollmentAllowed, "jods-fingerprint-enrollment-allowed", false, "")
 	f.Var((*stringList)(&s.WMs), "wm", "repeatable window manager")
 	f.StringVar(&s.Theme, "theme", "", "")
 	if err := f.Parse(args); err != nil || f.NArg() != 0 {
@@ -883,9 +892,132 @@ func runNormalize(args []string, stdout, stderr io.Writer) int {
 	return 0
 }
 
+func runAIModelServe(args []string, stdout, stderr io.Writer) int {
+	f := flag.NewFlagSet(
+		"gjallarctl ai model-serve",
+		flag.ContinueOnError,
+	)
+
+	f.SetOutput(stderr)
+
+	socket := f.String(
+		"socket",
+		"/run/gjallar-ai-model/model.sock",
+		"Unix socket",
+	)
+
+	upstream := f.String(
+		"upstream",
+		"http://127.0.0.1:11434",
+		"Ollama upstream",
+	)
+
+	model := f.String(
+		"model",
+		"gjallaros-caveman-ai",
+		"only exposed model",
+	)
+
+	username := f.String(
+		"user",
+		"",
+		"only authorized desktop user",
+	)
+
+	cgroupPrefix := f.String(
+		"cgroup-prefix",
+		"/system.slice/gjallar-ai-session@",
+		"required system-service cgroup prefix",
+	)
+
+	peerExe := f.String(
+		"peer-exe",
+		"",
+		"required broker peer executable",
+	)
+
+	if err := f.Parse(args); err != nil || f.NArg() != 0 {
+		return 2
+	}
+
+	if *username == "" {
+		fmt.Fprintln(
+			stderr,
+			"ERROR: --user is required",
+		)
+		return 2
+	}
+
+	account, err := osuser.Lookup(*username)
+	if err != nil {
+		fmt.Fprintf(
+			stderr,
+			"ERROR: resolve agent user: %v\n",
+			err,
+		)
+		return 1
+	}
+
+	uid64, err := strconv.ParseUint(
+		account.Uid,
+		10,
+		32,
+	)
+
+	if err != nil {
+		fmt.Fprintf(
+			stderr,
+			"ERROR: invalid agent uid: %v\n",
+			err,
+		)
+		return 1
+	}
+
+	err = modelbroker.Serve(
+		context.Background(),
+		modelbroker.Config{
+			SocketPath:           *socket,
+			Upstream:             *upstream,
+			Model:                *model,
+			AllowedUID:           uint32(uid64),
+			RequiredCgroupPrefix: *cgroupPrefix,
+			RequiredPeerExe:      *peerExe,
+			MaxRequestBytes:      16 << 20,
+			Timeout:              15 * time.Minute,
+		},
+	)
+
+	if err != nil {
+		fmt.Fprintf(
+			stderr,
+			"ERROR: model broker: %v\n",
+			err,
+		)
+		return 1
+	}
+
+	return 0
+}
+
 func runAI(args []string, stdout, stderr io.Writer) int {
-	if len(args) == 0 || args[0] != "profile" {
-		fmt.Fprintln(stderr, "Usage: gjallarctl ai profile [--config PATH]")
+	if len(args) > 0 && args[0] == "model-serve" {
+		return runAIModelServe(args[1:], stdout, stderr)
+	}
+
+	if len(args) == 0 {
+		fmt.Fprintln(stderr, "Usage: gjallarctl ai {profile|tool|approve|research-serve}")
+		return 2
+	}
+	if args[0] == "tool" {
+		return runAITool(args[1:], stdout, stderr)
+	}
+	if args[0] == "approve" {
+		return runAIApprove(args[1:], stdout, stderr)
+	}
+	if args[0] == "research-serve" {
+		return runAIResearchServe(args[1:], stdout, stderr)
+	}
+	if args[0] != "profile" {
 		return 2
 	}
 	flags := flag.NewFlagSet("gjallarctl ai profile", flag.ContinueOnError)
@@ -899,8 +1031,82 @@ func runAI(args []string, stdout, stderr io.Writer) int {
 		fmt.Fprintf(stderr, "ERROR: AI profile detection failed: %v\n", err)
 		return 1
 	}
-	fmt.Fprintf(stdout, "profile=%s\nmodel=%s\ncontext_tokens=%d\nvram_mb=%d\nram_gb=%d\ngpu_vendor=%s\ngpu_type=%s\n",
-		result.Profile, result.Model, result.ContextTokens, result.VRAMMB, result.RAMGB, result.GPUVendor, result.GPUType)
+	fmt.Fprintf(stdout, "profile=%s\nmodel=%s\ncontext_tokens=%d\nvram_mb=%d\nram_gb=%d\ncpu_cores=%d\narchitecture=%s\ngpu_vendor=%s\ngpu_type=%s\n",
+		result.Profile, result.Model, result.ContextTokens, result.VRAMMB, result.RAMGB, result.CPUCores, result.Architecture, result.GPUVendor, result.GPUType)
+	return 0
+}
+
+func runAITool(args []string, stdout, stderr io.Writer) int {
+	f := flag.NewFlagSet("gjallarctl ai tool", flag.ContinueOnError)
+	f.SetOutput(stderr)
+	workspace := f.String("workspace", ".", "active workspace")
+	mode := f.String("mode", "workspace", "policy mode")
+	approval := f.String("approval", "", "one-use approval file")
+	audit := f.String("audit", "", "JSONL audit file")
+	timeout := f.Duration("timeout", 10*time.Minute, "finite execution timeout")
+	if err := f.Parse(args); err != nil || f.NArg() < 1 {
+		return 2
+	}
+	if err := agentexec.Run(context.Background(), agentexec.Request{Workspace: *workspace, Tool: f.Arg(0), Args: f.Args()[1:], Mode: *mode, ApprovalPath: *approval, AuditPath: *audit, Timeout: *timeout}, stdout, stderr); err != nil {
+		fmt.Fprintf(stderr, "ERROR: %v\n", err)
+		return 1
+	}
+	return 0
+}
+
+func runAIApprove(args []string, stdout, stderr io.Writer) int {
+	f := flag.NewFlagSet("gjallarctl ai approve", flag.ContinueOnError)
+	f.SetOutput(stderr)
+	workspace := f.String("workspace", ".", "active workspace")
+	grant := f.String("grant", "", "approval file")
+	if err := f.Parse(args); err != nil || f.NArg() < 1 || *grant == "" {
+		return 2
+	}
+	info, err := os.Stdin.Stat()
+	if err != nil || info.Mode()&os.ModeCharDevice == 0 {
+		fmt.Fprintln(stderr, "ERROR: approval requires a trusted interactive terminal")
+		return 1
+	}
+	fmt.Fprintf(stderr, "Approve exact action %q with arguments %q? [y/N] ", f.Arg(0), f.Args()[1:])
+	line, _ := bufio.NewReader(os.Stdin).ReadString('\n')
+	if strings.ToLower(strings.TrimSpace(line)) != "y" {
+		fmt.Fprintln(stderr, "Denied.")
+		return 1
+	}
+	if err := aipolicy.WriteGrant(*grant, *workspace, f.Arg(0), f.Args()[1:], time.Now()); err != nil {
+		fmt.Fprintf(stderr, "ERROR: %v\n", err)
+		return 1
+	}
+	fmt.Fprintln(stdout, "Exact one-use approval created; expires in five minutes.")
+	return 0
+}
+
+func runAIResearchServe(args []string, stdout, stderr io.Writer) int {
+	f := flag.NewFlagSet("gjallarctl ai research-serve", flag.ContinueOnError)
+	f.SetOutput(stderr)
+	socket := f.String("socket", "/run/gjallar-ai/research.sock", "Unix socket")
+	maxBytes := f.Int64("max-bytes", 2<<20, "maximum response")
+	if err := f.Parse(args); err != nil || f.NArg() != 0 {
+		return 2
+	}
+	_ = os.Remove(*socket)
+	if err := os.MkdirAll(filepath.Dir(*socket), 0750); err != nil {
+		fmt.Fprintln(stderr, err)
+		return 1
+	}
+	listener, err := net.Listen("unix", *socket)
+	if err != nil {
+		fmt.Fprintln(stderr, err)
+		return 1
+	}
+	defer listener.Close()
+	_ = os.Chmod(*socket, 0666)
+	b := research.Broker{AllowedHosts: []string{"nixos.org", "github.com", "docs.ollama.com", "opencode.ai"}, MaxBytes: *maxBytes, Timeout: 15 * time.Second}
+	server := &http.Server{Handler: research.Handler(b), ReadHeaderTimeout: 5 * time.Second, IdleTimeout: 30 * time.Second}
+	if err := server.Serve(listener); err != nil && err != http.ErrServerClosed {
+		fmt.Fprintln(stderr, err)
+		return 1
+	}
 	return 0
 }
 
@@ -1018,6 +1224,13 @@ func runRebuild(args []string, stdout, stderr io.Writer) int {
 
 	started := time.Now()
 	commandArgs := []string{"nixos-rebuild", "switch", "--flake", repo + "#" + host}
+	if home, err := os.UserHomeDir(); err == nil {
+		palette := filepath.Join(home, ".local", "state", "noctalia", "stylix-override.json")
+		if info, err := os.Stat(palette); err == nil && info.Mode().IsRegular() {
+			commandArgs = append([]string{"env", "GJALLAR_NOCTALIA_PALETTE=" + palette}, commandArgs...)
+			commandArgs = append(commandArgs, "--impure")
+		}
+	}
 	if debug {
 		commandArgs = append(commandArgs, "--show-trace")
 	}

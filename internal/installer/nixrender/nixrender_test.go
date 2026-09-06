@@ -41,6 +41,15 @@ func TestRenderRecoveryPolicyDefaultsDisabled(t *testing.T) {
 	}
 }
 
+func TestRenderAIResolvedState(t *testing.T) {
+	got := string(Render(Settings{AIEnable: true, AIModel: "qwen2.5-coder:7b", AIAgentMode: "workspace", AIContextTokens: 8192}))
+	for _, want := range []string{"aiEnable = true;", `aiModel = "qwen2.5-coder:7b";`, `aiAgentMode = "workspace";`, "aiContextTokens = 8192;"} {
+		if !strings.Contains(got, want) {
+			t.Fatalf("missing %q", want)
+		}
+	}
+}
+
 func TestRenderWeatherLocation(t *testing.T) {
 	got := string(Render(Settings{WeatherCity: "Berlin", WeatherCountry: "Germany"}))
 	for _, want := range []string{`weatherCity = "Berlin";`, `weatherCountry = "Germany";`} {
@@ -67,6 +76,7 @@ func TestRenderJODSSettings(t *testing.T) {
 		"jodsAllowInsecureTls = false;",
 		`jodsDeviceClass = "laptop";`,
 		`jodsDesktopProfile = "headless";`,
+		"jodsFingerprintEnrollmentAllowed = false;",
 	} {
 		if !strings.Contains(got, want) {
 			t.Fatalf("missing %q from settings:\n%s", want, got)

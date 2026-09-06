@@ -26,8 +26,6 @@
       inputs.nixpkgs.follows = "nixpkgs";
     };
 
-    ags.url = "git+https://github.com/Aylur/ags?rev=60180a184cfb32b61a1d871c058b31a3b9b0743d";
-
     caelestia.url = "github:caelestia-dots/shell";
 
     hyprland = {
@@ -148,7 +146,9 @@
       packages.${system} = rec {
         gjallarctl = pkgs.callPackage ./pkgs/gjallarctl { };
         "gjallar-installer" = gjallarctl.overrideAttrs (old: {
-          meta = old.meta // { mainProgram = "gjallar-installer"; };
+          meta = old.meta // {
+            mainProgram = "gjallar-installer";
+          };
         });
         "gjallar-recovery-iso" = self.nixosConfigurations.gjallar-recovery.config.system.build.isoImage;
       };

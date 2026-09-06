@@ -47,6 +47,7 @@ type User struct {
 	AIEnable               bool     `json:"aiEnable"`
 	OverrideAISelection    bool     `json:"overrideAiSelection"`
 	OverrideModelWith      string   `json:"overrideModelWith"`
+	AIAgentMode            string   `json:"aiAgentMode"`
 	EnableScrobbling       bool     `json:"enableScrobbling"`
 	EnableLastfm           bool     `json:"enableLastfm"`
 	EnableListenbrainz     bool     `json:"enableListenbrainz"`
@@ -68,6 +69,7 @@ type User struct {
 	JODSAllowInsecureTLS   bool     `json:"jodsAllowInsecureTls"`
 	JODSDeviceClass        string   `json:"jodsDeviceClass"`
 	JODSDesktopProfile     string   `json:"jodsDesktopProfile"`
+	JODSFingerprintEnroll  bool     `json:"jodsFingerprintEnrollmentAllowed"`
 	AutoReboot             bool     `json:"autoReboot"`
 	RunUpdateChecks        bool     `json:"runUpdateChecks"`
 	WriteConfig            bool     `json:"writeConfig"`
@@ -111,6 +113,14 @@ func Validate(user User) error {
 	if len(user.Editors) == 0 || len(user.Browsers) == 0 {
 		return fmt.Errorf("at least one editor and browser are required")
 	}
+	if user.AIEnable {
+		if user.OverrideAISelection && strings.TrimSpace(user.OverrideModelWith) == "" {
+			return fmt.Errorf("overrideModelWith is required when overrideAiSelection is true")
+		}
+		if !oneOf(user.AIAgentMode, "workspace", "owner-conservative", "owner-full-local") {
+			return fmt.Errorf("invalid aiAgentMode: %q", user.AIAgentMode)
+		}
+	}
 	if err := ValidateJODS(user); err != nil {
 		return err
 	}
@@ -121,6 +131,9 @@ var jodsPublicKeyPattern = regexp.MustCompile(`^[0-9a-fA-F]{64}$`)
 
 func ValidateJODS(user User) error {
 	if !user.EndpointManagedDevice {
+		if user.JODSFingerprintEnroll {
+			return fmt.Errorf("JODS fingerprint enrollment policy requires endpoint management enrollment")
+		}
 		if user.JODSPrebootLockEnable {
 			return fmt.Errorf("JODS preboot locking requires explicit JODS endpoint management enrollment")
 		}
