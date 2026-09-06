@@ -30,7 +30,6 @@
 
   btopTheme = null;
   shell = "noctalia";
-  ags = { };
 
   opacity = 0.8;
   rounding = 25;

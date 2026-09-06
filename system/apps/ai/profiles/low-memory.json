@@ -1,1 +1,0 @@
-{"model":"qwen3-coder:7b","maxRamGB":16,"minRamGB":8,"minVramMB":0,"contextTokens":8192,"description":"Conservative coding model for low-memory systems"}
