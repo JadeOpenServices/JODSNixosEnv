@@ -98,13 +98,56 @@ func command(workspace, tool string, a []string) (string, []string, error) {
 	case "repo-format":
 		return "nixfmt", []string{"--check", workspace}, nil
 	case "nix-eval":
-		return "nix", append([]string{"eval", "--no-write-lock-file"}, a...), nil
+		args, err := boundedNixFlakeArgs(workspace, a)
+		if err != nil {
+			return "", nil, err
+		}
+		return "nix", append([]string{
+			"eval",
+			"--no-write-lock-file",
+			"--no-update-lock-file",
+			"--no-use-registries",
+		}, args...), nil
 	case "nix-check":
-		return "nix", append([]string{"flake", "check", "--no-build", "--no-write-lock-file", "path:" + workspace}, a...), nil
+		flags, err := boundedNixFlags(a)
+		if err != nil {
+			return "", nil, err
+		}
+		args := []string{
+			"flake",
+			"check",
+			"--no-build",
+			"--no-write-lock-file",
+			"--no-update-lock-file",
+			"--no-use-registries",
+			"path:" + workspace,
+		}
+		return "nix", append(args, flags...), nil
 	case "nix-build":
-		return "nix", append([]string{"build", "--no-link", "--no-write-lock-file"}, a...), nil
+		args, err := boundedNixFlakeArgs(workspace, a)
+		if err != nil {
+			return "", nil, err
+		}
+		return "nix", append([]string{
+			"build",
+			"--no-link",
+			"--no-write-lock-file",
+			"--no-update-lock-file",
+			"--no-use-registries",
+		}, args...), nil
 	case "nixos-dry-build":
-		return "nixos-rebuild", append([]string{"dry-build", "--flake"}, a...), nil
+		target, flags, err := boundedRebuildArgs(workspace, a)
+		if err != nil {
+			return "", nil, err
+		}
+		args := []string{
+			"dry-build",
+			"--flake",
+			target,
+			"--no-write-lock-file",
+			"--no-update-lock-file",
+		}
+		return "nixos-rebuild", append(args, flags...), nil
 	case "system-inspect":
 		if len(a) == 0 || !oneOf(a[0], "status", "show", "is-active", "is-failed") {
 			return "", nil, fmt.Errorf("system-inspect accepts bounded systemctl queries")
@@ -122,12 +165,152 @@ func command(workspace, tool string, a []string) (string, []string, error) {
 		return "systemctl", a, nil
 	case "nixos-deploy":
 		if len(a) < 2 || !oneOf(a[0], "switch", "boot") {
-			return "", nil, fmt.Errorf("nixos-deploy requires switch|boot and flake target")
+			return "", nil, fmt.Errorf(
+				"nixos-deploy requires switch|boot and a workspace flake target",
+			)
 		}
-		return "nixos-rebuild", append([]string{a[0], "--flake"}, a[1:]...), nil
+
+		target, flags, err := boundedRebuildArgs(workspace, a[1:])
+		if err != nil {
+			return "", nil, err
+		}
+
+		args := []string{
+			a[0],
+			"--flake",
+			target,
+			"--no-write-lock-file",
+			"--no-update-lock-file",
+		}
+		return "nixos-rebuild", append(args, flags...), nil
 	default:
 		return "", nil, fmt.Errorf("unknown tool %q", tool)
 	}
+}
+
+// workspaceFlakeTarget converts the only accepted AI-visible flake reference
+// forms into an explicit path: reference for the active workspace.
+func workspaceFlakeTarget(workspace, target string) (string, error) {
+	workspace, err := filepath.Abs(workspace)
+	if err != nil {
+		return "", fmt.Errorf("resolve workspace: %w", err)
+	}
+	workspace = filepath.Clean(workspace)
+
+	base := "path:" + workspace
+
+	switch {
+	case target == "", target == ".":
+		return base, nil
+	case strings.HasPrefix(target, ".#"):
+		return base + target[1:], nil
+	case strings.HasPrefix(target, "#"):
+		return base + target, nil
+	case target == base:
+		return base, nil
+	case strings.HasPrefix(target, base+"#"):
+		return target, nil
+	default:
+		return "", fmt.Errorf(
+			"Nix flake target %q is outside the active workspace",
+			target,
+		)
+	}
+}
+
+func boundedNixFlags(args []string) ([]string, error) {
+	allowed := map[string]bool{
+		"--json":             true,
+		"--raw":              true,
+		"--show-trace":       true,
+		"--keep-going":       true,
+		"--print-build-logs": true,
+		"--print-out-paths":  true,
+		"--quiet":            true,
+		"--verbose":          true,
+		"-L":                 true,
+		"-v":                 true,
+	}
+
+	out := make([]string, 0, len(args))
+
+	for _, arg := range args {
+		if !allowed[arg] {
+			return nil, fmt.Errorf(
+				"Nix option %q is not permitted for the workspace agent",
+				arg,
+			)
+		}
+		out = append(out, arg)
+	}
+
+	return out, nil
+}
+
+func boundedNixFlakeArgs(
+	workspace string,
+	args []string,
+) ([]string, error) {
+	flags := make([]string, 0, len(args))
+	target := ""
+	targetSeen := false
+
+	for _, arg := range args {
+		if strings.HasPrefix(arg, "-") {
+			validated, err := boundedNixFlags([]string{arg})
+			if err != nil {
+				return nil, err
+			}
+			flags = append(flags, validated...)
+			continue
+		}
+
+		if targetSeen {
+			return nil, fmt.Errorf(
+				"Nix workspace operation accepts only one flake target",
+			)
+		}
+
+		var err error
+		target, err = workspaceFlakeTarget(workspace, arg)
+		if err != nil {
+			return nil, err
+		}
+		targetSeen = true
+	}
+
+	if !targetSeen {
+		var err error
+		target, err = workspaceFlakeTarget(workspace, ".")
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	return append(flags, target), nil
+}
+
+func boundedRebuildArgs(
+	workspace string,
+	args []string,
+) (string, []string, error) {
+	if len(args) == 0 {
+		return "", nil, fmt.Errorf(
+			"nixos-rebuild requires a workspace flake target",
+		)
+	}
+
+	target, err := workspaceFlakeTarget(workspace, args[0])
+	if err != nil {
+		return "", nil, err
+	}
+
+	flags, err := boundedNixFlags(args[1:])
+	if err != nil {
+		return "", nil, err
+	}
+
+	return target, flags, nil
 }
 
 func oneOf(s string, values ...string) bool {

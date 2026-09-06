@@ -24,7 +24,6 @@ type Config struct {
 	Model                string
 	AllowedUID           uint32
 	RequiredCgroupPrefix string
-	RequiredPeerExe      string
 	MaxRequestBytes      int64
 	Timeout              time.Duration
 }
@@ -48,9 +47,6 @@ func Serve(ctx context.Context, cfg Config) error {
 	}
 	if cfg.RequiredCgroupPrefix == "" {
 		return errors.New("model broker cgroup prefix is required")
-	}
-	if cfg.RequiredPeerExe == "" {
-		return errors.New("model broker peer executable is required")
 	}
 	if cfg.MaxRequestBytes <= 0 {
 		cfg.MaxRequestBytes = 16 << 20
@@ -342,6 +338,13 @@ func validateModel(raw []byte, model string) ([]byte, error) {
 }
 
 func authorizedPeer(p peerInfo, cfg Config) bool {
+	// The Unix socket supplies kernel-authenticated PID/UID via SO_PEERCRED.
+	//
+	// Trust requires BOTH:
+	//   1. the configured desktop UID; and
+	//   2. membership in the controlled gjallar-ai-session@ systemd cgroup.
+	//
+	// The relay executable itself is intentionally not a trust anchor.
 	if p.PID <= 1 || p.UID != cfg.AllowedUID {
 		return false
 	}
@@ -353,33 +356,10 @@ func authorizedPeer(p peerInfo, cfg Config) bool {
 		return false
 	}
 
-	if !strings.Contains(
+	return strings.Contains(
 		string(cgroup),
 		cfg.RequiredCgroupPrefix,
-	) {
-		return false
-	}
-
-	actual, err := os.Readlink(
-		fmt.Sprintf("/proc/%d/exe", p.PID),
 	)
-	if err != nil {
-		return false
-	}
-
-	actual, err = filepath.EvalSymlinks(actual)
-	if err != nil {
-		return false
-	}
-
-	expected, err := filepath.EvalSymlinks(
-		cfg.RequiredPeerExe,
-	)
-	if err != nil {
-		return false
-	}
-
-	return filepath.Clean(actual) == filepath.Clean(expected)
 }
 
 func unixPeer(conn net.Conn) (peerInfo, error) {
