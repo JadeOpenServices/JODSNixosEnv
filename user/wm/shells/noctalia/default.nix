@@ -325,6 +325,16 @@ in
           scale = 0.98;
         };
 
+
+        session = {
+          type = "session";
+          scale = 0.98;
+
+          actions = {
+            left = "panel-toggle session";
+          };
+        };
+
         divider_center_left = {
           type = "text";
           text = "│";
@@ -436,6 +446,8 @@ in
           "weather"
           "divider_media"
           "media"
+          "divider_power"
+          "session"
         ];
       };
       wallpaper = {
