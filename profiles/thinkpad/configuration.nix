@@ -60,7 +60,7 @@
     isNormalUser = true;
     shell = pkgs.${settings.shell};
     description = settings.username;
-    extraGroups = [ "networkmanager" ] ++ lib.optionals (!builtins.pathExists settings.rootPasswordFile) [ "wheel" ];
+    extraGroups = [ "networkmanager" ] ++ lib.optionals (!settings.endpointManagedDevice) [ "wheel" ];
   };
 
   # See https://nix.dev/permalink/stub-ld.

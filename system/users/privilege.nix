@@ -11,9 +11,29 @@ in
     })
   ];
 
+  assertions = [
+    {
+      assertion =
+        !settings.endpointManagedDevice
+        || rootPasswordReady;
+
+      message =
+        "endpointManagedDevice=true requires a configured and existing "
+        + "rootPasswordFile before local wheel/Polkit administration "
+        + "may be revoked.";
+    }
+  ];
+
   nix.settings.trusted-users = lib.mkForce [ "root" ];
 
+  # Administrative authority follows actual endpoint-management state.
+  #
+  # Merely having a root password configured must never remove the normal
+  # local administrator from wheel. JODS/MDM-managed endpoints deliberately
+  # move administrative authorization to root.
   security.polkit.adminIdentities =
-    if rootPasswordReady then [ "unix-user:root" ]
-    else [ "unix-group:wheel" ];
+    if settings.endpointManagedDevice then
+      [ "unix-user:root" ]
+    else
+      [ "unix-group:wheel" ];
 }
