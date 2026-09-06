@@ -7,6 +7,12 @@
 }:
 let
   details = settings.themeDetails;
+  noctaliaPalettePath = builtins.getEnv "GJALLAR_NOCTALIA_PALETTE";
+  noctaliaPalette =
+    if noctaliaPalettePath != "" && builtins.pathExists noctaliaPalettePath then
+      builtins.fromJSON (builtins.readFile noctaliaPalettePath)
+    else
+      { };
 in
 {
   stylix = {
@@ -16,7 +22,14 @@ in
     base16Scheme = lib.mkIf (
       details.themeName != null
     ) "${pkgs.base16-schemes}/share/themes/${details.themeName}.yaml";
-    override = lib.mkIf (details.override != null) details.override;
+    # During an interactive `rebuild`, GjallarOS exports Noctalia's current
+    # palette.  Stylix remains the build-time adapter for targets such as the
+    # initrd Plymouth theme, while Noctalia remains the color authority.
+    override =
+      let
+        configured = if details.override == null then { } else details.override;
+      in
+      lib.mkIf (configured != { } || noctaliaPalette != { }) (configured // noctaliaPalette);
     opacity = {
       terminal = details.opacity;
       applications = details.opacity;

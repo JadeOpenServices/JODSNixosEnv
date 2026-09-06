@@ -13,9 +13,7 @@
 
   # Override stylix theme of btop.
   btopTheme = "gruvbox_dark_v2";
-  ags = { };
 
-  # Hyprland and ags;
   opacity = 1.0;
   rounding = 0;
   shadow = true;

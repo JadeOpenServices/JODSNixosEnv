@@ -8,205 +8,130 @@
 let
   aiEnabled = if settings ? aiEnable then settings.aiEnable else false;
 
-  aiModel = settings.aiModel;
+  aiModel = "gjallaros-caveman-ai";
+  agentMode = if settings ? aiAgentMode then settings.aiAgentMode else "workspace";
+  ownerMode = agentMode != "workspace";
+  gjallarctl = pkgs.callPackage ../../pkgs/gjallarctl { };
 
   gjallarAi = pkgs.writeShellScriptBin "gjallar-ai" ''
-        set -euo pipefail
+    set -euo pipefail
 
-        die() {
-          echo "gjallar-ai: $*" >&2
-          exit 1
-        }
-
-        require() {
-          command -v "$1" >/dev/null 2>&1 ||
-            die "required command not found: $1"
-        }
-
-        require git
-        require systemd-run
-        require realpath
-        require mktemp
-        require rm
-
-        repo="$(git rev-parse --show-toplevel 2>/dev/null || true)"
-        [[ -n "$repo" ]] ||
-          die "Start gjallar-ai inside a Git repository."
-
-        repo="$(realpath "$repo")"
-
-        session="$(mktemp -d -t gjallar-ai.XXXXXXXX)"
-        cleanup() {
-          rm -rf -- "$session"
-        }
-        trap cleanup EXIT INT TERM HUP
-
-        mkdir -p \
-          "$session/home" \
-          "$session/config" \
-          "$session/cache" \
-          "$session/data" \
-          "$session/state" \
-          "$session/tmp"
-
-        config="$session/config/opencode.json"
-
-        cat > "$config" <<EOF
-    {
-      "\$schema": "https://opencode.ai/config.json",
-
-      "autoupdate": false,
-      "share": "disabled",
-
-      "provider": {
-        "ollama": {
-          "npm": "@ai-sdk/openai-compatible",
-          "name": "GjallarOS Ollama",
-          "options": {
-            "baseURL": "http://127.0.0.1:11434/v1"
-          },
-          "models": {
-            "${aiModel}": {
-              "name": "GjallarOS Local ${aiModel}"
-            }
-          }
-        }
-      },
-
-      "model": "ollama/${aiModel}",
-
-      "permissions": [
-        { "action": "*", "resource": "*", "effect": "deny" },
-
-        { "action": "read", "resource": "*", "effect": "allow" },
-        { "action": "glob", "resource": "*", "effect": "allow" },
-        { "action": "grep", "resource": "*", "effect": "allow" },
-        { "action": "list", "resource": "*", "effect": "allow" },
-
-        { "action": "edit", "resource": "*", "effect": "allow" },
-
-        { "action": "read", "resource": "*.env", "effect": "deny" },
-        { "action": "read", "resource": "*.env.*", "effect": "deny" },
-        { "action": "read", "resource": "**/.ssh/**", "effect": "deny" },
-        { "action": "read", "resource": "**/.gnupg/**", "effect": "deny" },
-
-        { "action": "external_directory", "resource": "*", "effect": "deny" },
-
-        { "action": "webfetch", "resource": "*", "effect": "deny" },
-        { "action": "websearch", "resource": "*", "effect": "deny" },
-
-        { "action": "subagent", "resource": "*", "effect": "deny" },
-
-        { "action": "shell", "resource": "*", "effect": "deny" },
-
-        { "action": "shell", "resource": "git status *", "effect": "allow" },
-        { "action": "shell", "resource": "git diff *", "effect": "allow" },
-        { "action": "shell", "resource": "git log *", "effect": "allow" },
-        { "action": "shell", "resource": "git branch *", "effect": "allow" },
-        { "action": "shell", "resource": "git show *", "effect": "allow" },
-
-        { "action": "shell", "resource": "nix flake check *", "effect": "allow" },
-        { "action": "shell", "resource": "nix build *", "effect": "allow" },
-        { "action": "shell", "resource": "nix eval *", "effect": "allow" },
-
-        { "action": "shell", "resource": "sudo *", "effect": "deny" },
-        { "action": "shell", "resource": "doas *", "effect": "deny" },
-        { "action": "shell", "resource": "pkexec *", "effect": "deny" },
-
-        { "action": "shell", "resource": "git push *", "effect": "deny" },
-        { "action": "shell", "resource": "git reset *", "effect": "deny" },
-        { "action": "shell", "resource": "git clean *", "effect": "deny" },
-
-        { "action": "shell", "resource": "rm *", "effect": "deny" },
-        { "action": "shell", "resource": "rmdir *", "effect": "deny" },
-        { "action": "shell", "resource": "mv *", "effect": "deny" },
-        { "action": "shell", "resource": "cp *", "effect": "deny" },
-
-        { "action": "shell", "resource": "curl *", "effect": "deny" },
-        { "action": "shell", "resource": "wget *", "effect": "deny" },
-        { "action": "shell", "resource": "ssh *", "effect": "deny" },
-        { "action": "shell", "resource": "scp *", "effect": "deny" },
-        { "action": "shell", "resource": "sftp *", "effect": "deny" }
-      ],
-
-      "agent": {
-        "gjallar": {
-          "description": "GjallarOS local engineering agent",
-          "mode": "primary",
-          "model": "ollama/${aiModel}",
-          "steps": 100,
-
-          "permission": {
-            "shell": {
-              "*": "deny",
-              "git status *": "allow",
-              "git diff *": "allow",
-              "git log *": "allow",
-              "git branch *": "allow",
-              "git show *": "allow",
-              "nix flake check *": "allow",
-              "nix build *": "allow",
-              "nix eval *": "allow"
-            },
-            "webfetch": "deny",
-            "websearch": "deny",
-            "external_directory": "deny",
-            "task": "deny"
-          }
-        }
-      }
+    die() {
+      printf 'gjallar-ai: %s\n' "$*" >&2
+      exit 1
     }
-    EOF
 
-        exec systemd-run \
-          --user \
-          --wait \
-          --pipe \
-          --collect \
-          --service-type=exec \
-          -p "ProtectSystem=strict" \
-          -p "ProtectHome=tmpfs" \
-          -p "PrivateTmp=yes" \
-          -p "NoNewPrivileges=yes" \
-          -p "PrivateDevices=yes" \
-          -p "PrivateUsers=no" \
-          -p "RestrictSUIDSGID=yes" \
-          -p "CapabilityBoundingSet=" \
-          -p "LockPersonality=yes" \
-          -p "ProtectKernelTunables=yes" \
-          -p "ProtectKernelModules=yes" \
-          -p "ProtectKernelLogs=yes" \
-          -p "ProtectControlGroups=yes" \
-          -p "RestrictNamespaces=yes" \
-          -p "RestrictRealtime=yes" \
-          -p "IPAddressDeny=any" \
-          -p "IPAddressAllow=localhost" \
+    for command in \
+      git \
+      realpath \
+      systemctl \
+      systemd-escape \
+      socat
+    do
+      command -v "$command" >/dev/null 2>&1 ||
+        die "required command not found: $command"
+    done
 
-          -p "RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6" \
-          -p "BindPaths=$repo" \
-          -p "BindReadOnlyPaths=$session/config" \
-          -p "BindReadOnlyPaths=$session/cache" \
-          -p "BindReadOnlyPaths=$session/data" \
-          -p "BindReadOnlyPaths=$session/state" \
-          -p "ReadWritePaths=$repo" \
-          -p "ReadWritePaths=$session" \
-          -p "Environment=HOME=$session/home" \
-          -p "Environment=XDG_CONFIG_HOME=$session/config" \
-          -p "Environment=XDG_CACHE_HOME=$session/cache" \
-          -p "Environment=XDG_DATA_HOME=$session/data" \
-          -p "Environment=XDG_STATE_HOME=$session/state" \
-          -p "Environment=OPENCODE_CONFIG=$config" \
-          -p "Environment=OPENAI_API_KEY=ollama" \
-          -p "Environment=OPENAI_BASE_URL=http://127.0.0.1:11434/v1" \
-          -p "Environment=ANTHROPIC_API_KEY=" \
-          -p "Environment=ANTHROPIC_AUTH_TOKEN=" \
-          -p "Environment=GOOGLE_API_KEY=" \
-          -p "Environment=OPENROUTER_API_KEY=" \
-          -- \
-          ${pkgs.opencode}/bin/opencode \
-          --cwd "$repo" \
-          "$@"
+    repo="$(
+      git rev-parse \
+        --show-toplevel \
+        2>/dev/null ||
+        true
+    )"
+
+    [ -n "$repo" ] ||
+      die "Start gjallar-ai inside a Git repository."
+
+    repo="$(realpath "$repo")"
+
+    escaped="$(
+      systemd-escape \
+        --path \
+        "$repo"
+    )"
+
+    [ -n "$escaped" ] ||
+      die "failed to encode workspace"
+
+    unit="gjallar-ai-session@$escaped.service"
+
+    socket="/run/gjallar-ai-session-$escaped/console.sock"
+
+    cleanup() {
+      systemctl stop "$unit" >/dev/null 2>&1 || true
+    }
+
+    trap cleanup EXIT INT TERM HUP
+
+    systemctl start "$unit" ||
+      die "failed to start controlled AI system session"
+
+    ready=false
+
+    for _ in $(${pkgs.coreutils}/bin/seq 1 100); do
+      if [ -S "$socket" ]; then
+        ready=true
+        break
+      fi
+
+      state="$(
+        systemctl show \
+          "$unit" \
+          --property=ActiveState \
+          --value \
+          2>/dev/null ||
+          true
+      )"
+
+      case "$state" in
+        failed|inactive)
+          systemctl status \
+            "$unit" \
+            --no-pager \
+            >&2 ||
+            true
+
+          die \
+            "controlled AI session exited before console startup"
+          ;;
+      esac
+
+      ${pkgs.coreutils}/bin/sleep 0.05
+    done
+
+    if [ "$ready" != true ]; then
+      systemctl status \
+        "$unit" \
+        --no-pager \
+        >&2 ||
+        true
+
+      die "controlled AI console did not become ready"
+    fi
+
+    set +e
+
+    ${pkgs.socat}/bin/socat \
+      STDIO,raw,echo=0 \
+      UNIX-CONNECT:"$socket"
+
+    rc=$?
+
+    set -e
+
+    exit "$rc"
   '';
+
+
+  gjallarAiDesktop = pkgs.makeDesktopItem {
+    name = "gjallarOS-ai";
+    desktopName = "gjallarOS AI";
+    comment = "Secure local GjallarOS engineering agent";
+    exec = "${gjallarAi}/bin/gjallar-ai";
+    icon = "${pkgs.papirus-icon-theme}/share/icons/Papirus/64x64/apps/devassistant.svg";
+    terminal = true;
+    categories = [ "Development" ];
+  };
 
 in
 lib.mkIf aiEnabled {
@@ -216,13 +141,39 @@ lib.mkIf aiEnabled {
 
   home.packages = [
     gjallarAi
+    gjallarAiDesktop
+
+    (pkgs.writeShellScriptBin "gjallar-agent-tool" ''
+      set -euo pipefail
+      workspace="$(git rev-parse --show-toplevel 2>/dev/null)" || {
+        echo "gjallar-agent-tool: start inside a Git workspace" >&2; exit 2;
+      }
+      exec ${gjallarctl}/bin/gjallarctl ai tool \
+        --workspace "$workspace" \
+        --mode ${lib.escapeShellArg agentMode} \
+        --approval "''${XDG_RUNTIME_DIR}/gjallar-ai/approval.json" \
+        --audit "''${XDG_STATE_HOME:-$HOME/.local/state}/gjallar-ai/audit.jsonl" \
+        "$@"
+    '')
 
     (pkgs.writeShellScriptBin "opencode-local" ''
       set -euo pipefail
-      export OPENAI_API_KEY=ollama
-      export OPENAI_BASE_URL=http://127.0.0.1:11434/v1
-      unset ANTHROPIC_API_KEY ANTHROPIC_AUTH_TOKEN GOOGLE_API_KEY OPENROUTER_API_KEY
-      exec ${pkgs.opencode}/bin/opencode "$@"
+
+      unset OPENAI_BASE_URL OPENAI_API_KEY
+
+      unset         ANTHROPIC_API_KEY         ANTHROPIC_AUTH_TOKEN         GOOGLE_API_KEY         OPENROUTER_API_KEY
+
+      exec ${gjallarAi}/bin/gjallar-ai "$@"
+    '')
+
+    (pkgs.writeShellScriptBin "gjallar-ai-approve" ''
+      set -euo pipefail
+      workspace="$(git rev-parse --show-toplevel 2>/dev/null)" || {
+        echo "gjallar-ai-approve: start inside the target Git workspace" >&2; exit 2;
+      }
+      runtime="''${XDG_RUNTIME_DIR:-/run/user/$(id -u)}"
+      exec ${gjallarctl}/bin/gjallarctl ai approve \
+        --workspace "$workspace" --grant "$runtime/gjallar-ai/approval.json" "$@"
     '')
 
     (pkgs.writeShellScriptBin "gjallar-research" ''
@@ -234,28 +185,14 @@ lib.mkIf aiEnabled {
         exit 2
       }
 
-      host="''${url#https://}"
-      host="''${host%%/*}"
-
-      case "$host" in
-        nixos.org|*.nixos.org|github.com|*.github.com|docs.python.org|developer.mozilla.org)
-          ;;
-        *)
-          echo "Blocked host: $host" >&2
-          exit 1
-          ;;
-      esac
-
       exec ${pkgs.curl}/bin/curl \
         --fail \
         --silent \
         --show-error \
-        --location \
-        --proto '=https' \
+        --unix-socket /run/gjallar-ai/research.sock \
         --max-time 15 \
-        --connect-timeout 5 \
-        --max-filesize 2097152 \
-        "$url"
+        --get --data-urlencode "url=$url" \
+        http://localhost/research
     '')
   ];
 }
