@@ -259,6 +259,20 @@ let
       set -euo pipefail
       umask 077
 
+      trace_file="$RUNTIME_DIRECTORY/startup.log"
+
+      exec 3>>"$trace_file"
+
+      ${pkgs.coreutils}/bin/chmod 0644 "$trace_file"
+
+      trap '
+        rc=$?
+        printf "FAIL rc=%s line=%s command=%q\\n" \
+          "$rc" "$LINENO" "$BASH_COMMAND" >&3
+      ' ERR
+
+      printf "BEGIN pid=%s instance=%q\\n" "$$" "''${1:-}" >&3
+
       die() {
         printf 'gjallar-ai-session: %s\n' "$*" >&2
         exit 1
@@ -279,30 +293,12 @@ let
         ${pkgs.coreutils}/bin/id -g "$username"
       )"
 
-      workspace="$(
-        ${pkgs.systemd}/bin/systemd-escape \
-          --unescape \
-          --path \
-          "$instance"
-      )"
-
-      case "$workspace" in
-        /*)
-          ;;
-        *)
-          die "decoded workspace is not absolute"
-          ;;
-      esac
-
-      workspace="$(
-        ${pkgs.coreutils}/bin/realpath \
-          -e \
-          -- \
-          "$workspace"
-      )"
+      # PID 1 has already bind-mounted the path encoded by this
+      # template instance onto /workspace.
+      workspace="/workspace"
 
       [ -d "$workspace" ] ||
-        die "workspace does not exist"
+        die "systemd workspace bind is missing"
 
       top="$(
         ${pkgs.util-linux}/bin/runuser \
@@ -325,11 +321,6 @@ let
       [ "$top" = "$workspace" ] ||
         die "workspace must be the Git repository root"
 
-      ${pkgs.util-linux}/bin/mount \
-        --bind \
-        "$workspace" \
-        /workspace
-
       for forbidden in \
         /workspace/opencode.json \
         /workspace/opencode.jsonc \
@@ -340,12 +331,6 @@ let
             "project-local OpenCode configuration is forbidden: $forbidden"
         fi
       done
-
-      ${pkgs.util-linux}/bin/mount \
-        -t tmpfs \
-        -o mode=0755,nosuid,nodev \
-        tmpfs \
-        /home
 
       ${pkgs.coreutils}/bin/install \
         -d \
@@ -493,12 +478,18 @@ lib.mkIf (if settings ? aiEnable then settings.aiEnable else false) {
     group = "gjallar-ai-model";
   };
 
-  users.users.${settings.username}.extraGroups = [
+  users.users.${settings.username}.extraGroups = lib.mkAfter [
     "gjallar-ai-model"
   ];
 
   systemd.tmpfiles.rules = [
     "d /workspace 0755 root root -"
+
+    # Ollama previously used DynamicUser and therefore may leave its
+    # StateDirectory tree owned by the old transient UID. Preserve file
+    # modes but recursively transfer ownership to the stable service account.
+    "d /var/lib/ollama 0750 ollama ollama -"
+    "Z /var/lib/ollama - ollama ollama -"
   ];
 
   # Keep the machine's existing firewall backend unchanged. This isolated
@@ -741,10 +732,22 @@ lib.mkIf (if settings ? aiEnable then settings.aiEnable else false) {
       PrivateDevices = true;
       PrivateMounts = true;
 
+      # Decode the systemd-escaped absolute instance path and expose only
+      # that Git workspace inside the service namespace.
+      BindPaths = [
+        "%f:/workspace"
+      ];
+
+      # Hide all real home directories after systemd has established the
+      # explicit workspace bind.
+      TemporaryFileSystem = [
+        "/home:mode=0755,nosuid,nodev"
+      ];
+
       NoNewPrivileges = true;
 
       ProtectSystem = "strict";
-      ProtectHome = "read-only";
+      ProtectHome = false;
 
       ProtectKernelTunables = true;
       ProtectKernelModules = true;
@@ -758,7 +761,6 @@ lib.mkIf (if settings ? aiEnable then settings.aiEnable else false) {
       LockPersonality = true;
 
       CapabilityBoundingSet = [
-        "CAP_SYS_ADMIN"
         "CAP_SETUID"
         "CAP_SETGID"
       ];
@@ -837,8 +839,20 @@ lib.mkIf (if settings ? aiEnable then settings.aiEnable else false) {
     };
   };
 
+  users.groups.ollama = { };
+
+  users.users.ollama = {
+    isSystemUser = true;
+    group = "ollama";
+    home = "/var/lib/ollama";
+    createHome = true;
+  };
+
   services.ollama = rec {
     enable = true;
+
+    user = "ollama";
+    group = "ollama";
 
     # Keep the model API local; expose it deliberately through a reverse
     # proxy or VPN if remote access is ever required.
@@ -852,6 +866,13 @@ lib.mkIf (if settings ? aiEnable then settings.aiEnable else false) {
   };
 
   systemd.services.ollama.serviceConfig = {
+    # Ollama must have a stable kernel UID because the local API firewall
+    # identifies the originating socket by skuid.
+    #
+    # Current NixOS Ollama modules can still force DynamicUser=true even
+    # when a static services.ollama.user is configured.
+    DynamicUser = lib.mkForce false;
+
     NoNewPrivileges = true;
     PrivateTmp = true;
     ProtectSystem = "strict";
