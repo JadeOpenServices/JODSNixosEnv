@@ -863,6 +863,9 @@ func collectInteractive(ctx context.Context, ui prompt.UI, root string, hardware
 	if err != nil {
 		return err
 	}
+	if err := collectProjectTools(ctx, ui, u); err != nil {
+		return err
+	}
 	u.Theme, err = ui.Choice(ctx, "Theme", first(o.Themes), o.Themes)
 	if err != nil {
 		return err
@@ -929,6 +932,34 @@ func collectInteractive(ctx context.Context, ui prompt.UI, root string, hardware
 	}
 	u.WriteConfig = true
 	u.RunRebuild = true
+	return nil
+}
+
+func collectProjectTools(ctx context.Context, ui prompt.UI, u *config.User) error {
+	var err error
+
+	u.PlaneEnable, err = ui.Confirm(ctx, "Enable Plane integration?", false)
+	if err != nil {
+		return err
+	}
+	if u.PlaneEnable {
+		u.PlaneHost, err = ui.Value(ctx, "Plane host", "")
+		if err != nil {
+			return err
+		}
+	}
+
+	u.DrawioEnable, err = ui.Confirm(ctx, "Enable Draw.io integration?", false)
+	if err != nil {
+		return err
+	}
+	if u.DrawioEnable {
+		u.DrawioHost, err = ui.Value(ctx, "Draw.io host", "")
+		if err != nil {
+			return err
+		}
+	}
+
 	return nil
 }
 
