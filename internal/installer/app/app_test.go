@@ -206,8 +206,8 @@ func TestCollectProjectToolsSupportsIndependentSelection(t *testing.T) {
 			input:        "yes\nplane.internal:3000\nyes\ndrawio.internal:8080\n",
 			planeEnable:  true,
 			drawioEnable: true,
-			planeHost:    "plane.internal:3000",
-			drawioHost:   "drawio.internal:8080",
+			planeHost:    "http://plane.internal:3000",
+			drawioHost:   "http://drawio.internal:8080",
 		},
 	}
 
