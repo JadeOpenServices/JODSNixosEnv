@@ -769,6 +769,7 @@ func runRender(args []string, stdout, stderr io.Writer) int {
 	f.BoolVar(&s.PlaneEnable, "plane-enable", false, "")
 	f.StringVar(&s.PlaneHost, "plane-host", "", "")
 	f.BoolVar(&s.DrawioEnable, "drawio-enable", false, "")
+	f.BoolVar(&s.DrawioSelfHosted, "drawio-self-hosted", false, "")
 	f.StringVar(&s.DrawioHost, "drawio-host", "", "")
 	f.StringVar(&s.BackgroundNormal, "background-normal", "", "")
 	f.StringVar(&s.BackgroundWork, "background-work", "", "")
@@ -1174,6 +1175,126 @@ func printUsage(out io.Writer) {
 	fmt.Fprintln(out, "\nSafe GjallarOS maintenance commands. Rebuild invokes sudo explicitly.")
 }
 
+func syncProjectToolSettings(settingsPath string, user config.User) error {
+	keys := []string{
+		"planeEnable",
+		"planeHost",
+		"drawioEnable",
+		"drawioSelfHosted",
+		"drawioHost",
+	}
+
+	rendered := strings.Split(string(nixrender.Render(nixrender.Settings{
+		PlaneEnable:      user.PlaneEnable,
+		PlaneHost:        user.PlaneHost,
+		DrawioEnable:     user.DrawioEnable,
+		DrawioSelfHosted: user.DrawioSelfHosted,
+		DrawioHost:       user.DrawioHost,
+	})), "\n")
+
+	desired := make(map[string]string, len(keys))
+	for _, line := range rendered {
+		trimmed := strings.TrimSpace(line)
+		for _, key := range keys {
+			if strings.HasPrefix(trimmed, key+" = ") {
+				desired[key] = line
+			}
+		}
+	}
+
+	if len(desired) != len(keys) {
+		return fmt.Errorf("render project-tool settings: expected %d fields, got %d", len(keys), len(desired))
+	}
+
+	data, err := os.ReadFile(settingsPath)
+	if err != nil {
+		return fmt.Errorf("read %s: %w", settingsPath, err)
+	}
+
+	lines := strings.Split(string(data), "\n")
+	seen := make(map[string]bool, len(keys))
+	result := make([]string, 0, len(lines)+len(keys))
+	insertedMissing := false
+
+	for _, line := range lines {
+		trimmed := strings.TrimSpace(line)
+		replaced := false
+
+		for _, key := range keys {
+			if strings.HasPrefix(trimmed, key+" = ") {
+				result = append(result, desired[key])
+				seen[key] = true
+				replaced = true
+				break
+			}
+		}
+
+		if replaced {
+			continue
+		}
+
+		if !insertedMissing && strings.HasPrefix(trimmed, "backgroundNormal = ") {
+			for _, key := range keys {
+				if !seen[key] {
+					result = append(result, desired[key])
+					seen[key] = true
+				}
+			}
+			insertedMissing = true
+		}
+
+		result = append(result, line)
+	}
+
+	for _, key := range keys {
+		if !seen[key] {
+			return fmt.Errorf("sync project-tool setting %s: insertion anchor not found", key)
+		}
+	}
+
+	updated := strings.Join(result, "\n")
+	if updated == string(data) {
+		return nil
+	}
+
+	info, err := os.Stat(settingsPath)
+	if err != nil {
+		return fmt.Errorf("stat %s: %w", settingsPath, err)
+	}
+
+	tmp, err := os.CreateTemp(filepath.Dir(settingsPath), ".settings-project-tools-*")
+	if err != nil {
+		return fmt.Errorf("create temporary settings file: %w", err)
+	}
+	tmpName := tmp.Name()
+	defer os.Remove(tmpName)
+
+	if err := tmp.Chmod(info.Mode().Perm()); err != nil {
+		tmp.Close()
+		return fmt.Errorf("preserve settings permissions: %w", err)
+	}
+
+	if _, err := tmp.WriteString(updated); err != nil {
+		tmp.Close()
+		return fmt.Errorf("write temporary settings file: %w", err)
+	}
+
+	if err := tmp.Sync(); err != nil {
+		tmp.Close()
+		return fmt.Errorf("sync temporary settings file: %w", err)
+	}
+
+	if err := tmp.Close(); err != nil {
+		return fmt.Errorf("close temporary settings file: %w", err)
+	}
+
+	if err := os.Rename(tmpName, settingsPath); err != nil {
+		return fmt.Errorf("replace %s: %w", settingsPath, err)
+	}
+
+	return nil
+}
+
 func runRebuild(args []string, stdout, stderr io.Writer) int {
 	repo, host := "", ""
 	debug, cleanup := false, true
@@ -1223,9 +1344,54 @@ func runRebuild(args []string, stdout, stderr io.Writer) int {
 	configPath := filepath.Join(repo, "user.config.json")
 	document, err := preset.Load(configPath)
 	if err != nil {
-		fmt.Fprintf(stderr, "[GjallarOS] Error: read managed-device state: %v\n", err)
+		fmt.Fprintf(stderr, "[GjallarOS] Error: load user configuration: %v\n", err)
 		return 1
 	}
+
+	projectTools := config.User{}
+
+	projectTools.PlaneEnable, err = document.Bool("planeEnable")
+	if err != nil {
+		fmt.Fprintf(stderr, "[GjallarOS] Error: read planeEnable: %v\n", err)
+		return 1
+	}
+
+	projectTools.PlaneHost, err = document.String("planeHost")
+	if err != nil {
+		fmt.Fprintf(stderr, "[GjallarOS] Error: read planeHost: %v\n", err)
+		return 1
+	}
+
+	projectTools.DrawioEnable, err = document.Bool("drawioEnable")
+	if err != nil {
+		fmt.Fprintf(stderr, "[GjallarOS] Error: read drawioEnable: %v\n", err)
+		return 1
+	}
+
+	projectTools.DrawioSelfHosted, err = document.Bool("drawioSelfHosted")
+	if err != nil {
+		fmt.Fprintf(stderr, "[GjallarOS] Error: read drawioSelfHosted: %v\n", err)
+		return 1
+	}
+
+	projectTools.DrawioHost, err = document.String("drawioHost")
+	if err != nil {
+		fmt.Fprintf(stderr, "[GjallarOS] Error: read drawioHost: %v\n", err)
+		return 1
+	}
+
+	if err := config.NormalizeProjectTools(&projectTools); err != nil {
+		fmt.Fprintf(stderr, "[GjallarOS] Error: normalize project-tool settings: %v\n", err)
+		return 1
+	}
+
+	settingsPath := filepath.Join(repo, "settings.nix")
+	if err := syncProjectToolSettings(settingsPath, projectTools); err != nil {
+		fmt.Fprintf(stderr, "[GjallarOS] Error: sync project-tool settings: %v\n", err)
+		return 1
+	}
+
+	fmt.Fprintln(stdout, "[GjallarOS] Synced Plane/Draw.io settings from user.config.json.")
 
 	managedDevice, err := document.Bool("endpointManagedDevice")
 	if err != nil {
