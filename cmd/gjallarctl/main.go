@@ -797,6 +797,7 @@ func runRender(args []string, stdout, stderr io.Writer) int {
 	f.BoolVar(&s.EndpointManagedDevice, "endpoint-managed-device", false, "")
 	f.StringVar(&s.JODSEndpoint, "jods-endpoint", "", "")
 	f.StringVar(&s.JODSPolicySigningPublicKey, "jods-policy-signing-public-key", "", "")
+	f.StringVar(&s.JODSRecoveryCommandSigningPublicKey, "jods-recovery-command-signing-public-key", "", "")
 	f.StringVar(&s.JODSEnrollmentMode, "jods-enrollment-mode", "", "")
 	f.BoolVar(&s.JODSAllowInsecureTLS, "jods-allow-insecure-tls", false, "")
 	f.StringVar(&s.JODSDeviceClass, "jods-device-class", "", "")

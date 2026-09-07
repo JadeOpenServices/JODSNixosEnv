@@ -54,7 +54,7 @@ type Settings struct {
 	GraphicsCompute                                       bool
 	GraphicsBusID, GraphicsIntegratedBusID, WiFiDriver    string
 	AIEnable                                              bool
-	AIModel                                               string
+	AIModel, AIAccelerationProfile                        string
 	AIAgentMode                                           string
 	AIContextTokens, AIVRAMMB                             int
 	NemuEnable, NemuGPUPassthrough                        bool
@@ -64,6 +64,7 @@ type Settings struct {
 	SecureBootEnable                                      bool
 	EndpointManagedDevice                                 bool
 	JODSEndpoint, JODSPolicySigningPublicKey              string
+	JODSRecoveryCommandSigningPublicKey                   string
 	JODSEnrollmentMode                                    string
 	JODSAllowInsecureTLS                                  bool
 	JODSDeviceClass, JODSDesktopProfile                   string
@@ -129,6 +130,7 @@ func Render(s Settings) []byte {
 	str("wifiDriver", s.WiFiDriver)
 	boolean("aiEnable", s.AIEnable)
 	str("aiModel", s.AIModel)
+	str("aiAccelerationProfile", s.AIAccelerationProfile)
 	str("aiAgentMode", s.AIAgentMode)
 	integer("aiContextTokens", s.AIContextTokens)
 	integer("aiVramMB", s.AIVRAMMB)
@@ -142,6 +144,7 @@ func Render(s Settings) []byte {
 	boolean("endpointManagedDevice", s.EndpointManagedDevice)
 	str("jodsEndpoint", s.JODSEndpoint)
 	str("jodsPolicySigningPublicKey", s.JODSPolicySigningPublicKey)
+	str("jodsRecoveryCommandSigningPublicKey", s.JODSRecoveryCommandSigningPublicKey)
 	str("jodsEnrollmentMode", s.JODSEnrollmentMode)
 	boolean("jodsAllowInsecureTls", s.JODSAllowInsecureTLS)
 	str("jodsDeviceClass", s.JODSDeviceClass)

@@ -41,7 +41,7 @@ size=$(blockdev --getsize64 "$partition")
 }
 
 "$(dirname "$0")/verify-image.sh" "$image" "$manifest" "$signature" "$public_key"
-for command in mkfs.vfat xorriso sbctl findmnt sfdisk partprobe; do
+for command in mkfs.vfat xorriso sbctl findmnt; do
   command -v "$command" >/dev/null || {
     echo "ERROR: required command not found: $command" >&2
     exit 1
@@ -67,8 +67,8 @@ printf 'Type FORMAT-JODS-RECOVERY to erase that partition: '
 read -r answer
 [ "$answer" = FORMAT-JODS-RECOVERY ] || { echo "Cancelled." >&2; exit 1; }
 
-sfdisk --part-type "$parent" "$part_number" U >/dev/null
-partprobe "$parent"
+# Preserve the XBOOTLDR GUID validated above. Changing it to an ESP here would
+# make discovery inconsistent and could cause firmware/bootloader ambiguity.
 mkfs.vfat -F 32 -n JODSRECOV "$partition"
 mount_dir=$(mktemp -d)
 cleanup() {

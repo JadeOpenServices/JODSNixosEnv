@@ -28,15 +28,16 @@ type Override struct {
 }
 
 type Result struct {
-	Profile       string `json:"profile"`
-	Model         string `json:"model"`
-	ContextTokens int    `json:"contextTokens"`
-	VRAMMB        int    `json:"vramMB"`
-	RAMGB         int    `json:"ramGB"`
-	GPUVendor     string `json:"gpuVendor"`
-	GPUType       string `json:"gpuType"`
-	CPUCores      int    `json:"cpuCores"`
-	Architecture  string `json:"architecture"`
+	Profile             string `json:"profile"`
+	AccelerationProfile string `json:"accelerationProfile"`
+	Model               string `json:"model"`
+	ContextTokens       int    `json:"contextTokens"`
+	VRAMMB              int    `json:"vramMB"`
+	RAMGB               int    `json:"ramGB"`
+	GPUVendor           string `json:"gpuVendor"`
+	GPUType             string `json:"gpuType"`
+	CPUCores            int    `json:"cpuCores"`
+	Architecture        string `json:"architecture"`
 }
 
 type modelProfile struct {
@@ -68,6 +69,18 @@ func Detect(ctx context.Context, configPath string) (Result, error) {
 	return result, nil
 }
 
+func accelerationProfileForHardware(h Hardware, selectedProfile string) string {
+	if selectedProfile == "dedicated" {
+		return "full"
+	}
+
+	if selectedProfile == "integrated" && h.RAMGB >= 32 {
+		return "full"
+	}
+
+	return "auto"
+}
+
 func Select(hardware Hardware, override Override) Result {
 	selected := modelProfiles[len(modelProfiles)-1]
 	for _, candidate := range modelProfiles {
@@ -92,6 +105,8 @@ func Select(hardware Hardware, override Override) Result {
 			result.ContextTokens = 8192
 		}
 	}
+	result.AccelerationProfile =
+		accelerationProfileForHardware(hardware, result.Profile)
 	return result
 }
 

@@ -62,6 +62,10 @@ in
     enable = true;
     endpoint = settings.jodsEndpoint;
     policySigningPublicKey = settings.jodsPolicySigningPublicKey;
+    recoveryCommandSigningPublicKey = settings.jodsRecoveryCommandSigningPublicKey;
+    managedEnrollmentConsent = true;
+    ownershipModel = "corporate";
+    recoveryCheckpointEnable = settings.recoveryEnable;
     enrollmentMode = settings.jodsEnrollmentMode;
     allowInsecureTls = settings.jodsAllowInsecureTls;
     deviceClass = settings.jodsDeviceClass;
@@ -73,10 +77,29 @@ in
   # unit after a successful deployment and installation-complete marker.
   systemd.services.jods-mdm-agent-enroll = lib.mkIf enabled {
     wantedBy = lib.mkForce [ ];
-    unitConfig.ConditionPathExists = "/var/lib/gjallarOS/installation-complete";
+    unitConfig = {
+      ConditionPathExists = "/var/lib/gjallarOS/installation-complete";
+      ConditionPathExistsGlob = "!/var/lib/gjallarOS/jods-enrollment-complete";
+    };
     serviceConfig = {
       UMask = "0077";
       ExecStopPost = statusWriter;
+      ExecStartPost = pkgs.writeShellScript "gjallar-jods-mark-enrolled" ''
+        response=/var/lib/jods-mdm-agent/bootstrap-response.json
+        marker=/var/lib/gjallarOS/jods-enrollment-complete
+
+        if [ -s "$response" ]; then
+          status="$(${pkgs.jq}/bin/jq -r '.data.status // empty' "$response" 2>/dev/null || true)"
+          mode="$(${pkgs.jq}/bin/jq -r '.data.mode // empty' "$response" 2>/dev/null || true)"
+          device_id="$(${pkgs.jq}/bin/jq -r '.data.device_id // empty' "$response" 2>/dev/null || true)"
+
+          if { [ "$status" = approved ] || [ "$mode" = reenrolled ]; } && [ -n "$device_id" ]; then
+            ${pkgs.coreutils}/bin/touch "$marker"
+            ${pkgs.coreutils}/bin/chmod 0600 "$marker"
+          fi
+        fi
+      '';
+
     };
   };
   systemd.timers.jods-mdm-agent-enroll.wantedBy = lib.mkIf enabled (lib.mkForce [ ]);

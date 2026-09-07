@@ -30,6 +30,59 @@ func TestSelect(t *testing.T) {
 	}
 }
 
+func TestAccelerationProfileSelection(t *testing.T) {
+	tests := []struct {
+		name     string
+		hardware Hardware
+		override Override
+		want     string
+	}{
+		{
+			name:     "small integrated automatic",
+			hardware: Hardware{RAMGB: 16, CPUCores: 4, GPUType: "integrated"},
+			want:     "auto",
+		},
+		{
+			name:     "large integrated full",
+			hardware: Hardware{RAMGB: 64, CPUCores: 8, GPUType: "integrated"},
+			want:     "full",
+		},
+		{
+			name: "qualified dedicated full",
+			hardware: Hardware{
+				RAMGB:    32,
+				CPUCores: 8,
+				GPUType:  "dedicated",
+				VRAMMB:   12288,
+			},
+			want: "full",
+		},
+		{
+			name:     "unknown override automatic",
+			hardware: Hardware{RAMGB: 64, CPUCores: 8, GPUType: "integrated"},
+			override: Override{
+				Enabled: true,
+				Model:   "mistral",
+			},
+			want: "auto",
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			got := Select(test.hardware, test.override)
+
+			if got.AccelerationProfile != test.want {
+				t.Fatalf(
+					"AccelerationProfile = %q, want %q",
+					got.AccelerationProfile,
+					test.want,
+				)
+			}
+		})
+	}
+}
+
 func TestLoadOverrideRequiresModel(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "user.config.json")
 	if err := os.WriteFile(path, []byte(`{"overrideAiSelection":true,"overrideModelWith":""}`), 0o600); err != nil {

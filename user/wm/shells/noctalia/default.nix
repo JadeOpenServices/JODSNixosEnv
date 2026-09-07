@@ -52,8 +52,9 @@ let
         cursor = "#${config.lib.stylix.colors.base05}";
         cursorText = "#${config.lib.stylix.colors.base00}";
 
-        selectionBg = "#${config.lib.stylix.colors.base02}";
-        selectionFg = "#${config.lib.stylix.colors.base05}";
+        # Strong selection contrast: accent background + inverse text.
+        selectionBg = "#${config.lib.stylix.colors.base0D}";
+        selectionFg = "#${config.lib.stylix.colors.base00}";
 
         normal = {
           black = "#${config.lib.stylix.colors.base00}";
@@ -325,7 +326,6 @@ in
           scale = 0.98;
         };
 
-
         session = {
           type = "session";
           scale = 0.98;
@@ -546,8 +546,10 @@ in
     background {{colors.surface.default.hex}}
     cursor {{colors.primary.default.hex}}
     cursor_text_color {{colors.on_primary.default.hex}}
-    selection_foreground {{colors.on_surface.default.hex}}
-    selection_background {{colors.surface_container_lowest.default.hex}}
+    # Selection must remain visually distinct from the terminal surface.
+    # primary/on_primary follow the live Noctalia palette.
+    selection_foreground {{colors.on_primary.default.hex}}
+    selection_background {{colors.primary.default.hex}}
     active_border_color {{colors.primary.default.hex}}
     inactive_border_color {{colors.outline.default.hex}}
     active_tab_foreground {{colors.on_primary.default.hex}}

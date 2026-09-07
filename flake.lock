@@ -912,16 +912,16 @@
     "jods": {
       "flake": false,
       "locked": {
-        "lastModified": 1788601798,
-        "narHash": "sha256-hRiBTpoT7uB8G6XTGQfxVT1/GIghETitgQPBWBN35yc=",
+        "lastModified": 1788770406,
+        "narHash": "sha256-W9uHt+t55RGOM5b3/++S4/bhskgIoxf0elxl1JoyAc4=",
         "ref": "refs/heads/main",
-        "rev": "b6dc333db1b2ba07f103504cb156c0ab728cd390",
+        "rev": "3673356b81109bfaf827eea0cc58888f1add8779",
         "shallow": true,
         "type": "git",
         "url": "https://github.com/bakanura/jods.git"
       },
       "original": {
-        "rev": "b6dc333db1b2ba07f103504cb156c0ab728cd390",
+        "rev": "3673356b81109bfaf827eea0cc58888f1add8779",
         "shallow": true,
         "type": "git",
         "url": "https://github.com/bakanura/jods.git"

@@ -154,6 +154,7 @@ lib.mkMerge [
     specialisation.gjallar-recovery.configuration = {
       system.nixos.tags = [ "trusted-recovery" ];
       boot.kernelParams = [ "systemd.unit=multi-user.target" ];
+      services.jods-mdm-agent.recoveryExecutorEnable = settings.endpointManagedDevice;
       environment.systemPackages = [
         recovery
         gjallarctl

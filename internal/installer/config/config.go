@@ -65,6 +65,7 @@ type User struct {
 	EndpointManagedDevice  bool     `json:"endpointManagedDevice"`
 	JODSEndpoint           string   `json:"jodsEndpoint"`
 	JODSPolicySigningKey   string   `json:"jodsPolicySigningPublicKey"`
+	JODSRecoverySigningKey string   `json:"jodsRecoveryCommandSigningPublicKey"`
 	JODSEnrollmentMode     string   `json:"jodsEnrollmentMode"`
 	JODSAllowInsecureTLS   bool     `json:"jodsAllowInsecureTls"`
 	JODSDeviceClass        string   `json:"jodsDeviceClass"`
@@ -145,6 +146,12 @@ func ValidateJODS(user User) error {
 	}
 	if !jodsPublicKeyPattern.MatchString(user.JODSPolicySigningKey) {
 		return fmt.Errorf("JODS policy-signing public key must be exactly 64 hexadecimal characters")
+	}
+	if !jodsPublicKeyPattern.MatchString(user.JODSRecoverySigningKey) {
+		return fmt.Errorf("JODS recovery-command signing public key must be exactly 64 hexadecimal characters")
+	}
+	if strings.EqualFold(user.JODSPolicySigningKey, user.JODSRecoverySigningKey) {
+		return fmt.Errorf("JODS policy and recovery-command signing keys must differ")
 	}
 	if !oneOf(user.JODSEnrollmentMode, "auto", "manual", "jade-registry-only") {
 		return fmt.Errorf("invalid JODS enrollment mode: %q", user.JODSEnrollmentMode)

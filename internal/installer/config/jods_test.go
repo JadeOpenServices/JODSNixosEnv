@@ -7,12 +7,13 @@ import (
 
 func validManagedUser() User {
 	return User{
-		EndpointManagedDevice: true,
-		JODSEndpoint:          "https://jods.example.test:1666",
-		JODSPolicySigningKey:  strings.Repeat("ab", 32),
-		JODSEnrollmentMode:    "manual",
-		JODSDeviceClass:       "laptop",
-		JODSDesktopProfile:    "headless",
+		EndpointManagedDevice:  true,
+		JODSEndpoint:           "https://jods.example.test:1666",
+		JODSPolicySigningKey:   strings.Repeat("ab", 32),
+		JODSRecoverySigningKey: strings.Repeat("cd", 32),
+		JODSEnrollmentMode:     "manual",
+		JODSDeviceClass:        "laptop",
+		JODSDesktopProfile:     "headless",
 	}
 }
 
@@ -29,6 +30,16 @@ func TestValidateJODS(t *testing.T) {
 	u.JODSPolicySigningKey = "abcd"
 	if err := ValidateJODS(u); err == nil {
 		t.Fatal("accepted malformed JODS policy key")
+	}
+	u = validManagedUser()
+	u.JODSRecoverySigningKey = "abcd"
+	if err := ValidateJODS(u); err == nil {
+		t.Fatal("accepted malformed JODS recovery-command key")
+	}
+	u = validManagedUser()
+	u.JODSRecoverySigningKey = u.JODSPolicySigningKey
+	if err := ValidateJODS(u); err == nil {
+		t.Fatal("accepted one key for both JODS signing roles")
 	}
 	u = validManagedUser()
 	u.JODSEndpoint = "https://127.0.0.1:1666"
