@@ -902,6 +902,18 @@ func collectInteractive(ctx context.Context, ui prompt.UI, root string, hardware
 	if err != nil {
 		return err
 	}
+	if u.RecoveryEnable {
+		u.RecoveryPartitionEnable, err = ui.Confirm(
+			ctx,
+			"Create and maintain a dedicated GjallarOS recovery partition (recommended):",
+			true,
+		)
+		if err != nil {
+			return err
+		}
+	} else {
+		u.RecoveryPartitionEnable = false
+	}
 	if u.RecoveryEnable && u.EndpointManagedDevice {
 		u.JODSPrebootLockEnable, err = ui.Confirm(ctx, "Require Secure Boot and measured-boot TPM policy for JODS preboot access?", true)
 		if err != nil {
@@ -990,6 +1002,7 @@ func normalizeManagementSafety(u *config.User) {
 		u.SecureBootEnable = true
 		u.LUKSTPM2Enable = true
 		u.RecoveryEnable = true
+		u.RecoveryPartitionEnable = true
 		u.JODSPrebootLockEnable = true
 		return
 	}
@@ -1044,6 +1057,39 @@ func configureRecoveryProvisioning(ctx context.Context, ui prompt.UI, opt option
 	if s.recoveryPartition == "" {
 		s.recoveryPartition = findRecoveryPartition(ctx)
 	}
+
+	// GJAL-65 storage mutation is a fresh-install capability only.
+	//
+	// Once GjallarOS is installed, the normal installer/update path must never
+	// shrink the active root or create new recovery storage by repartitioning.
+	// A trusted recovery environment is the separate authority for any future
+	// repair/reinstall/repartition operation.
+	//
+	// Updating an already-existing dedicated recovery partition remains allowed.
+	if s.existing && s.recoveryPartition == "" {
+		if s.user.RecoveryPartitionEnable || s.recoveryDisk != "" {
+			return errors.New(
+				"recovery partition creation/resizing is only permitted during fresh installation; " +
+					"an installed GjallarOS system must use the trusted recovery environment",
+			)
+		}
+		return nil
+	}
+
+	// recoveryPartitionEnable authorizes creation/resizing of dedicated
+	// recovery storage. An already-existing canonical recovery partition
+	// remains usable even when automatic partition provisioning is disabled.
+	if s.recoveryPartition == "" &&
+		!s.user.RecoveryPartitionEnable &&
+		!explicitTarget {
+		if s.user.EndpointManagedDevice && !s.existing {
+			return errors.New(
+				"managed fresh installation requires creation of an independent recovery partition",
+			)
+		}
+		return nil
+	}
+
 	if explicitTarget {
 		if !filepath.IsAbs(s.recoverySigningKey) {
 			return errors.New("--recovery-signing-key must be an absolute runtime path")
@@ -1069,20 +1115,18 @@ func configureRecoveryProvisioning(ctx context.Context, ui prompt.UI, opt option
 			return nil
 		}
 	} else {
-		yes, err := ui.Confirm(ctx, "No JODS recovery partition exists. Create one only from verified unallocated GPT space after a successful rebuild? Existing partitions will never be shrunk.", false)
+		// The user already authorized recovery partition provisioning through
+		// recoveryPartitionEnable. GJAL-65 will inspect actual free space and
+		// safely resize supported Btrfs storage when required.
+		recoveryDisk, err := ui.Value(
+			ctx,
+			"GPT disk for the dedicated GjallarOS recovery partition",
+			"",
+		)
 		if err != nil {
 			return err
 		}
-		if !yes {
-			if s.user.EndpointManagedDevice && !s.existing {
-				return errors.New("managed fresh installation requires creation of an independent recovery partition")
-			}
-			return nil
-		}
-		s.recoveryDisk, err = ui.Value(ctx, "GPT disk containing at least 3 GiB unallocated space", "")
-		if err != nil {
-			return err
-		}
+		s.recoveryDisk = recoveryDisk
 	}
 	if s.recoverySigningKey == "" {
 		var err error

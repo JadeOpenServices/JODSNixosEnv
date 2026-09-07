@@ -160,9 +160,9 @@ func (e exitCodeError) Error() string { return "exit status" }
 func (e exitCodeError) ExitCode() int { return e.code }
 func (e exitCodeError) Unwrap() error { return nil }
 
-func TestProvisionLUKS2Ext4Root(t *testing.T) {
-	p := testPlan("ext4")
-	r := runner("ext4")
+func TestProvisionLUKS2BtrfsRoot(t *testing.T) {
+	p := testPlan("btrfs")
+	r := runner("btrfs")
 	var out bytes.Buffer
 
 	result, err := provision(
@@ -190,7 +190,7 @@ func TestProvisionLUKS2Ext4Root(t *testing.T) {
 	for _, required := range []string{
 		"cryptsetup luksFormat --type luks2 --batch-mode --key-file - /dev/nvme1n1p2",
 		"cryptsetup open --type luks2 --key-file - /dev/nvme1n1p2 cryptroot",
-		"mkfs.ext4 -F -L GJALLAROS /dev/mapper/cryptroot",
+		"mkfs.btrfs -f -L GJALLAROS /dev/mapper/cryptroot",
 		"mount /dev/mapper/cryptroot /mnt",
 	} {
 		if !strings.Contains(joined, required) {
@@ -205,8 +205,8 @@ func TestProvisionLUKS2Ext4Root(t *testing.T) {
 
 func TestSecretNeverAppearsInArgumentsOrOutput(t *testing.T) {
 	secret := "VERY-SECRET-LUKS-PASSPHRASE"
-	p := testPlan("ext4")
-	r := runner("ext4")
+	p := testPlan("btrfs")
+	r := runner("btrfs")
 	var out bytes.Buffer
 
 	_, err := provision(
@@ -231,8 +231,8 @@ func TestSecretNeverAppearsInArgumentsOrOutput(t *testing.T) {
 }
 
 func TestExistingSignatureIsRejectedBeforeMutation(t *testing.T) {
-	p := testPlan("ext4")
-	r := runner("ext4")
+	p := testPlan("btrfs")
+	r := runner("btrfs")
 
 	k := commandKey(
 		"lsblk", "-J", "-b", "-p", "-o",
@@ -269,8 +269,8 @@ func TestExistingSignatureIsRejectedBeforeMutation(t *testing.T) {
 }
 
 func TestTPMEnrollmentIsOutsideThisStage(t *testing.T) {
-	p := testPlan("ext4")
-	r := runner("ext4")
+	p := testPlan("btrfs")
+	r := runner("btrfs")
 	var out bytes.Buffer
 
 	_, err := provision(
@@ -305,4 +305,43 @@ func callsText(calls [][]string) string {
 		lines = append(lines, strings.Join(call, " "))
 	}
 	return strings.Join(lines, "\n")
+}
+
+func TestExt4RootRejectedBeforeMutation(t *testing.T) {
+	p := testPlan("ext4")
+	r := runner("ext4")
+	var out bytes.Buffer
+
+	_, err := provision(
+		context.Background(),
+		Input{
+			Plan:       p,
+			Passphrase: []byte("test-passphrase"),
+			Out:        &out,
+		},
+		r,
+	)
+	if err == nil {
+		t.Fatal("ext4 fresh root was accepted")
+	}
+	if !strings.Contains(err.Error(), "requires Btrfs") {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	joined := callsText(r.calls)
+	for _, forbidden := range []string{
+		"luksFormat",
+		"cryptsetup open",
+		"mkfs.ext4",
+		"mkfs.btrfs",
+		"mount ",
+	} {
+		if strings.Contains(joined, forbidden) {
+			t.Fatalf(
+				"storage mutation %q ran for unsupported ext4 root:\n%s",
+				forbidden,
+				joined,
+			)
+		}
+	}
 }

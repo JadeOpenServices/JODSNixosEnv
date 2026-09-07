@@ -51,6 +51,7 @@
   "nemuGpuPassthrough": false,
   "luksTpm2Enable": false,
   "recoveryEnable": false,
+  "recoveryPartitionEnable": true,
   "jodsPrebootLockEnable": false,
   "secureBootEnable": false,
   "secureBootPrompt": true,
