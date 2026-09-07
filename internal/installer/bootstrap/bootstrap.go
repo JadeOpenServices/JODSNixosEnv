@@ -20,6 +20,8 @@ func Build(config []byte, _ bool) Plan {
 	requirements := map[string]string{
 		"age-keygen":          "age",
 		"cryptsetup":          "cryptsetup",
+		"mkfs.ext4":           "e2fsprogs",
+		"mkfs.btrfs":          "btrfs-progs",
 		"curl":                "curl",
 		"fwupdmgr":            "fwupd",
 		"git":                 "git",
