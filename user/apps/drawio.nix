@@ -19,7 +19,7 @@ let
   browser = lib.getExe pkgs.${settings.preferredBrowser};
   endpointFile = "${config.home.homeDirectory}/.config/gjallarOS/drawio-endpoint";
 
-  drawioLauncher = pkgs.writeShellScriptBin "drawio" ''
+  drawioLauncher = pkgs.writeShellScriptBin "gjallar-drawio" ''
     set -euo pipefail
 
     endpoint_file=${lib.escapeShellArg endpointFile}
@@ -51,7 +51,7 @@ in
       name = "Draw.io";
       genericName = "Diagram Editor";
       comment = "Open Draw.io";
-      exec = "${drawioLauncher}/bin/drawio";
+      exec = "${drawioLauncher}/bin/gjallar-drawio";
       terminal = false;
       categories = [
         "Graphics"
