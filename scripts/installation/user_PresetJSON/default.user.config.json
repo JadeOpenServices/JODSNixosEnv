@@ -28,6 +28,7 @@
   "planeEnable": false,
   "planeHost": "",
   "drawioEnable": false,
+  "drawioSelfHosted": false,
   "drawioHost": "",
   "theme": "noctalia",
   "backgroundNormal": "non-nix/wallpapers/sword.jpg",
