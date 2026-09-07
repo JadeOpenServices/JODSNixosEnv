@@ -6,6 +6,7 @@
   ...
 }:
 let
+
   drawioEnable = settings.drawioEnable or false;
   drawioSelfHosted = settings.drawioSelfHosted or false;
   drawioHost = settings.drawioHost or "";
@@ -16,27 +17,15 @@ let
     then drawioHost
     else publicEndpoint;
 
-  appBrowser = lib.getExe pkgs.microsoft-edge;
-  endpointFile = "${config.home.homeDirectory}/.config/gjallarOS/drawio-endpoint";
 
   drawioLauncher = pkgs.writeShellScriptBin "gjallar-drawio" ''
-    set -euo pipefail
-
-    endpoint_file=${lib.escapeShellArg endpointFile}
-
-    if [ ! -r "$endpoint_file" ]; then
-      printf 'Draw.io endpoint configuration is unavailable.\n' >&2
-      false
-    fi
-
-    endpoint="$(cat "$endpoint_file")"
-
-    if [ -z "$endpoint" ]; then
-      printf 'Draw.io endpoint configuration is empty.\n' >&2
-      false
-    fi
-
-    exec ${appBrowser}       --app="$endpoint"       --class=gjallar-drawio       --name=Draw.io
+    exec ${lib.getExe pkgs.brave} \
+      --user-data-dir="$HOME/.config/gjallarOS/brave-drawio" \
+      --app=${lib.escapeShellArg endpoint} \
+      --no-first-run \
+      --no-default-browser-check \
+      --disable-sync \
+      --disable-background-mode
   '';
 in
 {
@@ -44,9 +33,6 @@ in
     home.packages = [
       drawioLauncher
     ];
-
-    home.file.".config/gjallarOS/drawio-endpoint".text = endpoint;
-
     xdg.desktopEntries.drawio = {
       name = "Draw.io";
       genericName = "Diagram Editor";
