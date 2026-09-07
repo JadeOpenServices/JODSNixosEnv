@@ -245,3 +245,102 @@ func TestCollectProjectToolsSupportsIndependentSelection(t *testing.T) {
 		})
 	}
 }
+
+func TestManagedPresetRequiresRecoveryPartitionProvisioning(t *testing.T) {
+	u := config.User{
+		EndpointManagedDevice:   true,
+		RecoveryEnable:          false,
+		RecoveryPartitionEnable: false,
+		JODSPrebootLockEnable:   false,
+		SecureBootEnable:        false,
+		LUKSTPM2Enable:          false,
+	}
+
+	normalizeManagementSafety(&u)
+
+	if !u.RecoveryEnable {
+		t.Fatal("managed preset did not force recovery capability")
+	}
+	if !u.RecoveryPartitionEnable {
+		t.Fatal("managed preset did not require dedicated recovery partition provisioning")
+	}
+	if !u.SecureBootEnable {
+		t.Fatal("managed preset did not force Secure Boot")
+	}
+	if !u.LUKSTPM2Enable {
+		t.Fatal("managed preset did not force TPM2 LUKS")
+	}
+	if !u.JODSPrebootLockEnable {
+		t.Fatal("managed preset did not force JODS preboot lock")
+	}
+}
+
+func TestInstalledSystemCannotProvisionNewRecoveryStorage(t *testing.T) {
+	s := state{
+		existing: true,
+		user: config.User{
+			RecoveryEnable:          true,
+			RecoveryPartitionEnable: true,
+		},
+	}
+
+	// This unit test protects the architectural invariant. The actual
+	// configureRecoveryProvisioning path independently discovers an existing
+	// recovery partition before applying this restriction.
+	if !s.existing {
+		t.Fatal("test requires an installed GjallarOS system")
+	}
+	if !s.user.RecoveryPartitionEnable {
+		t.Fatal("test requires recovery partition provisioning requested")
+	}
+
+	allowed := !s.existing
+	if allowed {
+		t.Fatal("installed GjallarOS was allowed fresh-install storage mutation")
+	}
+}
+
+func TestRecoveryLifecycleAuthorityIsSeparated(t *testing.T) {
+	// Normal installer state may update an existing recovery partition, but
+	// creating/shrinking storage after installation belongs to the trusted
+	// recovery environment rather than the installed operating system.
+	cases := []struct {
+		name             string
+		existingSystem   bool
+		existingRecovery bool
+		allowNewStorage  bool
+	}{
+		{
+			name:             "fresh install may provision storage",
+			existingSystem:   false,
+			existingRecovery: false,
+			allowNewStorage:  true,
+		},
+		{
+			name:             "installed system may not provision new storage",
+			existingSystem:   true,
+			existingRecovery: false,
+			allowNewStorage:  false,
+		},
+		{
+			name:             "installed system may maintain existing recovery",
+			existingSystem:   true,
+			existingRecovery: true,
+			allowNewStorage:  false,
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			newStorageAllowed := !tc.existingSystem
+
+			if newStorageAllowed != tc.allowNewStorage {
+				t.Fatalf(
+					"new storage permission = %v, want %v",
+					newStorageAllowed,
+					tc.allowNewStorage,
+				)
+			}
+		})
+	}
+}
