@@ -26,6 +26,7 @@ func Build(config []byte, _ bool) Plan {
 		"go":                  "go_1_26",
 		"lspci":               "pciutils",
 		"lsblk":               "util-linux",
+		"sgdisk":              "gptfdisk",
 		"mkpasswd":            "whois",
 		"openssl":             "openssl",
 		"sbctl":               "sbctl",
