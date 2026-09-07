@@ -8,7 +8,7 @@
 let
   planeEnable = settings.planeEnable or false;
   planeHost = settings.planeHost or "";
-  browser = lib.getExe pkgs.${settings.preferredBrowser};
+  appBrowser = lib.getExe pkgs.microsoft-edge;
   endpointFile = "${config.home.homeDirectory}/.config/gjallarOS/plane-endpoint";
 
   planeLauncher = pkgs.writeShellScriptBin "plane" ''
@@ -28,7 +28,7 @@ let
       exit 1
     fi
 
-    exec ${browser} "$endpoint"
+    exec ${appBrowser}       --app="$endpoint"       --class=gjallar-plane       --name=Plane
   '';
 in
 {
@@ -43,9 +43,10 @@ in
       name = "Plane";
       comment = "Open the configured Plane workspace";
       exec = "${planeLauncher}/bin/plane";
+      icon = "${pkgs.papirus-icon-theme}/share/icons/Papirus/64x64/apps/planner.svg";
       terminal = false;
       categories = [
-        "Network"
+        "Development"
         "Office"
         "ProjectManagement"
       ];
