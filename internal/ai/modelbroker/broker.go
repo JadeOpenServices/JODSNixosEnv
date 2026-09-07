@@ -311,6 +311,135 @@ func handler(cfg Config) http.Handler {
 	})
 }
 
+func gjallarMessageText(content any) string {
+	switch value := content.(type) {
+	case string:
+		return value
+
+	case []any:
+		var parts []string
+
+		for _, rawPart := range value {
+			part, ok := rawPart.(map[string]any)
+			if !ok {
+				continue
+			}
+
+			partType, _ := part["type"].(string)
+
+			if partType != "" && partType != "text" {
+				continue
+			}
+
+			text, _ := part["text"].(string)
+			if text != "" {
+				parts = append(parts, text)
+			}
+		}
+
+		return strings.Join(parts, "\n")
+	}
+
+	return ""
+}
+
+func gjallarLastUserMessage(
+	payload map[string]any,
+) string {
+	messages, ok := payload["messages"].([]any)
+	if !ok {
+		return ""
+	}
+
+	for i := len(messages) - 1; i >= 0; i-- {
+		message, ok := messages[i].(map[string]any)
+		if !ok {
+			continue
+		}
+
+		role, _ := message["role"].(string)
+
+		if role != "user" {
+			continue
+		}
+
+		return gjallarMessageText(
+			message["content"],
+		)
+	}
+
+	return ""
+}
+
+func gjallarIsTrivial(text string) bool {
+	value := strings.ToLower(
+		strings.TrimSpace(text),
+	)
+
+	value = strings.Trim(
+		value,
+		" \t\r\n.!?,;:()[]{}",
+	)
+
+	switch value {
+	case
+		"hi",
+		"hello",
+		"hey",
+		"yo",
+		"sup",
+		"hiya",
+		"howdy",
+		"ping",
+		"test",
+		"thanks",
+		"thank you",
+		"thx",
+		"ty",
+		"nice",
+		"cool",
+		"lol",
+		"lmao",
+		"ok",
+		"okay":
+		return true
+	}
+
+	return false
+}
+
+func gjallarTrivialFastPath(
+	payload map[string]any,
+) bool {
+	user := gjallarLastUserMessage(payload)
+
+	if !gjallarIsTrivial(user) {
+		return false
+	}
+
+	payload["messages"] = []any{
+		map[string]any{
+			"role": "system",
+			"content": "You are gjallarCode. " +
+				"Caveman style. " +
+				"Reply to trivial chat naturally in 1-8 words. " +
+				"No repo analysis. No OpenCode commentary.",
+		},
+		map[string]any{
+			"role":    "user",
+			"content": user,
+		},
+	}
+
+	delete(payload, "tools")
+	delete(payload, "tool_choice")
+	delete(payload, "parallel_tool_calls")
+
+	payload["max_tokens"] = 32
+
+	return true
+}
+
 func validateModel(raw []byte, model string) ([]byte, error) {
 	var payload map[string]any
 
@@ -330,6 +459,10 @@ func validateModel(raw []byte, model string) ([]byte, error) {
 
 	case "ollama/" + model:
 		payload["model"] = model
+		if gjallarTrivialFastPath(payload) {
+			return json.Marshal(payload)
+		}
+
 		return json.Marshal(payload)
 
 	default:

@@ -33,15 +33,16 @@ in
   # Noctalia replaces this file whenever its palette changes.  The fallback
   # prevents Kitty reporting a missing include during the first login.
   home.activation.gjallarKittyNoctaliaFallback = lib.hm.dag.entryAfter [ "writeBoundary" ] ''
-    theme_file="$HOME/.config/kitty/noctalia.conf"
-    if [ ! -e "$theme_file" ]; then
-      cat >"$theme_file" <<'EOF'
-foreground #${config.lib.stylix.colors.base05}
-background #${config.lib.stylix.colors.base00}
-cursor #${config.lib.stylix.colors.base0D}
-selection_background #${config.lib.stylix.colors.base02}
-EOF
-    fi
+        theme_file="$HOME/.config/kitty/noctalia.conf"
+        if [ ! -e "$theme_file" ]; then
+          cat >"$theme_file" <<'EOF'
+    foreground #${config.lib.stylix.colors.base05}
+    background #${config.lib.stylix.colors.base00}
+    cursor #${config.lib.stylix.colors.base0D}
+    selection_foreground #${config.lib.stylix.colors.base00}
+    selection_background #${config.lib.stylix.colors.base0D}
+    EOF
+        fi
   '';
 
   programs.kitty = {

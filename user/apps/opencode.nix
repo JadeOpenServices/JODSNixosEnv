@@ -34,31 +34,132 @@ let
         die "required command not found: $command"
     done
 
-    workspace="''${1-}"
+    mode="cwd"
+    workspace=""
 
-    if [ -n "$workspace" ]; then
-      shift
+    case "''${1-}" in
+      --gjallaros)
+        mode="gjallaros"
+        shift
+        ;;
 
-      repo="$(
-        git -C "$workspace" \
-          rev-parse \
-          --show-toplevel \
-          2>/dev/null ||
+      "")
+        ;;
+
+      *)
+        mode="explicit"
+        workspace="$1"
+        shift
+        ;;
+    esac
+
+    case "$mode" in
+      cwd)
+        repo="$(
+          git rev-parse \
+            --show-toplevel \
+            2>/dev/null ||
           true
-      )"
-    else
-      repo="$(
-        git rev-parse \
-          --show-toplevel \
-          2>/dev/null ||
-          true
-      )"
-    fi
+        )"
 
-    [ -n "$repo" ] ||
-      die "workspace is not a Git repository"
+        [ -n "$repo" ] ||
+          die "Start gjallar-ai inside a Git repository."
+        ;;
+
+      explicit)
+        repo="$(
+          git -C "$workspace" \
+            rev-parse \
+            --show-toplevel \
+            2>/dev/null ||
+          true
+        )"
+
+        [ -n "$repo" ] ||
+          die "workspace is not a Git repository"
+        ;;
+
+      gjallaros)
+        if [ -n "''${GJALLAROS_REPO:-}" ]; then
+          repo="$(realpath "''${GJALLAROS_REPO}")"
+
+          [ -f "$repo/.gjallaros-root" ] ||
+            die "GJALLAROS_REPO is not a gjallarOS repository"
+        else
+          current="$(
+            git rev-parse \
+              --show-toplevel \
+              2>/dev/null ||
+            true
+          )"
+
+          if [ -n "$current" ] && [ -f "$current/.gjallaros-root" ]; then
+            repo="$current"
+          else
+            found=""
+
+            while IFS= read -r -d "" identity
+            do
+              candidate="$(
+                realpath "$(
+                  ${pkgs.coreutils}/bin/dirname "$identity"
+                )"
+              )"
+
+              top="$(
+                git -C "$candidate" \
+                  rev-parse \
+                  --show-toplevel \
+                  2>/dev/null ||
+                true
+              )"
+
+              [ "$top" = "$candidate" ] ||
+                continue
+
+              [ -f "$candidate/flake.nix" ] ||
+                continue
+              [ -f "$candidate/system/apps/ollama.nix" ] ||
+                continue
+              [ -f "$candidate/user/apps/opencode.nix" ] ||
+                continue
+
+              if [ -n "$found" ] && [ "$found" != "$candidate" ]; then
+                die "multiple gjallarOS repositories found; set GJALLAROS_REPO"
+              fi
+
+              found="$candidate"
+            done < <(
+              ${pkgs.findutils}/bin/find \
+                "$HOME" \
+                -xdev \
+                -type f \
+                -name .gjallaros-root \
+                -print0 \
+                2>/dev/null
+            )
+
+            [ -n "$found" ] ||
+              die "gjallarOS repository not found below HOME; set GJALLAROS_REPO"
+
+            repo="$found"
+          fi
+        fi
+        ;;
+    esac
 
     repo="$(realpath "$repo")"
+
+    top="$(
+      git -C "$repo" \
+        rev-parse \
+        --show-toplevel \
+        2>/dev/null ||
+      true
+    )"
+
+    [ "$top" = "$repo" ] ||
+      die "resolved workspace is not a Git repository root"
 
     escaped="$(
       systemd-escape \
@@ -75,16 +176,24 @@ let
 
     cleanup() {
       systemctl stop "$unit" >/dev/null 2>&1 || true
+      : # session owns its own shutdown; no privileged stop on launcher exit
     }
-
     trap cleanup EXIT INT TERM HUP
 
-    systemctl start "$unit" ||
+    printf \
+      '\r\033[2K◐  gjallarCode · Starting local AI…'
+
+printf '\r\033[2K🔐  gjallarCode · Authentication\n'
+        sudo -k
+
+        sudo \
+          /run/current-system/sw/bin/gjallar-ai-session-start \
+          "$unit" ||
       die "failed to start controlled AI system session"
 
     ready=false
 
-    for _ in $(${pkgs.coreutils}/bin/seq 1 100); do
+    for i in $(${pkgs.coreutils}/bin/seq 1 1800); do
       if [ -S "$socket" ]; then
         ready=true
         break
@@ -112,7 +221,18 @@ let
           ;;
       esac
 
-      ${pkgs.coreutils}/bin/sleep 0.05
+      case $((i % 4)) in
+        0) frame="◐" ;;
+        1) frame="◓" ;;
+        2) frame="◑" ;;
+        3) frame="◒" ;;
+      esac
+
+      printf \
+        '\r\033[2K%s  gjallarCode · Starting local AI…' \
+        "$frame"
+
+      ${pkgs.coreutils}/bin/sleep 0.1
     done
 
     if [ "$ready" != true ]; then
@@ -124,6 +244,9 @@ let
 
       die "controlled AI console did not become ready"
     fi
+
+    printf \
+      '\r\033[2K✓  gjallarCode · Local AI ready\n'
 
     set +e
 
@@ -145,9 +268,7 @@ let
     desktopName = "gjallarOS AI";
     comment = "Secure local gjallarCode Caveman agent";
     exec =
-      "${gjallarAi}/bin/gjallar-ai "
-      + lib.escapeShellArg
-          "${config.home.homeDirectory}/Documents/${settings.hostname}";
+      "${gjallarAi}/bin/gjallar-ai --gjallaros";
     icon = "${pkgs.papirus-icon-theme}/share/icons/Papirus/64x64/apps/devassistant.svg";
     terminal = true;
     categories = [ "Development" ];
