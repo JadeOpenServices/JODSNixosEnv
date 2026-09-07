@@ -1,6 +1,7 @@
 { lib, settings, ... }:
 let
-  rootPasswordReady = settings.rootPasswordFile != "" && builtins.pathExists settings.rootPasswordFile;
+  rootPasswordReady =
+    settings.rootPasswordFile != "";
 in
 {
   # Merely requesting JODS enrollment must not remove the only local

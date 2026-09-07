@@ -29,6 +29,7 @@
       "battery"
       "notifications"
       "clipboard"
+      "screenshot"
       "control-center"
       "session"
     ];

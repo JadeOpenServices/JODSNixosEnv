@@ -107,6 +107,11 @@ var presetSchema = map[string]presetValueType{
 	"lastfmUsername": presetString, "listenbrainzUsername": presetString,
 	"frameworkEnable": presetBool, "frameworkModel": presetString,
 	"nemuEnable": presetBool, "nemuGpuPassthrough": presetBool, "luksTpm2Enable": presetBool,
+	"recoveryEnable": presetBool, "jodsPrebootLockEnable": presetBool,
+	"secureBootEnable": presetBool, "secureBootPrompt": presetBool, "endpointManagedDevice": presetBool,
+	"jodsEndpoint": presetString, "jodsPolicySigningPublicKey": presetString,
+	"jodsRecoveryCommandSigningPublicKey": presetString, "jodsEnrollmentMode": presetString,
+	"jodsAllowInsecureTls": presetBool, "jodsDeviceClass": presetString, "jodsDesktopProfile": presetString,
 	"autoReboot": presetBool, "runUpdateChecks": presetBool, "writeConfig": presetBool, "runRebuild": presetBool,
 }
 
@@ -242,9 +247,10 @@ func checkPresetCompatibility(r *Report, preset, user map[string]json.RawMessage
 // These values are selected from detected hardware by configure_ai.sh. They
 // must not be requested from, or persisted by, the user preset.
 var installerManagedFields = map[string]bool{
-	"aiModel":         true,
-	"aiContextTokens": true,
-	"aiVramMB":        true,
+	"aiModel":               true,
+	"aiAccelerationProfile": true,
+	"aiContextTokens":       true,
+	"aiVramMB":              true,
 }
 
 func checkRequiredFiles(r *Report, root string) {

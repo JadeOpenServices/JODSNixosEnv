@@ -16,6 +16,52 @@ in
       name = lib.mkForce details.icons;
       package = lib.mkForce details.iconsPkg;
     };
+
+    # GjallarOS accessibility/contrast layer.
+    #
+    # Stylix receives the active Noctalia palette during rebuild, therefore
+    # these colors remain theme-derived rather than being hardcoded.
+    #
+    # base0D = primary/accent
+    # base00 = contrasting text on the accent
+    gtk3.extraCss = ''
+      @define-color theme_selected_bg_color #${config.lib.stylix.colors.base0D};
+      @define-color theme_selected_fg_color #${config.lib.stylix.colors.base00};
+      @define-color accent_bg_color #${config.lib.stylix.colors.base0D};
+      @define-color accent_fg_color #${config.lib.stylix.colors.base00};
+
+      selection,
+      entry selection,
+      textview text selection,
+      treeview.view:selected,
+      row:selected {
+        background-color: #${config.lib.stylix.colors.base0D};
+        color: #${config.lib.stylix.colors.base00};
+      }
+
+      *:focus-visible {
+        outline-color: #${config.lib.stylix.colors.base0D};
+      }
+    '';
+
+    gtk4.extraCss = ''
+      @define-color theme_selected_bg_color #${config.lib.stylix.colors.base0D};
+      @define-color theme_selected_fg_color #${config.lib.stylix.colors.base00};
+      @define-color accent_bg_color #${config.lib.stylix.colors.base0D};
+      @define-color accent_fg_color #${config.lib.stylix.colors.base00};
+
+      selection,
+      entry selection,
+      textview text selection,
+      row:selected {
+        background-color: #${config.lib.stylix.colors.base0D};
+        color: #${config.lib.stylix.colors.base00};
+      }
+
+      *:focus-visible {
+        outline-color: #${config.lib.stylix.colors.base0D};
+      }
+    '';
   };
 
   stylix = {
