@@ -28,6 +28,46 @@ let
 in
 {
   services.fprintd.enable = true;
+
+
+  # Keep fprintd warm after first activation.
+  #
+  # Default fprintd exits after being idle. On the Framework Goodix MOC
+  # reader that means the next sudo/login authentication has to:
+  #
+  #   D-Bus activate fprintd
+  #     -> initialize libfprint
+  #     -> initialize the Goodix reader
+  #     -> finally show the PAM fingerprint prompt
+  #
+  # fprintd's --no-timeout keeps that already-initialized daemon alive.
+  #
+  # This does NOT:
+  #   - continuously scan fingerprints
+  #   - change PAM authentication ordering
+  #   - remove password fallback
+  #   - change enrollment policy
+  #   - make fingerprint mandatory
+  #
+  # Authentication remains:
+  #
+  #   fingerprint when enrolled
+  #       -> failure / timeout
+  #   password fallback
+  #
+  systemd.services.fprintd.serviceConfig.ExecStart =
+    lib.mkForce [
+      ""
+      "${pkgs.fprintd}/libexec/fprintd --no-timeout"
+    ];
+
+  # Initialize the daemon/device stack during normal boot.
+  #
+  # This does not continuously authenticate or scan fingerprints.
+  # Actual verification still starts only when PAM requests it.
+  systemd.services.fprintd.wantedBy =
+    lib.mkAfter [ "multi-user.target" ];
+
   services.gnome.gnome-keyring.enable = true;
 
   # A fingerprint cannot provide the login password needed to decrypt GNOME

@@ -42,8 +42,8 @@ func TestRenderRecoveryPolicyDefaultsDisabled(t *testing.T) {
 }
 
 func TestRenderAIResolvedState(t *testing.T) {
-	got := string(Render(Settings{AIEnable: true, AIModel: "qwen2.5-coder:7b", AIAgentMode: "workspace", AIContextTokens: 8192}))
-	for _, want := range []string{"aiEnable = true;", `aiModel = "qwen2.5-coder:7b";`, `aiAgentMode = "workspace";`, "aiContextTokens = 8192;"} {
+	got := string(Render(Settings{AIEnable: true, AIModel: "qwen2.5-coder:7b", AIAccelerationProfile: "auto", AIAgentMode: "workspace", AIContextTokens: 8192}))
+	for _, want := range []string{"aiEnable = true;", `aiModel = "qwen2.5-coder:7b";`, `aiAccelerationProfile = "auto";`, `aiAgentMode = "workspace";`, "aiContextTokens = 8192;"} {
 		if !strings.Contains(got, want) {
 			t.Fatalf("missing %q", want)
 		}
@@ -61,17 +61,19 @@ func TestRenderWeatherLocation(t *testing.T) {
 
 func TestRenderJODSSettings(t *testing.T) {
 	got := string(Render(Settings{
-		EndpointManagedDevice:      true,
-		JODSEndpoint:               "https://jods.example.test:1666",
-		JODSPolicySigningPublicKey: strings.Repeat("ab", 32),
-		JODSEnrollmentMode:         "jade-registry-only",
-		JODSAllowInsecureTLS:       false,
-		JODSDeviceClass:            "laptop",
-		JODSDesktopProfile:         "headless",
+		EndpointManagedDevice:               true,
+		JODSEndpoint:                        "https://jods.example.test:1666",
+		JODSPolicySigningPublicKey:          strings.Repeat("ab", 32),
+		JODSRecoveryCommandSigningPublicKey: strings.Repeat("cd", 32),
+		JODSEnrollmentMode:                  "jade-registry-only",
+		JODSAllowInsecureTLS:                false,
+		JODSDeviceClass:                     "laptop",
+		JODSDesktopProfile:                  "headless",
 	}))
 	for _, want := range []string{
 		"endpointManagedDevice = true;",
 		`jodsEndpoint = "https://jods.example.test:1666";`,
+		`jodsRecoveryCommandSigningPublicKey = "cdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcd";`,
 		`jodsEnrollmentMode = "jade-registry-only";`,
 		"jodsAllowInsecureTls = false;",
 		`jodsDeviceClass = "laptop";`,
