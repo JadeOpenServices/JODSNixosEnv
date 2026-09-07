@@ -21,6 +21,7 @@ func Build(config []byte, _ bool) Plan {
 		"age-keygen":          "age",
 		"cryptsetup":          "cryptsetup",
 		"mkfs.ext4":           "e2fsprogs",
+		"mkfs.vfat":           "dosfstools",
 		"mkfs.btrfs":          "btrfs-progs",
 		"curl":                "curl",
 		"fwupdmgr":            "fwupd",
