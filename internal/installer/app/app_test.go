@@ -187,6 +187,7 @@ func TestCollectProjectToolsSupportsIndependentSelection(t *testing.T) {
 		name                      string
 		input                     string
 		planeEnable, drawioEnable bool
+		drawioSelfHosted          bool
 		planeHost, drawioHost     string
 	}{
 		{
@@ -196,18 +197,20 @@ func TestCollectProjectToolsSupportsIndependentSelection(t *testing.T) {
 			planeHost:   "https://plane.example.test",
 		},
 		{
-			name:         "drawio only",
-			input:        "no\nyes\nhttps://drawio.example.test\n",
-			drawioEnable: true,
-			drawioHost:   "https://drawio.example.test",
+			name:             "drawio only",
+			input:            "no\nyes\nyes\nhttps://drawio.example.test\n",
+			drawioEnable:     true,
+			drawioSelfHosted: true,
+			drawioHost:       "https://drawio.example.test",
 		},
 		{
-			name:         "both",
-			input:        "yes\nplane.internal:3000\nyes\ndrawio.internal:8080\n",
-			planeEnable:  true,
-			drawioEnable: true,
-			planeHost:    "http://plane.internal:3000",
-			drawioHost:   "http://drawio.internal:8080",
+			name:             "both",
+			input:            "yes\nplane.internal:3000\nyes\nyes\ndrawio.internal:8080\n",
+			planeEnable:      true,
+			drawioEnable:     true,
+			drawioSelfHosted: true,
+			planeHost:        "http://plane.internal:3000",
+			drawioHost:       "http://drawio.internal:8080",
 		},
 	}
 
@@ -227,13 +230,15 @@ func TestCollectProjectToolsSupportsIndependentSelection(t *testing.T) {
 
 			if u.PlaneEnable != tt.planeEnable ||
 				u.DrawioEnable != tt.drawioEnable ||
+				u.DrawioSelfHosted != tt.drawioSelfHosted ||
 				u.PlaneHost != tt.planeHost ||
 				u.DrawioHost != tt.drawioHost {
 				t.Fatalf(
-					"unexpected project-tool selection: plane=%t host=%q drawio=%t host=%q",
+					"unexpected project-tool selection: plane=%t host=%q drawio=%t selfHosted=%t host=%q",
 					u.PlaneEnable,
 					u.PlaneHost,
 					u.DrawioEnable,
+					u.DrawioSelfHosted,
 					u.DrawioHost,
 				)
 			}
