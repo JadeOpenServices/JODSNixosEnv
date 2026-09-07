@@ -141,3 +141,23 @@ func TestValidateSelections(t *testing.T) {
 		t.Fatal("accepted invalid profile")
 	}
 }
+
+func TestManagedPresetForcesBootRecoveryContract(t *testing.T) {
+	u := config.User{
+		EndpointManagedDevice: true,
+	}
+	normalizeManagementSafety(&u)
+
+	if !u.SecureBootEnable {
+		t.Fatal("managed preset did not force Secure Boot")
+	}
+	if !u.LUKSTPM2Enable {
+		t.Fatal("managed preset did not force TPM2 LUKS")
+	}
+	if !u.RecoveryEnable {
+		t.Fatal("managed preset did not force recovery")
+	}
+	if !u.JODSPrebootLockEnable {
+		t.Fatal("managed preset did not force JODS preboot lock")
+	}
+}

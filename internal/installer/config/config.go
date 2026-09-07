@@ -35,6 +35,10 @@ type User struct {
 	Browsers               []string `json:"browsers"`
 	PreferredEditor        string   `json:"preferredEditor"`
 	PreferredBrowser       string   `json:"preferredBrowser"`
+	PlaneEnable            bool     `json:"planeEnable"`
+	PlaneHost              string   `json:"planeHost"`
+	DrawioEnable           bool     `json:"drawioEnable"`
+	DrawioHost             string   `json:"drawioHost"`
 	Theme                  string   `json:"theme"`
 	BackgroundNormal       string   `json:"backgroundNormal"`
 	BackgroundWork         string   `json:"backgroundWork"`
@@ -125,10 +129,27 @@ func Validate(user User) error {
 	if err := ValidateJODS(user); err != nil {
 		return err
 	}
+	if err := ValidateProjectTools(user); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func ValidateProjectTools(user User) error {
+	if user.PlaneEnable && strings.TrimSpace(user.PlaneHost) == "" {
+		return fmt.Errorf("planeHost is required when planeEnable is true")
+	}
+
+	if user.DrawioEnable && strings.TrimSpace(user.DrawioHost) == "" {
+		return fmt.Errorf("drawioHost is required when drawioEnable is true")
+	}
+
 	return nil
 }
 
 var jodsPublicKeyPattern = regexp.MustCompile(`^[0-9a-fA-F]{64}$`)
+var jodsDesktopProfilePattern = regexp.MustCompile(`^[A-Za-z0-9._+:-]{1,64}$`)
 
 func ValidateJODS(user User) error {
 	if !user.EndpointManagedDevice {
@@ -159,7 +180,7 @@ func ValidateJODS(user User) error {
 	if !oneOf(user.JODSDeviceClass, "pc", "vm", "laptop", "kiosk", "workstation") {
 		return fmt.Errorf("invalid JODS device class: %q", user.JODSDeviceClass)
 	}
-	if !oneOf(user.JODSDesktopProfile, "plasma", "gnome", "server", "headless") {
+	if !jodsDesktopProfilePattern.MatchString(strings.TrimSpace(user.JODSDesktopProfile)) {
 		return fmt.Errorf("invalid JODS desktop profile: %q", user.JODSDesktopProfile)
 	}
 	host := parsed.Hostname()

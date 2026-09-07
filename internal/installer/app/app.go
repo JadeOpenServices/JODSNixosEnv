@@ -39,18 +39,20 @@ type options struct {
 	repo                                                     string
 	skipHardware, refreshHardware, noRebuild, acceptExisting bool
 	recoveryDisk, recoveryPartition, recoverySigningKey      string
+	recoverySigningPublicKey                                 string
 }
 type state struct {
-	user               config.User
-	render             nixrender.Settings
-	passthroughIDs     []string
-	preset, existing   bool
-	control            string
-	touchscreen        bool
-	penTablet          bool
-	recoveryDisk       string
-	recoveryPartition  string
-	recoverySigningKey string
+	user                     config.User
+	render                   nixrender.Settings
+	passthroughIDs           []string
+	preset, existing         bool
+	control                  string
+	touchscreen              bool
+	penTablet                bool
+	recoveryDisk             string
+	recoveryPartition        string
+	recoverySigningKey       string
+	recoverySigningPublicKey string
 }
 
 const installerSecureBootResumeMarker = "/var/lib/gjallarOS/installer-resume-after-secure-boot"
@@ -70,7 +72,8 @@ func Run(ctx context.Context, args []string, in io.Reader, out, errOut io.Writer
 	f.BoolVar(&opt.acceptExisting, "accept-existing", false, "allow an existing GjallarOS installation to be updated")
 	f.StringVar(&opt.recoveryDisk, "recovery-disk", "", "GPT disk with unallocated space for a recovery partition")
 	f.StringVar(&opt.recoveryPartition, "recovery-partition", "", "existing dedicated recovery partition")
-	f.StringVar(&opt.recoverySigningKey, "recovery-signing-key", "", "runtime path to offline Ed25519 recovery release key")
+	f.StringVar(&opt.recoverySigningKey, "recovery-signing-key", "", "runtime path to offline Ed25519 recovery release private key")
+	f.StringVar(&opt.recoverySigningPublicKey, "recovery-signing-public-key", "", "runtime path to separately pinned Ed25519 recovery release public key")
 	if err := f.Parse(args); err != nil {
 		if errors.Is(err, flag.ErrHelp) {
 			return 0
@@ -135,6 +138,16 @@ func Run(ctx context.Context, args []string, in io.Reader, out, errOut io.Writer
 			return fail(errOut, err)
 		}
 	}
+	// Resolve the managed-device security contract before recovery
+	// provisioning so a managed preset cannot silently skip the physical
+	// recovery path by leaving its individual booleans false.
+	normalizeManagementSafety(&s.user)
+
+	// Resolve the managed-device security contract before recovery
+	// provisioning so a managed preset cannot silently skip the physical
+	// recovery path by leaving its individual booleans false.
+	normalizeManagementSafety(&s.user)
+
 	if err := configureRecoveryProvisioning(ctx, ui, opt, &s); err != nil {
 		return fail(errOut, err)
 	}
@@ -145,7 +158,6 @@ func Run(ctx context.Context, args []string, in io.Reader, out, errOut io.Writer
 	}
 	// Management-only boot restrictions must never survive in an unmanaged
 	// preset or a user declining JODS enrollment.
-	normalizeManagementSafety(&s.user)
 	if err := validateSelections(s.user, choices); err != nil {
 		return fail(errOut, err)
 	}
@@ -187,7 +199,10 @@ func Run(ctx context.Context, args []string, in io.Reader, out, errOut io.Writer
 	if s.existing && privilegedFileExists(ctx, rootPasswordPath) {
 		s.render.RootPasswordFile = rootPasswordPath
 		fmt.Fprintln(out, "Existing root password hash retained.")
-	} else if !s.render.EndpointManagedDevice {
+	} else {
+		// Root recovery is intentionally local even on JODS-managed endpoints.
+		// Management must never remove wheel/Polkit administration before a
+		// verified local recovery credential exists.
 		path, err := controlOutput(ctx, s.control, errOut, "installer", "work-password", "--username", "root", "--apply")
 		if err != nil {
 			return fail(errOut, err)
@@ -266,7 +281,7 @@ func Run(ctx context.Context, args []string, in io.Reader, out, errOut io.Writer
 	}()); err != nil {
 		return fail(errOut, err)
 	}
-	if s.render.SecureBootEnable && !s.render.EndpointManagedDevice {
+	if s.render.SecureBootEnable {
 		inspection, err := secureboot.Inspect(ctx)
 		if err != nil {
 			return fail(errOut, fmt.Errorf("inspect existing Secure Boot ownership: %w", err))
@@ -344,7 +359,7 @@ func Run(ctx context.Context, args []string, in io.Reader, out, errOut io.Writer
 	//
 	// -no-rebuild means "do not install another NixOS generation"; it must
 	// never mean "skip an already-started Secure Boot transaction".
-	if s.render.SecureBootEnable && !s.render.EndpointManagedDevice {
+	if s.render.SecureBootEnable {
 		inspection, err := secureboot.Inspect(ctx)
 		if err != nil {
 			return fail(
@@ -770,10 +785,11 @@ func collectInteractive(ctx context.Context, ui prompt.UI, root string, hardware
 		if err != nil {
 			return err
 		}
-		u.JODSDesktopProfile, err = ui.Choice(ctx, "JODS desktop profile", "headless", []string{"plasma", "gnome", "server", "headless"})
+		u.JODSDesktopProfile, err = ui.Value(ctx, "JODS desktop profile", "hyprland")
 		if err != nil {
 			return err
 		}
+		u.JODSDesktopProfile = strings.ToLower(strings.TrimSpace(u.JODSDesktopProfile))
 	}
 	u.WorkUserEnable, err = ui.Confirm(ctx, "Create a separate work account?", false)
 	if err != nil {
@@ -930,9 +946,17 @@ func normalizePreset(u *config.User, root string) {
 }
 
 func normalizeManagementSafety(u *config.User) {
-	if !u.EndpointManagedDevice {
-		u.JODSPrebootLockEnable = false
+	if u.EndpointManagedDevice {
+		// A managed endpoint must never enter the managed state with a weaker
+		// local boot/recovery posture. These are one security contract.
+		u.SecureBootEnable = true
+		u.LUKSTPM2Enable = true
+		u.RecoveryEnable = true
+		u.JODSPrebootLockEnable = true
+		return
 	}
+
+	u.JODSPrebootLockEnable = false
 }
 
 func configureWeatherLocation(ctx context.Context, ui prompt.UI, u *config.User, out io.Writer) error {
@@ -978,12 +1002,16 @@ func configureRecoveryProvisioning(ctx context.Context, ui prompt.UI, opt option
 	s.recoveryDisk = opt.recoveryDisk
 	s.recoveryPartition = opt.recoveryPartition
 	s.recoverySigningKey = opt.recoverySigningKey
+	s.recoverySigningPublicKey = opt.recoverySigningPublicKey
 	if s.recoveryPartition == "" {
 		s.recoveryPartition = findRecoveryPartition(ctx)
 	}
 	if explicitTarget {
 		if !filepath.IsAbs(s.recoverySigningKey) {
 			return errors.New("--recovery-signing-key must be an absolute runtime path")
+		}
+		if !filepath.IsAbs(s.recoverySigningPublicKey) {
+			return errors.New("--recovery-signing-public-key must be an absolute runtime path")
 		}
 		if !s.user.SecureBootEnable {
 			return errors.New("physical recovery partition provisioning requires Secure Boot")
@@ -997,6 +1025,9 @@ func configureRecoveryProvisioning(ctx context.Context, ui prompt.UI, opt option
 		}
 		if !yes {
 			s.recoveryPartition = ""
+			if s.user.EndpointManagedDevice && !s.existing {
+				return errors.New("managed fresh installation requires an independent recovery partition")
+			}
 			return nil
 		}
 	} else {
@@ -1005,6 +1036,9 @@ func configureRecoveryProvisioning(ctx context.Context, ui prompt.UI, opt option
 			return err
 		}
 		if !yes {
+			if s.user.EndpointManagedDevice && !s.existing {
+				return errors.New("managed fresh installation requires creation of an independent recovery partition")
+			}
 			return nil
 		}
 		s.recoveryDisk, err = ui.Value(ctx, "GPT disk containing at least 3 GiB unallocated space", "")
@@ -1014,13 +1048,23 @@ func configureRecoveryProvisioning(ctx context.Context, ui prompt.UI, opt option
 	}
 	if s.recoverySigningKey == "" {
 		var err error
-		s.recoverySigningKey, err = ui.Value(ctx, "Runtime path to the offline recovery-image Ed25519 signing key", "")
+		s.recoverySigningKey, err = ui.Value(ctx, "Runtime path to the offline recovery-image Ed25519 private signing key", "")
+		if err != nil {
+			return err
+		}
+	}
+	if s.recoverySigningPublicKey == "" {
+		var err error
+		s.recoverySigningPublicKey, err = ui.Value(ctx, "Runtime path to the separately pinned recovery-image Ed25519 public key", "")
 		if err != nil {
 			return err
 		}
 	}
 	if !filepath.IsAbs(s.recoverySigningKey) {
 		return errors.New("recovery signing key path must be absolute")
+	}
+	if !filepath.IsAbs(s.recoverySigningPublicKey) {
+		return errors.New("recovery signing public-key path must be absolute")
 	}
 	if !s.user.SecureBootEnable {
 		return errors.New("physical recovery partition provisioning requires Secure Boot")
@@ -1076,7 +1120,7 @@ func provisionRecoveryPartition(ctx context.Context, root string, s state) error
 		return err
 	}
 	defer os.RemoveAll(releaseDir)
-	if err := attached(ctx, signScript, images[0], s.recoverySigningKey, releaseDir); err != nil {
+	if err := attached(ctx, signScript, images[0], s.recoverySigningKey, s.recoverySigningPublicKey, releaseDir); err != nil {
 		return fmt.Errorf("sign recovery image release: %w", err)
 	}
 	manifest := filepath.Join(releaseDir, filepath.Base(images[0])+".manifest")
@@ -1123,7 +1167,7 @@ func detectAndRenderState(ctx context.Context, root string, s *state) error {
 	}
 	s.passthroughIDs = append([]string(nil), g.PassthroughIDs...)
 	passthrough := u.NemuGPUPassthrough && len(g.PassthroughIDs) > 0
-	s.render = nixrender.Settings{System: u.System, Profile: u.Profile, Hostname: u.Hostname, Username: u.Username, Timezone: u.Timezone, Locale: u.Locale, KeyboardLayout: u.KeyboardLayout, KeyboardVariant: u.KeyboardVariant, WeatherCity: u.WeatherCity, WeatherCountry: u.WeatherCountry, TouchpadWorkspaceSwipe: u.TouchpadWorkspaceSwipe, TouchscreenEnable: s.touchscreen, PenTabletEnable: s.penTablet, ClamshellEnable: u.ClamshellEnable, USBGuardEnable: u.USBGuardEnable, Name: u.Name, Email: u.Email, GitHubUsername: u.GitHubUsername, DotfilesDir: u.DotfilesDir, WorkUserEnable: u.WorkUserEnable, WorkUsername: u.WorkUsername, DockerEnable: u.DockerEnable, DebugFunctions: u.DebugFunctions, Shell: u.Shell, Editors: u.Editors, Browsers: u.Browsers, PreferredEditor: u.PreferredEditor, PreferredBrowser: u.PreferredBrowser, BackgroundNormal: u.BackgroundNormal, BackgroundWork: u.BackgroundWork, BackgroundGaming: u.BackgroundGaming, EnableScrobbling: u.EnableScrobbling, EnableLastfm: u.EnableLastfm, EnableListenbrainz: u.EnableListenbrainz, LastfmUsername: u.LastfmUsername, ListenbrainzUsername: u.ListenbrainzUsername, FrameworkEnable: u.FrameworkEnable, FrameworkModel: u.FrameworkModel, GraphicsVendor: g.Vendor, GraphicsType: g.Type, GraphicsCompute: g.Compute, GraphicsBusID: g.BusID, GraphicsIntegratedBusID: g.IntegratedBusID, WiFiDriver: wifi, AIEnable: u.AIEnable, AIModel: ai.Model, AIAccelerationProfile: ai.AccelerationProfile, AIAgentMode: u.AIAgentMode, AIContextTokens: ai.ContextTokens, AIVRAMMB: ai.VRAMMB, NemuEnable: u.NemuEnable, NemuGPUPassthrough: passthrough, LUKSTPM2Enable: u.LUKSTPM2Enable, RecoveryEnable: u.RecoveryEnable, JODSPrebootLockEnable: u.JODSPrebootLockEnable, SecureBootEnable: u.SecureBootEnable, EndpointManagedDevice: u.EndpointManagedDevice, JODSEndpoint: u.JODSEndpoint, JODSPolicySigningPublicKey: u.JODSPolicySigningKey, JODSRecoveryCommandSigningPublicKey: u.JODSRecoverySigningKey, JODSEnrollmentMode: u.JODSEnrollmentMode, JODSAllowInsecureTLS: u.JODSAllowInsecureTLS, JODSDeviceClass: u.JODSDeviceClass, JODSDesktopProfile: u.JODSDesktopProfile, JODSFingerprintEnrollmentAllowed: u.JODSFingerprintEnroll, WMs: []string{"hyprland"}, Theme: u.Theme}
+	s.render = nixrender.Settings{System: u.System, Profile: u.Profile, Hostname: u.Hostname, Username: u.Username, Timezone: u.Timezone, Locale: u.Locale, KeyboardLayout: u.KeyboardLayout, KeyboardVariant: u.KeyboardVariant, WeatherCity: u.WeatherCity, WeatherCountry: u.WeatherCountry, TouchpadWorkspaceSwipe: u.TouchpadWorkspaceSwipe, TouchscreenEnable: s.touchscreen, PenTabletEnable: s.penTablet, ClamshellEnable: u.ClamshellEnable, USBGuardEnable: u.USBGuardEnable, Name: u.Name, Email: u.Email, GitHubUsername: u.GitHubUsername, DotfilesDir: u.DotfilesDir, WorkUserEnable: u.WorkUserEnable, WorkUsername: u.WorkUsername, DockerEnable: u.DockerEnable, DebugFunctions: u.DebugFunctions, Shell: u.Shell, Editors: u.Editors, Browsers: u.Browsers, PreferredEditor: u.PreferredEditor, PreferredBrowser: u.PreferredBrowser, PlaneEnable: u.PlaneEnable, PlaneHost: u.PlaneHost, DrawioEnable: u.DrawioEnable, DrawioHost: u.DrawioHost, BackgroundNormal: u.BackgroundNormal, BackgroundWork: u.BackgroundWork, BackgroundGaming: u.BackgroundGaming, EnableScrobbling: u.EnableScrobbling, EnableLastfm: u.EnableLastfm, EnableListenbrainz: u.EnableListenbrainz, LastfmUsername: u.LastfmUsername, ListenbrainzUsername: u.ListenbrainzUsername, FrameworkEnable: u.FrameworkEnable, FrameworkModel: u.FrameworkModel, GraphicsVendor: g.Vendor, GraphicsType: g.Type, GraphicsCompute: g.Compute, GraphicsBusID: g.BusID, GraphicsIntegratedBusID: g.IntegratedBusID, WiFiDriver: wifi, AIEnable: u.AIEnable, AIModel: ai.Model, AIAccelerationProfile: ai.AccelerationProfile, AIAgentMode: u.AIAgentMode, AIContextTokens: ai.ContextTokens, AIVRAMMB: ai.VRAMMB, NemuEnable: u.NemuEnable, NemuGPUPassthrough: passthrough, LUKSTPM2Enable: u.LUKSTPM2Enable, RecoveryEnable: u.RecoveryEnable, JODSPrebootLockEnable: u.JODSPrebootLockEnable, SecureBootEnable: u.SecureBootEnable, EndpointManagedDevice: u.EndpointManagedDevice, JODSEndpoint: u.JODSEndpoint, JODSPolicySigningPublicKey: u.JODSPolicySigningKey, JODSRecoveryCommandSigningPublicKey: u.JODSRecoverySigningKey, JODSEnrollmentMode: u.JODSEnrollmentMode, JODSAllowInsecureTLS: u.JODSAllowInsecureTLS, JODSDeviceClass: u.JODSDeviceClass, JODSDesktopProfile: u.JODSDesktopProfile, JODSFingerprintEnrollmentAllowed: u.JODSFingerprintEnroll, WMs: []string{"hyprland"}, Theme: u.Theme}
 	if passthrough {
 		s.render.NemuGPUIDs = g.PassthroughIDs
 	}
