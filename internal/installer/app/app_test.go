@@ -161,3 +161,82 @@ func TestManagedPresetForcesBootRecoveryContract(t *testing.T) {
 		t.Fatal("managed preset did not force JODS preboot lock")
 	}
 }
+
+func TestCollectProjectToolsDefaultsDisabled(t *testing.T) {
+	var output bytes.Buffer
+	u := config.User{}
+
+	err := collectProjectTools(
+		context.Background(),
+		prompt.New(strings.NewReader("\n\n"), &output),
+		&u,
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if u.PlaneEnable || u.DrawioEnable {
+		t.Fatalf("project tools should default disabled: %+v", u)
+	}
+	if u.PlaneHost != "" || u.DrawioHost != "" {
+		t.Fatalf("disabled project tools unexpectedly received hosts: %+v", u)
+	}
+}
+
+func TestCollectProjectToolsSupportsIndependentSelection(t *testing.T) {
+	tests := []struct {
+		name                      string
+		input                     string
+		planeEnable, drawioEnable bool
+		planeHost, drawioHost     string
+	}{
+		{
+			name:        "plane only",
+			input:       "yes\nhttps://plane.example.test\nno\n",
+			planeEnable: true,
+			planeHost:   "https://plane.example.test",
+		},
+		{
+			name:         "drawio only",
+			input:        "no\nyes\nhttps://drawio.example.test\n",
+			drawioEnable: true,
+			drawioHost:   "https://drawio.example.test",
+		},
+		{
+			name:         "both",
+			input:        "yes\nplane.internal:3000\nyes\ndrawio.internal:8080\n",
+			planeEnable:  true,
+			drawioEnable: true,
+			planeHost:    "plane.internal:3000",
+			drawioHost:   "drawio.internal:8080",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var output bytes.Buffer
+			u := config.User{}
+
+			err := collectProjectTools(
+				context.Background(),
+				prompt.New(strings.NewReader(tt.input), &output),
+				&u,
+			)
+			if err != nil {
+				t.Fatal(err)
+			}
+
+			if u.PlaneEnable != tt.planeEnable ||
+				u.DrawioEnable != tt.drawioEnable ||
+				u.PlaneHost != tt.planeHost ||
+				u.DrawioHost != tt.drawioHost {
+				t.Fatalf(
+					"unexpected project-tool selection: plane=%t host=%q drawio=%t host=%q",
+					u.PlaneEnable,
+					u.PlaneHost,
+					u.DrawioEnable,
+					u.DrawioHost,
+				)
+			}
+		})
+	}
+}
