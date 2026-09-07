@@ -76,6 +76,7 @@ type User struct {
 	JODSDeviceClass        string   `json:"jodsDeviceClass"`
 	JODSDesktopProfile     string   `json:"jodsDesktopProfile"`
 	JODSFingerprintEnroll  bool     `json:"jodsFingerprintEnrollmentAllowed"`
+	UnattendedInstall      bool     `json:"unattendedInstall"`
 	AutoReboot             bool     `json:"autoReboot"`
 	RunUpdateChecks        bool     `json:"runUpdateChecks"`
 	WriteConfig            bool     `json:"writeConfig"`
