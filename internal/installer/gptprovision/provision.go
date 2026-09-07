@@ -25,7 +25,13 @@ import (
 const (
 	StatusCreated               = "created"
 	StatusAlreadyPresent        = "already-present"
-	StatusOfflineResizeRequired = "offline-resize-required"
+	StatusResizeRequired        = "resize-required"
+	StatusUnsupportedFilesystem = "unsupported-filesystem"
+
+	// Compatibility alias for callers written against GJAL-31.
+	// GJAL-65 can satisfy this condition live for supported Btrfs layouts,
+	// so the state is no longer inherently "offline".
+	StatusOfflineResizeRequired = StatusResizeRequired
 )
 
 var diskGUIDPattern = regexp.MustCompile(
@@ -202,7 +208,7 @@ func provision(
 		message := fmt.Sprintf(
 			"Recovery needs %d bytes but the largest suitable unallocated GPT extent has %d bytes. "+
 				"The existing OS layout has been left unchanged. "+
-				"An offline storage resize is required before recovery provisioning can continue.",
+				"A verified Btrfs recovery resize is required before recovery provisioning can continue.",
 			requiredBytes,
 			availableBytes,
 		)
@@ -210,7 +216,7 @@ func provision(
 		fmt.Fprintf(input.Out, "ACTION REQUIRED: %s\n", message)
 
 		return Result{
-			Status:         StatusOfflineResizeRequired,
+			Status:         StatusResizeRequired,
 			RequiredBytes:  requiredBytes,
 			AvailableBytes: availableBytes,
 			Message:        message,

@@ -127,11 +127,9 @@ func provision(
 	}
 
 	fs := strings.ToLower(strings.TrimSpace(part.Filesystem.Type))
-	switch fs {
-	case "ext4", "btrfs":
-	default:
+	if fs != "btrfs" {
 		return Result{}, fmt.Errorf(
-			"unsupported canonical root filesystem %q",
+			"fresh GjallarOS root provisioning requires Btrfs; requested filesystem %q",
 			part.Filesystem.Type,
 		)
 	}
@@ -203,28 +201,14 @@ func provision(
 
 	label := strings.TrimSpace(part.Filesystem.Label)
 
-	switch fs {
-	case "ext4":
-		args := []string{"mkfs.ext4", "-F"}
-		if label != "" {
-			args = append(args, "-L", label)
-		}
-		args = append(args, mapperPath)
-		if err := privilegedRun(ctx, runner, args...); err != nil {
-			cleanup()
-			return Result{}, fmt.Errorf("format ext4 root filesystem: %w", err)
-		}
-
-	case "btrfs":
-		args := []string{"mkfs.btrfs", "-f"}
-		if label != "" {
-			args = append(args, "-L", label)
-		}
-		args = append(args, mapperPath)
-		if err := privilegedRun(ctx, runner, args...); err != nil {
-			cleanup()
-			return Result{}, fmt.Errorf("format btrfs root filesystem: %w", err)
-		}
+	args := []string{"mkfs.btrfs", "-f"}
+	if label != "" {
+		args = append(args, "-L", label)
+	}
+	args = append(args, mapperPath)
+	if err := privilegedRun(ctx, runner, args...); err != nil {
+		cleanup()
+		return Result{}, fmt.Errorf("format btrfs root filesystem: %w", err)
 	}
 
 	if err := privilegedRun(ctx, runner, "mkdir", "-p", mountPoint); err != nil {
