@@ -81,4 +81,15 @@ in
         update-desktop-database "$HOME/.local/share/applications" >/dev/null 2>&1 || true
     fi
   '';
+  # GjallarOS backend-browser desktop masks
+
+  xdg.dataFile."applications/microsoft-edge.desktop".text = ''
+    [Desktop Entry]
+    Type=Application
+    Name=Backend Browser
+    NoDisplay=true
+    Hidden=true
+  '';
+
+  # End GjallarOS backend-browser desktop masks
 }
