@@ -2,6 +2,7 @@
 {
   imports = [
     ./cava.nix
+    ./drawio.nix
     ./fingerprint.nix
     ./git.nix
     ./kitty.nix

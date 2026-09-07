@@ -38,6 +38,7 @@ type User struct {
 	PlaneEnable            bool     `json:"planeEnable"`
 	PlaneHost              string   `json:"planeHost"`
 	DrawioEnable           bool     `json:"drawioEnable"`
+	DrawioSelfHosted       bool     `json:"drawioSelfHosted"`
 	DrawioHost             string   `json:"drawioHost"`
 	Theme                  string   `json:"theme"`
 	BackgroundNormal       string   `json:"backgroundNormal"`
@@ -160,7 +161,14 @@ func NormalizeExternalServiceEndpoint(raw string) (string, error) {
 
 	// Project-tool endpoints are canonical base URLs. Keep an explicit
 	// scheme and port unchanged, while removing redundant trailing slashes.
-	parsed.Path = strings.TrimRight(parsed.Path, "/")
+	// Remove redundant trailing path slashes for ordinary base URLs.
+	// Keep the root slash when a query/fragment is present so endpoints such as
+	// http://host:8080/?offline=1&https=0 remain intact.
+	if parsed.RawQuery == "" && parsed.Fragment == "" {
+		parsed.Path = strings.TrimRight(parsed.Path, "/")
+	} else if parsed.Path != "/" {
+		parsed.Path = strings.TrimRight(parsed.Path, "/")
+	}
 
 	return strings.TrimRight(parsed.String(), "/"), nil
 }
@@ -174,12 +182,15 @@ func NormalizeProjectTools(user *User) error {
 		user.PlaneHost = normalized
 	}
 
-	if user.DrawioEnable {
+	if user.DrawioEnable && user.DrawioSelfHosted {
 		normalized, err := NormalizeExternalServiceEndpoint(user.DrawioHost)
 		if err != nil {
 			return fmt.Errorf("drawioHost: %w", err)
 		}
 		user.DrawioHost = normalized
+	} else if user.DrawioEnable {
+		// Public diagrams.net mode does not require or consume a custom host.
+		user.DrawioHost = ""
 	}
 
 	return nil
