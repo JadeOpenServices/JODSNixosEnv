@@ -1,4 +1,5 @@
 {
+  config,
   settings,
   lib,
   ...
@@ -17,24 +18,22 @@ in
       package = lib.mkForce details.iconsPkg;
     };
 
+  };
+
+  stylix = {
     # GjallarOS accessibility/contrast layer.
     #
-    # Stylix receives the active Noctalia palette during rebuild, therefore
-    # these colors remain theme-derived rather than being hardcoded.
-    #
-    # base0D = primary/accent
-    # base00 = contrasting text on the accent
-    gtk3.extraCss = ''
+    # Stylix owns GTK theming, so custom GTK CSS must be injected through the
+    # Stylix GTK target rather than gtk.gtk3/gtk.gtk4.extraCss.
+    targets.gtk.extraCss = ''
       @define-color theme_selected_bg_color #${config.lib.stylix.colors.base0D};
       @define-color theme_selected_fg_color #${config.lib.stylix.colors.base00};
-      @define-color accent_bg_color #${config.lib.stylix.colors.base0D};
-      @define-color accent_fg_color #${config.lib.stylix.colors.base00};
-
       selection,
       entry selection,
       textview text selection,
       treeview.view:selected,
-      row:selected {
+      row:selected,
+      list row:selected {
         background-color: #${config.lib.stylix.colors.base0D};
         color: #${config.lib.stylix.colors.base00};
       }
@@ -44,27 +43,6 @@ in
       }
     '';
 
-    gtk4.extraCss = ''
-      @define-color theme_selected_bg_color #${config.lib.stylix.colors.base0D};
-      @define-color theme_selected_fg_color #${config.lib.stylix.colors.base00};
-      @define-color accent_bg_color #${config.lib.stylix.colors.base0D};
-      @define-color accent_fg_color #${config.lib.stylix.colors.base00};
-
-      selection,
-      entry selection,
-      textview text selection,
-      row:selected {
-        background-color: #${config.lib.stylix.colors.base0D};
-        color: #${config.lib.stylix.colors.base00};
-      }
-
-      *:focus-visible {
-        outline-color: #${config.lib.stylix.colors.base0D};
-      }
-    '';
-  };
-
-  stylix = {
     targets.nixvim.enable = true;
     # Noctalia writes Kitty's live palette through its template engine.
     targets.kitty.enable = false;

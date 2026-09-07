@@ -52,7 +52,7 @@ let
         cursor = "#${config.lib.stylix.colors.base05}";
         cursorText = "#${config.lib.stylix.colors.base00}";
 
-        # Strong selection contrast: accent background + inverse text.
+        # Visible themed selection block.
         selectionBg = "#${config.lib.stylix.colors.base0D}";
         selectionFg = "#${config.lib.stylix.colors.base00}";
 
@@ -546,8 +546,7 @@ in
     background {{colors.surface.default.hex}}
     cursor {{colors.primary.default.hex}}
     cursor_text_color {{colors.on_primary.default.hex}}
-    # Selection must remain visually distinct from the terminal surface.
-    # primary/on_primary follow the live Noctalia palette.
+    # Windows-style visible selection block using the active Noctalia accent.
     selection_foreground {{colors.on_primary.default.hex}}
     selection_background {{colors.primary.default.hex}}
     active_border_color {{colors.primary.default.hex}}

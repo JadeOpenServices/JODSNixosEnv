@@ -7,6 +7,18 @@
 }:
 let
   gjallarctl = pkgs.callPackage ../../pkgs/gjallarctl { };
+  recoveryExecutor = pkgs.writeShellApplication {
+    name = "gjallar-recovery-execute";
+    runtimeInputs = with pkgs; [
+      coreutils
+      gawk
+      gptfdisk
+      jq
+      util-linux
+    ];
+    text = builtins.readFile ../../scripts/recovery/execute-contract.sh;
+  };
+
   recovery = pkgs.writeShellApplication {
     name = "gjallar-recover";
     runtimeInputs = with pkgs; [
@@ -103,6 +115,12 @@ let
           confirm_phrase REBUILD
           nixos-enter --root "$root" -- nixos-rebuild boot --flake "$flake"
           ;;
+        jods-execute)
+          require_root
+          contract="''${2:?CONTRACT required}"
+          artifact="''${3:?ARTIFACT required}"
+          exec gjallar-recovery-execute "$contract" "$artifact"
+          ;;
         jods)
           mode="''${2:-}"
           case "$mode" in
@@ -157,6 +175,7 @@ lib.mkMerge [
       services.jods-mdm-agent.recoveryExecutorEnable = settings.endpointManagedDevice;
       environment.systemPackages = [
         recovery
+        recoveryExecutor
         gjallarctl
         pkgs.dosfstools
         pkgs.gdisk
@@ -177,7 +196,7 @@ lib.mkMerge [
   (lib.mkIf (settings.recoveryEnable || settings.jodsPrebootLockEnable) {
     environment.etc."jods/preboot-policy".text = ''
       version=1
-      recovery=${if settings.recoveryEnable then "signed-local-entry" else "disabled"}
+      recovery=${if settings.recoveryEnable then "signed-independent-xbootldr" else "disabled"}
       root_unlock=human-recovery-credential-only
       external_media_tpm_unlock=forbidden
       jods_lock=${if settings.jodsPrebootLockEnable then "measured-boot-required" else "disabled"}

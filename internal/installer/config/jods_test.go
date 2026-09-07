@@ -60,3 +60,21 @@ func TestUnmanagedJODSRejectsPrebootLock(t *testing.T) {
 		t.Fatal("unmanaged device accepted JODS preboot lock")
 	}
 }
+
+func TestValidateJODSAllowsHyprlandDesktopProfile(t *testing.T) {
+	u := validManagedUser()
+	u.JODSDesktopProfile = "hyprland"
+	if err := ValidateJODS(u); err != nil {
+		t.Fatalf("hyprland desktop profile rejected: %v", err)
+	}
+}
+
+func TestValidateJODSRejectsUnsafeDesktopProfile(t *testing.T) {
+	for _, profile := range []string{"", "../hyprland", "hypr land", "/etc/passwd", strings.Repeat("a", 65)} {
+		u := validManagedUser()
+		u.JODSDesktopProfile = profile
+		if err := ValidateJODS(u); err == nil {
+			t.Fatalf("accepted unsafe desktop profile %q", profile)
+		}
+	}
+}
