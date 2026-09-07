@@ -11,6 +11,36 @@ import (
 	"time"
 )
 
+const freshTargetRoot = "/mnt"
+
+type commandRunner interface {
+	Run(context.Context, io.Writer, io.Writer, string, ...string) error
+	Output(context.Context, string, ...string) ([]byte, error)
+}
+
+type execRunner struct{}
+
+func (execRunner) Run(
+	ctx context.Context,
+	stdout io.Writer,
+	stderr io.Writer,
+	name string,
+	args ...string,
+) error {
+	cmd := exec.CommandContext(ctx, name, args...)
+	cmd.Stdout = stdout
+	cmd.Stderr = stderr
+	return cmd.Run()
+}
+
+func (execRunner) Output(
+	ctx context.Context,
+	name string,
+	args ...string,
+) ([]byte, error) {
+	return exec.CommandContext(ctx, name, args...).Output()
+}
+
 func ValidateTarget(repo, target string) (string, error) {
 	root, err := filepath.Abs(repo)
 	if err != nil {
@@ -28,69 +58,241 @@ func ValidateTarget(repo, target string) (string, error) {
 		return "", fmt.Errorf("hardware target is outside repository: %s", target)
 	}
 	parts := strings.Split(filepath.ToSlash(rel), "/")
-	if len(parts) != 3 || parts[0] != "profiles" || parts[2] != "hardware-configuration.nix" || parts[1] == "" {
+	if len(parts) != 3 ||
+		parts[0] != "profiles" ||
+		parts[2] != "hardware-configuration.nix" ||
+		parts[1] == "" {
 		return "", fmt.Errorf("invalid hardware target: %s", target)
 	}
 	return abs, nil
 }
 
-func Generate(ctx context.Context, repo, target string, now time.Time) (string, error) {
+// Generate preserves the existing behavior: generate hardware configuration
+// for the currently running machine.
+func Generate(
+	ctx context.Context,
+	repo,
+	target string,
+	now time.Time,
+) (string, error) {
+	return generate(
+		ctx,
+		repo,
+		target,
+		now,
+		"",
+		execRunner{},
+	)
+}
+
+// GenerateTarget generates hardware configuration for the prepared fresh
+// installation mounted at /mnt.
+//
+// It deliberately does not alter flake.nix or any unrelated source file. The
+// caller selects the existing profile hardware-configuration.nix target, which
+// is backed up before atomic replacement.
+func GenerateTarget(
+	ctx context.Context,
+	repo,
+	target string,
+	now time.Time,
+) (string, error) {
+	return generate(
+		ctx,
+		repo,
+		target,
+		now,
+		freshTargetRoot,
+		execRunner{},
+	)
+}
+
+func generate(
+	ctx context.Context,
+	repo,
+	target string,
+	now time.Time,
+	root string,
+	runner commandRunner,
+) (string, error) {
 	target, err := ValidateTarget(repo, target)
 	if err != nil {
 		return "", err
 	}
+
+	if root != "" {
+		if filepath.Clean(root) != freshTargetRoot {
+			return "", fmt.Errorf(
+				"fresh-install hardware root must be %s, got %s",
+				freshTargetRoot,
+				root,
+			)
+		}
+		if err := verifyFreshTargetMount(ctx, runner, root); err != nil {
+			return "", err
+		}
+	}
+
 	if err := os.MkdirAll(filepath.Dir(target), 0755); err != nil {
 		return "", fmt.Errorf("create profile directory: %w", err)
 	}
+
 	backup := ""
 	if _, err := os.Stat(target); err == nil {
 		backup = target + ".bak." + now.Format("20060102150405")
 		if err := copyFile(target, backup); err != nil {
 			return "", err
 		}
+	} else if !os.IsNotExist(err) {
+		return "", fmt.Errorf("inspect hardware configuration target: %w", err)
 	}
-	tmp, err := os.CreateTemp(filepath.Dir(target), ".hardware-configuration.nix-*")
+
+	tmp, err := os.CreateTemp(
+		filepath.Dir(target),
+		".hardware-configuration.nix-*",
+	)
 	if err != nil {
-		return backup, fmt.Errorf("create temporary hardware configuration: %w", err)
+		return backup, fmt.Errorf(
+			"create temporary hardware configuration: %w",
+			err,
+		)
 	}
+
 	tmpName := tmp.Name()
 	defer os.Remove(tmpName)
-	cmd := exec.CommandContext(ctx, "nixos-generate-config", "--show-hardware-config")
-	cmd.Stdout = tmp
-	cmd.Stderr = os.Stderr
-	if err := cmd.Run(); err != nil {
-		tmp.Close()
+
+	args := []string{}
+	if root != "" {
+		args = append(args, "--root", root)
+	}
+	args = append(args, "--show-hardware-config")
+
+	if err := runner.Run(
+		ctx,
+		tmp,
+		os.Stderr,
+		"nixos-generate-config",
+		args...,
+	); err != nil {
+		_ = tmp.Close()
 		return backup, fmt.Errorf("nixos-generate-config: %w", err)
 	}
+
 	if err := tmp.Sync(); err != nil {
-		tmp.Close()
-		return backup, fmt.Errorf("sync hardware configuration: %w", err)
+		_ = tmp.Close()
+		return backup, fmt.Errorf(
+			"sync hardware configuration: %w",
+			err,
+		)
 	}
 	if err := tmp.Close(); err != nil {
-		return backup, fmt.Errorf("close hardware configuration: %w", err)
+		return backup, fmt.Errorf(
+			"close hardware configuration: %w",
+			err,
+		)
 	}
+
+	info, err := os.Stat(tmpName)
+	if err != nil {
+		return backup, fmt.Errorf(
+			"inspect generated hardware configuration: %w",
+			err,
+		)
+	}
+	if !info.Mode().IsRegular() || info.Size() == 0 {
+		return backup, fmt.Errorf(
+			"nixos-generate-config produced an empty or invalid hardware configuration",
+		)
+	}
+
+	data, err := os.ReadFile(tmpName)
+	if err != nil {
+		return backup, fmt.Errorf(
+			"read generated hardware configuration: %w",
+			err,
+		)
+	}
+	if !bytesContainNixModule(data) {
+		return backup, fmt.Errorf(
+			"generated hardware configuration does not look like a NixOS module",
+		)
+	}
+
 	if err := os.Rename(tmpName, target); err != nil {
-		return backup, fmt.Errorf("replace hardware configuration: %w", err)
+		return backup, fmt.Errorf(
+			"replace hardware configuration: %w",
+			err,
+		)
 	}
+
 	return backup, nil
+}
+
+func verifyFreshTargetMount(
+	ctx context.Context,
+	runner commandRunner,
+	root string,
+) error {
+	raw, err := runner.Output(
+		ctx,
+		"findmnt",
+		"-nro",
+		"TARGET",
+		"--mountpoint",
+		root,
+	)
+	if err != nil {
+		return fmt.Errorf(
+			"fresh target %s is not mounted: %w",
+			root,
+			err,
+		)
+	}
+
+	if filepath.Clean(strings.TrimSpace(string(raw))) != root {
+		return fmt.Errorf(
+			"fresh target mount verification failed: expected %s, got %q",
+			root,
+			strings.TrimSpace(string(raw)),
+		)
+	}
+
+	return nil
+}
+
+func bytesContainNixModule(data []byte) bool {
+	text := strings.TrimSpace(string(data))
+	return strings.Contains(text, "{") &&
+		strings.Contains(text, "config") &&
+		strings.Contains(text, "lib") &&
+		strings.Contains(text, "pkgs")
 }
 
 func copyFile(source, target string) error {
 	in, err := os.Open(source)
 	if err != nil {
-		return fmt.Errorf("open hardware backup source: %w", err)
+		return fmt.Errorf(
+			"open hardware backup source: %w",
+			err,
+		)
 	}
 	defer in.Close()
-	out, err := os.OpenFile(target, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0600)
+
+	out, err := os.OpenFile(
+		target,
+		os.O_CREATE|os.O_EXCL|os.O_WRONLY,
+		0600,
+	)
 	if err != nil {
 		return fmt.Errorf("create hardware backup: %w", err)
 	}
+
 	if _, err := io.Copy(out, in); err != nil {
-		out.Close()
+		_ = out.Close()
 		return fmt.Errorf("write hardware backup: %w", err)
 	}
 	if err := out.Sync(); err != nil {
-		out.Close()
+		_ = out.Close()
 		return fmt.Errorf("sync hardware backup: %w", err)
 	}
 	return out.Close()
