@@ -47,7 +47,7 @@ type Settings struct {
 	Editors, Browsers                                     []string
 	PreferredEditor, PreferredBrowser                     string
 	PlaneHost, DrawioHost                                 string
-	PlaneEnable, DrawioEnable                             bool
+	PlaneEnable, DrawioEnable, DrawioSelfHosted           bool
 	BackgroundNormal, BackgroundWork, BackgroundGaming    string
 	EnableScrobbling, EnableLastfm, EnableListenbrainz    bool
 	LastfmUsername, ListenbrainzUsername                  string
@@ -117,6 +117,7 @@ func Render(s Settings) []byte {
 	boolean("planeEnable", s.PlaneEnable)
 	str("planeHost", s.PlaneHost)
 	boolean("drawioEnable", s.DrawioEnable)
+	boolean("drawioSelfHosted", s.DrawioSelfHosted)
 	str("drawioHost", s.DrawioHost)
 	str("backgroundNormal", s.BackgroundNormal)
 	str("backgroundWork", s.BackgroundWork)
