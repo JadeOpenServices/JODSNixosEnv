@@ -62,6 +62,7 @@
   "jodsDeviceClass": "laptop",
   "jodsDesktopProfile": "headless",
   "jodsFingerprintEnrollmentAllowed": false,
+  "unattendedInstall": false,
   "autoReboot": false,
   "runUpdateChecks": false,
   "writeConfig": true,
