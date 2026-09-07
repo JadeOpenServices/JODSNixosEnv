@@ -396,6 +396,47 @@ Only on the SECOND firmware visit should Secure Boot be enabled.
 	}
 }
 
+// Exact requires the caller to type the exact expected value.
+//
+// Unlike Value, Exact does not trim surrounding whitespace and has no default.
+// This makes it suitable for explicit destructive-operation confirmation
+// phrases where approximate input must fail closed.
+func (u UI) Exact(ctx context.Context, label, expected string) error {
+	if expected == "" {
+		return fmt.Errorf("exact confirmation value must not be empty")
+	}
+
+	var value string
+
+	if u.GTK {
+		out, err := zenityCommand(
+			ctx,
+			"--entry",
+			"--title=GjallarOS installer",
+			"--text="+label,
+		).Output()
+		if err != nil {
+			return ErrCancelled
+		}
+		value = strings.TrimSuffix(string(out), "\n")
+		value = strings.TrimSuffix(value, "\r")
+	} else {
+		fmt.Fprintf(u.Out, "%s: ", label)
+		line, err := u.Reader.ReadString('\n')
+		if err != nil {
+			return err
+		}
+		value = strings.TrimSuffix(line, "\n")
+		value = strings.TrimSuffix(value, "\r")
+	}
+
+	if value != expected {
+		return fmt.Errorf("destructive confirmation did not match exactly")
+	}
+
+	return nil
+}
+
 func (u UI) Value(ctx context.Context, label, def string) (string, error) {
 	if u.GTK {
 		out, err := zenityCommand(ctx, "--entry", "--title=GjallarOS installer", "--text="+label, "--entry-text="+def).Output()
