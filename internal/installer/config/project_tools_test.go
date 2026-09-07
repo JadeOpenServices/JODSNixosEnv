@@ -27,12 +27,27 @@ func TestPlaneRequiresHostWhenEnabled(t *testing.T) {
 	}
 }
 
-func TestDrawioRequiresHostWhenEnabled(t *testing.T) {
-	u := User{DrawioEnable: true}
+func TestDrawioRequiresHostWhenSelfHosted(t *testing.T) {
+	u := User{
+		DrawioEnable:     true,
+		DrawioSelfHosted: true,
+	}
 
 	err := ValidateProjectTools(u)
 	if err == nil || !strings.Contains(err.Error(), "drawioHost") {
 		t.Fatalf("expected drawioHost validation error, got %v", err)
+	}
+}
+
+func TestDrawioPublicModeDoesNotRequireHost(t *testing.T) {
+	u := User{
+		DrawioEnable:     true,
+		DrawioSelfHosted: false,
+		DrawioHost:       "",
+	}
+
+	if err := ValidateProjectTools(u); err != nil {
+		t.Fatalf("public Draw.io mode should not require drawioHost: %v", err)
 	}
 }
 
@@ -127,10 +142,11 @@ func TestNormalizeExternalServiceEndpointRejectsMalformedValues(t *testing.T) {
 
 func TestNormalizeProjectToolsCanonicalizesEnabledEndpoints(t *testing.T) {
 	u := User{
-		PlaneEnable:  true,
-		PlaneHost:    "192.0.2.203",
-		DrawioEnable: true,
-		DrawioHost:   "192.0.2.204:8080///",
+		PlaneEnable:      true,
+		PlaneHost:        "192.0.2.203",
+		DrawioEnable:     true,
+		DrawioSelfHosted: true,
+		DrawioHost:       "192.0.2.204:8080///",
 	}
 
 	if err := NormalizeProjectTools(&u); err != nil {
@@ -156,5 +172,18 @@ func TestNormalizeProjectToolsLeavesDisabledValuesUnused(t *testing.T) {
 
 	if err := NormalizeProjectTools(&u); err != nil {
 		t.Fatalf("disabled project tools should not require endpoints: %v", err)
+	}
+}
+
+func TestNormalizeExternalServiceEndpointPreservesDrawioQuery(t *testing.T) {
+	const input = "http://192.0.2.204:8080/?offline=1&https=0"
+
+	got, err := NormalizeExternalServiceEndpoint(input)
+	if err != nil {
+		t.Fatalf("NormalizeExternalServiceEndpoint() error = %v", err)
+	}
+
+	if got != input {
+		t.Fatalf("NormalizeExternalServiceEndpoint() = %q, want %q", got, input)
 	}
 }
