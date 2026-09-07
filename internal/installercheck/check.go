@@ -98,7 +98,7 @@ var presetSchema = map[string]presetValueType{
 	"name": presetString, "email": presetString, "githubUsername": presetString, "dotfilesDir": presetString,
 	"shell": presetString, "editors": presetStringList, "browsers": presetStringList,
 	"preferredEditor": presetString, "preferredBrowser": presetString, "theme": presetString,
-	"planeEnable": presetBool, "planeHost": presetString, "drawioEnable": presetBool, "drawioHost": presetString,
+	"planeEnable": presetBool, "planeHost": presetString, "drawioEnable": presetBool, "drawioSelfHosted": presetBool, "drawioHost": presetString,
 	"backgroundNormal": presetString, "backgroundWork": presetString, "backgroundGaming": presetString,
 	"workUserEnable": presetBool, "workUsername": presetString, "workUserPasswordFile": presetString,
 	"dockerEnable": presetBool, "debugFunctions": presetBool, "aiEnable": presetBool,
