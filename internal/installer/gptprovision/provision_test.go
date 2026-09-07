@@ -99,7 +99,7 @@ func plan() diskplan.Plan {
 				PARTUUID:  rootUUID,
 				SizeBytes: 900 * 1024 * 1024 * 1024,
 				Filesystem: diskplan.Filesystem{
-					Type: "ext4",
+					Type: "btrfs",
 				},
 				MountPoint: "/",
 			},
@@ -252,7 +252,7 @@ func TestCreatesOnlyRecoveryGPTEntry(t *testing.T) {
 	}
 }
 
-func TestInsufficientSpaceReturnsOfflineResizeRequired(t *testing.T) {
+func TestInsufficientSpaceReturnsResizeRequired(t *testing.T) {
 	p := plan()
 	r := runnerForFreeSpace()
 	r.outputs[key("sudo", "sgdisk", "-F", p.TargetDisk.Path)] =
@@ -270,11 +270,11 @@ func TestInsufficientSpaceReturnsOfflineResizeRequired(t *testing.T) {
 		t.Fatalf("resize-required state returned an error: %v", err)
 	}
 
-	if result.Status != StatusOfflineResizeRequired {
+	if result.Status != StatusResizeRequired {
 		t.Fatalf("unexpected status: %q", result.Status)
 	}
 
-	if !strings.Contains(result.Message, "offline storage resize") {
+	if !strings.Contains(result.Message, "Btrfs recovery resize") {
 		t.Fatalf("message is not actionable: %q", result.Message)
 	}
 
@@ -347,4 +347,52 @@ func (s *sequenceRunner) Output(
 		return out, nil
 	}
 	return s.base.Output(ctx, name, args...)
+}
+
+func TestPlannedFilesystemDoesNotReplaceRuntimeCapabilityDetection(t *testing.T) {
+	p := plan()
+	p.Root.Partition.Filesystem.Type = "ext4"
+
+	r := &fakeRunner{
+		outputs: map[string][]byte{},
+	}
+	var out bytes.Buffer
+
+	_, err := provision(
+		context.Background(),
+		Input{
+			Plan: p,
+			UI:   ui("", &out),
+			Out:  &out,
+		},
+		r,
+	)
+	if err == nil {
+		t.Fatal("expected disk inspection to continue past planned filesystem metadata")
+	}
+	if !strings.Contains(err.Error(), "inspect GPT target") {
+		t.Fatalf(
+			"planned filesystem unexpectedly decided runtime capability: %v",
+			err,
+		)
+	}
+
+	if len(r.calls) == 0 {
+		t.Fatal("gptprovision did not inspect the actual target disk")
+	}
+
+	first := strings.Join(r.calls[0], " ")
+	if !strings.Contains(first, "lsblk") {
+		t.Fatalf(
+			"expected actual target inspection first, got: %v",
+			r.calls[0],
+		)
+	}
+
+	if strings.Contains(out.String(), "requires a Btrfs root filesystem") {
+		t.Fatalf(
+			"gptprovision emitted runtime filesystem decision from canonical metadata: %q",
+			out.String(),
+		)
+	}
 }
