@@ -960,7 +960,7 @@ func collectProjectTools(ctx context.Context, ui prompt.UI, u *config.User) erro
 		}
 	}
 
-	return nil
+	return config.NormalizeProjectTools(u)
 }
 
 func normalizePreset(u *config.User, root string) {

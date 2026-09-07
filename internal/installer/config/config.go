@@ -94,6 +94,9 @@ func Load(path string) (User, error) {
 	if err := decoder.Decode(&user); err != nil {
 		return User{}, fmt.Errorf("parse user configuration: %w", err)
 	}
+	if err := NormalizeProjectTools(&user); err != nil {
+		return User{}, err
+	}
 	if err := Validate(user); err != nil {
 		return User{}, err
 	}
@@ -136,16 +139,54 @@ func Validate(user User) error {
 	return nil
 }
 
-func ValidateProjectTools(user User) error {
-	if user.PlaneEnable && strings.TrimSpace(user.PlaneHost) == "" {
-		return fmt.Errorf("planeHost is required when planeEnable is true")
+func NormalizeExternalServiceEndpoint(raw string) (string, error) {
+	value := strings.TrimSpace(raw)
+	if value == "" {
+		return "", fmt.Errorf("external service endpoint is empty")
 	}
 
-	if user.DrawioEnable && strings.TrimSpace(user.DrawioHost) == "" {
-		return fmt.Errorf("drawioHost is required when drawioEnable is true")
+	if !strings.Contains(value, "://") {
+		value = "http://" + value
+	}
+
+	parsed, err := url.Parse(value)
+	if err != nil || parsed.Scheme == "" || parsed.Host == "" || parsed.User != nil {
+		return "", fmt.Errorf("malformed external service endpoint %q", raw)
+	}
+
+	if parsed.Scheme != "http" && parsed.Scheme != "https" {
+		return "", fmt.Errorf("unsupported external service endpoint scheme %q", parsed.Scheme)
+	}
+
+	// Project-tool endpoints are canonical base URLs. Keep an explicit
+	// scheme and port unchanged, while removing redundant trailing slashes.
+	parsed.Path = strings.TrimRight(parsed.Path, "/")
+
+	return strings.TrimRight(parsed.String(), "/"), nil
+}
+
+func NormalizeProjectTools(user *User) error {
+	if user.PlaneEnable {
+		normalized, err := NormalizeExternalServiceEndpoint(user.PlaneHost)
+		if err != nil {
+			return fmt.Errorf("planeHost: %w", err)
+		}
+		user.PlaneHost = normalized
+	}
+
+	if user.DrawioEnable {
+		normalized, err := NormalizeExternalServiceEndpoint(user.DrawioHost)
+		if err != nil {
+			return fmt.Errorf("drawioHost: %w", err)
+		}
+		user.DrawioHost = normalized
 	}
 
 	return nil
+}
+
+func ValidateProjectTools(user User) error {
+	return NormalizeProjectTools(&user)
 }
 
 var jodsPublicKeyPattern = regexp.MustCompile(`^[0-9a-fA-F]{64}$`)
