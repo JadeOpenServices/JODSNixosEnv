@@ -6,29 +6,18 @@
   ...
 }:
 let
+
   planeEnable = settings.planeEnable or false;
   planeHost = settings.planeHost or "";
-  appBrowser = lib.getExe pkgs.microsoft-edge;
-  endpointFile = "${config.home.homeDirectory}/.config/gjallarOS/plane-endpoint";
 
   planeLauncher = pkgs.writeShellScriptBin "plane" ''
-    set -euo pipefail
-
-    endpoint_file=${lib.escapeShellArg endpointFile}
-
-    if [ ! -r "$endpoint_file" ]; then
-      printf 'Plane endpoint configuration is unavailable.\n' >&2
-      exit 1
-    fi
-
-    endpoint="$(cat "$endpoint_file")"
-
-    if [ -z "$endpoint" ]; then
-      printf 'Plane endpoint configuration is empty.\n' >&2
-      exit 1
-    fi
-
-    exec ${appBrowser}       --app="$endpoint"       --class=gjallar-plane       --name=Plane
+    exec ${lib.getExe pkgs.brave} \
+      --user-data-dir="$HOME/.config/gjallarOS/brave-plane" \
+      --app=${lib.escapeShellArg planeHost} \
+      --no-first-run \
+      --no-default-browser-check \
+      --disable-sync \
+      --disable-background-mode
   '';
 in
 {
@@ -37,7 +26,7 @@ in
       planeLauncher
     ];
 
-    home.file.".config/gjallarOS/plane-endpoint".text = planeHost;
+
 
     xdg.desktopEntries.plane = {
       name = "Plane";

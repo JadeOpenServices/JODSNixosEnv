@@ -187,3 +187,174 @@ func TestNormalizeExternalServiceEndpointPreservesDrawioQuery(t *testing.T) {
 		t.Fatalf("NormalizeExternalServiceEndpoint() = %q, want %q", got, input)
 	}
 }
+
+func validJODSProjectToolTestUser() User {
+	return User{
+		EndpointManagedDevice:  true,
+		JODSEndpoint:           "https://jods.example.test",
+		JODSPolicySigningKey:   strings.Repeat("a", 64),
+		JODSRecoverySigningKey: strings.Repeat("b", 64),
+		JODSEnrollmentMode:     "auto",
+		JODSDeviceClass:        "workstation",
+		JODSDesktopProfile:     "default",
+	}
+}
+
+func TestProjectToolsRemainIndependentFromJODS(t *testing.T) {
+	tests := []struct {
+		name               string
+		planeEnable        bool
+		planeHost          string
+		drawioEnable       bool
+		drawioSelfHosted   bool
+		drawioHost         string
+		jodsEnable         bool
+		wantProjectToolErr bool
+	}{
+		{
+			name: "both disabled",
+		},
+		{
+			name:        "Plane only",
+			planeEnable: true,
+			planeHost:   "https://plane.example.test",
+		},
+		{
+			name:             "Draw.io only",
+			drawioEnable:     true,
+			drawioSelfHosted: true,
+			drawioHost:       "https://drawio.example.test",
+		},
+		{
+			name:             "both enabled",
+			planeEnable:      true,
+			planeHost:        "https://plane.example.test",
+			drawioEnable:     true,
+			drawioSelfHosted: true,
+			drawioHost:       "https://drawio.example.test",
+		},
+		{
+			name:               "Plane enabled with empty endpoint",
+			planeEnable:        true,
+			wantProjectToolErr: true,
+		},
+		{
+			name:               "self-hosted Draw.io enabled with empty endpoint",
+			drawioEnable:       true,
+			drawioSelfHosted:   true,
+			wantProjectToolErr: true,
+		},
+		{
+			name:             "JODS disabled with project tools enabled",
+			planeEnable:      true,
+			planeHost:        "https://plane.example.test",
+			drawioEnable:     true,
+			drawioSelfHosted: true,
+			drawioHost:       "https://drawio.example.test",
+		},
+		{
+			name:       "JODS enabled with project tools disabled",
+			jodsEnable: true,
+		},
+		{
+			name:             "JODS enabled with project tools enabled",
+			planeEnable:      true,
+			planeHost:        "https://plane.example.test",
+			drawioEnable:     true,
+			drawioSelfHosted: true,
+			drawioHost:       "https://drawio.example.test",
+			jodsEnable:       true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			u := User{
+				PlaneEnable:      tt.planeEnable,
+				PlaneHost:        tt.planeHost,
+				DrawioEnable:     tt.drawioEnable,
+				DrawioSelfHosted: tt.drawioSelfHosted,
+				DrawioHost:       tt.drawioHost,
+			}
+
+			if tt.jodsEnable {
+				jods := validJODSProjectToolTestUser()
+				u.EndpointManagedDevice = jods.EndpointManagedDevice
+				u.JODSEndpoint = jods.JODSEndpoint
+				u.JODSPolicySigningKey = jods.JODSPolicySigningKey
+				u.JODSRecoverySigningKey = jods.JODSRecoverySigningKey
+				u.JODSEnrollmentMode = jods.JODSEnrollmentMode
+				u.JODSDeviceClass = jods.JODSDeviceClass
+				u.JODSDesktopProfile = jods.JODSDesktopProfile
+			}
+
+			projectErr := ValidateProjectTools(u)
+			if tt.wantProjectToolErr {
+				if projectErr == nil {
+					t.Fatal("expected project-tool validation failure")
+				}
+			} else if projectErr != nil {
+				t.Fatalf("project-tool validation unexpectedly failed: %v", projectErr)
+			}
+
+			if err := ValidateJODS(u); err != nil {
+				t.Fatalf("JODS validation changed because of project-tool configuration: %v", err)
+			}
+
+			beforeJODS := struct {
+				enabled     bool
+				endpoint    string
+				policyKey   string
+				recoveryKey string
+				enrollment  string
+				deviceClass string
+				desktop     string
+			}{
+				u.EndpointManagedDevice,
+				u.JODSEndpoint,
+				u.JODSPolicySigningKey,
+				u.JODSRecoverySigningKey,
+				u.JODSEnrollmentMode,
+				u.JODSDeviceClass,
+				u.JODSDesktopProfile,
+			}
+
+			normalized := u
+			normalizeErr := NormalizeProjectTools(&normalized)
+
+			if tt.wantProjectToolErr {
+				if normalizeErr == nil {
+					t.Fatal("expected project-tool normalization failure")
+				}
+			} else if normalizeErr != nil {
+				t.Fatalf("project-tool normalization unexpectedly failed: %v", normalizeErr)
+			}
+
+			afterJODS := struct {
+				enabled     bool
+				endpoint    string
+				policyKey   string
+				recoveryKey string
+				enrollment  string
+				deviceClass string
+				desktop     string
+			}{
+				normalized.EndpointManagedDevice,
+				normalized.JODSEndpoint,
+				normalized.JODSPolicySigningKey,
+				normalized.JODSRecoverySigningKey,
+				normalized.JODSEnrollmentMode,
+				normalized.JODSDeviceClass,
+				normalized.JODSDesktopProfile,
+			}
+
+			if beforeJODS != afterJODS {
+				t.Fatalf(
+					"project-tool normalization mutated JODS state: before=%+v after=%+v",
+					beforeJODS,
+					afterJODS,
+				)
+			}
+		})
+	}
+}
