@@ -16,7 +16,7 @@ let
     then drawioHost
     else publicEndpoint;
 
-  browser = lib.getExe pkgs.${settings.preferredBrowser};
+  appBrowser = lib.getExe pkgs.microsoft-edge;
   endpointFile = "${config.home.homeDirectory}/.config/gjallarOS/drawio-endpoint";
 
   drawioLauncher = pkgs.writeShellScriptBin "gjallar-drawio" ''
@@ -36,7 +36,7 @@ let
       false
     fi
 
-    exec ${browser} "$endpoint"
+    exec ${appBrowser}       --app="$endpoint"       --class=gjallar-drawio       --name=Draw.io
   '';
 in
 {
@@ -52,8 +52,10 @@ in
       genericName = "Diagram Editor";
       comment = "Open Draw.io";
       exec = "${drawioLauncher}/bin/gjallar-drawio";
+      icon = "${pkgs.papirus-icon-theme}/share/icons/Papirus/64x64/apps/drawio.svg";
       terminal = false;
       categories = [
+        "Development"
         "Graphics"
         "Office"
       ];
