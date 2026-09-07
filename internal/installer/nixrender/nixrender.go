@@ -46,6 +46,8 @@ type Settings struct {
 	Shell                                                 string
 	Editors, Browsers                                     []string
 	PreferredEditor, PreferredBrowser                     string
+	PlaneHost, DrawioHost                                 string
+	PlaneEnable, DrawioEnable                             bool
 	BackgroundNormal, BackgroundWork, BackgroundGaming    string
 	EnableScrobbling, EnableLastfm, EnableListenbrainz    bool
 	LastfmUsername, ListenbrainzUsername                  string
@@ -112,6 +114,10 @@ func Render(s Settings) []byte {
 	list("browsers", s.Browsers)
 	str("preferredEditor", s.PreferredEditor)
 	str("preferredBrowser", s.PreferredBrowser)
+	boolean("planeEnable", s.PlaneEnable)
+	str("planeHost", s.PlaneHost)
+	boolean("drawioEnable", s.DrawioEnable)
+	str("drawioHost", s.DrawioHost)
 	str("backgroundNormal", s.BackgroundNormal)
 	str("backgroundWork", s.BackgroundWork)
 	str("backgroundGaming", s.BackgroundGaming)

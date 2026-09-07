@@ -41,7 +41,7 @@ size=$(blockdev --getsize64 "$partition")
 }
 
 "$(dirname "$0")/verify-image.sh" "$image" "$manifest" "$signature" "$public_key"
-for command in mkfs.vfat xorriso sbctl findmnt; do
+for command in mkfs.vfat xorriso sbctl findmnt efibootmgr; do
   command -v "$command" >/dev/null || {
     echo "ERROR: required command not found: $command" >&2
     exit 1
@@ -96,4 +96,22 @@ install -m 0600 "$manifest" "$mount_dir/.gjallar-release/manifest"
 install -m 0600 "$signature" "$mount_dir/.gjallar-release/manifest.sig"
 install -m 0644 "$public_key" "$mount_dir/.gjallar-release/recovery-signing-public.pem"
 sync -f "$mount_dir/EFI/BOOT/BOOTX64.EFI"
+
+# Give firmware an explicit independent recovery target. Never delete or
+# rewrite an existing firmware entry here; duplicate creation is avoided by
+# checking the canonical label first.
+if ! efibootmgr | grep -Fq 'GjallarOS Recovery'; then
+  efibootmgr \
+    --create \
+    --disk "$parent" \
+    --part "$part_number" \
+    --label 'GjallarOS Recovery' \
+    --loader '\EFI\BOOT\BOOTX64.EFI'
+fi
+
+efibootmgr -v | grep -F 'GjallarOS Recovery' >/dev/null || {
+  echo "ERROR: recovery UEFI boot entry was not verified" >&2
+  false
+}
+
 echo "Installed verified, endpoint-signed, independently bootable recovery environment."
