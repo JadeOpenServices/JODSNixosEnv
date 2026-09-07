@@ -6,6 +6,7 @@
     ./git.nix
     ./kitty.nix
     ./opencode.nix
+    ./plane.nix
     ./rust.nix
     ./superfile.nix
     ./teams.nix
