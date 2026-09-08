@@ -132,9 +132,6 @@ func validate(ctx context.Context, input Input, runner commandRunner) (Result, e
 	serial := strings.TrimSpace(disk.Serial)
 	wwn := strings.TrimSpace(disk.WWN)
 
-	if model == "" {
-		return Result{}, fmt.Errorf("target disk %q has no reported model", disk.Path)
-	}
 	if serial == "" && wwn == "" {
 		return Result{}, fmt.Errorf(
 			"target disk %q has no stable serial or WWN identity",
