@@ -164,6 +164,15 @@ func generate(
 	args := []string{}
 	if root != "" {
 		args = append(args, "--root", root)
+
+		// The fresh installer owns the canonical filesystem layout.
+		// nixos-generate-config must contribute hardware discovery only.
+		//
+		// Without --no-filesystems it probes the currently running system's
+		// filesystems while generating the target configuration. On an existing
+		// Btrfs host this can fail before fresh provisioning even begins, for
+		// example with "Failed to retrieve subvolume info for /".
+		args = append(args, "--no-filesystems")
 	}
 	args = append(args, "--show-hardware-config")
 
