@@ -230,21 +230,30 @@ func provision(
 		recovery.SizeBytes,
 	)
 
-	phrase := "CREATE-JODS-RECOVERY"
 	if input.Unattended {
 		fmt.Fprintln(
 			input.Out,
 			"UNATTENDED: explicit unattendedInstall=true authorizes recovery GPT creation.",
 		)
 	} else {
-		if err := input.UI.Exact(
+		confirmed, err := input.UI.Confirm(
 			ctx,
-			fmt.Sprintf("Type %q to create the recovery partition", phrase),
-			phrase,
-		); err != nil {
+			fmt.Sprintf(
+				"Create the %s recovery partition on %s?",
+				recovery.Label,
+				input.Plan.TargetDisk.Path,
+			),
+			false,
+		)
+		if err != nil {
 			return Result{}, fmt.Errorf(
-				"recovery partition creation not authorized: %w",
+				"confirm recovery GPT creation: %w",
 				err,
+			)
+		}
+		if !confirmed {
+			return Result{}, fmt.Errorf(
+				"recovery partition creation not authorized",
 			)
 		}
 	}

@@ -106,12 +106,12 @@ func terminalUI(input string, out *bytes.Buffer) prompt.UI {
 	}
 }
 
-func TestConfirmRequiresExactErasePhrase(t *testing.T) {
+func TestConfirmRequiresTwoExplicitConfirmations(t *testing.T) {
 	var out bytes.Buffer
 
 	err := Confirm(
 		context.Background(),
-		terminalUI("ERASE /dev/nvme1n1\n", &out),
+		terminalUI("y\ny\n", &out),
 		&out,
 		testPlan(true),
 		observedDisk(),
@@ -131,7 +131,8 @@ func TestConfirmRequiresExactErasePhrase(t *testing.T) {
 		"ROOT:",
 		"RECOVERY:",
 		"Root encryption: luks2",
-		"ERASE /dev/nvme1n1",
+		"Have you checked the target disk name thoroughly",
+		"Are you absolutely sure you want to permanently erase /dev/nvme1n1?",
 		"Destructive installation explicitly authorized.",
 	} {
 		if !strings.Contains(text, want) {
@@ -140,19 +141,37 @@ func TestConfirmRequiresExactErasePhrase(t *testing.T) {
 	}
 }
 
-func TestConfirmRejectsWrongPhrase(t *testing.T) {
+func TestConfirmRejectsFirstConfirmationNo(t *testing.T) {
 	var out bytes.Buffer
 
 	err := Confirm(
 		context.Background(),
-		terminalUI("yes\n", &out),
+		terminalUI("n\n", &out),
 		&out,
-		testPlan(false),
+		testPlan(true),
 		observedDisk(),
 		Options{},
 	)
+
 	if err == nil {
-		t.Fatal("non-exact destructive confirmation was accepted")
+		t.Fatal("first destructive confirmation accepted No")
+	}
+}
+
+func TestConfirmRejectsSecondConfirmationNo(t *testing.T) {
+	var out bytes.Buffer
+
+	err := Confirm(
+		context.Background(),
+		terminalUI("y\nn\n", &out),
+		&out,
+		testPlan(true),
+		observedDisk(),
+		Options{},
+	)
+
+	if err == nil {
+		t.Fatal("second destructive confirmation accepted No")
 	}
 }
 
@@ -179,8 +198,8 @@ func TestConfirmUnattendedRequiresExplicitOption(t *testing.T) {
 func TestConfirmationDoesNotInferConsentFromRecovery(t *testing.T) {
 	var out bytes.Buffer
 
-	// Recovery is enabled in the plan, but unattended mode is not. No typed
-	// phrase is supplied, so confirmation must fail rather than treating
+	// Recovery is enabled in the plan, but unattended mode is not.
+	// Default-No confirmation must still fail rather than treating
 	// recovery configuration as consent.
 	err := Confirm(
 		context.Background(),
@@ -234,7 +253,7 @@ func TestConfirmFailsIfPhysicalIdentityChanged(t *testing.T) {
 			var out bytes.Buffer
 			err := Confirm(
 				context.Background(),
-				terminalUI("ERASE /dev/nvme1n1\n", &out),
+				terminalUI("y\ny\n", &out),
 				&out,
 				testPlan(false),
 				result,
@@ -257,7 +276,7 @@ func TestConfirmUsesSerialFallbackWhenWWNUnavailable(t *testing.T) {
 	var out bytes.Buffer
 	err := Confirm(
 		context.Background(),
-		terminalUI("ERASE /dev/nvme1n1\n", &out),
+		terminalUI("y\ny\n", &out),
 		&out,
 		plan,
 		result,
@@ -275,7 +294,7 @@ func TestConfirmRejectsInvalidCanonicalPlan(t *testing.T) {
 	var out bytes.Buffer
 	err := Confirm(
 		context.Background(),
-		terminalUI("ERASE /dev/nvme1n1\n", &out),
+		terminalUI("y\ny\n", &out),
 		&out,
 		plan,
 		observedDisk(),
