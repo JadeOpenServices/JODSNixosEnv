@@ -76,7 +76,7 @@ func testPlan(withRecovery bool) diskplan.Plan {
 			Label:     "JODS-RECOVERY",
 			TypeGUID:  xbootldrType,
 			PARTUUID:  testRecPARTUUID,
-			SizeBytes: 3 * 1024 * 1024 * 1024,
+			SizeBytes: 12 * 1024 * 1024 * 1024,
 			Filesystem: diskplan.Filesystem{
 				Type:  "vfat",
 				Label: "JODS-RECOVERY",

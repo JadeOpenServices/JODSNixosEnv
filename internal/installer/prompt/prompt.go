@@ -47,10 +47,15 @@ func zenityCommand(ctx context.Context, args ...string) *exec.Cmd {
 	return cmd
 }
 
+func gtkAvailable() bool {
+	_, err := exec.LookPath("zenity")
+	return err == nil &&
+		(os.Getenv("DISPLAY") != "" || os.Getenv("WAYLAND_DISPLAY") != "") &&
+		os.Getenv("SSH_CONNECTION") == ""
+}
+
 func New(in io.Reader, out io.Writer) UI {
-	_, zenity := exec.LookPath("zenity")
-	gtk := zenity == nil && (os.Getenv("DISPLAY") != "" || os.Getenv("WAYLAND_DISPLAY") != "") && os.Getenv("SSH_CONNECTION") == ""
-	return UI{bufio.NewReader(in), out, gtk}
+	return UI{bufio.NewReader(in), out, gtkAvailable()}
 }
 
 func (u UI) secureTextDialog(
@@ -129,7 +134,7 @@ func (u UI) secureTextDialog(
 }
 
 func (u UI) Confirm(ctx context.Context, message string, defaultYes bool) (bool, error) {
-	if u.GTK {
+	if u.GTK || gtkAvailable() {
 		args := []string{"--question", "--title=GjallarOS installer", "--text=" + message, "--ok-label=Yes", "--cancel-label=No"}
 		err := zenityCommand(ctx, args...).Run()
 		if err == nil {
@@ -408,7 +413,7 @@ func (u UI) Exact(ctx context.Context, label, expected string) error {
 
 	var value string
 
-	if u.GTK {
+	if u.GTK || gtkAvailable() {
 		out, err := zenityCommand(
 			ctx,
 			"--entry",
@@ -438,7 +443,7 @@ func (u UI) Exact(ctx context.Context, label, expected string) error {
 }
 
 func (u UI) Value(ctx context.Context, label, def string) (string, error) {
-	if u.GTK {
+	if u.GTK || gtkAvailable() {
 		out, err := zenityCommand(ctx, "--entry", "--title=GjallarOS installer", "--text="+label, "--entry-text="+def).Output()
 		if err != nil {
 			return "", ErrCancelled
@@ -461,7 +466,7 @@ func (u UI) Choice(ctx context.Context, label, def string, options []string) (st
 	if len(options) == 0 {
 		return "", fmt.Errorf("no options for %s", label)
 	}
-	if u.GTK {
+	if u.GTK || gtkAvailable() {
 		args := []string{"--list", "--radiolist", "--title=GjallarOS installer", "--text=" + label, "--column=Selected", "--column=Value"}
 		for _, v := range options {
 			args = append(args, strconv.FormatBool(v == def), v)
@@ -501,7 +506,7 @@ func (u UI) Multi(ctx context.Context, label string, defaults, options []string)
 	for _, v := range defaults {
 		selected[v] = true
 	}
-	if u.GTK {
+	if u.GTK || gtkAvailable() {
 		args := []string{"--list", "--checklist", "--title=GjallarOS installer", "--text=" + label, "--separator=\n", "--column=Selected", "--column=Value"}
 		for _, v := range options {
 			args = append(args, strconv.FormatBool(selected[v]), v)

@@ -1,0 +1,206 @@
+{ config, pkgs }:
+let
+  gjallarctl = pkgs.callPackage ../../pkgs/gjallarctl { };
+  recoveryExecutor = pkgs.writeShellApplication {
+    name = "gjallar-recovery-execute";
+    runtimeInputs = with pkgs; [
+      coreutils
+      gawk
+      gptfdisk
+      jq
+      util-linux
+    ];
+    text = builtins.readFile ../../scripts/recovery/execute-contract.sh;
+  };
+
+  recovery = pkgs.writeShellApplication {
+    name = "gjallar-recover";
+    runtimeInputs = with pkgs; [
+      config.nix.package
+      cryptsetup
+      git
+      nixos-install-tools
+      sbctl
+      systemd
+      tpm2-tools
+      util-linux
+      gjallarctl
+    ];
+    text = ''
+      set -euo pipefail
+
+      usage() {
+        printf '%s\n' \
+          'GjallarOS trusted recovery' \
+          '  gjallar-recover audit' \
+          '  gjallar-recover unlock DEVICE NAME' \
+          '  gjallar-recover mount DEVICE MOUNTPOINT' \
+          '  gjallar-recover generations ROOT' \
+          '  gjallar-recover repair-boot ROOT' \
+          '  gjallar-recover rebuild ROOT FLAKE#HOST' \
+          '  gjallar-recover jods {repair|reinstall|fresh}'
+      }
+
+      require_root() {
+        if [ "$(id -u)" -ne 0 ]; then
+          printf '%s\n' 'ERROR: run this operation as root.' >&2
+          exit 1
+        fi
+      }
+
+      confirm_phrase() {
+        expected="$1"
+        printf 'Type %s to continue: ' "$expected"
+        read -r answer
+        [ "$answer" = "$expected" ] || {
+          printf '%s\n' 'Cancelled.' >&2
+          exit 1
+        }
+      }
+
+      prepare_installer_device_config() {
+        live_repo=/run/gjallarOS/repo
+        runtime_config=/run/gjallarOS/device-config/user.config.json
+        fallback_config=/etc/gjallar/installer-fallback-user.config.json
+        target_config="$live_repo/user.config.json"
+
+        [ -f "$live_repo/flake.nix" ] || return 0
+
+        ${pkgs.coreutils}/bin/rm -f "$target_config"
+
+        if [ -e "$runtime_config" ]; then
+          if [ ! -s "$runtime_config" ]; then
+            printf '%s\n' \
+              'ERROR: runtime device configuration exists but is empty; refusing embedded fallback.' >&2
+            return 1
+          fi
+
+          ${pkgs.coreutils}/bin/install \
+            -m 0600 \
+            "$runtime_config" \
+            "$target_config"
+
+          printf '%s\n' \
+            'Installer configuration source: runtime device configuration.'
+          return 0
+        fi
+
+        if [ -s "$fallback_config" ]; then
+          ${pkgs.coreutils}/bin/install \
+            -m 0600 \
+            "$fallback_config" \
+            "$target_config"
+
+          printf '%s\n' \
+            'Installer configuration source: embedded device configuration.'
+          return 0
+        fi
+
+        printf '%s\n' \
+          'Installer configuration source: interactive fallback.'
+      }
+
+      run_installer() {
+        live_repo=/run/gjallarOS/repo
+
+        if [ -f "$live_repo/flake.nix" ]; then
+          prepare_installer_device_config || return 1
+          exec gjallar-installer --repo "$live_repo" "$@"
+        fi
+
+        exec gjallar-installer "$@"
+      }
+
+      case "''${1:-help}" in
+        audit)
+          printf '%s\n' '=== Secure Boot ==='
+          sbctl status || true
+          printf '%s\n' '=== TPM ==='
+          systemd-analyze has-tpm2 || true
+          tpm2_getcap properties-fixed || true
+          printf '%s\n' '=== disks ==='
+          lsblk -o NAME,PATH,TYPE,FSTYPE,UUID,PARTUUID,MOUNTPOINTS
+          ;;
+        unlock)
+          require_root
+          device="''${2:?DEVICE required}"
+          name="''${3:?mapping NAME required}"
+          cryptsetup isLuks "$device"
+          systemd-ask-password 'GjallarOS LUKS recovery passphrase:' |
+            cryptsetup open --type luks --key-file=- "$device" "$name"
+          ;;
+        mount)
+          require_root
+          device="''${2:?DEVICE required}"
+          target="''${3:?MOUNTPOINT required}"
+          mkdir -p "$target"
+          mount "$device" "$target"
+          ;;
+        generations)
+          root="''${2:?installed ROOT mountpoint required}"
+          nix-env --list-generations --profile "$root/nix/var/nix/profiles/system"
+          ;;
+        repair-boot)
+          require_root
+          root="''${2:?installed ROOT mountpoint required}"
+          [ -e "$root/etc/NIXOS" ] || {
+            printf '%s\n' 'ERROR: target is not a mounted NixOS installation.' >&2
+            exit 1
+          }
+          confirm_phrase REPAIR-BOOT
+          NIXOS_INSTALL_BOOTLOADER=1 nixos-enter --root "$root" -- \
+            /run/current-system/bin/switch-to-configuration boot
+          ;;
+        rebuild)
+          require_root
+          root="''${2:?installed ROOT mountpoint required}"
+          flake="''${3:?FLAKE#HOST required}"
+          [ -e "$root/etc/NIXOS" ] || {
+            printf '%s\n' 'ERROR: target is not a mounted NixOS installation.' >&2
+            exit 1
+          }
+          confirm_phrase REBUILD
+          nixos-enter --root "$root" -- nixos-rebuild boot --flake "$flake"
+          ;;
+        jods-execute)
+          require_root
+          contract="''${2:?CONTRACT required}"
+          artifact="''${3:?ARTIFACT required}"
+          exec gjallar-recovery-execute "$contract" "$artifact"
+          ;;
+        jods)
+          mode="''${2:-}"
+          case "$mode" in
+            repair)
+              printf '%s\n' \
+                'JODS mode: REPAIR EXISTING INSTALLATION' \
+                'Disk formatting is forbidden. Unlock with a human recovery credential, then use repair-boot or rebuild.'
+              ;;
+            reinstall)
+              printf '%s\n' \
+                'JODS mode: REINSTALL EXISTING INSTALLATION' \
+                'Existing partitions and encrypted data must be detected before any installer runs.'
+              confirm_phrase REINSTALL-EXISTING
+              run_installer --recovery --accept-existing
+              ;;
+            fresh)
+              printf '%s\n' \
+                'DANGER: JODS FRESH INSTALL MODE' \
+                'Select the target disk in the installer and confirm its destructive plan.'
+              confirm_phrase ERASE-FOR-FRESH-INSTALL
+              run_installer --recovery
+              ;;
+            *)
+              printf '%s\n' 'Usage: gjallar-recover jods {repair|reinstall|fresh}' >&2
+              exit 2
+              ;;
+          esac
+          ;;
+        *) usage ;;
+      esac
+    '';
+  };
+in
+{
+  inherit gjallarctl recovery recoveryExecutor;
+}
