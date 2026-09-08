@@ -221,7 +221,7 @@ func TestCreatesOnlyRecoveryGPTEntry(t *testing.T) {
 		context.Background(),
 		Input{
 			Plan: p,
-			UI:   ui("CREATE-JODS-RECOVERY\n", &out),
+			UI:   ui("y\n", &out),
 			Out:  &out,
 		},
 		wrapped,

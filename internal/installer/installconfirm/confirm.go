@@ -3,8 +3,8 @@
 //
 // The package itself performs no disk modification. It validates that the
 // canonical plan still refers to the previously validated physical disk,
-// prints/logs the exact non-secret installation plan, and requires either the
-// exact interactive erase phrase or an explicitly configured unattended mode.
+// prints/logs the exact non-secret installation plan, and requires either two
+// explicit default-No interactive confirmations or explicitly configured unattended mode.
 package installconfirm
 
 import (
@@ -48,29 +48,48 @@ func Confirm(
 
 	printPlan(out, plan, observed)
 
-	phrase := "ERASE " + plan.TargetDisk.Path
-
 	if options.Unattended {
-		fmt.Fprintf(
+		fmt.Fprintln(
 			out,
-			"UNATTENDED: explicit unattendedInstall=true bypasses interactive phrase %q.\n",
-			phrase,
+			"UNATTENDED: explicit unattendedInstall=true authorizes destructive installation.",
 		)
 		return nil
+	}
+
+	checked, err := ui.Confirm(
+		ctx,
+		fmt.Sprintf(
+			"Have you checked the target disk name thoroughly and confirmed %s is the disk you intend to erase?",
+			plan.TargetDisk.Path,
+		),
+		false,
+	)
+	if err != nil {
+		return fmt.Errorf("confirm target disk identity: %w", err)
+	}
+	if !checked {
+		return fmt.Errorf("destructive installation was not authorized")
+	}
+
+	certain, err := ui.Confirm(
+		ctx,
+		fmt.Sprintf(
+			"Are you absolutely sure you want to permanently erase %s?",
+			plan.TargetDisk.Path,
+		),
+		false,
+	)
+	if err != nil {
+		return fmt.Errorf("confirm destructive erase: %w", err)
+	}
+	if !certain {
+		return fmt.Errorf("destructive installation was not authorized")
 	}
 
 	fmt.Fprintln(
 		out,
 		"WARNING: continuing past this gate authorizes destructive provisioning of the target disk.",
 	)
-
-	if err := ui.Exact(
-		ctx,
-		fmt.Sprintf("Type %q to continue", phrase),
-		phrase,
-	); err != nil {
-		return fmt.Errorf("destructive installation not authorized: %w", err)
-	}
 
 	fmt.Fprintln(out, "Destructive installation explicitly authorized.")
 	return nil
