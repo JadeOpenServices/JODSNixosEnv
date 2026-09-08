@@ -29,6 +29,8 @@ import (
 	"github.com/bakanura/gjallarOS/internal/installer/localgit"
 	"github.com/bakanura/gjallarOS/internal/installer/nixrender"
 	"github.com/bakanura/gjallarOS/internal/installer/prompt"
+	"github.com/bakanura/gjallarOS/internal/installer/recoveryprovision"
+	"github.com/bakanura/gjallarOS/internal/installer/recoveryresize"
 	"github.com/bakanura/gjallarOS/internal/installer/release"
 	"github.com/bakanura/gjallarOS/internal/installer/secureboot"
 	"github.com/bakanura/gjallarOS/internal/installercheck"
@@ -380,6 +382,31 @@ func Run(ctx context.Context, args []string, in io.Reader, out, errOut io.Writer
 	}
 	if runRebuild {
 		if s.existing {
+			maintenanceRequired := false
+
+			if s.user.RecoveryEnable &&
+				s.user.RecoveryPartitionEnable &&
+				s.recoveryPartition == "" {
+				fmt.Fprintln(
+					out,
+					"STAGE: inspecting existing encrypted-Btrfs layout for recovery storage",
+				)
+
+				maintenanceRequired, err = prepareInstalledRecoveryStorage(
+					ctx,
+					ui,
+					out,
+					&s,
+				)
+				if err != nil {
+					return fail(errOut, err)
+				}
+
+				if maintenanceRequired {
+					s.recoveryPartition = ""
+				}
+			}
+
 			target, err := deploy.Target(root, s.user.Hostname)
 			if err != nil {
 				return fail(errOut, err)
@@ -387,6 +414,33 @@ func Run(ctx context.Context, args []string, in io.Reader, out, errOut io.Writer
 			fmt.Fprintln(out, "PLAN: validate then install", target)
 			if err := deploy.Apply(ctx, target); err != nil {
 				return fail(errOut, err)
+			}
+
+			if maintenanceRequired {
+				fmt.Fprintln(
+					out,
+					"PASS: one-shot recovery-storage maintenance environment installed",
+				)
+				fmt.Fprintln(
+					out,
+					"STAGE: arming one-shot maintenance boot",
+				)
+
+				if err := attached(
+					ctx,
+					"sudo",
+					"gjallar-recovery-maintenance-next",
+				); err != nil {
+					return fail(
+						errOut,
+						fmt.Errorf(
+							"arm recovery-storage maintenance boot: %w",
+							err,
+						),
+					)
+				}
+
+				return 0
 			}
 			if err := provisionRecoveryPartition(ctx, root, s); err != nil {
 				return fail(errOut, err)
@@ -1160,23 +1214,14 @@ func configureRecoveryProvisioning(ctx context.Context, ui prompt.UI, opt option
 		s.recoveryPartition = findRecoveryPartition(ctx)
 	}
 
-	// GJAL-65 storage mutation is a fresh-install capability only.
+	// Existing encrypted-Btrfs installations may provision recovery storage,
+	// but the running root is never resized in place. GJAL-67 discovery and
+	// planning are read-only on the live system; any required contraction is
+	// executed only from the trusted one-shot maintenance context with the
+	// target root mounted at /mnt.
 	//
-	// Once GjallarOS is installed, the normal installer/update path must never
-	// shrink the active root or create new recovery storage by repartitioning.
-	// A trusted recovery environment is the separate authority for any future
-	// repair/reinstall/repartition operation.
-	//
-	// Updating an already-existing dedicated recovery partition remains allowed.
-	if s.existing && s.recoveryPartition == "" {
-		if s.user.RecoveryPartitionEnable || s.recoveryDisk != "" {
-			return errors.New(
-				"recovery partition creation/resizing is only permitted during fresh installation; " +
-					"an installed GjallarOS system must use the trusted recovery environment",
-			)
-		}
-		return nil
-	}
+	// An already-existing dedicated recovery partition remains usable without
+	// entering the resize path.
 
 	// recoveryPartitionEnable authorizes creation/resizing of dedicated
 	// recovery storage. An already-existing canonical recovery partition
@@ -1248,6 +1293,202 @@ func configureRecoveryProvisioning(ctx context.Context, ui prompt.UI, opt option
 		return errors.New("physical recovery partition provisioning requires Secure Boot")
 	}
 	return nil
+}
+
+func discoverInstalledRecoveryTopology(
+	ctx context.Context,
+) (recoveryresize.Topology, error) {
+	mounted, err := exec.CommandContext(
+		ctx,
+		"findmnt",
+		"-nro",
+		"SOURCE",
+		"--target",
+		"/",
+	).Output()
+	if err != nil {
+		return recoveryresize.Topology{}, fmt.Errorf(
+			"discover installed root mapping: %w",
+			err,
+		)
+	}
+
+	mapping := strings.TrimSpace(string(mounted))
+	if !strings.HasPrefix(mapping, "/dev/mapper/") {
+		return recoveryresize.Topology{}, fmt.Errorf(
+			"recovery partitioning currently requires an encrypted Btrfs root; mounted root source is %q",
+			mapping,
+		)
+	}
+
+	mappingName := filepath.Base(mapping)
+
+	status, err := exec.CommandContext(
+		ctx,
+		"sudo",
+		"cryptsetup",
+		"status",
+		mappingName,
+	).Output()
+	if err != nil {
+		return recoveryresize.Topology{}, fmt.Errorf(
+			"inspect installed LUKS mapping %s: %w",
+			mappingName,
+			err,
+		)
+	}
+
+	rootPartition := ""
+	for _, line := range strings.Split(string(status), "\n") {
+		fields := strings.Fields(strings.TrimSpace(line))
+		if len(fields) == 2 && fields[0] == "device:" {
+			rootPartition = fields[1]
+			break
+		}
+	}
+
+	if rootPartition == "" {
+		return recoveryresize.Topology{}, fmt.Errorf(
+			"cryptsetup status for %s did not report a backing device",
+			mappingName,
+		)
+	}
+
+	resolvedRoot, err := filepath.EvalSymlinks(rootPartition)
+	if err != nil {
+		return recoveryresize.Topology{}, fmt.Errorf(
+			"resolve installed root partition %s: %w",
+			rootPartition,
+			err,
+		)
+	}
+
+	parentRaw, err := exec.CommandContext(
+		ctx,
+		"lsblk",
+		"-dnro",
+		"PKNAME",
+		resolvedRoot,
+	).Output()
+	if err != nil {
+		return recoveryresize.Topology{}, fmt.Errorf(
+			"resolve installed root parent disk: %w",
+			err,
+		)
+	}
+
+	parent := strings.TrimSpace(string(parentRaw))
+	if parent == "" {
+		return recoveryresize.Topology{}, fmt.Errorf(
+			"installed root partition %s has no parent disk",
+			resolvedRoot,
+		)
+	}
+	if !strings.HasPrefix(parent, "/dev/") {
+		parent = filepath.Join("/dev", parent)
+	}
+
+	topology, err := recoveryresize.DiscoverTopology(
+		ctx,
+		recoveryresize.SystemRunner(),
+		recoveryresize.DiscoveryInput{
+			RootMountpoint:            "/",
+			ExpectedDiskPath:          parent,
+			ExpectedRootPartitionPath: resolvedRoot,
+			ExpectedMappingPath:       mapping,
+		},
+	)
+	if err != nil {
+		return recoveryresize.Topology{}, err
+	}
+
+	return topology, nil
+}
+
+func prepareInstalledRecoveryStorage(
+	ctx context.Context,
+	ui prompt.UI,
+	out io.Writer,
+	s *state,
+) (bool, error) {
+	topology, err := discoverInstalledRecoveryTopology(ctx)
+	if err != nil {
+		return false, err
+	}
+
+	plan, err := recoveryprovision.BuildExistingPlan(
+		ctx,
+		recoveryresize.SystemRunner(),
+		topology,
+	)
+	if err != nil {
+		return false, fmt.Errorf(
+			"build existing-layout recovery plan: %w",
+			err,
+		)
+	}
+
+	result, err := recoveryprovision.Prepare(
+		ctx,
+		recoveryresize.SystemRunner(),
+		recoveryprovision.Input{
+			Plan:                      plan,
+			UI:                        ui,
+			Out:                       out,
+			RootMountpoint:            "/",
+			ExpectedRootPartitionPath: topology.RootPartitionPath,
+			ExpectedMappingPath:       topology.MappingPath,
+			Unattended:                s.user.UnattendedInstall,
+		},
+	)
+	if err != nil {
+		return false, err
+	}
+
+	switch result.Status {
+	case recoveryprovision.StatusReady:
+		s.recoveryPartition = result.RecoveryPartition
+		fmt.Fprintf(
+			out,
+			"PASS: existing encrypted-Btrfs layout has exact 12 GiB JODS-RECOVERY at %s\n",
+			result.RecoveryPartition,
+		)
+		return false, nil
+
+	case recoveryprovision.StatusResizeRequired:
+		if !s.user.UnattendedInstall {
+			confirmed, err := ui.Confirm(
+				ctx,
+				"Recovery storage requires shrinking the encrypted Btrfs root. Reboot once into trusted maintenance mode and continue safely?",
+				false,
+			)
+			if err != nil {
+				return false, err
+			}
+			if !confirmed {
+				return false, errors.New(
+					"recovery-storage maintenance was not authorized; no disk changes were made",
+				)
+			}
+		}
+
+		fmt.Fprintln(
+			out,
+			"PASS: live root inspection complete; no mutation was performed",
+		)
+		fmt.Fprintln(
+			out,
+			"PLAN: install and boot the one-shot /mnt maintenance environment",
+		)
+
+		return true, nil
+
+	default:
+		return false, fmt.Errorf(
+			"unexpected installed recovery provisioning state %q",
+			result.Status,
+		)
+	}
 }
 
 func findRecoveryPartition(ctx context.Context) string {
