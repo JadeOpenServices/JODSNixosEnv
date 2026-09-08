@@ -60,7 +60,7 @@ func plan() diskplan.Plan {
 		Label:     "JODS-RECOVERY",
 		TypeGUID:  recType,
 		PARTUUID:  recUUID,
-		SizeBytes: 3 * 1024 * 1024 * 1024,
+		SizeBytes: 12 * 1024 * 1024 * 1024,
 		Filesystem: diskplan.Filesystem{
 			Type:  "vfat",
 			Label: "JODS-RECOVERY",
@@ -119,7 +119,7 @@ func lsblk(withRecovery bool) []byte {
         {
           "path":"/dev/nvme0n1p3",
           "type":"part",
-          "size":3221225472,
+          "size":12884901888,
           "start":1887441000,
           "partn":3,
           "partlabel":"JODS-RECOVERY",

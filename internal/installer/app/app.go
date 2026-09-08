@@ -30,14 +30,15 @@ import (
 	"github.com/bakanura/gjallarOS/internal/installer/nixrender"
 	"github.com/bakanura/gjallarOS/internal/installer/prompt"
 	"github.com/bakanura/gjallarOS/internal/installer/release"
-	"github.com/bakanura/gjallarOS/internal/installer/secrets"
 	"github.com/bakanura/gjallarOS/internal/installer/secureboot"
 	"github.com/bakanura/gjallarOS/internal/installercheck"
 )
 
 type options struct {
+	recovery                                                 bool
 	repo                                                     string
 	skipHardware, refreshHardware, noRebuild, acceptExisting bool
+	targetDisk                                               string
 	recoveryDisk, recoveryPartition, recoverySigningKey      string
 	recoverySigningPublicKey                                 string
 }
@@ -70,6 +71,8 @@ func Run(ctx context.Context, args []string, in io.Reader, out, errOut io.Writer
 	f.BoolVar(&opt.refreshHardware, "refresh-hardware", false, "regenerate hardware configuration")
 	f.BoolVar(&opt.noRebuild, "no-rebuild", false, "do not install a boot generation")
 	f.BoolVar(&opt.acceptExisting, "accept-existing", false, "allow an existing GjallarOS installation to be updated")
+	f.BoolVar(&opt.recovery, "recovery", false, "run from the trusted GjallarOS recovery environment")
+	f.StringVar(&opt.targetDisk, "target-disk", "", "whole physical disk for a destructive fresh GjallarOS installation")
 	f.StringVar(&opt.recoveryDisk, "recovery-disk", "", "GPT disk with unallocated space for a recovery partition")
 	f.StringVar(&opt.recoveryPartition, "recovery-partition", "", "existing dedicated recovery partition")
 	f.StringVar(&opt.recoverySigningKey, "recovery-signing-key", "", "runtime path to offline Ed25519 recovery release private key")
@@ -101,7 +104,14 @@ func Run(ctx context.Context, args []string, in io.Reader, out, errOut io.Writer
 		}
 		s.preset = true
 	}
-	s.existing = existingInstall(root)
+	if opt.recovery && !opt.acceptExisting {
+		// The embedded repository is installation source material, not evidence
+		// that the recovery environment itself is an installed GjallarOS system.
+		// Recovery without --accept-existing is the explicit fresh operation.
+		s.existing = false
+	} else {
+		s.existing = existingInstall(root)
+	}
 	if s.existing && !opt.acceptExisting {
 		approved, err := ui.Confirm(ctx, "Existing GjallarOS installation detected. Update it in place while preserving passwords, disk keys, and hardware configuration?", false)
 		if err != nil {
@@ -112,7 +122,11 @@ func Run(ctx context.Context, args []string, in io.Reader, out, errOut io.Writer
 			return 0
 		}
 	}
-	if code := prepareHost(ctx, ui, opt, s, out, errOut); code != 0 {
+	if opt.recovery {
+		// Recovery media is a purpose-built execution environment. Never mutate
+		// or rebuild the live recovery system before operating on the target.
+		fmt.Fprintln(out, "Recovery environment validated; live-host rebuild skipped.")
+	} else if code := prepareHost(ctx, ui, opt, s, out, errOut); code != 0 {
 		return code
 	}
 	hardware := discovery.DetectHardware("/sys")
@@ -138,11 +152,6 @@ func Run(ctx context.Context, args []string, in io.Reader, out, errOut io.Writer
 			return fail(errOut, err)
 		}
 	}
-	// Resolve the managed-device security contract before recovery
-	// provisioning so a managed preset cannot silently skip the physical
-	// recovery path by leaving its individual booleans false.
-	normalizeManagementSafety(&s.user)
-
 	// Resolve the managed-device security contract before recovery
 	// provisioning so a managed preset cannot silently skip the physical
 	// recovery path by leaving its individual booleans false.
@@ -195,6 +204,19 @@ func Run(ctx context.Context, args []string, in io.Reader, out, errOut io.Writer
 		fmt.Fprintln(out, "Nothing changed.")
 		return 0
 	}
+	// A managed fresh installation may not create local account credentials
+	// before the device has completed its JODS pre-install enrollment and
+	// recovery-identity attestation. The legacy post-install enrollment path
+	// is intentionally insufficient for this boundary.
+	if s.render.EndpointManagedDevice && !s.existing {
+		return fail(
+			errOut,
+			errors.New(
+				"managed fresh installation requires JODS pre-install device enrollment and recovery-identity attestation before password provisioning",
+			),
+		)
+	}
+
 	rootPasswordPath := "/var/lib/gjallarOS/passwords/root.hash"
 	if s.existing && privilegedFileExists(ctx, rootPasswordPath) {
 		s.render.RootPasswordFile = rootPasswordPath
@@ -262,9 +284,17 @@ func Run(ctx context.Context, args []string, in io.Reader, out, errOut io.Writer
 			return fail(errOut, err)
 		}
 		if !s.render.EndpointManagedDevice && !s.existing {
-			if err := controlAttached(ctx, s.control, "installer", "luks", "--repo", root, "--hardware", hardwarePath); err != nil {
-				return fail(errOut, err)
-			}
+			// A fresh target does not have its canonical LUKS2 root yet.
+			// Running installer luks here would operate against the installer
+			// environment instead of the future target.
+			//
+			// rootprovision creates the initial human recovery-capable keyslot.
+			// TPM2 enrollment is intentionally deferred until the installed
+			// GjallarOS lifecycle can act against its own verified root device.
+			fmt.Fprintln(
+				out,
+				"Fresh-target TPM2 LUKS enrollment deferred until the installed GjallarOS lifecycle.",
+			)
 		} else if s.existing {
 			fmt.Fprintln(out, "Existing LUKS keyslots retained; disk-key migration was not rerun.")
 		}
@@ -272,14 +302,21 @@ func Run(ctx context.Context, args []string, in io.Reader, out, errOut io.Writer
 	if s.render.JODSPrebootLockEnable && !s.render.LUKSTPM2Enable {
 		return fail(errOut, errors.New("JODS preboot locking requires verified TPM2 LUKS enrollment; configuration was left unactivated"))
 	}
-	fmt.Fprintln(out, "PLAN: atomically update local Git excludes and protect generated machine configuration")
-	if _, err := localgit.Protect(ctx, root, func() string {
-		if skip {
-			return ""
+	if opt.recovery {
+		// Recovery media uses an embedded writable source tree, not a Git
+		// checkout. Local Git excludes are installed/development-tree hygiene
+		// and are not applicable to the recovery execution environment.
+		fmt.Fprintln(out, "Recovery installer source is embedded; local Git protection skipped.")
+	} else {
+		fmt.Fprintln(out, "PLAN: atomically update local Git excludes and protect generated machine configuration")
+		if _, err := localgit.Protect(ctx, root, func() string {
+			if skip {
+				return ""
+			}
+			return hardwarePath
+		}()); err != nil {
+			return fail(errOut, err)
 		}
-		return hardwarePath
-	}()); err != nil {
-		return fail(errOut, err)
 	}
 	if s.render.SecureBootEnable {
 		inspection, err := secureboot.Inspect(ctx)
@@ -342,16 +379,65 @@ func Run(ctx context.Context, args []string, in io.Reader, out, errOut io.Writer
 		}
 	}
 	if runRebuild {
-		target, err := deploy.Target(root, s.user.Hostname)
-		if err != nil {
-			return fail(errOut, err)
-		}
-		fmt.Fprintln(out, "PLAN: validate then install", target)
-		if err := deploy.Apply(ctx, target); err != nil {
-			return fail(errOut, err)
-		}
-		if err := provisionRecoveryPartition(ctx, root, s); err != nil {
-			return fail(errOut, err)
+		if s.existing {
+			target, err := deploy.Target(root, s.user.Hostname)
+			if err != nil {
+				return fail(errOut, err)
+			}
+			fmt.Fprintln(out, "PLAN: validate then install", target)
+			if err := deploy.Apply(ctx, target); err != nil {
+				return fail(errOut, err)
+			}
+			if err := provisionRecoveryPartition(ctx, root, s); err != nil {
+				return fail(errOut, err)
+			}
+		} else {
+			targetDisk, err := selectFreshTargetDisk(
+				ctx,
+				ui,
+				out,
+				opt.targetDisk,
+			)
+			if err != nil {
+				return fail(errOut, err)
+			}
+
+			if s.recoveryDisk != "" || s.recoveryPartition != "" {
+				return fail(
+					errOut,
+					errors.New(
+						"canonical fresh installation owns recovery storage on --target-disk; "+
+							"do not combine it with --recovery-disk or --recovery-partition",
+					),
+				)
+			}
+
+			fresh, err := runFreshBareMetal(
+				ctx,
+				ui,
+				root,
+				targetDisk,
+				s.user.Hostname,
+				s.user.RecoveryEnable &&
+					s.user.RecoveryPartitionEnable,
+				[]string{
+					s.render.RootPasswordFile,
+					s.render.WorkUserPasswordFile,
+				},
+				out,
+			)
+			if err != nil {
+				return fail(errOut, err)
+			}
+
+			if fresh.RecoveryPartition != "" {
+				s.recoveryPartition = fresh.RecoveryPartition
+				fmt.Fprintf(
+					out,
+					"Canonical recovery storage prepared at %s; recovery identity/release provisioning is handled by the appropriate local or JODS trust flow.\n",
+					fresh.RecoveryPartition,
+				)
+			}
 		}
 	}
 
@@ -591,10 +677,17 @@ func Run(ctx context.Context, args []string, in io.Reader, out, errOut io.Writer
 
 	if runRebuild {
 		if s.render.EndpointManagedDevice {
-			if err := activateJODSEnrollment(ctx, true); err != nil {
-				return fail(errOut, err)
+			if s.existing {
+				if err := activateJODSEnrollment(ctx, true); err != nil {
+					return fail(errOut, err)
+				}
+				fmt.Fprintln(out, "JODS enrollment submitted; retry timer enabled while approval is pending.")
+			} else {
+				fmt.Fprintln(
+					out,
+					"JODS enrollment deferred to the installed GjallarOS lifecycle; installer environment was not enrolled.",
+				)
 			}
-			fmt.Fprintln(out, "JODS enrollment submitted; retry timer enabled while approval is pending.")
 		}
 		if s.user.AutoReboot {
 			_ = attached(ctx, "sudo", "systemctl", "reboot")
@@ -927,21 +1020,6 @@ func collectInteractive(ctx context.Context, ui prompt.UI, root string, hardware
 			return err
 		}
 	}
-	u.EnableScrobbling, err = ui.Confirm(ctx, "Enable Last.fm and/or ListenBrainz scrobbling?", false)
-	if err != nil {
-		return err
-	}
-	if u.EnableScrobbling {
-		u.EnableLastfm, err = ui.Confirm(ctx, "Enable Last.fm?", false)
-		if err != nil {
-			return err
-		}
-		u.EnableListenbrainz, err = ui.Confirm(ctx, "Enable ListenBrainz?", false)
-		if err != nil {
-			return err
-		}
-		u.EnableScrobbling = u.EnableLastfm || u.EnableListenbrainz
-	}
 	u.WriteConfig = true
 	u.RunRebuild = true
 	return nil
@@ -1011,6 +1089,15 @@ func normalizeManagementSafety(u *config.User) {
 }
 
 func configureWeatherLocation(ctx context.Context, ui prompt.UI, u *config.User, out io.Writer) error {
+	configuredCity := strings.TrimSpace(u.WeatherCity)
+	configuredCountry := strings.TrimSpace(u.WeatherCountry)
+	if configuredCity != "" && configuredCountry != "" {
+		u.WeatherCity = configuredCity
+		u.WeatherCountry = configuredCountry
+		fmt.Fprintf(out, "Weather location configured: %s, %s\n", configuredCity, configuredCountry)
+		return nil
+	}
+
 	detected, detectErr := detectNetworkLocation(ctx)
 	if detectErr == nil {
 		fmt.Fprintf(out, "Approximate network location detected: %s, %s\n", detected.City, detected.Country)
@@ -1044,6 +1131,21 @@ func configureWeatherLocation(ctx context.Context, ui prompt.UI, u *config.User,
 
 func configureRecoveryProvisioning(ctx context.Context, ui prompt.UI, opt options, s *state) error {
 	if !s.user.RecoveryEnable {
+		return nil
+	}
+
+	// Canonical fresh installation owns recovery partition #3 on the
+	// selected target disk. It must never ask the user for a second GPT
+	// disk or for GjallarOS release-signing private/public key files.
+	//
+	// Release signing and per-device recovery identity are separate trust
+	// roles. Fresh storage provisioning only creates the canonical recovery
+	// storage here.
+	if !s.existing {
+		s.recoveryDisk = ""
+		s.recoveryPartition = ""
+		s.recoverySigningKey = ""
+		s.recoverySigningPublicKey = ""
 		return nil
 	}
 	if opt.recoveryDisk != "" && opt.recoveryPartition != "" {
@@ -1115,18 +1217,12 @@ func configureRecoveryProvisioning(ctx context.Context, ui prompt.UI, opt option
 			return nil
 		}
 	} else {
-		// The user already authorized recovery partition provisioning through
-		// recoveryPartitionEnable. GJAL-65 will inspect actual free space and
-		// safely resize supported Btrfs storage when required.
-		recoveryDisk, err := ui.Value(
-			ctx,
-			"GPT disk for the dedicated GjallarOS recovery partition",
-			"",
-		)
-		if err != nil {
-			return err
-		}
-		s.recoveryDisk = recoveryDisk
+		// Fresh canonical installation owns recovery partition #3 on the
+		// validated target disk. Do not ask for a second recovery disk here.
+		//
+		// Existing-layout GJAL-65 resize orchestration is a separate path and
+		// still rediscovers the actual Btrfs/LUKS/GPT topology before mutation.
+		s.recoveryDisk = ""
 	}
 	if s.recoverySigningKey == "" {
 		var err error
@@ -1256,29 +1352,8 @@ func detectAndRenderState(ctx context.Context, root string, s *state) error {
 	return nil
 }
 
-func configureSecrets(ctx context.Context, root string, s *state, errOut io.Writer) error {
-	if !s.user.EnableScrobbling {
-		return nil
-	}
-	args := []string{"installer", "configure-scrobbling", "--repo", root, "--username", s.user.Username, fmt.Sprintf("--lastfm=%t", s.user.EnableLastfm), fmt.Sprintf("--listenbrainz=%t", s.user.EnableListenbrainz)}
-	result, err := controlOutput(ctx, s.control, errOut, args...)
-	if err != nil {
-		return err
-	}
-	for _, line := range strings.Split(result, "\n") {
-		key, value, ok := strings.Cut(line, "=")
-		if !ok {
-			continue
-		}
-		switch key {
-		case "lastfm_username":
-			s.render.LastfmUsername = value
-		case "listenbrainz_username":
-			s.render.ListenbrainzUsername = value
-		}
-	}
-	_, err = secrets.Check(ctx, root, s.user.Username)
-	return err
+func configureSecrets(context.Context, string, *state, io.Writer) error {
+	return nil
 }
 
 func controlBinary() string {

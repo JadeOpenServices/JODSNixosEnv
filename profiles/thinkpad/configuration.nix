@@ -16,7 +16,6 @@
     ../../system/hardware/input.nix
     ../../system/hardware/thinkpad/boot.nix
     ../../system/recovery
-    ../../system/management/jods
     ../../system/security/laptop/firewall.nix
     ../../system/hardware/laptop/battery.nix
     ../../system/virtualization
