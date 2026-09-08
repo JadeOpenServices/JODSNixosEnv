@@ -200,10 +200,6 @@ func validateDisk(d Disk) error {
 		return fmt.Errorf("target disk path must identify a device under /dev: %q", d.Path)
 	}
 
-	if strings.TrimSpace(d.Model) == "" {
-		return fmt.Errorf("target disk model is required")
-	}
-
 	if strings.TrimSpace(d.Serial) == "" && strings.TrimSpace(d.WWN) == "" {
 		return fmt.Errorf("target disk requires a serial or WWN")
 	}

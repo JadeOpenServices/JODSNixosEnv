@@ -24,7 +24,7 @@ func validPlan() Plan {
 		Label:     "JODS-RECOVERY",
 		TypeGUID:  xbootldrType,
 		PARTUUID:  testRecPARTUUID,
-		SizeBytes: 3 * 1024 * 1024 * 1024,
+		SizeBytes: 12 * 1024 * 1024 * 1024,
 		Filesystem: Filesystem{
 			Type:  "vfat",
 			Label: "JODS-RECOVERY",
@@ -320,5 +320,17 @@ func TestRecoveryIdentityFieldsMatchExistingContractNeeds(t *testing.T) {
 				text,
 			)
 		}
+	}
+}
+
+func TestPlanAllowsMissingTargetModel(t *testing.T) {
+	plan := validPlan()
+	plan.TargetDisk.Model = ""
+
+	if err := plan.Validate(); err != nil {
+		t.Fatalf(
+			"plan with stable serial/WWN and missing display model was rejected: %v",
+			err,
+		)
 	}
 }

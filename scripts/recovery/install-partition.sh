@@ -3,7 +3,7 @@ set -euo pipefail
 
 usage() {
   echo "usage: $0 PARTITION IMAGE MANIFEST SIGNATURE PINNED_PUBLIC_KEY" >&2
-  echo "PARTITION must be a dedicated, unmounted 2-4 GiB partition." >&2
+  echo "PARTITION must be a dedicated, unmounted exactly-12-GiB partition." >&2
   echo "This command never accepts, creates, shrinks, or formats a whole disk." >&2
   exit 2
 }
@@ -35,8 +35,8 @@ part_type=$(lsblk -dnro PARTTYPE "$partition" | tr '[:upper:]' '[:lower:]')
   exit 1
 }
 size=$(blockdev --getsize64 "$partition")
-[ "$size" -ge 2147483648 ] && [ "$size" -le 4294967296 ] || {
-  echo "ERROR: recovery partition must be between 2 and 4 GiB" >&2
+[ "$size" -eq 12884901888 ] || {
+  echo "ERROR: recovery partition must be exactly 12 GiB" >&2
   exit 1
 }
 

@@ -56,7 +56,11 @@ in
 {
   # Provenance: github.com/bakanura/jods, pinned by flake.lock. The imported
   # file is the NixOS executor; installer state remains OS-neutral.
-  imports = [ "${inputs.jods}/nix/modules/jods-mdm-agent.nix" ];
+  # The GjallarOS integration wrapper is always available, but the
+  # external/private JODS implementation is injected by flake.nix only
+  # when endpointManagedDevice is enabled. This prevents unmanaged/local
+  # installs from materializing the private JODS source at all.
+  imports = [ ];
 
   services.jods-mdm-agent = lib.mkIf enabled {
     enable = true;

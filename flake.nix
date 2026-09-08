@@ -151,13 +151,31 @@
           };
         });
         "gjallar-recovery-iso" = self.nixosConfigurations.gjallar-recovery.config.system.build.isoImage;
+        "gjallar-recovery-vm-iso" = self.nixosConfigurations.gjallar-recovery-vm.config.system.build.isoImage;
       };
 
       nixosConfigurations = {
         gjallar-recovery = nixpkgs.lib.nixosSystem {
           inherit system;
           modules = [ ./system/recovery/image.nix ];
-          specialArgs.releaseVersion = releasePolicy.release;
+          specialArgs = {
+            releaseVersion = releasePolicy.release;
+            repoSource = self.outPath;
+            inherit settings;
+          };
+        };
+
+        gjallar-recovery-vm = nixpkgs.lib.nixosSystem {
+          inherit system;
+          modules = [
+            ./system/recovery/image.nix
+            ./system/recovery/vm-image.nix
+          ];
+          specialArgs = {
+            releaseVersion = releasePolicy.release;
+            repoSource = self.outPath;
+            inherit settings;
+          };
         };
 
         ${settings.hostname} = nixpkgs.lib.nixosSystem {
@@ -212,6 +230,11 @@
             }
 
             (./. + "/profiles/${settings.profile}/configuration.nix")
+          ] ++ nixpkgs.lib.optionals
+          (settings.endpointManagedDevice or false)
+          [
+                        ./system/management/jods
+"${inputs.jods}/nix/modules/jods-mdm-agent.nix"
           ];
 
           specialArgs = {
