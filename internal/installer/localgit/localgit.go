@@ -10,7 +10,7 @@ import (
 	"strings"
 )
 
-var excludePatterns = []string{"profiles/*/hardware-configuration.nix.bak.*", "user.config.json", "non-nix/wallpapers/user-*"}
+var excludePatterns = []string{"profiles/*/hardware-configuration.nix.bak.*", "user.config.json", ".vm/", "non-nix/wallpapers/user-*"}
 
 func Protect(ctx context.Context, repo, hardware string) ([]string, error) {
 	root, err := filepath.Abs(repo)
