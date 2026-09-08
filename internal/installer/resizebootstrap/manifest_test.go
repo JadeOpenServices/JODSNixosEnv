@@ -27,10 +27,9 @@ func manifest() recoveryresize.Manifest {
 
 		ExpectedNewRootEndBytes: 896 * 1024 * 1024 * 1024,
 
-		LUKSUUID:  "22222222-3333-4444-5555-666666666666",
-		BtrfsUUID: "33333333-4444-5555-6666-777777777777",
-
-		RecoveryBytes: 4 * 1024 * 1024 * 1024,
+		LUKSUUID:      "22222222-3333-4444-5555-666666666666",
+		BtrfsUUID:     "33333333-4444-5555-6666-777777777777",
+		RecoveryBytes: 12 * 1024 * 1024 * 1024,
 	}
 }
 

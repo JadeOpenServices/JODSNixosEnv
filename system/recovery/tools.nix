@@ -35,6 +35,7 @@ let
           '  gjallar-recover audit' \
           '  gjallar-recover unlock DEVICE NAME' \
           '  gjallar-recover mount DEVICE MOUNTPOINT' \
+          '  gjallar-recover open-root DEVICE [NAME]' \
           '  gjallar-recover generations ROOT' \
           '  gjallar-recover repair-boot ROOT' \
           '  gjallar-recover rebuild ROOT FLAKE#HOST' \
@@ -135,6 +136,80 @@ let
           target="''${3:?MOUNTPOINT required}"
           mkdir -p "$target"
           mount "$device" "$target"
+          ;;
+        open-root)
+          require_root
+
+          device="''${2:?encrypted root DEVICE required}"
+          name="''${3:-gjallar-recovery-root}"
+          target=/mnt
+          mapping="/dev/mapper/$name"
+
+          cryptsetup isLuks "$device" || {
+            printf '%s\n'               "ERROR: $device is not a LUKS device." >&2
+            exit 1
+          }
+
+          if findmnt -rn --target "$target" >/dev/null 2>&1; then
+            printf '%s\n'               "ERROR: $target is already mounted; refusing an ambiguous recovery root." >&2
+            exit 1
+          fi
+
+          if [ -e "$mapping" ]; then
+            printf '%s\n'               "ERROR: mapper $mapping already exists; refusing to reuse an unauthenticated mapping." >&2
+            exit 1
+          fi
+
+          printf '%s\n'             'GjallarOS installed root is encrypted.'             'Authentication is required before its files can be viewed or modified.'
+
+          systemd-ask-password             'GjallarOS recovery: enter the installed root LUKS passphrase:' |
+            cryptsetup open               --type luks               --key-file=-               "$device"               "$name"
+
+          cleanup_mapping=true
+
+          cleanup_open_root() {
+            if [ "$cleanup_mapping" = true ] && [ -e "$mapping" ]; then
+              cryptsetup close "$name" >/dev/null 2>&1 || true
+            fi
+          }
+
+          trap cleanup_open_root EXIT
+
+          mkdir -p "$target"
+
+          if ! mount -o rw "$mapping" "$target"; then
+            printf '%s\n'               'ERROR: LUKS authentication succeeded but the installed root could not be mounted.' >&2
+            exit 1
+          fi
+
+          source="$(
+            findmnt -nro SOURCE --target "$target"
+          )"
+
+          options="$(
+            findmnt -nro OPTIONS --target "$target"
+          )"
+
+          if [ "$source" != "$mapping" ]; then
+            umount "$target" >/dev/null 2>&1 || true
+            printf '%s\n'               "ERROR: $target resolved to unexpected source $source; expected $mapping." >&2
+            exit 1
+          fi
+
+          case ",$options," in
+            *,rw,*)
+              ;;
+            *)
+              umount "$target" >/dev/null 2>&1 || true
+              printf '%s\n'                 "ERROR: installed root was not mounted read-write at $target." >&2
+              exit 1
+              ;;
+          esac
+
+          cleanup_mapping=false
+          trap - EXIT
+
+          printf '%s\n'             'PASS: recovery authorization accepted.'             "PASS: installed GjallarOS root unlocked as $mapping."             "PASS: installed GjallarOS root mounted read-write at $target."             'Repair tools may now operate against /mnt.'
           ;;
         generations)
           root="''${2:?installed ROOT mountpoint required}"

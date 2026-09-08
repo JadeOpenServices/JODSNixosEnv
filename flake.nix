@@ -151,7 +151,16 @@
           };
         });
         "gjallar-recovery-iso" = self.nixosConfigurations.gjallar-recovery.config.system.build.isoImage;
-        "gjallar-recovery-vm-iso" = self.nixosConfigurations.gjallar-recovery-vm.config.system.build.isoImage;
+        "gjallar-recovery-vm-iso" =
+          self.nixosConfigurations.gjallar-recovery-vm.config.system.build.isoImage;
+      };
+
+      formatter = {
+
+        x86_64-linux = nixpkgs.legacyPackages.x86_64-linux.nixfmt;
+
+        aarch64-linux = nixpkgs.legacyPackages.aarch64-linux.nixfmt;
+
       };
 
       nixosConfigurations = {
@@ -230,11 +239,10 @@
             }
 
             (./. + "/profiles/${settings.profile}/configuration.nix")
-          ] ++ nixpkgs.lib.optionals
-          (settings.endpointManagedDevice or false)
-          [
-                        ./system/management/jods
-"${inputs.jods}/nix/modules/jods-mdm-agent.nix"
+          ]
+          ++ nixpkgs.lib.optionals (settings.endpointManagedDevice or false) [
+            ./system/management/jods
+            "${inputs.jods}/nix/modules/jods-mdm-agent.nix"
           ];
 
           specialArgs = {
