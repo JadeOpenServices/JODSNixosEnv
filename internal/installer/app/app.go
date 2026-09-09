@@ -815,21 +815,21 @@ func prepareHost(ctx context.Context, ui prompt.UI, opt options, s state, out, e
 	}
 	if expected != actual {
 		fmt.Fprintf(out, "NixOS %s detected; target is %s.\n", actual, expected)
-		fmt.Fprintf(out, "PLAN: sudo nix-channel --add https://channels.nixos.org/nixos-%s nixos\nPLAN: sudo nix-channel --update nixos\nPLAN: sudo nixos-rebuild switch --upgrade\n", expected)
-		if s.user.EndpointManagedDevice {
-			return fail(errOut, errors.New("managed device release mismatch; JODS must align the base system"))
-		}
-		yes, err := ui.Confirm(ctx, "Align the NixOS channel and rebuild?", false)
-		if err != nil || !yes {
-			return fail(errOut, errors.New("release mismatch not approved"))
-		}
+		fmt.Fprintf(out, "ACTION: automatically aligning the base system to pinned NixOS %s.\n", expected)
+
 		if err := release.Align(ctx, expected); err != nil {
 			return fail(errOut, err)
 		}
+
 		_, active, inspectErr := release.Inspect(opt.repo, "/run/current-system/etc/os-release")
-		if inspectErr != nil || active != expected {
-			return fail(errOut, fmt.Errorf("rebuild completed, but NixOS %s is not active", expected))
+		if inspectErr != nil {
+			return fail(errOut, inspectErr)
 		}
+		if active != expected {
+			return fail(errOut, fmt.Errorf("release alignment completed, but NixOS %s is not active; detected %s", expected, active))
+		}
+
+		fmt.Fprintf(out, "NixOS release aligned: %s\n", active)
 	}
 	// A completed GjallarOS installation is flake-owned. Rebuilding the
 	// bootstrap /etc/nixos/configuration.nix on a rerun would switch the live
