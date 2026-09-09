@@ -47,3 +47,33 @@ func persistDeviceIdentity(
 	user.DeviceBoardName = hardware.BoardName
 	user.DeviceBoardVersion = hardware.BoardVersion
 }
+
+func validateSecureBootFirmwareSupport(
+	enabled bool,
+	deviceProfile string,
+	effective oddc.EffectiveSecureBootFirmwarePolicy,
+) error {
+	if !enabled {
+		return nil
+	}
+
+	if effective.Policy.Supported {
+		return nil
+	}
+
+	profile := deviceProfile
+	if profile == "" {
+		profile = "unresolved device"
+	}
+
+	reason := effective.Policy.UnsupportedReason
+	if reason == "" {
+		reason = "no trusted Secure Boot firmware policy is available"
+	}
+
+	return fmt.Errorf(
+		"Secure Boot ownership transfer is unsupported for detected device profile %q: %s",
+		profile,
+		reason,
+	)
+}

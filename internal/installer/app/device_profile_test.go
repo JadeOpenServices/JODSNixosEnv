@@ -3,6 +3,7 @@ package app
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/bakanura/gjallarOS/internal/installer/config"
@@ -220,5 +221,92 @@ func TestPersistDeviceIdentityPreservesResolvedLayerOrder(t *testing.T) {
 				want[i],
 			)
 		}
+	}
+}
+
+func TestSecureBootSupportGateAcceptsDetectedSupportedPolicy(t *testing.T) {
+	err := validateSecureBootFirmwareSupport(
+		true,
+		"laptop/framework",
+		oddc.EffectiveSecureBootFirmwarePolicy{
+			SourceLayer: "laptop/framework",
+			Policy: oddc.SecureBootFirmwarePolicy{
+				Supported: true,
+			},
+		},
+	)
+
+	if err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestSecureBootSupportGateRejectsDetectedUnsupportedPolicy(t *testing.T) {
+	err := validateSecureBootFirmwareSupport(
+		true,
+		"laptop/hp/zbook-x2-g4",
+		oddc.EffectiveSecureBootFirmwarePolicy{
+			SourceLayer: "laptop/hp",
+			Policy: oddc.SecureBootFirmwarePolicy{
+				Supported:         false,
+				SetupModeStrategy: "unsupported",
+				UnsupportedReason: "HP transfer is not validated.",
+			},
+		},
+	)
+
+	if err == nil {
+		t.Fatal("unsupported detected firmware accepted Secure Boot")
+	}
+
+	if !strings.Contains(err.Error(), "laptop/hp/zbook-x2-g4") {
+		t.Fatalf("error does not identify detected profile: %v", err)
+	}
+}
+
+func TestSecureBootSupportGateAllowsDisabledSecureBootOnUnsupportedDevice(t *testing.T) {
+	err := validateSecureBootFirmwareSupport(
+		false,
+		"laptop/hp/zbook-x2-g4",
+		oddc.EffectiveSecureBootFirmwarePolicy{
+			Policy: oddc.SecureBootFirmwarePolicy{
+				Supported:         false,
+				SetupModeStrategy: "unsupported",
+				UnsupportedReason: "HP transfer is not validated.",
+			},
+		},
+	)
+
+	if err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestManagedDeviceCannotBypassUnsupportedFirmwarePolicy(t *testing.T) {
+	user := config.User{
+		EndpointManagedDevice: true,
+	}
+
+	normalizeManagementSafety(&user)
+
+	if !user.SecureBootEnable {
+		t.Fatal("managed policy did not require Secure Boot")
+	}
+
+	err := validateSecureBootFirmwareSupport(
+		user.SecureBootEnable,
+		"laptop/hp/zbook-x2-g4",
+		oddc.EffectiveSecureBootFirmwarePolicy{
+			SourceLayer: "laptop/hp",
+			Policy: oddc.SecureBootFirmwarePolicy{
+				Supported:         false,
+				SetupModeStrategy: "unsupported",
+				UnsupportedReason: "HP transfer is not validated.",
+			},
+		},
+	)
+
+	if err == nil {
+		t.Fatal("managed device bypassed unsupported firmware policy")
 	}
 }
