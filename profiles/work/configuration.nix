@@ -16,6 +16,7 @@
     ../../system/hardware/input.nix
     ../../system/hardware/work/boot.nix
     ../../system/recovery
+    ../../system/security/secure-boot
     ../../system/hardware/laptop/battery.nix
     ../../system/security/laptop/firewall.nix
     ../../system/virtualization

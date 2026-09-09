@@ -340,3 +340,27 @@ func TestRecoveryLifecycleAuthorityIsSeparated(t *testing.T) {
 		})
 	}
 }
+
+func TestDisableTPMDependentSecurity(t *testing.T) {
+	user := config.User{
+		SecureBootPrompt:      true,
+		SecureBootEnable:      true,
+		LUKSTPM2Enable:        true,
+		JODSPrebootLockEnable: true,
+	}
+
+	disableTPMDependentSecurity(&user)
+
+	if user.SecureBootPrompt {
+		t.Fatal("Secure Boot prompt remained enabled")
+	}
+	if user.SecureBootEnable {
+		t.Fatal("Secure Boot remained enabled")
+	}
+	if user.LUKSTPM2Enable {
+		t.Fatal("TPM2 LUKS unlock remained enabled")
+	}
+	if user.JODSPrebootLockEnable {
+		t.Fatal("JODS preboot TPM policy remained enabled")
+	}
+}
