@@ -30,9 +30,17 @@ func TestUpdateExcludeIsIdempotent(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, pattern := range excludePatterns {
-		if strings.Count(string(data), pattern) != 1 {
-			t.Fatalf("pattern count != 1: %s", pattern)
+	lines := map[string]int{}
+	for _, line := range strings.Split(string(data), "\n") {
+		if line == "" {
+			continue
+		}
+		lines[line]++
+	}
+
+	for _, pattern := range excludePatterns() {
+		if lines[pattern] != 1 {
+			t.Fatalf("pattern line count != 1: %s (%d)", pattern, lines[pattern])
 		}
 	}
 }
