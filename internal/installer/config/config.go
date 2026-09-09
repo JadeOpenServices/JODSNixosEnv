@@ -61,6 +61,13 @@ type User struct {
 	ListenbrainzUsername    string   `json:"listenbrainzUsername"`
 	FrameworkEnable         bool     `json:"frameworkEnable"`
 	FrameworkModel          string   `json:"frameworkModel"`
+	DeviceProfile           string   `json:"deviceProfile"`
+	DeviceSysVendor         string   `json:"deviceSysVendor"`
+	DeviceProductName       string   `json:"deviceProductName"`
+	DeviceProductVersion    string   `json:"deviceProductVersion"`
+	DeviceBoardVendor       string   `json:"deviceBoardVendor"`
+	DeviceBoardName         string   `json:"deviceBoardName"`
+	DeviceBoardVersion      string   `json:"deviceBoardVersion"`
 	NemuEnable              bool     `json:"nemuEnable"`
 	NemuGPUPassthrough      bool     `json:"nemuGpuPassthrough"`
 	LUKSTPM2Enable          bool     `json:"luksTpm2Enable"`

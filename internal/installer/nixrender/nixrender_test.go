@@ -95,3 +95,29 @@ func TestRenderJODSDoesNotContainSecretFields(t *testing.T) {
 		}
 	}
 }
+
+func TestRenderDeviceIdentity(t *testing.T) {
+	got := string(Render(Settings{
+		DeviceProfile:        "laptop/common",
+		DeviceSysVendor:      "HP",
+		DeviceProductName:    "HP ZBook x2 G4",
+		DeviceProductVersion: "A",
+		DeviceBoardVendor:    "HP",
+		DeviceBoardName:      "824C",
+		DeviceBoardVersion:   "KBC Version 43.72",
+	}))
+
+	for _, want := range []string{
+		`deviceProfile = "laptop/common";`,
+		`deviceSysVendor = "HP";`,
+		`deviceProductName = "HP ZBook x2 G4";`,
+		`deviceProductVersion = "A";`,
+		`deviceBoardVendor = "HP";`,
+		`deviceBoardName = "824C";`,
+		`deviceBoardVersion = "KBC Version 43.72";`,
+	} {
+		if !strings.Contains(got, want) {
+			t.Fatalf("missing %q in:\n%s", want, got)
+		}
+	}
+}

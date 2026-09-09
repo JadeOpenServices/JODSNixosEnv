@@ -8,13 +8,30 @@ import (
 )
 
 type Hardware struct {
-	FormFactor, LaptopVendor string
-	Touchscreen, PenTablet   bool
+	FormFactor   string
+	LaptopVendor string
+
+	SysVendor      string
+	ProductName    string
+	ProductVersion string
+	BoardVendor    string
+	BoardName      string
+	BoardVersion   string
+
+	Touchscreen bool
+	PenTablet   bool
 }
 type Options struct{ Profiles, Shells, Editors, Browsers, Themes []string }
 
 func DetectHardware(sysRoot string) Hardware {
-	h := Hardware{}
+	h := Hardware{
+		SysVendor:      readDMI(sysRoot, "sys_vendor"),
+		ProductName:    readDMI(sysRoot, "product_name"),
+		ProductVersion: readDMI(sysRoot, "product_version"),
+		BoardVendor:    readDMI(sysRoot, "board_vendor"),
+		BoardName:      readDMI(sysRoot, "board_name"),
+		BoardVersion:   readDMI(sysRoot, "board_version"),
+	}
 
 	batteries, _ := filepath.Glob(filepath.Join(sysRoot, "class", "power_supply", "BAT*"))
 	if len(batteries) > 0 {
@@ -30,8 +47,8 @@ func DetectHardware(sysRoot string) Hardware {
 		}
 	}
 
-	if data, err := os.ReadFile(filepath.Join(sysRoot, "class", "dmi", "id", "product_name")); err == nil {
-		product := strings.ToLower(string(data))
+	if h.ProductName != "" {
+		product := strings.ToLower(h.ProductName)
 		if strings.Contains(product, "thinkpad") {
 			h.FormFactor = "laptop"
 			h.LaptopVendor = "thinkpad"
@@ -44,6 +61,14 @@ func DetectHardware(sysRoot string) Hardware {
 	h.Touchscreen = detectTouchscreen(sysRoot)
 	h.PenTablet = detectPenTablet(sysRoot)
 	return h
+}
+
+func readDMI(sysRoot, name string) string {
+	data, err := os.ReadFile(filepath.Join(sysRoot, "class", "dmi", "id", name))
+	if err != nil {
+		return ""
+	}
+	return strings.TrimSpace(string(data))
 }
 
 func detectPenTablet(sysRoot string) bool {
