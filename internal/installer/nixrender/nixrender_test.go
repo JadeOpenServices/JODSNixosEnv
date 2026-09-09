@@ -121,3 +121,19 @@ func TestRenderDeviceIdentity(t *testing.T) {
 		}
 	}
 }
+
+func TestRenderDeviceLayers(t *testing.T) {
+	got := string(Render(Settings{
+		DeviceLayers: []string{
+			"laptop/common",
+			"laptop/framework",
+			"laptop/framework/13-amd-7040",
+		},
+	}))
+
+	want := `deviceLayers = [ "laptop/common" "laptop/framework" "laptop/framework/13-amd-7040" ];`
+
+	if !strings.Contains(got, want) {
+		t.Fatalf("missing %q in:\n%s", want, got)
+	}
+}
