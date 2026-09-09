@@ -111,6 +111,16 @@ func Run(ctx context.Context, args []string, in io.Reader, out, errOut io.Writer
 		)
 
 		args = append([]string(nil), tx.Args...)
+
+		if err := os.Setenv("GJALLAR_INSTALLER_RESUMED", "1"); err != nil {
+			return fail(
+				errOut,
+				fmt.Errorf(
+					"mark validated installer resume transaction: %w",
+					err,
+				),
+			)
+		}
 	}
 
 	originalArgs := append([]string(nil), args...)
@@ -969,7 +979,7 @@ func prepareHost(
 		plan := bootstrap.Build(data, s.preset)
 		if len(plan.Missing) > 0 {
 			fmt.Fprintf(out, "Missing helpers/options: %s\nProposed configuration:\n%s\n", strings.Join(plan.Missing, ", "), plan.Updated)
-			if !s.user.EndpointManagedDevice {
+			if !s.user.EndpointManagedDevice && os.Getenv("GJALLAR_INSTALLER_RESUMED") != "1" {
 				yes, err := ui.Confirm(ctx, "Apply prerequisite configuration and rebuild?", false)
 				if err != nil {
 					return fail(errOut, err)
@@ -984,7 +994,7 @@ func prepareHost(
 		}
 	}
 	check := s.user.RunUpdateChecks
-	if !s.preset {
+	if !s.preset && os.Getenv("GJALLAR_INSTALLER_RESUMED") != "1" {
 		check, err = ui.Confirm(ctx, "Check for and install firmware updates?", false)
 		if err != nil {
 			return fail(errOut, err)
@@ -1747,7 +1757,7 @@ func detectAndRenderState(ctx context.Context, root string, s *state) error {
 	}
 	s.passthroughIDs = append([]string(nil), g.PassthroughIDs...)
 	passthrough := u.NemuGPUPassthrough && len(g.PassthroughIDs) > 0
-	s.render = nixrender.Settings{System: u.System, Profile: u.Profile, Hostname: u.Hostname, Username: u.Username, Timezone: u.Timezone, Locale: u.Locale, KeyboardLayout: u.KeyboardLayout, KeyboardVariant: u.KeyboardVariant, WeatherCity: u.WeatherCity, WeatherCountry: u.WeatherCountry, TouchpadWorkspaceSwipe: u.TouchpadWorkspaceSwipe, TouchscreenEnable: s.touchscreen, PenTabletEnable: s.penTablet, ClamshellEnable: u.ClamshellEnable, USBGuardEnable: u.USBGuardEnable, Name: u.Name, Email: u.Email, GitHubUsername: u.GitHubUsername, DotfilesDir: u.DotfilesDir, WorkUserEnable: u.WorkUserEnable, WorkUsername: u.WorkUsername, DockerEnable: u.DockerEnable, DebugFunctions: u.DebugFunctions, Shell: u.Shell, Editors: u.Editors, Browsers: u.Browsers, PreferredEditor: u.PreferredEditor, PreferredBrowser: u.PreferredBrowser, PlaneEnable: u.PlaneEnable, PlaneHost: u.PlaneHost, DrawioEnable: u.DrawioEnable, DrawioSelfHosted: u.DrawioSelfHosted, DrawioHost: u.DrawioHost, BackgroundNormal: u.BackgroundNormal, BackgroundWork: u.BackgroundWork, BackgroundGaming: u.BackgroundGaming, EnableScrobbling: u.EnableScrobbling, EnableLastfm: u.EnableLastfm, EnableListenbrainz: u.EnableListenbrainz, LastfmUsername: u.LastfmUsername, ListenbrainzUsername: u.ListenbrainzUsername, FrameworkEnable: u.FrameworkEnable, FrameworkModel: u.FrameworkModel, GraphicsVendor: g.Vendor, GraphicsType: g.Type, GraphicsCompute: g.Compute, GraphicsBusID: g.BusID, GraphicsIntegratedBusID: g.IntegratedBusID, WiFiDriver: wifi, AIEnable: u.AIEnable, AIModel: ai.Model, AIAccelerationProfile: ai.AccelerationProfile, AIAgentMode: u.AIAgentMode, AIContextTokens: ai.ContextTokens, AIVRAMMB: ai.VRAMMB, NemuEnable: u.NemuEnable, NemuGPUPassthrough: passthrough, LUKSTPM2Enable: u.LUKSTPM2Enable, RecoveryEnable: u.RecoveryEnable, RecoveryPartitionEnable: u.RecoveryPartitionEnable, JODSPrebootLockEnable: u.JODSPrebootLockEnable, SecureBootEnable: u.SecureBootEnable, EndpointManagedDevice: u.EndpointManagedDevice, JODSEndpoint: u.JODSEndpoint, JODSPolicySigningPublicKey: u.JODSPolicySigningKey, JODSRecoveryCommandSigningPublicKey: u.JODSRecoverySigningKey, JODSEnrollmentMode: u.JODSEnrollmentMode, JODSAllowInsecureTLS: u.JODSAllowInsecureTLS, JODSDeviceClass: u.JODSDeviceClass, JODSDesktopProfile: u.JODSDesktopProfile, JODSFingerprintEnrollmentAllowed: u.JODSFingerprintEnroll, WMs: []string{"hyprland"}, Theme: u.Theme}
+	s.render = nixrender.Settings{System: u.System, Profile: u.Profile, Hostname: u.Hostname, Username: u.Username, Timezone: u.Timezone, Locale: u.Locale, KeyboardLayout: u.KeyboardLayout, KeyboardVariant: u.KeyboardVariant, WeatherCity: u.WeatherCity, WeatherCountry: u.WeatherCountry, TouchpadWorkspaceSwipe: u.TouchpadWorkspaceSwipe, TouchscreenEnable: s.touchscreen, PenTabletEnable: s.penTablet, ClamshellEnable: u.ClamshellEnable, USBGuardEnable: u.USBGuardEnable, Name: u.Name, Email: u.Email, GitHubUsername: u.GitHubUsername, DotfilesDir: u.DotfilesDir, WorkUserEnable: u.WorkUserEnable, WorkUsername: u.WorkUsername, DockerEnable: u.DockerEnable, DebugFunctions: u.DebugFunctions, Shell: u.Shell, Editors: u.Editors, Browsers: u.Browsers, PreferredEditor: u.PreferredEditor, PreferredBrowser: u.PreferredBrowser, PlaneEnable: u.PlaneEnable, PlaneHost: u.PlaneHost, DrawioEnable: u.DrawioEnable, DrawioSelfHosted: u.DrawioSelfHosted, DrawioHost: u.DrawioHost, BackgroundNormal: u.BackgroundNormal, BackgroundWork: u.BackgroundWork, BackgroundGaming: u.BackgroundGaming, EnableScrobbling: u.EnableScrobbling, EnableLastfm: u.EnableLastfm, EnableListenbrainz: u.EnableListenbrainz, LastfmUsername: u.LastfmUsername, ListenbrainzUsername: u.ListenbrainzUsername, FrameworkEnable: u.FrameworkEnable, FrameworkModel: u.FrameworkModel, GraphicsVendor: g.Vendor, GraphicsDeviceID: g.DeviceID, GraphicsType: g.Type, GraphicsCompute: g.Compute, GraphicsBusID: g.BusID, GraphicsIntegratedBusID: g.IntegratedBusID, WiFiDriver: wifi, AIEnable: u.AIEnable, AIModel: ai.Model, AIAccelerationProfile: ai.AccelerationProfile, AIAgentMode: u.AIAgentMode, AIContextTokens: ai.ContextTokens, AIVRAMMB: ai.VRAMMB, NemuEnable: u.NemuEnable, NemuGPUPassthrough: passthrough, LUKSTPM2Enable: u.LUKSTPM2Enable, RecoveryEnable: u.RecoveryEnable, RecoveryPartitionEnable: u.RecoveryPartitionEnable, JODSPrebootLockEnable: u.JODSPrebootLockEnable, SecureBootEnable: u.SecureBootEnable, EndpointManagedDevice: u.EndpointManagedDevice, JODSEndpoint: u.JODSEndpoint, JODSPolicySigningPublicKey: u.JODSPolicySigningKey, JODSRecoveryCommandSigningPublicKey: u.JODSRecoverySigningKey, JODSEnrollmentMode: u.JODSEnrollmentMode, JODSAllowInsecureTLS: u.JODSAllowInsecureTLS, JODSDeviceClass: u.JODSDeviceClass, JODSDesktopProfile: u.JODSDesktopProfile, JODSFingerprintEnrollmentAllowed: u.JODSFingerprintEnroll, WMs: []string{"hyprland"}, Theme: u.Theme}
 	if passthrough {
 		s.render.NemuGPUIDs = g.PassthroughIDs
 	}
