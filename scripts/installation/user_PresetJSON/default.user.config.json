@@ -48,6 +48,7 @@
   "frameworkEnable": true,
   "frameworkModel": "13",
   "deviceProfile": "",
+  "deviceLayers": [],
   "deviceSysVendor": "",
   "deviceProductName": "",
   "deviceProductVersion": "",

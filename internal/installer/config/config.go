@@ -62,6 +62,7 @@ type User struct {
 	FrameworkEnable         bool     `json:"frameworkEnable"`
 	FrameworkModel          string   `json:"frameworkModel"`
 	DeviceProfile           string   `json:"deviceProfile"`
+	DeviceLayers            []string `json:"deviceLayers"`
 	DeviceSysVendor         string   `json:"deviceSysVendor"`
 	DeviceProductName       string   `json:"deviceProductName"`
 	DeviceProductVersion    string   `json:"deviceProductVersion"`
