@@ -26,7 +26,7 @@ func Target(repo, hostname string) (string, error) {
 	if !hostnamePattern.MatchString(hostname) || hostname == "." || hostname == ".." {
 		return "", fmt.Errorf("invalid configuration hostname: %q", hostname)
 	}
-	return root + "#" + hostname, nil
+	return "path:" + root + "#" + hostname, nil
 }
 
 func Apply(ctx context.Context, target string) error {
