@@ -1055,9 +1055,9 @@ func collectInteractive(ctx context.Context, ui prompt.UI, root string, hardware
 		if err != nil {
 			return err
 		}
-		endpointDefault := "https://admin.oss-ad.eu:1666"
-		if localDevelopment {
-			endpointDefault = "https://192.168.8.193:1666"
+		endpointDefault := strings.TrimSpace(u.JODSEndpoint)
+		if endpointDefault == "" && !localDevelopment {
+			endpointDefault = "https://admin.oss-ad.eu:1666"
 		}
 		u.JODSEndpoint, err = ui.Value(ctx, "JODS HTTPS endpoint", endpointDefault)
 		if err != nil {
