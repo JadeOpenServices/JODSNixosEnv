@@ -146,8 +146,8 @@ func TestRecoveryAndAcceptExistingSelectReinstallMode(t *testing.T) {
 		t.Fatal("recovery fresh/reinstall operation split is missing")
 	}
 
-	if !strings.Contains(body, `s.existing = existingInstall(root)`) {
-		t.Fatal("recovery --accept-existing path no longer performs existing-install detection")
+	if !strings.Contains(body, `detectExistingInstalledSystem(ctx, root)`) {
+		t.Fatal("recovery --accept-existing path no longer performs installed-system detection")
 	}
 }
 

@@ -173,7 +173,10 @@ func Run(ctx context.Context, args []string, in io.Reader, out, errOut io.Writer
 		// Recovery without --accept-existing is the explicit fresh operation.
 		s.existing = false
 	} else {
-		s.existing = existingInstall(root)
+		s.existing, err = detectExistingInstalledSystem(ctx, root)
+		if err != nil {
+			return fail(errOut, err)
+		}
 	}
 	if s.existing && !opt.acceptExisting {
 		approved, err := ui.Confirm(ctx, "Existing GjallarOS installation detected. Update it in place while preserving passwords, disk keys, and hardware configuration?", false)
@@ -244,6 +247,28 @@ func Run(ctx context.Context, args []string, in io.Reader, out, errOut io.Writer
 	// provisioning so a managed preset cannot silently skip the physical
 	// recovery path by leaving its individual booleans false.
 	normalizeManagementSafety(&s.user)
+
+	if s.existing &&
+		s.user.RecoveryEnable &&
+		s.user.RecoveryPartitionEnable {
+		continued, err := handleExistingRecoveryFilesystem(
+			ctx,
+			ui,
+			presetPath,
+			&s,
+			out,
+		)
+		if err != nil {
+			return fail(errOut, err)
+		}
+		if !continued {
+			fmt.Fprintln(
+				out,
+				"Existing installation left unchanged; recovery compatibility was not accepted.",
+			)
+			return 0
+		}
+	}
 
 	if err := configureRecoveryProvisioning(ctx, ui, opt, &s); err != nil {
 		return fail(errOut, err)
