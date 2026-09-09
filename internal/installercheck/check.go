@@ -166,6 +166,7 @@ func checkNativeGraphics(ctx context.Context, r *Report, root string) {
 	}
 	for key, actual := range map[string]string{
 		"graphicsVendor":          live.Vendor,
+		"graphicsDeviceId":        live.DeviceID,
 		"graphicsType":            live.Type,
 		"graphicsCompute":         fmt.Sprintf("%t", live.Compute),
 		"graphicsBusId":           live.BusID,
@@ -179,7 +180,7 @@ func checkNativeGraphics(ctx context.Context, r *Report, root string) {
 	r.Findings = append(r.Findings, Finding{OK, "generated graphics settings match native detection"})
 }
 
-var graphicsSetting = regexp.MustCompile(`(?m)^\s*(graphicsVendor|graphicsType|graphicsCompute|graphicsBusId|graphicsIntegratedBusId)\s*=\s*(?:"([^"]*)"|(true|false));`)
+var graphicsSetting = regexp.MustCompile(`(?m)^\s*(graphicsVendor|graphicsDeviceId|graphicsType|graphicsCompute|graphicsBusId|graphicsIntegratedBusId)\s*=\s*(?:"([^"]*)"|(true|false));`)
 
 func readGraphicsSettings(path string) (map[string]string, error) {
 	contents, err := os.ReadFile(path)
