@@ -1,0 +1,124 @@
+package freshdiskplan
+
+import (
+	"testing"
+
+	"github.com/bakanura/gjallarOS/internal/installer/diskplan"
+	"github.com/bakanura/gjallarOS/internal/installer/targetdisk"
+)
+
+func observed() targetdisk.Result {
+	return targetdisk.Result{
+		Path:      "/dev/nvme1n1",
+		Model:     "Test NVMe",
+		Serial:    "SERIAL-1",
+		WWN:       "eui.0011223344556677",
+		SizeBytes: 1000 * 1024 * 1024 * 1024,
+	}
+}
+
+func TestBuildCanonicalBtrfsRecoveryLayout(t *testing.T) {
+	p, err := Build(Input{
+		Observed:       observed(),
+		EnableRecovery: true,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if err := p.Validate(); err != nil {
+		t.Fatalf("generated plan invalid: %v", err)
+	}
+	if p.ESP.Number != 1 || p.Root.Partition.Number != 2 {
+		t.Fatalf(
+			"unexpected canonical partition numbers: esp=%d root=%d",
+			p.ESP.Number,
+			p.Root.Partition.Number,
+		)
+	}
+	if p.Recovery == nil || p.Recovery.Number != 3 {
+		t.Fatalf("canonical recovery partition missing: %#v", p.Recovery)
+	}
+	if p.ESP.SizeBytes != ESPBytes {
+		t.Fatalf("ESP size=%d", p.ESP.SizeBytes)
+	}
+	if p.Recovery.SizeBytes != RecoveryBytes {
+		t.Fatalf("recovery size=%d", p.Recovery.SizeBytes)
+	}
+	if p.Root.Partition.Filesystem.Type != "btrfs" {
+		t.Fatalf(
+			"root filesystem=%q",
+			p.Root.Partition.Filesystem.Type,
+		)
+	}
+	if p.Root.Encryption.Type != diskplan.EncryptionLUKS2 {
+		t.Fatalf("root encryption=%q", p.Root.Encryption.Type)
+	}
+	if p.Root.Encryption.MappingName != "cryptroot" {
+		t.Fatalf(
+			"mapping=%q",
+			p.Root.Encryption.MappingName,
+		)
+	}
+	if p.TargetDisk.GPTDiskGUID == "" ||
+		p.ESP.PARTUUID == "" ||
+		p.Root.Partition.PARTUUID == "" ||
+		p.Recovery.PARTUUID == "" {
+		t.Fatal("generated canonical identities are incomplete")
+	}
+}
+
+func TestBuildWithoutRecovery(t *testing.T) {
+	p, err := Build(Input{
+		Observed: observed(),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if p.Recovery != nil {
+		t.Fatal("recovery unexpectedly enabled")
+	}
+	if err := p.Validate(); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestBuildRejectsMissingStableIdentity(t *testing.T) {
+	o := observed()
+	o.Serial = ""
+	o.WWN = ""
+
+	if _, err := Build(Input{Observed: o}); err == nil {
+		t.Fatal("target without stable identity accepted")
+	}
+}
+
+func TestBuildRejectsTooSmallDisk(t *testing.T) {
+	o := observed()
+	o.SizeBytes = ESPBytes + RecoveryBytes
+
+	if _, err := Build(Input{
+		Observed:       o,
+		EnableRecovery: true,
+	}); err == nil {
+		t.Fatal("undersized disk accepted")
+	}
+}
+
+func TestBuildGeneratesFreshIdentities(t *testing.T) {
+	a, err := Build(Input{Observed: observed(), EnableRecovery: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	b, err := Build(Input{Observed: observed(), EnableRecovery: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if a.TargetDisk.GPTDiskGUID == b.TargetDisk.GPTDiskGUID {
+		t.Fatal("GPT GUID was reused")
+	}
+	if a.Root.Partition.PARTUUID == b.Root.Partition.PARTUUID {
+		t.Fatal("root PARTUUID was reused")
+	}
+}

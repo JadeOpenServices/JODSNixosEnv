@@ -53,7 +53,7 @@ type Result struct {
 	Message        string
 }
 
-type commandRunner interface {
+type Runner interface {
 	Run(context.Context, string, ...string) error
 	Output(context.Context, string, ...string) ([]byte, error)
 }
@@ -76,10 +76,20 @@ func Provision(ctx context.Context, input Input) (Result, error) {
 	return provision(ctx, input, execRunner{})
 }
 
+// ProvisionWithRunner lets higher-level installer orchestration reuse the
+// existing GPT inspection and mutation safety boundary without duplicating it.
+func ProvisionWithRunner(
+	ctx context.Context,
+	runner Runner,
+	input Input,
+) (Result, error) {
+	return provision(ctx, input, runner)
+}
+
 func provision(
 	ctx context.Context,
 	input Input,
-	runner commandRunner,
+	runner Runner,
 ) (Result, error) {
 	if input.Out == nil {
 		return Result{}, fmt.Errorf("GPT provisioning output writer is required")
@@ -230,21 +240,30 @@ func provision(
 		recovery.SizeBytes,
 	)
 
-	phrase := "CREATE-JODS-RECOVERY"
 	if input.Unattended {
 		fmt.Fprintln(
 			input.Out,
 			"UNATTENDED: explicit unattendedInstall=true authorizes recovery GPT creation.",
 		)
 	} else {
-		if err := input.UI.Exact(
+		confirmed, err := input.UI.Confirm(
 			ctx,
-			fmt.Sprintf("Type %q to create the recovery partition", phrase),
-			phrase,
-		); err != nil {
+			fmt.Sprintf(
+				"Create the %s recovery partition on %s?",
+				recovery.Label,
+				input.Plan.TargetDisk.Path,
+			),
+			false,
+		)
+		if err != nil {
 			return Result{}, fmt.Errorf(
-				"recovery partition creation not authorized: %w",
+				"confirm recovery GPT creation: %w",
 				err,
+			)
+		}
+		if !confirmed {
+			return Result{}, fmt.Errorf(
+				"recovery partition creation not authorized",
 			)
 		}
 	}
@@ -333,7 +352,7 @@ func provision(
 
 func privilegedRun(
 	ctx context.Context,
-	runner commandRunner,
+	runner Runner,
 	command string,
 	args ...string,
 ) error {
@@ -346,7 +365,7 @@ func privilegedRun(
 
 func readUint(
 	ctx context.Context,
-	runner commandRunner,
+	runner Runner,
 	name string,
 	args ...string,
 ) (uint64, error) {
@@ -366,7 +385,7 @@ func readUint(
 
 func readDiskGUID(
 	ctx context.Context,
-	runner commandRunner,
+	runner Runner,
 	disk string,
 ) (string, error) {
 	raw, err := runner.Output(
@@ -416,7 +435,7 @@ type diskSnapshot struct {
 
 func inspectDisk(
 	ctx context.Context,
-	runner commandRunner,
+	runner Runner,
 	disk string,
 ) (diskSnapshot, error) {
 	raw, err := runner.Output(

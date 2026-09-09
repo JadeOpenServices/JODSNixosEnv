@@ -1,10 +1,13 @@
 {
   buildGoModule,
+  git,
   lib,
 }:
 buildGoModule {
   pname = "gjallarctl";
   version = "0.1.0";
+
+  nativeCheckInputs = [ git ];
 
   # Only the Go module enters the store.  In particular, user.config.json,
   # generated settings, and encrypted secrets never become build inputs.

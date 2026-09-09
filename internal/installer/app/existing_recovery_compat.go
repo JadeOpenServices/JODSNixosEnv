@@ -1,0 +1,161 @@
+package app
+
+import (
+	"context"
+	"fmt"
+	"io"
+	"os/exec"
+	"path/filepath"
+	"strings"
+
+	"github.com/bakanura/gjallarOS/internal/installer/config"
+	"github.com/bakanura/gjallarOS/internal/installer/prompt"
+	"github.com/bakanura/gjallarOS/internal/installer/recoveryresize"
+)
+
+type recoveryCapabilityRunner struct{}
+
+func (recoveryCapabilityRunner) Output(
+	ctx context.Context,
+	name string,
+	args ...string,
+) ([]byte, error) {
+	return exec.CommandContext(ctx, name, args...).Output()
+}
+
+var inspectCurrentRoot = func(
+	ctx context.Context,
+) (source string, filesystem string, err error) {
+	out, err := exec.CommandContext(
+		ctx,
+		"findmnt",
+		"-nro",
+		"SOURCE,FSTYPE",
+		"--target",
+		"/",
+	).Output()
+	if err != nil {
+		return "", "", fmt.Errorf(
+			"inspect current root mount: %w",
+			err,
+		)
+	}
+
+	fields := strings.Fields(strings.TrimSpace(string(out)))
+	if len(fields) != 2 {
+		return "", "", fmt.Errorf(
+			"unexpected current root mount information %q",
+			strings.TrimSpace(string(out)),
+		)
+	}
+
+	return filepath.Clean(fields[0]),
+		strings.ToLower(strings.TrimSpace(fields[1])),
+		nil
+}
+
+var detectCurrentRootFilesystem = func(
+	ctx context.Context,
+) (string, error) {
+	return recoveryresize.DetectRootFilesystem(
+		ctx,
+		recoveryCapabilityRunner{},
+		"/",
+	)
+}
+
+func detectExistingInstalledSystem(
+	ctx context.Context,
+	repo string,
+) (bool, error) {
+	if existingInstall(repo) {
+		return true, nil
+	}
+
+	source, filesystem, err := inspectCurrentRoot(ctx)
+	if err != nil {
+		return false, err
+	}
+
+	switch filesystem {
+	case "tmpfs", "ramfs", "overlay", "squashfs", "iso9660":
+		return false, nil
+	}
+
+	if !strings.HasPrefix(source, "/dev/") {
+		return false, nil
+	}
+
+	return true, nil
+}
+
+func handleExistingRecoveryFilesystem(
+	ctx context.Context,
+	ui prompt.UI,
+	presetPath string,
+	s *state,
+	out io.Writer,
+) (bool, error) {
+	filesystem, err := detectCurrentRootFilesystem(ctx)
+	if err != nil {
+		return false, err
+	}
+
+	if filesystem == "btrfs" {
+		return true, nil
+	}
+
+	message := fmt.Sprintf(
+		"Dedicated GjallarOS recovery storage cannot be enabled on this existing installation.\n\n"+
+			"Current root filesystem: %s\n\n"+
+			"GjallarOS currently supports shrinking an existing root for the dedicated JODS-RECOVERY partition only when the root filesystem is Btrfs. "+
+			"The current %s root cannot use the supported live inspection and maintenance shrink path.\n\n"+
+			"To use this recovery feature, reinstall or migrate the root filesystem to Btrfs.\n\n"+
+			"Continue installing GjallarOS without the recovery feature?",
+		filesystem,
+		filesystem,
+	)
+
+	if s.user.UnattendedInstall {
+		return false, fmt.Errorf(
+			"recovery requires Btrfs on an existing installation; current filesystem is %s; "+
+				"set recoveryEnable and recoveryPartitionEnable to false or migrate/reinstall with Btrfs",
+			filesystem,
+		)
+	}
+
+	continued, err := ui.Confirm(ctx, message, false)
+	if err != nil {
+		return false, err
+	}
+	if !continued {
+		return false, nil
+	}
+
+	s.user.RecoveryEnable = false
+	s.user.RecoveryPartitionEnable = false
+	s.recoveryDisk = ""
+	s.recoveryPartition = ""
+	s.recoverySigningKey = ""
+	s.recoverySigningPublicKey = ""
+
+	if err := config.WriteAtomic(presetPath, s.user); err != nil {
+		return false, fmt.Errorf(
+			"persist recovery-disabled user configuration: %w",
+			err,
+		)
+	}
+
+	fmt.Fprintf(
+		out,
+		"Recovery disabled for this installation because the current root filesystem is %s.\n",
+		filesystem,
+	)
+	fmt.Fprintln(
+		out,
+		"Wrote recoveryEnable=false and recoveryPartitionEnable=false to",
+		presetPath,
+	)
+
+	return true, nil
+}

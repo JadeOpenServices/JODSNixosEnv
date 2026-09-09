@@ -21,6 +21,7 @@ type Controller struct {
 
 type Result struct {
 	Vendor          string
+	DeviceID        string
 	Type            string
 	Compute         bool
 	BusID           string
@@ -50,30 +51,39 @@ func Parse(output string) Result {
 		return result
 	}
 
-	for _, controller := range controllers {
+	selected := &controllers[0]
+
+	for index := range controllers {
+		controller := &controllers[index]
 		if strings.Contains(strings.ToLower(controller.Text), "nvidia") {
 			result.Vendor, result.Compute = "nvidia", true
+			selected = controller
 			break
 		}
 	}
 	if result.Vendor == "unknown" {
-		for _, controller := range controllers {
+		for index := range controllers {
+			controller := &controllers[index]
 			if isAMD(controller.Text) {
 				result.Vendor, result.Compute = "amd", true
+				selected = controller
 				break
 			}
 		}
 	}
 	if result.Vendor == "unknown" {
-		for _, controller := range controllers {
+		for index := range controllers {
+			controller := &controllers[index]
 			if strings.Contains(strings.ToLower(controller.Text), "intel") {
 				result.Vendor = "intel"
+				selected = controller
 				break
 			}
 		}
 	}
 
-	result.BusID = xorgBusID(controllers[0].BDF)
+	result.DeviceID = strings.ToLower(selected.DeviceID)
+	result.BusID = xorgBusID(selected.BDF)
 	integrated := firstIntegrated(controllers)
 	if len(controllers) > 1 {
 		result.Type = "hybrid"

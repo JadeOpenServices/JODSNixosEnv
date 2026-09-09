@@ -17,7 +17,6 @@
     ../../system/hardware/laptop/battery.nix
     ../../system/hardware/laptop/boot.nix
     ../../system/recovery
-    ../../system/management/jods
     ../../system/hardware/desktop/mouse.nix
     ../../system/security/laptop/firewall.nix
     ../../system/virtualization

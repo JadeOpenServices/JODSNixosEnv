@@ -10,7 +10,37 @@ import (
 	"strings"
 )
 
-var excludePatterns = []string{"profiles/*/hardware-configuration.nix.bak.*", "user.config.json", "non-nix/wallpapers/user-*"}
+var machineLocalPaths = []string{
+	"user.config.json",
+	"settings.nix",
+	"profiles/*/hardware-configuration.nix",
+}
+
+func trackedPath(ctx context.Context, root, relative string) bool {
+	tracked, _ := git(
+		ctx,
+		root,
+		"ls-files",
+		"--error-unmatch",
+		"--",
+		relative,
+	)
+	return len(tracked) != 0
+}
+
+func excludePatterns() []string {
+	patterns := []string{
+		"profiles/*/hardware-configuration.nix.bak.*",
+	}
+
+	patterns = append(patterns, machineLocalPaths...)
+
+	return append(
+		patterns,
+		".vm/",
+		"non-nix/wallpapers/user-*",
+	)
+}
 
 func Protect(ctx context.Context, repo, hardware string) ([]string, error) {
 	root, err := filepath.Abs(repo)
@@ -36,15 +66,42 @@ func Protect(ctx context.Context, repo, hardware string) ([]string, error) {
 		return nil, err
 	}
 	var protected []string
-	for _, relative := range []string{"settings.nix", "user.config.json"} {
-		if _, err := os.Stat(filepath.Join(root, relative)); err != nil {
-			continue
+	for _, pattern := range machineLocalPaths {
+		matches, err := filepath.Glob(filepath.Join(root, pattern))
+		if err != nil {
+			return protected, fmt.Errorf("expand machine-local pattern %q: %w", pattern, err)
 		}
-		tracked, _ := git(ctx, root, "ls-files", "--error-unmatch", "--", relative)
-		if relative == "settings.nix" || len(tracked) != 0 {
-			if _, err := git(ctx, root, "update-index", "--skip-worktree", "--", relative); err != nil {
+
+		for _, path := range matches {
+			relative, err := filepath.Rel(root, path)
+			if err != nil {
 				return protected, err
 			}
+
+			tracked, _ := git(
+				ctx,
+				root,
+				"ls-files",
+				"--error-unmatch",
+				"--",
+				relative,
+			)
+
+			if len(tracked) == 0 {
+				continue
+			}
+
+			if _, err := git(
+				ctx,
+				root,
+				"update-index",
+				"--skip-worktree",
+				"--",
+				relative,
+			); err != nil {
+				return protected, err
+			}
+
 			protected = append(protected, relative)
 		}
 	}
@@ -53,7 +110,7 @@ func Protect(ctx context.Context, repo, hardware string) ([]string, error) {
 		if err != nil {
 			return protected, err
 		}
-		if _, err := os.Stat(filepath.Join(root, relative)); err == nil {
+		if _, err := os.Stat(filepath.Join(root, relative)); err == nil && trackedPath(ctx, root, relative) {
 			if _, err := git(ctx, root, "update-index", "--skip-worktree", "--", relative); err != nil {
 				return protected, err
 			}
@@ -110,7 +167,7 @@ func updateExclude(path string) error {
 	if len(updated) > 0 && updated[len(updated)-1] != '\n' {
 		updated = append(updated, '\n')
 	}
-	for _, pattern := range excludePatterns {
+	for _, pattern := range excludePatterns() {
 		if !existing[pattern] {
 			updated = append(updated, []byte(pattern+"\n")...)
 		}

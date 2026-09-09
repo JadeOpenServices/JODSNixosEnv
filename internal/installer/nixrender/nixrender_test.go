@@ -31,6 +31,7 @@ func TestRenderRecoveryPolicyDefaultsDisabled(t *testing.T) {
 	got := string(Render(Settings{}))
 	for _, want := range []string{
 		"recoveryEnable = false;",
+		"recoveryPartitionEnable = false;",
 		"jodsPrebootLockEnable = false;",
 		"secureBootEnable = false;",
 		"endpointManagedDevice = false;",

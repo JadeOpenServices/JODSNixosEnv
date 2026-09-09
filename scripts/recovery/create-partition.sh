@@ -11,7 +11,7 @@ usage() {
 [ "$#" -ge 1 ] && [ "$#" -le 2 ] || usage
 [ "$(id -u)" -eq 0 ] || { echo "ERROR: run as root" >&2; exit 1; }
 disk=$(realpath "$1")
-size_gib=${2:-3}
+size_gib=${2:-12}
 
 [ "$(lsblk -dnro TYPE "$disk")" = disk ] || {
   echo "ERROR: target must be a whole disk for partition-table inspection" >&2
@@ -21,8 +21,8 @@ size_gib=${2:-3}
   echo "ERROR: target must already use GPT" >&2
   exit 1
 }
-[[ "$size_gib" =~ ^[234]$ ]] || {
-  echo "ERROR: SIZE_GIB must be 2, 3, or 4" >&2
+[ "$size_gib" = 12 ] || {
+  echo "ERROR: JODS-RECOVERY size must be exactly 12 GiB" >&2
   exit 1
 }
 command -v sgdisk >/dev/null || { echo "ERROR: sgdisk is required" >&2; exit 1; }
