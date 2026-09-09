@@ -172,7 +172,7 @@ minimal recovery/installer ISO is available as
 `nix build .#gjallar-recovery-iso`. It has SSH disabled, a default-deny
 firewall, and the tools required to unlock, repair, or install GjallarOS.
 
-JODS fresh-install media should reserve one dedicated 2-4 GiB partition and
+JODS fresh-install media should reserve one dedicated exactly 12 GiB partition and
 install a signed recovery release with `scripts/recovery/install-partition.sh`.
 If a GPT disk already has sufficient unallocated space,
 `scripts/recovery/create-partition.sh DISK` can create only that partition.

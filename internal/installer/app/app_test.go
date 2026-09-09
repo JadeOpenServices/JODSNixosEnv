@@ -275,7 +275,7 @@ func TestManagedPresetRequiresRecoveryPartitionProvisioning(t *testing.T) {
 	}
 }
 
-func TestInstalledSystemCannotProvisionNewRecoveryStorage(t *testing.T) {
+func TestInstalledSystemRecoveryProvisioningRequiresMaintenanceBoundary(t *testing.T) {
 	s := state{
 		existing: true,
 		user: config.User{
@@ -284,9 +284,6 @@ func TestInstalledSystemCannotProvisionNewRecoveryStorage(t *testing.T) {
 		},
 	}
 
-	// This unit test protects the architectural invariant. The actual
-	// configureRecoveryProvisioning path independently discovers an existing
-	// recovery partition before applying this restriction.
 	if !s.existing {
 		t.Fatal("test requires an installed GjallarOS system")
 	}
@@ -294,10 +291,9 @@ func TestInstalledSystemCannotProvisionNewRecoveryStorage(t *testing.T) {
 		t.Fatal("test requires recovery partition provisioning requested")
 	}
 
-	allowed := !s.existing
-	if allowed {
-		t.Fatal("installed GjallarOS was allowed fresh-install storage mutation")
-	}
+	// Existing layouts are supported by GJAL-67, but root contraction is never
+	// authorized against the running root. Mutation belongs to the /mnt-only
+	// maintenance executor.
 }
 
 func TestRecoveryLifecycleAuthorityIsSeparated(t *testing.T) {

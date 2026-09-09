@@ -105,7 +105,7 @@ func plan(withRecovery bool) diskplan.Plan {
 			Label:     "JODS-RECOVERY",
 			TypeGUID:  "bc13c2ff-59e6-4262-a352-b275fd6f7172",
 			PARTUUID:  recoveryUUID,
-			SizeBytes: 3 * 1024 * 1024 * 1024,
+			SizeBytes: 12 * 1024 * 1024 * 1024,
 			Filesystem: diskplan.Filesystem{
 				Type:  "vfat",
 				Label: "JODS-RECOVERY",
@@ -195,7 +195,7 @@ func runner(withRecovery bool) *fakeRunner {
 		)] = partitionJSON(
 			recovery,
 			recoveryUUID,
-			3*1024*1024*1024,
+			12*1024*1024*1024,
 		)
 
 		r.outputs[key(
