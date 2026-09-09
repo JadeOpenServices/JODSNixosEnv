@@ -7,6 +7,8 @@
 }:
 let
   vendor = settings.graphicsVendor;
+  deviceId = lib.toLower (settings.graphicsDeviceId or "");
+  legacy580 = vendor == "nvidia" && deviceId == "13b4";
   hybrid = settings.graphicsType == "hybrid";
 in
 {
@@ -32,7 +34,12 @@ in
     ];
 
   hardware.nvidia = lib.mkIf (vendor == "nvidia") {
-    open = true;
+    package =
+      if legacy580 then
+        config.boot.kernelPackages.nvidiaPackages.legacy_580
+      else
+        config.boot.kernelPackages.nvidiaPackages.stable;
+    open = !legacy580;
     modesetting.enable = true;
     powerManagement.enable = true;
     prime = lib.mkIf hybrid {

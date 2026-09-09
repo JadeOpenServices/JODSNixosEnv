@@ -33,46 +33,46 @@ func Strings(values []string) string {
 // Settings contains only values written to settings.nix. Values are rendered
 // as literals; none are evaluated as Nix source.
 type Settings struct {
-	System, Profile, Hostname, Username, Timezone, Locale string
-	KeyboardLayout, KeyboardVariant                       string
-	WeatherCity, WeatherCountry                           string
-	TouchpadWorkspaceSwipe, TouchscreenEnable             bool
-	PenTabletEnable                                       bool
-	ClamshellEnable, USBGuardEnable                       bool
-	Name, Email, GitHubUsername, DotfilesDir              string
-	WorkUserEnable                                        bool
-	WorkUsername, WorkUserPasswordFile, RootPasswordFile  string
-	DockerEnable, DebugFunctions                          bool
-	Shell                                                 string
-	Editors, Browsers                                     []string
-	PreferredEditor, PreferredBrowser                     string
-	PlaneHost, DrawioHost                                 string
-	PlaneEnable, DrawioEnable, DrawioSelfHosted           bool
-	BackgroundNormal, BackgroundWork, BackgroundGaming    string
-	EnableScrobbling, EnableLastfm, EnableListenbrainz    bool
-	LastfmUsername, ListenbrainzUsername                  string
-	FrameworkEnable                                       bool
-	FrameworkModel, GraphicsVendor, GraphicsType          string
-	GraphicsCompute                                       bool
-	GraphicsBusID, GraphicsIntegratedBusID, WiFiDriver    string
-	AIEnable                                              bool
-	AIModel, AIAccelerationProfile                        string
-	AIAgentMode                                           string
-	AIContextTokens, AIVRAMMB                             int
-	NemuEnable, NemuGPUPassthrough                        bool
-	NemuGPUIDs                                            []string
-	LUKSTPM2Enable                                        bool
-	RecoveryEnable, JODSPrebootLockEnable                 bool
-	SecureBootEnable                                      bool
-	EndpointManagedDevice                                 bool
-	JODSEndpoint, JODSPolicySigningPublicKey              string
-	JODSRecoveryCommandSigningPublicKey                   string
-	JODSEnrollmentMode                                    string
-	JODSAllowInsecureTLS                                  bool
-	JODSDeviceClass, JODSDesktopProfile                   string
-	JODSFingerprintEnrollmentAllowed                      bool
-	WMs                                                   []string
-	Theme                                                 string
+	System, Profile, Hostname, Username, Timezone, Locale          string
+	KeyboardLayout, KeyboardVariant                                string
+	WeatherCity, WeatherCountry                                    string
+	TouchpadWorkspaceSwipe, TouchscreenEnable                      bool
+	PenTabletEnable                                                bool
+	ClamshellEnable, USBGuardEnable                                bool
+	Name, Email, GitHubUsername, DotfilesDir                       string
+	WorkUserEnable                                                 bool
+	WorkUsername, WorkUserPasswordFile, RootPasswordFile           string
+	DockerEnable, DebugFunctions                                   bool
+	Shell                                                          string
+	Editors, Browsers                                              []string
+	PreferredEditor, PreferredBrowser                              string
+	PlaneHost, DrawioHost                                          string
+	PlaneEnable, DrawioEnable, DrawioSelfHosted                    bool
+	BackgroundNormal, BackgroundWork, BackgroundGaming             string
+	EnableScrobbling, EnableLastfm, EnableListenbrainz             bool
+	LastfmUsername, ListenbrainzUsername                           string
+	FrameworkEnable                                                bool
+	FrameworkModel, GraphicsVendor, GraphicsDeviceID, GraphicsType string
+	GraphicsCompute                                                bool
+	GraphicsBusID, GraphicsIntegratedBusID, WiFiDriver             string
+	AIEnable                                                       bool
+	AIModel, AIAccelerationProfile                                 string
+	AIAgentMode                                                    string
+	AIContextTokens, AIVRAMMB                                      int
+	NemuEnable, NemuGPUPassthrough                                 bool
+	NemuGPUIDs                                                     []string
+	LUKSTPM2Enable                                                 bool
+	RecoveryEnable, RecoveryPartitionEnable, JODSPrebootLockEnable bool
+	SecureBootEnable                                               bool
+	EndpointManagedDevice                                          bool
+	JODSEndpoint, JODSPolicySigningPublicKey                       string
+	JODSRecoveryCommandSigningPublicKey                            string
+	JODSEnrollmentMode                                             string
+	JODSAllowInsecureTLS                                           bool
+	JODSDeviceClass, JODSDesktopProfile                            string
+	JODSFingerprintEnrollmentAllowed                               bool
+	WMs                                                            []string
+	Theme                                                          string
 }
 
 func Render(s Settings) []byte {
@@ -130,6 +130,7 @@ func Render(s Settings) []byte {
 	boolean("frameworkEnable", s.FrameworkEnable)
 	str("frameworkModel", s.FrameworkModel)
 	str("graphicsVendor", s.GraphicsVendor)
+	str("graphicsDeviceId", s.GraphicsDeviceID)
 	str("graphicsType", s.GraphicsType)
 	boolean("graphicsCompute", s.GraphicsCompute)
 	str("graphicsBusId", s.GraphicsBusID)
@@ -146,6 +147,7 @@ func Render(s Settings) []byte {
 	list("nemuGpuIds", s.NemuGPUIDs)
 	boolean("luksTpm2Enable", s.LUKSTPM2Enable)
 	boolean("recoveryEnable", s.RecoveryEnable)
+	boolean("recoveryPartitionEnable", s.RecoveryPartitionEnable)
 	boolean("jodsPrebootLockEnable", s.JODSPrebootLockEnable)
 	boolean("secureBootEnable", s.SecureBootEnable)
 	boolean("endpointManagedDevice", s.EndpointManagedDevice)

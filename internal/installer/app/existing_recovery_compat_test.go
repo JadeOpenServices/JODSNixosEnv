@@ -1,0 +1,269 @@
+package app
+
+import (
+	"bytes"
+	"context"
+	"encoding/json"
+	"os"
+	"path/filepath"
+	"strings"
+	"testing"
+
+	"github.com/bakanura/gjallarOS/internal/installer/config"
+	"github.com/bakanura/gjallarOS/internal/installer/prompt"
+)
+
+func TestExistingInstalledSystemDetectedFromPersistentRoot(t *testing.T) {
+	original := inspectCurrentRoot
+	t.Cleanup(func() { inspectCurrentRoot = original })
+
+	inspectCurrentRoot = func(
+		context.Context,
+	) (string, string, error) {
+		return "/dev/mapper/cryptroot", "ext4", nil
+	}
+
+	existing, err := detectExistingInstalledSystem(
+		context.Background(),
+		t.TempDir(),
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !existing {
+		t.Fatal("persistent ext4 installed system was treated as fresh")
+	}
+}
+
+func TestLiveMediaRootIsNotExistingInstalledSystem(t *testing.T) {
+	original := inspectCurrentRoot
+	t.Cleanup(func() { inspectCurrentRoot = original })
+
+	inspectCurrentRoot = func(
+		context.Context,
+	) (string, string, error) {
+		return "overlay", "overlay", nil
+	}
+
+	existing, err := detectExistingInstalledSystem(
+		context.Background(),
+		t.TempDir(),
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if existing {
+		t.Fatal("live-media root was treated as an installed system")
+	}
+}
+
+func TestBtrfsExistingRecoveryContinuesUnchanged(t *testing.T) {
+	original := detectCurrentRootFilesystem
+	t.Cleanup(func() { detectCurrentRootFilesystem = original })
+
+	detectCurrentRootFilesystem = func(
+		context.Context,
+	) (string, error) {
+		return "btrfs", nil
+	}
+
+	root := t.TempDir()
+	preset := filepath.Join(root, "user.config.json")
+
+	user := config.User{
+		RecoveryEnable:          true,
+		RecoveryPartitionEnable: true,
+	}
+	if err := config.WriteAtomic(preset, user); err != nil {
+		t.Fatal(err)
+	}
+
+	s := state{user: user}
+	var out bytes.Buffer
+
+	continued, err := handleExistingRecoveryFilesystem(
+		context.Background(),
+		prompt.New(strings.NewReader(""), &out),
+		preset,
+		&s,
+		&out,
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !continued {
+		t.Fatal("Btrfs recovery compatibility was rejected")
+	}
+	if !s.user.RecoveryEnable ||
+		!s.user.RecoveryPartitionEnable {
+		t.Fatal("Btrfs recovery settings were changed")
+	}
+}
+
+func TestExt4CanContinueWithoutRecoveryAndPersistsChoice(t *testing.T) {
+	original := detectCurrentRootFilesystem
+	t.Cleanup(func() { detectCurrentRootFilesystem = original })
+
+	detectCurrentRootFilesystem = func(
+		context.Context,
+	) (string, error) {
+		return "ext4", nil
+	}
+
+	root := t.TempDir()
+	preset := filepath.Join(root, "user.config.json")
+
+	user := config.User{
+		RecoveryEnable:          true,
+		RecoveryPartitionEnable: true,
+	}
+	if err := config.WriteAtomic(preset, user); err != nil {
+		t.Fatal(err)
+	}
+
+	s := state{
+		user:                     user,
+		recoveryDisk:             "/dev/nvme0n1",
+		recoveryPartition:        "/dev/nvme0n1p3",
+		recoverySigningKey:       "/tmp/private",
+		recoverySigningPublicKey: "/tmp/public",
+	}
+
+	var out bytes.Buffer
+
+	continued, err := handleExistingRecoveryFilesystem(
+		context.Background(),
+		prompt.New(strings.NewReader("y\n"), &out),
+		preset,
+		&s,
+		&out,
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !continued {
+		t.Fatal("ext4 fallback was not accepted")
+	}
+
+	if s.user.RecoveryEnable ||
+		s.user.RecoveryPartitionEnable {
+		t.Fatal("recovery remained enabled after accepted ext4 fallback")
+	}
+
+	if s.recoveryDisk != "" ||
+		s.recoveryPartition != "" ||
+		s.recoverySigningKey != "" ||
+		s.recoverySigningPublicKey != "" {
+		t.Fatal("recovery runtime state was not cleared")
+	}
+
+	data, err := os.ReadFile(preset)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	var persisted config.User
+	if err := json.Unmarshal(data, &persisted); err != nil {
+		t.Fatal(err)
+	}
+
+	if persisted.RecoveryEnable ||
+		persisted.RecoveryPartitionEnable {
+		t.Fatal("persisted user configuration still enables recovery")
+	}
+
+	if !strings.Contains(
+		out.String(),
+		"Current root filesystem: ext4",
+	) {
+		t.Fatal("ext4 incompatibility explanation was not shown")
+	}
+}
+
+func TestExt4DeclineStopsWithoutChangingPreset(t *testing.T) {
+	original := detectCurrentRootFilesystem
+	t.Cleanup(func() { detectCurrentRootFilesystem = original })
+
+	detectCurrentRootFilesystem = func(
+		context.Context,
+	) (string, error) {
+		return "ext4", nil
+	}
+
+	root := t.TempDir()
+	preset := filepath.Join(root, "user.config.json")
+
+	user := config.User{
+		RecoveryEnable:          true,
+		RecoveryPartitionEnable: true,
+	}
+	if err := config.WriteAtomic(preset, user); err != nil {
+		t.Fatal(err)
+	}
+
+	before, err := os.ReadFile(preset)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	s := state{user: user}
+	var out bytes.Buffer
+
+	continued, err := handleExistingRecoveryFilesystem(
+		context.Background(),
+		prompt.New(strings.NewReader("n\n"), &out),
+		preset,
+		&s,
+		&out,
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if continued {
+		t.Fatal("declined ext4 fallback continued installation")
+	}
+
+	after, err := os.ReadFile(preset)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if !bytes.Equal(before, after) {
+		t.Fatal("declined fallback modified user.config.json")
+	}
+}
+
+func TestUnattendedExt4FailsClosed(t *testing.T) {
+	original := detectCurrentRootFilesystem
+	t.Cleanup(func() { detectCurrentRootFilesystem = original })
+
+	detectCurrentRootFilesystem = func(
+		context.Context,
+	) (string, error) {
+		return "ext4", nil
+	}
+
+	s := state{
+		user: config.User{
+			RecoveryEnable:          true,
+			RecoveryPartitionEnable: true,
+			UnattendedInstall:       true,
+		},
+	}
+
+	var out bytes.Buffer
+
+	_, err := handleExistingRecoveryFilesystem(
+		context.Background(),
+		prompt.New(strings.NewReader(""), &out),
+		filepath.Join(t.TempDir(), "user.config.json"),
+		&s,
+		&out,
+	)
+	if err == nil {
+		t.Fatal("unattended ext4 recovery incompatibility was accepted")
+	}
+	if !strings.Contains(err.Error(), "recovery requires Btrfs") {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}

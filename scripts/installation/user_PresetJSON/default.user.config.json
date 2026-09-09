@@ -1,6 +1,6 @@
 {
   "system": "x86_64-linux",
-  "profile": "laptop",
+  "profile": "auto",
   "hostname": "gjallarOS",
   "username": "usernamehere",
   "timezone": "Europe/Berlin",

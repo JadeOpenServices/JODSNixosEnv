@@ -8,6 +8,7 @@ import (
 	"net"
 	"net/url"
 	"os"
+	"path/filepath"
 	"regexp"
 	"strings"
 )
@@ -82,6 +83,49 @@ type User struct {
 	RunUpdateChecks         bool     `json:"runUpdateChecks"`
 	WriteConfig             bool     `json:"writeConfig"`
 	RunRebuild              bool     `json:"runRebuild"`
+}
+
+// WriteAtomic persists the confirmed machine-local installer input.
+func WriteAtomic(path string, user User) error {
+	data, err := json.MarshalIndent(user, "", "  ")
+	if err != nil {
+		return fmt.Errorf("encode user configuration: %w", err)
+	}
+	data = append(data, '\n')
+
+	dir := filepath.Dir(path)
+	tmp, err := os.CreateTemp(dir, ".user.config.json-*")
+	if err != nil {
+		return fmt.Errorf("create temporary user configuration: %w", err)
+	}
+
+	tmpName := tmp.Name()
+	defer os.Remove(tmpName)
+
+	if err := tmp.Chmod(0600); err != nil {
+		tmp.Close()
+		return fmt.Errorf("set user configuration permissions: %w", err)
+	}
+
+	if _, err := tmp.Write(data); err != nil {
+		tmp.Close()
+		return fmt.Errorf("write user configuration: %w", err)
+	}
+
+	if err := tmp.Sync(); err != nil {
+		tmp.Close()
+		return fmt.Errorf("sync user configuration: %w", err)
+	}
+
+	if err := tmp.Close(); err != nil {
+		return fmt.Errorf("close user configuration: %w", err)
+	}
+
+	if err := os.Rename(tmpName, path); err != nil {
+		return fmt.Errorf("replace user configuration: %w", err)
+	}
+
+	return nil
 }
 
 var usernamePattern = regexp.MustCompile(`^[a-z_][a-z0-9_-]*$`)

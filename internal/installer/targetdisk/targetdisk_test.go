@@ -257,7 +257,7 @@ func TestValidateRequiresStableIdentity(t *testing.T) {
 	}
 }
 
-func TestValidateRequiresModel(t *testing.T) {
+func TestValidateAllowsMissingModelWithStableIdentity(t *testing.T) {
 	data := strings.Replace(
 		validLSBLK(),
 		`"model": "Example NVMe"`,
@@ -265,13 +265,32 @@ func TestValidateRequiresModel(t *testing.T) {
 		1,
 	)
 
-	_, err, _ := runValidation(
+	result, err, _ := runValidation(
 		t,
 		data,
 		Input{Path: "/dev/nvme1n1"},
 	)
-	if err == nil || !strings.Contains(err.Error(), "no reported model") {
-		t.Fatalf("disk without model unexpectedly accepted: %v", err)
+	if err != nil {
+		t.Fatalf(
+			"disk with stable serial/WWN and missing model was rejected: %v",
+			err,
+		)
+	}
+
+	if result.Path != "/dev/nvme1n1" {
+		t.Fatalf("unexpected target path: %q", result.Path)
+	}
+
+	if result.Model != "" {
+		t.Fatalf("expected empty model, got %q", result.Model)
+	}
+
+	if result.Serial != "SERIAL-123" {
+		t.Fatalf("stable serial was not preserved: %q", result.Serial)
+	}
+
+	if result.WWN != "eui.0011223344556677" {
+		t.Fatalf("stable WWN was not preserved: %q", result.WWN)
 	}
 }
 

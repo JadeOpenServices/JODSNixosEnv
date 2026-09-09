@@ -6,151 +6,78 @@
   ...
 }:
 let
-  gjallarctl = pkgs.callPackage ../../pkgs/gjallarctl { };
-  recoveryExecutor = pkgs.writeShellApplication {
-    name = "gjallar-recovery-execute";
-    runtimeInputs = with pkgs; [
-      coreutils
-      gawk
-      gptfdisk
-      jq
-      util-linux
-    ];
-    text = builtins.readFile ../../scripts/recovery/execute-contract.sh;
-  };
+  tools = import ./tools.nix { inherit config pkgs; };
+  inherit (tools) gjallarctl recovery recoveryExecutor;
 
-  recovery = pkgs.writeShellApplication {
-    name = "gjallar-recover";
-    runtimeInputs = with pkgs; [
-      config.nix.package
-      cryptsetup
-      git
-      nixos-install-tools
-      sbctl
-      systemd
-      tpm2-tools
-      util-linux
-      gjallarctl
+  maintenanceCandidates = lib.concatStringsSep "\n" (
+    lib.mapAttrsToList (
+      name: value:
+      let
+        device = value.device or "";
+      in
+      lib.optionalString (device != "") ''
+        try_candidate ${lib.escapeShellArg name} ${lib.escapeShellArg device}
+      ''
+    ) config.boot.initrd.luks.devices
+  );
+
+  maintenanceNext = pkgs.writeShellApplication {
+    name = "gjallar-recovery-maintenance-next";
+
+    runtimeInputs = [
+      pkgs.coreutils
+      pkgs.python3
+      pkgs.systemd
     ];
+
     text = ''
-      set -euo pipefail
+            set -euo pipefail
 
-      usage() {
-        printf '%s\n' \
-          'GjallarOS trusted recovery' \
-          '  gjallar-recover audit' \
-          '  gjallar-recover unlock DEVICE NAME' \
-          '  gjallar-recover mount DEVICE MOUNTPOINT' \
-          '  gjallar-recover generations ROOT' \
-          '  gjallar-recover repair-boot ROOT' \
-          '  gjallar-recover rebuild ROOT FLAKE#HOST' \
-          '  gjallar-recover jods {repair|reinstall|fresh}'
-      }
+            if [ "$(${pkgs.coreutils}/bin/id -u)" -ne 0 ]; then
+              exec sudo "$0" "$@"
+            fi
 
-      require_root() {
-        if [ "$(id -u)" -ne 0 ]; then
-          printf '%s\n' 'ERROR: run this operation as root.' >&2
-          exit 1
-        fi
-      }
+            entry="$(
+              bootctl list --json=short |
+                ${pkgs.python3}/bin/python3 -c '
+      import json
+      import sys
 
-      confirm_phrase() {
-        expected="$1"
-        printf 'Type %s to continue: ' "$expected"
-        read -r answer
-        [ "$answer" = "$expected" ] || {
-          printf '%s\n' 'Cancelled.' >&2
-          exit 1
-        }
-      }
+      entries = json.load(sys.stdin)
+      matches = []
 
-      case "''${1:-help}" in
-        audit)
-          printf '%s\n' '=== Secure Boot ==='
-          sbctl status || true
-          printf '%s\n' '=== TPM ==='
-          systemd-analyze has-tpm2 || true
-          tpm2_getcap properties-fixed || true
-          printf '%s\n' '=== disks ==='
-          lsblk -o NAME,PATH,TYPE,FSTYPE,UUID,PARTUUID,MOUNTPOINTS
-          ;;
-        unlock)
-          require_root
-          device="''${2:?DEVICE required}"
-          name="''${3:?mapping NAME required}"
-          cryptsetup isLuks "$device"
-          systemd-ask-password 'GjallarOS LUKS recovery passphrase:' |
-            cryptsetup open --type luks --key-file=- "$device" "$name"
-          ;;
-        mount)
-          require_root
-          device="''${2:?DEVICE required}"
-          target="''${3:?MOUNTPOINT required}"
-          mkdir -p "$target"
-          mount "$device" "$target"
-          ;;
-        generations)
-          root="''${2:?installed ROOT mountpoint required}"
-          nix-env --list-generations --profile "$root/nix/var/nix/profiles/system"
-          ;;
-        repair-boot)
-          require_root
-          root="''${2:?installed ROOT mountpoint required}"
-          [ -e "$root/etc/NIXOS" ] || {
-            printf '%s\n' 'ERROR: target is not a mounted NixOS installation.' >&2
-            exit 1
-          }
-          confirm_phrase REPAIR-BOOT
-          NIXOS_INSTALL_BOOTLOADER=1 nixos-enter --root "$root" -- \
-            /run/current-system/bin/switch-to-configuration boot
-          ;;
-        rebuild)
-          require_root
-          root="''${2:?installed ROOT mountpoint required}"
-          flake="''${3:?FLAKE#HOST required}"
-          [ -e "$root/etc/NIXOS" ] || {
-            printf '%s\n' 'ERROR: target is not a mounted NixOS installation.' >&2
-            exit 1
-          }
-          confirm_phrase REBUILD
-          nixos-enter --root "$root" -- nixos-rebuild boot --flake "$flake"
-          ;;
-        jods-execute)
-          require_root
-          contract="''${2:?CONTRACT required}"
-          artifact="''${3:?ARTIFACT required}"
-          exec gjallar-recovery-execute "$contract" "$artifact"
-          ;;
-        jods)
-          mode="''${2:-}"
-          case "$mode" in
-            repair)
-              printf '%s\n' \
-                'JODS mode: REPAIR EXISTING INSTALLATION' \
-                'Disk formatting is forbidden. Unlock with a human recovery credential, then use repair-boot or rebuild.'
-              ;;
-            reinstall)
-              printf '%s\n' \
-                'JODS mode: REINSTALL EXISTING INSTALLATION' \
-                'Existing partitions and encrypted data must be detected before any installer runs.'
-              confirm_phrase REINSTALL-EXISTING
-              gjallar-installer --accept-existing
-              ;;
-            fresh)
-              printf '%s\n' \
-                'DANGER: JODS FRESH INSTALL MODE' \
-                'Select the target disk in the installer and confirm its destructive plan.'
-              confirm_phrase ERASE-FOR-FRESH-INSTALL
-              gjallar-installer
-              ;;
-            *)
-              printf '%s\n' 'Usage: gjallar-recover jods {repair|reinstall|fresh}' >&2
-              exit 2
-              ;;
-          esac
-          ;;
-        *) usage ;;
-      esac
+      for entry in entries:
+          haystack = " ".join(
+              str(entry.get(field, ""))
+              for field in ("id", "title", "path")
+          )
+
+          if "gjallar-recovery-maintenance" in haystack:
+              entry_id = entry.get("id")
+
+              if entry_id:
+                  matches.append(entry_id)
+
+      if len(matches) != 1:
+          raise SystemExit(
+              "expected exactly one GjallarOS recovery-maintenance "
+              f"boot entry, found {len(matches)}"
+          )
+
+      print(matches[0])
+      '
+            )"
+
+            test -n "$entry"
+
+            bootctl set-oneshot "$entry"
+
+            printf '%s\n' \
+              "PASS: armed one-shot GjallarOS recovery-storage maintenance boot" \
+              "PASS: normal default boot entry was not changed" \
+              "Rebooting into maintenance..."
+
+            systemctl reboot
     '';
   };
 in
@@ -172,13 +99,12 @@ lib.mkMerge [
     specialisation.gjallar-recovery.configuration = {
       system.nixos.tags = [ "trusted-recovery" ];
       boot.kernelParams = [ "systemd.unit=multi-user.target" ];
-      services.jods-mdm-agent.recoveryExecutorEnable = settings.endpointManagedDevice;
       environment.systemPackages = [
         recovery
         recoveryExecutor
         gjallarctl
         pkgs.dosfstools
-        pkgs.gdisk
+        pkgs.gptfdisk
         pkgs.parted
         pkgs.xorriso
       ];
@@ -190,6 +116,181 @@ lib.mkMerge [
         Sign in locally and run: sudo gjallar-recover audit
         Root disks require a verified human LUKS recovery credential.
       '';
+    }
+    // lib.optionalAttrs settings.endpointManagedDevice {
+      services.jods-mdm-agent.recoveryExecutorEnable = true;
+    };
+  })
+
+  (lib.mkIf settings.recoveryEnable {
+    environment.systemPackages = [
+      maintenanceNext
+    ];
+
+    specialisation.gjallar-recovery-maintenance.configuration = {
+      system.nixos.tags = [
+        "recovery-storage-maintenance"
+      ];
+
+      boot.loader.timeout = lib.mkForce 5;
+
+      boot.initrd.systemd.services.gjallar-recovery-maintenance = {
+        description = "Provision GjallarOS recovery storage before mounting the installed root";
+
+        before = [
+          "sysroot.mount"
+          "initrd-root-fs.target"
+        ];
+
+        requiredBy = [
+          "sysroot.mount"
+          "initrd-root-fs.target"
+        ];
+
+        unitConfig = {
+          DefaultDependencies = false;
+          OnFailure = "emergency.target";
+        };
+
+        serviceConfig = {
+          Type = "oneshot";
+          UMask = "0077";
+          StandardOutput = "journal+console";
+          StandardError = "journal+console";
+        };
+
+        path = [
+          pkgs.btrfs-progs
+          pkgs.coreutils
+          pkgs.cryptsetup
+          pkgs.gptfdisk
+          pkgs.systemd
+          pkgs.util-linux
+          gjallarctl
+        ];
+
+        script = ''
+          set -euo pipefail
+          export LC_ALL=C
+
+          keyfile=/run/gjallar-recovery-maintenance.key
+
+          cleanup_key() {
+            rm -f -- "$keyfile"
+          }
+
+          trap cleanup_key EXIT
+
+          printf '%s\n' \
+            "GjallarOS recovery-storage maintenance" \
+            "The installed root is not mounted as /." \
+            "A human LUKS credential is required before /mnt is exposed."
+
+          systemd-ask-password --timeout=0 \
+            "GjallarOS: enter the LUKS recovery credential for storage maintenance" \
+            > "$keyfile"
+
+          chmod 0600 "$keyfile"
+
+          selected_device=""
+          selected_mapping=""
+          selected_name=""
+
+          try_candidate() {
+            name="$1"
+            device="$2"
+            mapper="/dev/mapper/$name"
+            opened_here=false
+
+            [ -e "$device" ] || return 0
+
+            if [ ! -e "$mapper" ]; then
+              if ! cryptsetup open \
+                --type luks \
+                --key-file "$keyfile" \
+                "$device" \
+                "$name"
+              then
+                return 0
+              fi
+
+              opened_here=true
+            fi
+
+            filesystem="$(
+              blkid -o value -s TYPE "$mapper" 2>/dev/null || true
+            )"
+
+            if [ "$filesystem" != btrfs ]; then
+              if [ "$opened_here" = true ]; then
+                cryptsetup close "$name"
+              fi
+
+              return 0
+            fi
+
+            if [ -n "$selected_device" ]; then
+              printf '%s\n' \
+                "ERROR: more than one configured LUKS mapping contains Btrfs." \
+                "No storage changes were made." >&2
+
+              if [ "$opened_here" = true ]; then
+                cryptsetup close "$name"
+              fi
+
+              return 77
+            fi
+
+            selected_device="$device"
+            selected_mapping="$mapper"
+            selected_name="$name"
+          }
+
+          ${maintenanceCandidates}
+
+          if [ -z "$selected_device" ] ||
+             [ -z "$selected_mapping" ] ||
+             [ -z "$selected_name" ]
+          then
+            printf '%s\n' \
+              "ERROR: no configured encrypted Btrfs root accepted the supplied credential." \
+              "No storage changes were made." >&2
+
+            systemctl --no-block emergency
+            false
+          fi
+
+          printf '%s\n' \
+            "PASS: authenticated encrypted Btrfs root selected" \
+            "STAGE: mounting root at /mnt and provisioning recovery storage"
+
+          if ! gjallar-recovery-maintenance \
+            --root-partition "$selected_device" \
+            --mapping "$selected_mapping" \
+            < "$keyfile"
+          then
+            printf '%s\n' \
+              "ERROR: recovery-storage maintenance failed." \
+              "The normal installed root was not booted." >&2
+
+            systemctl --no-block emergency
+            false
+          fi
+
+          rm -f -- "$keyfile"
+          trap - EXIT
+
+          sync
+
+          printf '%s\n' \
+            "PASS: exact 12 GiB JODS-RECOVERY provisioned" \
+            "PASS: installed root was serviced only at /mnt" \
+            "PASS: maintenance credential removed" \
+            "Rebooting to the normal GjallarOS boot path..."
+
+          systemctl reboot --force --force
+        '';
+      };
     };
   })
 

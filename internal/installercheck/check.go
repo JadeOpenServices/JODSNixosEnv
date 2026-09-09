@@ -99,6 +99,7 @@ var presetSchema = map[string]presetValueType{
 	"name":              presetString, "email": presetString, "githubUsername": presetString, "dotfilesDir": presetString,
 	"shell": presetString, "editors": presetStringList, "browsers": presetStringList,
 	"preferredEditor": presetString, "preferredBrowser": presetString, "theme": presetString,
+	"weatherCity": presetString, "weatherCountry": presetString,
 	"planeEnable": presetBool, "planeHost": presetString, "drawioEnable": presetBool, "drawioSelfHosted": presetBool, "drawioHost": presetString,
 	"backgroundNormal": presetString, "backgroundWork": presetString, "backgroundGaming": presetString,
 	"workUserEnable": presetBool, "workUsername": presetString, "workUserPasswordFile": presetString,
@@ -166,6 +167,7 @@ func checkNativeGraphics(ctx context.Context, r *Report, root string) {
 	}
 	for key, actual := range map[string]string{
 		"graphicsVendor":          live.Vendor,
+		"graphicsDeviceId":        live.DeviceID,
 		"graphicsType":            live.Type,
 		"graphicsCompute":         fmt.Sprintf("%t", live.Compute),
 		"graphicsBusId":           live.BusID,
@@ -179,7 +181,7 @@ func checkNativeGraphics(ctx context.Context, r *Report, root string) {
 	r.Findings = append(r.Findings, Finding{OK, "generated graphics settings match native detection"})
 }
 
-var graphicsSetting = regexp.MustCompile(`(?m)^\s*(graphicsVendor|graphicsType|graphicsCompute|graphicsBusId|graphicsIntegratedBusId)\s*=\s*(?:"([^"]*)"|(true|false));`)
+var graphicsSetting = regexp.MustCompile(`(?m)^\s*(graphicsVendor|graphicsDeviceId|graphicsType|graphicsCompute|graphicsBusId|graphicsIntegratedBusId)\s*=\s*(?:"([^"]*)"|(true|false));`)
 
 func readGraphicsSettings(path string) (map[string]string, error) {
 	contents, err := os.ReadFile(path)
@@ -190,7 +192,7 @@ func readGraphicsSettings(path string) (map[string]string, error) {
 	for _, match := range graphicsSetting.FindAllStringSubmatch(string(contents), -1) {
 		settings[match[1]] = match[2] + match[3]
 	}
-	if len(settings) != 5 {
+	if len(settings) != 6 {
 		return nil, errors.New("required graphics fields are missing")
 	}
 	return settings, nil
