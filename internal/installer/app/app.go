@@ -23,11 +23,13 @@ import (
 	"github.com/bakanura/gjallarOS/internal/installer/config"
 	"github.com/bakanura/gjallarOS/internal/installer/deploy"
 	"github.com/bakanura/gjallarOS/internal/installer/discovery"
+	"github.com/bakanura/gjallarOS/internal/installer/diskcrypto"
 	"github.com/bakanura/gjallarOS/internal/installer/firmware"
 	"github.com/bakanura/gjallarOS/internal/installer/geolocation"
 	"github.com/bakanura/gjallarOS/internal/installer/hardwareconfig"
 	"github.com/bakanura/gjallarOS/internal/installer/localgit"
 	"github.com/bakanura/gjallarOS/internal/installer/nixrender"
+	"github.com/bakanura/gjallarOS/internal/installer/oddc"
 	"github.com/bakanura/gjallarOS/internal/installer/prompt"
 	"github.com/bakanura/gjallarOS/internal/installer/recoveryprovision"
 	"github.com/bakanura/gjallarOS/internal/installer/recoveryresize"
@@ -57,6 +59,7 @@ type state struct {
 	recoveryPartition        string
 	recoverySigningKey       string
 	recoverySigningPublicKey string
+	secureBootFirmware       oddc.EffectiveSecureBootFirmwarePolicy
 }
 
 const (
@@ -209,8 +212,27 @@ func Run(ctx context.Context, args []string, in io.Reader, out, errOut io.Writer
 	hardware := discovery.DetectHardware("/sys")
 	s.touchscreen = hardware.Touchscreen
 	s.penTablet = hardware.PenTablet
+
+	resolvedDevice, err := resolveDeviceProfile(root, hardware)
+	if err != nil {
+		return fail(errOut, err)
+	}
+	persistDeviceIdentity(&s.user, hardware, resolvedDevice)
+
+	s.secureBootFirmware, err = oddc.ResolveSecureBootFirmwarePolicy(resolvedDevice)
+	if err != nil {
+		return fail(errOut, fmt.Errorf(
+			"resolve Secure Boot firmware policy: %w",
+			err,
+		))
+	}
+
 	fmt.Fprintf(out, "Touchscreen detected: %t\n", hardware.Touchscreen)
 	fmt.Fprintf(out, "Pen/tablet detected: %t\n", hardware.PenTablet)
+	if s.user.DeviceProfile != "" {
+		fmt.Fprintf(out, "Device profile resolved: %s\n", s.user.DeviceProfile)
+	}
+
 	choices, err := discovery.Discover(root, s.preset, hardware)
 	if err != nil {
 		return fail(errOut, err)
@@ -237,16 +259,103 @@ func Run(ctx context.Context, args []string, in io.Reader, out, errOut io.Writer
 	if err := configureWeatherLocation(ctx, ui, &s.user, out); err != nil {
 		return fail(errOut, err)
 	}
-	if s.user.FrameworkEnable && s.user.SecureBootPrompt && !s.user.EndpointManagedDevice {
-		s.user.SecureBootEnable, err = ui.Confirm(ctx, "Prepare Framework Secure Boot and recovery keys?", false)
+	// Resolve managed security requirements before checking the physical TPM
+	// boundary so policy normalization cannot re-enable TPM-dependent features
+	// after a no-TPM decision.
+	normalizeManagementSafety(&s.user)
+
+	tpmAvailable := diskcrypto.TPMAvailable()
+	securityRequested := s.user.SecureBootPrompt ||
+		s.user.SecureBootEnable ||
+		s.user.LUKSTPM2Enable ||
+		s.user.JODSPrebootLockEnable
+
+	if !tpmAvailable && securityRequested {
+		fmt.Fprintln(out)
+		fmt.Fprintln(out, "TPM2 hardware was not detected.")
+		fmt.Fprintln(
+			out,
+			"GjallarOS requires TPM2 for its Secure Boot and measured-boot security policy.",
+		)
+		fmt.Fprintln(
+			out,
+			"Secure Boot, TPM2 LUKS unlock, and TPM-dependent JODS preboot locking must be disabled to continue.",
+		)
+
+		if s.user.UnattendedInstall {
+			return fail(
+				errOut,
+				errors.New(
+					"TPM2 is unavailable while user.config.json requests TPM-dependent security; rerun interactively to approve disabling Secure Boot",
+				),
+			)
+		}
+
+		continued, err := ui.Confirm(
+			ctx,
+			"Continue installation with Secure Boot disabled?",
+			false,
+		)
+		if err != nil {
+			return fail(errOut, err)
+		}
+		if !continued {
+			fmt.Fprintln(
+				out,
+				"Installation cancelled. Secure Boot settings were not changed.",
+			)
+			return 0
+		}
+
+		disableTPMDependentSecurity(&s.user)
+
+		if s.preset {
+			if err := config.WriteAtomic(presetPath, s.user); err != nil {
+				return fail(
+					errOut,
+					fmt.Errorf(
+						"persist no-TPM security settings to user.config.json: %w",
+						err,
+					),
+				)
+			}
+
+			fmt.Fprintln(
+				out,
+				"Updated user.config.json for this TPM-less machine: secureBootPrompt=false, secureBootEnable=false, luksTpm2Enable=false, jodsPrebootLockEnable=false.",
+			)
+		}
+	}
+
+	if tpmAvailable &&
+		s.user.SecureBootPrompt &&
+		!s.user.EndpointManagedDevice &&
+		s.secureBootFirmware.Policy.Supported {
+		promptText := "Prepare Secure Boot and recovery keys?"
+		if firmwareName := strings.TrimSpace(
+			s.secureBootFirmware.Policy.FirmwareName,
+		); firmwareName != "" {
+			promptText = "Prepare Secure Boot and recovery keys for " +
+				firmwareName + "?"
+		}
+
+		s.user.SecureBootEnable, err = ui.Confirm(
+			ctx,
+			promptText,
+			false,
+		)
 		if err != nil {
 			return fail(errOut, err)
 		}
 	}
-	// Resolve the managed-device security contract before recovery
-	// provisioning so a managed preset cannot silently skip the physical
-	// recovery path by leaving its individual booleans false.
-	normalizeManagementSafety(&s.user)
+
+	if err := validateSecureBootFirmwareSupport(
+		s.user.SecureBootEnable,
+		s.user.DeviceProfile,
+		s.secureBootFirmware,
+	); err != nil {
+		return fail(errOut, err)
+	}
 
 	if s.existing &&
 		s.user.RecoveryEnable &&
@@ -305,7 +414,7 @@ func Run(ctx context.Context, args []string, in io.Reader, out, errOut io.Writer
 	if err := configureSecrets(ctx, root, &s, errOut); err != nil {
 		return fail(errOut, err)
 	}
-	fmt.Fprintf(out, "\nSelected: profile=%s hostname=%s user=%s shell=%s theme=%s\n", s.user.Profile, s.user.Hostname, s.user.Username, s.user.Shell, s.user.Theme)
+	fmt.Fprintf(out, "\nSelected: profile=%s hostname=%s user=%s shell=%s\n", s.user.Profile, s.user.Hostname, s.user.Username, s.user.Shell)
 	write := s.user.WriteConfig
 	if !s.preset {
 		write, err = ui.Confirm(ctx, "Write configuration to "+filepath.Join(root, "settings.nix")+"?", false)
@@ -724,7 +833,24 @@ func Run(ctx context.Context, args []string, in io.Reader, out, errOut io.Writer
 			}
 		}
 
-		next, err := secureboot.VerifyAndArmEnrollment(ctx)
+		firmwarePolicy, err := secureboot.SnapshotFirmwarePolicy(
+			s.user.DeviceProfile,
+			s.secureBootFirmware,
+		)
+		if err != nil {
+			return fail(
+				errOut,
+				fmt.Errorf(
+					"prepare detected Secure Boot firmware policy: %w",
+					err,
+				),
+			)
+		}
+
+		next, err := secureboot.VerifyAndArmEnrollment(
+			ctx,
+			firmwarePolicy,
+		)
 		if err != nil {
 			return fail(errOut, err)
 		}
@@ -749,7 +875,10 @@ func Run(ctx context.Context, args []string, in io.Reader, out, errOut io.Writer
 				"Only Secure Boot enforcement still needs to be enabled in firmware.",
 			)
 
-			if err := ui.SecureBootEnableHandoff(ctx); err != nil {
+			if err := ui.SecureBootEnableHandoff(
+				ctx,
+				firmwarePolicy.FirmwareName,
+			); err != nil {
 				return fail(
 					errOut,
 					fmt.Errorf("Secure Boot enable handoff: %w", err),
@@ -762,7 +891,11 @@ func Run(ctx context.Context, args []string, in io.Reader, out, errOut io.Writer
 				"Secure Boot ownership transfer armed and boot artifacts verified.",
 			)
 
-			if err := ui.SecureBootFirmwareHandoff(ctx); err != nil {
+			if err := ui.SecureBootFirmwareHandoff(
+				ctx,
+				firmwarePolicy.FirmwareName,
+				firmwarePolicy.Instructions,
+			); err != nil {
 				return fail(
 					errOut,
 					fmt.Errorf("Secure Boot firmware handoff: %w", err),
@@ -1215,9 +1348,10 @@ func collectInteractive(ctx context.Context, ui prompt.UI, root string, hardware
 	if err := collectProjectTools(ctx, ui, u); err != nil {
 		return err
 	}
-	u.Theme, err = ui.Choice(ctx, "Theme", first(o.Themes), o.Themes)
-	if err != nil {
-		return err
+	// Theme selection belongs to the desktop shell after installation.
+	// Keep the default theme only as the bootstrap rendering contract.
+	if u.Theme == "" {
+		u.Theme = first(o.Themes)
 	}
 	u.DockerEnable, err = ui.Confirm(ctx, "Enable Docker daemon? Docker access is root-equivalent.", false)
 	if err != nil {
@@ -1327,6 +1461,13 @@ func normalizePreset(u *config.User, root string) {
 	if normalized, err := xkb.Normalize(u.KeyboardLayout); err == nil {
 		u.KeyboardLayout, u.KeyboardVariant = normalized.Name, normalized.Variant
 	}
+}
+
+func disableTPMDependentSecurity(u *config.User) {
+	u.SecureBootPrompt = false
+	u.SecureBootEnable = false
+	u.LUKSTPM2Enable = false
+	u.JODSPrebootLockEnable = false
 }
 
 func normalizeManagementSafety(u *config.User) {
@@ -1788,7 +1929,7 @@ func detectAndRenderState(ctx context.Context, root string, s *state) error {
 	}
 	s.passthroughIDs = append([]string(nil), g.PassthroughIDs...)
 	passthrough := u.NemuGPUPassthrough && len(g.PassthroughIDs) > 0
-	s.render = nixrender.Settings{System: u.System, Profile: u.Profile, Hostname: u.Hostname, Username: u.Username, Timezone: u.Timezone, Locale: u.Locale, KeyboardLayout: u.KeyboardLayout, KeyboardVariant: u.KeyboardVariant, WeatherCity: u.WeatherCity, WeatherCountry: u.WeatherCountry, TouchpadWorkspaceSwipe: u.TouchpadWorkspaceSwipe, TouchscreenEnable: s.touchscreen, PenTabletEnable: s.penTablet, ClamshellEnable: u.ClamshellEnable, USBGuardEnable: u.USBGuardEnable, Name: u.Name, Email: u.Email, GitHubUsername: u.GitHubUsername, DotfilesDir: u.DotfilesDir, WorkUserEnable: u.WorkUserEnable, WorkUsername: u.WorkUsername, DockerEnable: u.DockerEnable, DebugFunctions: u.DebugFunctions, Shell: u.Shell, Editors: u.Editors, Browsers: u.Browsers, PreferredEditor: u.PreferredEditor, PreferredBrowser: u.PreferredBrowser, PlaneEnable: u.PlaneEnable, PlaneHost: u.PlaneHost, DrawioEnable: u.DrawioEnable, DrawioSelfHosted: u.DrawioSelfHosted, DrawioHost: u.DrawioHost, BackgroundNormal: u.BackgroundNormal, BackgroundWork: u.BackgroundWork, BackgroundGaming: u.BackgroundGaming, EnableScrobbling: u.EnableScrobbling, EnableLastfm: u.EnableLastfm, EnableListenbrainz: u.EnableListenbrainz, LastfmUsername: u.LastfmUsername, ListenbrainzUsername: u.ListenbrainzUsername, FrameworkEnable: u.FrameworkEnable, FrameworkModel: u.FrameworkModel, GraphicsVendor: g.Vendor, GraphicsDeviceID: g.DeviceID, GraphicsType: g.Type, GraphicsCompute: g.Compute, GraphicsBusID: g.BusID, GraphicsIntegratedBusID: g.IntegratedBusID, WiFiDriver: wifi, AIEnable: u.AIEnable, AIModel: ai.Model, AIAccelerationProfile: ai.AccelerationProfile, AIAgentMode: u.AIAgentMode, AIContextTokens: ai.ContextTokens, AIVRAMMB: ai.VRAMMB, NemuEnable: u.NemuEnable, NemuGPUPassthrough: passthrough, LUKSTPM2Enable: u.LUKSTPM2Enable, RecoveryEnable: u.RecoveryEnable, RecoveryPartitionEnable: u.RecoveryPartitionEnable, JODSPrebootLockEnable: u.JODSPrebootLockEnable, SecureBootEnable: u.SecureBootEnable, EndpointManagedDevice: u.EndpointManagedDevice, JODSEndpoint: u.JODSEndpoint, JODSPolicySigningPublicKey: u.JODSPolicySigningKey, JODSRecoveryCommandSigningPublicKey: u.JODSRecoverySigningKey, JODSEnrollmentMode: u.JODSEnrollmentMode, JODSAllowInsecureTLS: u.JODSAllowInsecureTLS, JODSDeviceClass: u.JODSDeviceClass, JODSDesktopProfile: u.JODSDesktopProfile, JODSFingerprintEnrollmentAllowed: u.JODSFingerprintEnroll, WMs: []string{"hyprland"}, Theme: u.Theme}
+	s.render = nixrender.Settings{System: u.System, Profile: u.Profile, Hostname: u.Hostname, Username: u.Username, Timezone: u.Timezone, Locale: u.Locale, KeyboardLayout: u.KeyboardLayout, KeyboardVariant: u.KeyboardVariant, WeatherCity: u.WeatherCity, WeatherCountry: u.WeatherCountry, TouchpadWorkspaceSwipe: u.TouchpadWorkspaceSwipe, TouchscreenEnable: s.touchscreen, PenTabletEnable: s.penTablet, ClamshellEnable: u.ClamshellEnable, USBGuardEnable: u.USBGuardEnable, Name: u.Name, Email: u.Email, GitHubUsername: u.GitHubUsername, DotfilesDir: u.DotfilesDir, WorkUserEnable: u.WorkUserEnable, WorkUsername: u.WorkUsername, DockerEnable: u.DockerEnable, DebugFunctions: u.DebugFunctions, Shell: u.Shell, Editors: u.Editors, Browsers: u.Browsers, PreferredEditor: u.PreferredEditor, PreferredBrowser: u.PreferredBrowser, PlaneEnable: u.PlaneEnable, PlaneHost: u.PlaneHost, DrawioEnable: u.DrawioEnable, DrawioSelfHosted: u.DrawioSelfHosted, DrawioHost: u.DrawioHost, BackgroundNormal: u.BackgroundNormal, BackgroundWork: u.BackgroundWork, BackgroundGaming: u.BackgroundGaming, EnableScrobbling: u.EnableScrobbling, EnableLastfm: u.EnableLastfm, EnableListenbrainz: u.EnableListenbrainz, LastfmUsername: u.LastfmUsername, ListenbrainzUsername: u.ListenbrainzUsername, FrameworkEnable: u.FrameworkEnable, FrameworkModel: u.FrameworkModel, DeviceProfile: u.DeviceProfile, DeviceLayers: u.DeviceLayers, DeviceSysVendor: u.DeviceSysVendor, DeviceProductName: u.DeviceProductName, DeviceProductVersion: u.DeviceProductVersion, DeviceBoardVendor: u.DeviceBoardVendor, DeviceBoardName: u.DeviceBoardName, DeviceBoardVersion: u.DeviceBoardVersion, GraphicsVendor: g.Vendor, GraphicsDeviceID: g.DeviceID, GraphicsType: g.Type, GraphicsCompute: g.Compute, GraphicsBusID: g.BusID, GraphicsIntegratedBusID: g.IntegratedBusID, WiFiDriver: wifi, AIEnable: u.AIEnable, AIModel: ai.Model, AIAccelerationProfile: ai.AccelerationProfile, AIAgentMode: u.AIAgentMode, AIContextTokens: ai.ContextTokens, AIVRAMMB: ai.VRAMMB, NemuEnable: u.NemuEnable, NemuGPUPassthrough: passthrough, LUKSTPM2Enable: u.LUKSTPM2Enable, RecoveryEnable: u.RecoveryEnable, RecoveryPartitionEnable: u.RecoveryPartitionEnable, JODSPrebootLockEnable: u.JODSPrebootLockEnable, SecureBootEnable: u.SecureBootEnable, EndpointManagedDevice: u.EndpointManagedDevice, JODSEndpoint: u.JODSEndpoint, JODSPolicySigningPublicKey: u.JODSPolicySigningKey, JODSRecoveryCommandSigningPublicKey: u.JODSRecoverySigningKey, JODSEnrollmentMode: u.JODSEnrollmentMode, JODSAllowInsecureTLS: u.JODSAllowInsecureTLS, JODSDeviceClass: u.JODSDeviceClass, JODSDesktopProfile: u.JODSDesktopProfile, JODSFingerprintEnrollmentAllowed: u.JODSFingerprintEnroll, WMs: []string{"hyprland"}, Theme: u.Theme}
 	if passthrough {
 		s.render.NemuGPUIDs = g.PassthroughIDs
 	}
@@ -1869,7 +2010,7 @@ func validateSelections(u config.User, o discovery.Options) error {
 	for _, check := range []struct {
 		name, value string
 		allowed     []string
-	}{{"profile", u.Profile, o.Profiles}, {"shell", u.Shell, o.Shells}, {"theme", u.Theme, o.Themes}} {
+	}{{"profile", u.Profile, o.Profiles}, {"shell", u.Shell, o.Shells}} {
 		if !contains(check.allowed, check.value) {
 			return fmt.Errorf("unsupported %s: %q", check.name, check.value)
 		}

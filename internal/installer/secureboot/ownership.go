@@ -193,7 +193,7 @@ func Inspect(ctx context.Context) (Inspection, error) {
 		}, nil
 	}
 
-	// The PK is the root of the Secure Boot hierarchy.  Microsoft/Framework
+	// The PK is the root of the Secure Boot hierarchy. Firmware-provided
 	// may legitimately update KEK/db/dbx over time, so factory-derived state
 	// is deliberately based on the active PK matching PKDefault rather than
 	// requiring byte-identical KEK/db databases.
@@ -220,6 +220,91 @@ func Inspect(ctx context.Context) (Inspection, error) {
 		Recorded:    recorded,
 		Description: "The active Secure Boot hierarchy is neither the firmware default PK nor the current GjallarOS key hierarchy.",
 	}, nil
+}
+
+func verifyOwnershipRecord(
+	record ownershipRecord,
+	keys localKeys,
+	expectedStage string,
+) error {
+	if record.Schema != 1 {
+		return fmt.Errorf(
+			"unsupported GjallarOS Secure Boot ownership schema %d",
+			record.Schema,
+		)
+	}
+
+	if record.Manager != "gjallarOS" {
+		return fmt.Errorf(
+			"unexpected Secure Boot manager %q",
+			record.Manager,
+		)
+	}
+
+	if expectedStage != "" && record.Stage != expectedStage {
+		return fmt.Errorf(
+			"ownership stage is %q; expected %q",
+			record.Stage,
+			expectedStage,
+		)
+	}
+
+	if record.SbctlOwnerGUID != keys.ownerGUID {
+		return fmt.Errorf(
+			"ownership record GUID does not match the current sbctl GUID",
+		)
+	}
+
+	for name, pair := range map[string][2]string{
+		"PK":  {record.PKSHA256, keys.pkHash},
+		"KEK": {record.KEKSHA256, keys.kekHash},
+		"db":  {record.DbSHA256, keys.dbHash},
+	} {
+		if pair[0] != pair[1] {
+			return fmt.Errorf(
+				"local %s certificate does not match GjallarOS ownership metadata",
+				name,
+			)
+		}
+	}
+
+	return nil
+}
+
+func VerifyOwnership(ctx context.Context, expectedStage string) error {
+	record, recorded, err := readOwnership(ctx)
+	if err != nil {
+		return fmt.Errorf("read GjallarOS Secure Boot ownership metadata: %w", err)
+	}
+	if !recorded {
+		return fmt.Errorf("GjallarOS Secure Boot ownership metadata is missing")
+	}
+
+	keys, haveKeys, err := readLocalKeys(ctx)
+	if err != nil {
+		return fmt.Errorf("read local Secure Boot key set: %w", err)
+	}
+	if !haveKeys {
+		return fmt.Errorf("local sbctl Secure Boot key set is incomplete")
+	}
+
+	if err := verifyOwnershipRecord(record, keys, expectedStage); err != nil {
+		return err
+	}
+
+	inspection, err := Inspect(ctx)
+	if err != nil {
+		return fmt.Errorf("inspect active Secure Boot ownership: %w", err)
+	}
+
+	if inspection.State != StateGjallarManaged {
+		return fmt.Errorf(
+			"active firmware does not contain the current GjallarOS PK/KEK/db hierarchy: %s",
+			inspection.Description,
+		)
+	}
+
+	return nil
 }
 
 func RecordOwnership(ctx context.Context, stage string) error {

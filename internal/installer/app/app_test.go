@@ -131,8 +131,8 @@ func TestCompletedSecureBootDoesNotRebootFirmware(t *testing.T) {
 }
 
 func TestValidateSelections(t *testing.T) {
-	o := discovery.Options{Profiles: []string{"laptop"}, Shells: []string{"zsh"}, Editors: []string{"vscodium"}, Browsers: []string{"librewolf"}, Themes: []string{"noctalia"}}
-	u := config.User{Profile: "laptop", Shell: "zsh", Editors: []string{"vscodium"}, Browsers: []string{"librewolf"}, Theme: "noctalia", DotfilesDir: "/repo"}
+	o := discovery.Options{Profiles: []string{"laptop"}, Shells: []string{"zsh"}, Editors: []string{"vscodium"}, Browsers: []string{"librewolf"}}
+	u := config.User{Profile: "laptop", Shell: "zsh", Editors: []string{"vscodium"}, Browsers: []string{"librewolf"}, DotfilesDir: "/repo"}
 	if err := validateSelections(u, o); err != nil {
 		t.Fatal(err)
 	}
@@ -338,5 +338,29 @@ func TestRecoveryLifecycleAuthorityIsSeparated(t *testing.T) {
 				)
 			}
 		})
+	}
+}
+
+func TestDisableTPMDependentSecurity(t *testing.T) {
+	user := config.User{
+		SecureBootPrompt:      true,
+		SecureBootEnable:      true,
+		LUKSTPM2Enable:        true,
+		JODSPrebootLockEnable: true,
+	}
+
+	disableTPMDependentSecurity(&user)
+
+	if user.SecureBootPrompt {
+		t.Fatal("Secure Boot prompt remained enabled")
+	}
+	if user.SecureBootEnable {
+		t.Fatal("Secure Boot remained enabled")
+	}
+	if user.LUKSTPM2Enable {
+		t.Fatal("TPM2 LUKS unlock remained enabled")
+	}
+	if user.JODSPrebootLockEnable {
+		t.Fatal("JODS preboot TPM policy remained enabled")
 	}
 }

@@ -4,6 +4,11 @@
   settings,
   ...
 }:
+let
+  deviceLayerModules = map (layer: ../../oddc/devices + "/${layer}/default.nix") (
+    settings.deviceLayers or [ ]
+  );
+in
 {
   imports = [
     ./hardware-configuration.nix
@@ -14,9 +19,8 @@
     ../../system/hardware/firmware.nix
     ../../system/hardware/fingerprint.nix
     ../../system/hardware/input.nix
-    ../../system/hardware/laptop/battery.nix
-    ../../system/hardware/laptop/boot.nix
     ../../system/recovery
+    ../../system/security/secure-boot
     ../../system/hardware/desktop/mouse.nix
     ../../system/security/laptop/firewall.nix
     ../../system/virtualization
@@ -25,9 +29,9 @@
     ../../system/tools
     ../../system/users/work.nix
     ../../system/users/privilege.nix
-    ../../system/hardware/framework
     ../../system/apps/ollama.nix
   ]
+  ++ deviceLayerModules
   ++ (map (wm: ../../system/wm/${wm}) settings.wms);
 
   boot.kernelPackages = pkgs.linuxPackages_latest;
@@ -65,7 +69,8 @@
       "kvm"
       "vhost"
       "usb"
-    ] ++ lib.optionals (!settings.endpointManagedDevice) [ "wheel" ];
+    ]
+    ++ lib.optionals (!settings.endpointManagedDevice) [ "wheel" ];
   };
 
   # See https://nix.dev/permalink/stub-ld.

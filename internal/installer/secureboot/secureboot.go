@@ -325,7 +325,10 @@ func sudoTest(ctx context.Context, args ...string) (bool, error) {
 // and verifies that kernel hash. Individually Authenticode-signing that loose
 // kernel changes its bytes and causes Lanzaboote to abort with
 // SECURITY_VIOLATION / "Kernel hash does not match".
-func VerifyAndArmEnrollment(ctx context.Context) (Continuation, error) {
+func VerifyAndArmEnrollment(
+	ctx context.Context,
+	firmwarePolicy FirmwarePolicySnapshot,
+) (Continuation, error) {
 	if err := verifyBootArtifacts(ctx); err != nil {
 		return ContinuationNone, err
 	}
@@ -399,6 +402,16 @@ func VerifyAndArmEnrollment(ctx context.Context) (Continuation, error) {
 			"refusing to arm Secure Boot enrollment from state %q: %s",
 			inspection.State,
 			inspection.Description,
+		)
+	}
+
+	if err := EnsureFirmwarePolicySnapshot(
+		ctx,
+		firmwarePolicy,
+	); err != nil {
+		return ContinuationNone, fmt.Errorf(
+			"prepare trusted Secure Boot firmware policy transaction: %w",
+			err,
 		)
 	}
 
