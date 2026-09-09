@@ -18,7 +18,8 @@ const (
 	ActivePath    = StateDir + "/active.json"
 	InstallerPath = StateDir + "/gjallar-installer"
 	ControlPath   = StateDir + "/gjallarctl"
-	ServicePath   = "/etc/systemd/system/gjallar-installer-resume.service"
+	ModulePath    = StateDir + "/resume-module.nix"
+	WrapperPath   = StateDir + "/configuration.nix"
 	ServiceName   = "gjallar-installer-resume.service"
 )
 
@@ -121,27 +122,43 @@ func Arm(
 		return err
 	}
 
-	unit :=
-		"[Unit]\n" +
-			"Description=Resume GjallarOS installer after staged NixOS release boot\n" +
-			"After=local-fs.target\n" +
-			"ConditionPathExists=" + PendingPath + "\n" +
-			"\n" +
-			"[Service]\n" +
-			"Type=oneshot\n" +
-			"UMask=0077\n" +
-			"ExecStartPre=/run/current-system/sw/bin/mv " +
-			PendingPath + " " + ActivePath + "\n" +
-			"ExecStart=" + InstallerPath +
-			" --resume-transaction " + ActivePath + "\n" +
-			"ExecStartPost=/run/current-system/sw/bin/rm -f " +
-			ActivePath + "\n" +
-			"TimeoutStartSec=0\n" +
-			"\n" +
-			"[Install]\n" +
-			"WantedBy=multi-user.target\n"
+	module :=
+		"{ lib, ... }:\n" +
+			"{\n" +
+			"  systemd.services.gjallar-installer-resume = {\n" +
+			"    description = \"Resume GjallarOS installer after staged NixOS release boot\";\n" +
+			"    wantedBy = [ \"multi-user.target\" ];\n" +
+			"    after = [ \"local-fs.target\" ];\n" +
+			"    unitConfig.ConditionPathExists = \"" + PendingPath + "\";\n" +
+			"    serviceConfig = {\n" +
+			"      Type = \"oneshot\";\n" +
+			"      UMask = \"0077\";\n" +
+			"      TimeoutStartSec = 0;\n" +
+			"      ExecStartPre = \"/run/current-system/sw/bin/mv " +
+			PendingPath + " " + ActivePath + "\";\n" +
+			"      ExecStart = \"" + InstallerPath +
+			" --resume-transaction " + ActivePath + "\";\n" +
+			"      ExecStartPost = \"/run/current-system/sw/bin/rm -f " +
+			ActivePath + "\";\n" +
+			"    };\n" +
+			"  };\n" +
+			"}\n"
 
-	if err := os.WriteFile(unitTemp, []byte(unit), 0644); err != nil {
+	wrapper :=
+		"{ ... }:\n" +
+			"{\n" +
+			"  imports = [\n" +
+			"    /etc/nixos/configuration.nix\n" +
+			"    " + ModulePath + "\n" +
+			"  ];\n" +
+			"}\n"
+
+	if err := os.WriteFile(unitTemp, []byte(module), 0644); err != nil {
+		return err
+	}
+
+	wrapperTemp := filepath.Join(tempDir, "configuration.nix")
+	if err := os.WriteFile(wrapperTemp, []byte(wrapper), 0644); err != nil {
 		return err
 	}
 
@@ -182,22 +199,31 @@ func Arm(
 		return fmt.Errorf("install resume transaction: %w", err)
 	}
 
+	if _, err := os.Stat("/etc/nixos/configuration.nix"); err != nil {
+		return fmt.Errorf(
+			"current NixOS configuration is unavailable at /etc/nixos/configuration.nix: %w",
+			err,
+		)
+	}
+
 	if err := sudo(
 		ctx,
 		"install",
 		"-m", "0644",
 		unitTemp,
-		ServicePath,
+		ModulePath,
 	); err != nil {
-		return fmt.Errorf("install resume service: %w", err)
+		return fmt.Errorf("install resume NixOS module: %w", err)
 	}
 
-	if err := sudo(ctx, "systemctl", "daemon-reload"); err != nil {
-		return err
-	}
-
-	if err := sudo(ctx, "systemctl", "enable", ServiceName); err != nil {
-		return err
+	if err := sudo(
+		ctx,
+		"install",
+		"-m", "0644",
+		wrapperTemp,
+		WrapperPath,
+	); err != nil {
+		return fmt.Errorf("install resume NixOS wrapper: %w", err)
 	}
 
 	return nil

@@ -42,9 +42,9 @@ func Inspect(repo, osRelease string) (expected, actual string, err error) {
 	return policy.Release, actual, scanner.Err()
 }
 
-func Align(ctx context.Context, expected string) error {
+func Align(ctx context.Context, expected, nixosConfig string) error {
 	url := "https://channels.nixos.org/nixos-" + expected
-	for _, action := range [][]string{{"nix-channel", "--add", url, "nixos"}, {"nix-channel", "--update", "nixos"}, {"nixos-rebuild", "boot", "--upgrade"}} {
+	for _, action := range [][]string{{"nix-channel", "--add", url, "nixos"}, {"nix-channel", "--update", "nixos"}, {"nixos-rebuild", "boot", "--upgrade", "-I", "nixos-config=" + nixosConfig}} {
 		args := append([]string{action[0]}, action[1:]...)
 		cmd := exec.CommandContext(ctx, "sudo", args...)
 		cmd.Stdin = os.Stdin
