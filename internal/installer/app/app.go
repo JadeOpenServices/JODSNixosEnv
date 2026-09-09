@@ -292,6 +292,12 @@ func Run(ctx context.Context, args []string, in io.Reader, out, errOut io.Writer
 		fmt.Fprintln(out, "Nothing changed.")
 		return 0
 	}
+	if !s.preset {
+		if err := config.WriteAtomic(presetPath, s.user); err != nil {
+			return fail(errOut, err)
+		}
+		fmt.Fprintln(out, "Wrote", presetPath)
+	}
 	// A managed fresh installation may not create local account credentials
 	// before the device has completed its JODS pre-install enrollment and
 	// recovery-identity attestation. The legacy post-install enrollment path
