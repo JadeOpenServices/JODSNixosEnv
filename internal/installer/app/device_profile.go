@@ -36,6 +36,10 @@ func persistDeviceIdentity(
 	resolved oddc.Resolved,
 ) {
 	user.DeviceProfile = resolved.Device.ID
+	user.DeviceLayers = make([]string, 0, len(resolved.Inheritance))
+	for _, layer := range resolved.Inheritance {
+		user.DeviceLayers = append(user.DeviceLayers, layer.ID)
+	}
 	user.DeviceSysVendor = hardware.SysVendor
 	user.DeviceProductName = hardware.ProductName
 	user.DeviceProductVersion = hardware.ProductVersion

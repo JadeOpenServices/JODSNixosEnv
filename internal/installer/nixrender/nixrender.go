@@ -54,6 +54,7 @@ type Settings struct {
 	FrameworkEnable                                                bool
 	FrameworkModel                                                 string
 	DeviceProfile                                                  string
+	DeviceLayers                                                   []string
 	DeviceSysVendor, DeviceProductName, DeviceProductVersion       string
 	DeviceBoardVendor, DeviceBoardName, DeviceBoardVersion         string
 	GraphicsVendor, GraphicsDeviceID, GraphicsType                 string
@@ -134,6 +135,7 @@ func Render(s Settings) []byte {
 	boolean("frameworkEnable", s.FrameworkEnable)
 	str("frameworkModel", s.FrameworkModel)
 	str("deviceProfile", s.DeviceProfile)
+	list("deviceLayers", s.DeviceLayers)
 	str("deviceSysVendor", s.DeviceSysVendor)
 	str("deviceProductName", s.DeviceProductName)
 	str("deviceProductVersion", s.DeviceProductVersion)
