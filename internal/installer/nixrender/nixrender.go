@@ -52,7 +52,11 @@ type Settings struct {
 	EnableScrobbling, EnableLastfm, EnableListenbrainz             bool
 	LastfmUsername, ListenbrainzUsername                           string
 	FrameworkEnable                                                bool
-	FrameworkModel, GraphicsVendor, GraphicsDeviceID, GraphicsType string
+	FrameworkModel                                                 string
+	DeviceProfile                                                  string
+	DeviceSysVendor, DeviceProductName, DeviceProductVersion       string
+	DeviceBoardVendor, DeviceBoardName, DeviceBoardVersion         string
+	GraphicsVendor, GraphicsDeviceID, GraphicsType                 string
 	GraphicsCompute                                                bool
 	GraphicsBusID, GraphicsIntegratedBusID, WiFiDriver             string
 	AIEnable                                                       bool
@@ -129,6 +133,13 @@ func Render(s Settings) []byte {
 	str("listenbrainzUsername", s.ListenbrainzUsername)
 	boolean("frameworkEnable", s.FrameworkEnable)
 	str("frameworkModel", s.FrameworkModel)
+	str("deviceProfile", s.DeviceProfile)
+	str("deviceSysVendor", s.DeviceSysVendor)
+	str("deviceProductName", s.DeviceProductName)
+	str("deviceProductVersion", s.DeviceProductVersion)
+	str("deviceBoardVendor", s.DeviceBoardVendor)
+	str("deviceBoardName", s.DeviceBoardName)
+	str("deviceBoardVersion", s.DeviceBoardVersion)
 	str("graphicsVendor", s.GraphicsVendor)
 	str("graphicsDeviceId", s.GraphicsDeviceID)
 	str("graphicsType", s.GraphicsType)
