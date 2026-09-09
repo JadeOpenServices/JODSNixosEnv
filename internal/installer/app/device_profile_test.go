@@ -180,3 +180,45 @@ func TestPersistDeviceIdentityOverwritesStalePresetValues(t *testing.T) {
 		t.Fatalf("DeviceBoardVersion=%q", user.DeviceBoardVersion)
 	}
 }
+
+func TestPersistDeviceIdentityPreservesResolvedLayerOrder(t *testing.T) {
+	user := config.User{}
+
+	resolved := oddc.Resolved{
+		Device: oddc.Manifest{
+			ID: "laptop/hp/zbook-x2-g4",
+		},
+		Inheritance: []oddc.Manifest{
+			{ID: "laptop/common"},
+			{ID: "laptop/hp"},
+			{ID: "laptop/hp/zbook-x2-g4"},
+		},
+	}
+
+	persistDeviceIdentity(
+		&user,
+		discovery.Hardware{FormFactor: "laptop"},
+		resolved,
+	)
+
+	want := []string{
+		"laptop/common",
+		"laptop/hp",
+		"laptop/hp/zbook-x2-g4",
+	}
+
+	if len(user.DeviceLayers) != len(want) {
+		t.Fatalf("DeviceLayers=%v", user.DeviceLayers)
+	}
+
+	for i := range want {
+		if user.DeviceLayers[i] != want[i] {
+			t.Fatalf(
+				"DeviceLayers[%d]=%q want %q",
+				i,
+				user.DeviceLayers[i],
+				want[i],
+			)
+		}
+	}
+}

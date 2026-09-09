@@ -465,3 +465,95 @@ func TestEquivalentSourcesResolveSameDeviceGraph(t *testing.T) {
 
 	t.Logf("equivalent graph: %v", fmtIDs(a))
 }
+
+func TestVendorLayersRemainIsolated(t *testing.T) {
+	root := t.TempDir()
+
+	writeManifest := func(id string, body string) {
+		t.Helper()
+
+		dir := filepath.Join(root, "devices", filepath.FromSlash(id))
+		if err := os.MkdirAll(dir, 0755); err != nil {
+			t.Fatal(err)
+		}
+
+		if err := os.WriteFile(
+			filepath.Join(dir, "device.json"),
+			[]byte(body),
+			0644,
+		); err != nil {
+			t.Fatal(err)
+		}
+
+		if err := os.WriteFile(
+			filepath.Join(dir, "default.nix"),
+			[]byte("{ ... }: {}\n"),
+			0644,
+		); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	writeManifest(
+		"laptop/common",
+		`{
+  "schema": 1,
+  "id": "laptop/common",
+  "class": "laptop",
+  "inherits": [],
+  "modules": ["default.nix"],
+  "lifecycle": {"status":"supported"},
+  "validation": {}
+}`,
+	)
+
+	writeManifest(
+		"laptop/framework",
+		`{
+  "schema": 1,
+  "id": "laptop/framework",
+  "class": "laptop",
+  "match": {"sysVendor":["Framework"]},
+  "inherits": ["laptop/common"],
+  "modules": ["default.nix"],
+  "lifecycle": {"status":"supported"},
+  "validation": {}
+}`,
+	)
+
+	writeManifest(
+		"laptop/hp",
+		`{
+  "schema": 1,
+  "id": "laptop/hp",
+  "class": "laptop",
+  "match": {"sysVendor":["HP"]},
+  "inherits": ["laptop/common"],
+  "modules": ["default.nix"],
+  "lifecycle": {"status":"supported"},
+  "validation": {}
+}`,
+	)
+
+	source := EmbeddedSource{
+		Root: root,
+	}
+
+	hp, err := source.Resolve(Identity{
+		FormFactor: "laptop",
+		SysVendor:  "HP",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if hp.Device.ID != "laptop/hp" {
+		t.Fatalf("HP resolved to %q", hp.Device.ID)
+	}
+
+	for _, layer := range hp.Inheritance {
+		if layer.ID == "laptop/framework" {
+			t.Fatalf("HP inherited Framework layer: %+v", hp.Inheritance)
+		}
+	}
+}
