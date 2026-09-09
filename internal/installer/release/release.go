@@ -44,7 +44,7 @@ func Inspect(repo, osRelease string) (expected, actual string, err error) {
 
 func Align(ctx context.Context, expected string) error {
 	url := "https://channels.nixos.org/nixos-" + expected
-	for _, action := range [][]string{{"nix-channel", "--add", url, "nixos"}, {"nix-channel", "--update", "nixos"}, {"nixos-rebuild", "switch", "--upgrade"}} {
+	for _, action := range [][]string{{"nix-channel", "--add", url, "nixos"}, {"nix-channel", "--update", "nixos"}, {"nixos-rebuild", "boot", "--upgrade"}} {
 		args := append([]string{action[0]}, action[1:]...)
 		cmd := exec.CommandContext(ctx, "sudo", args...)
 		cmd.Stdin = os.Stdin

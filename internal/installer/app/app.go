@@ -32,6 +32,7 @@ import (
 	"github.com/bakanura/gjallarOS/internal/installer/recoveryprovision"
 	"github.com/bakanura/gjallarOS/internal/installer/recoveryresize"
 	"github.com/bakanura/gjallarOS/internal/installer/release"
+	installerresume "github.com/bakanura/gjallarOS/internal/installer/resume"
 	"github.com/bakanura/gjallarOS/internal/installer/secureboot"
 	"github.com/bakanura/gjallarOS/internal/installercheck"
 )
@@ -58,12 +59,62 @@ type state struct {
 	recoverySigningPublicKey string
 }
 
-const installerSecureBootResumeMarker = "/var/lib/gjallarOS/installer-resume-after-secure-boot"
+const (
+	installerSecureBootResumeMarker = "/var/lib/gjallarOS/installer-resume-after-secure-boot"
+	installerReleaseRebootScheduled = 75
+)
 
 var detectNetworkLocation = geolocation.Detect
 var runJODSCommand = attached
 
 func Run(ctx context.Context, args []string, in io.Reader, out, errOut io.Writer) int {
+	if len(args) == 2 && args[0] == "--resume-transaction" {
+		tx, err := installerresume.Load(args[1])
+		if err != nil {
+			return fail(errOut, err)
+		}
+
+		expected, active, err := release.Inspect(
+			tx.Repo,
+			"/run/current-system/etc/os-release",
+		)
+		if err != nil {
+			return fail(errOut, err)
+		}
+
+		if expected != tx.ExpectedRelease {
+			return fail(
+				errOut,
+				fmt.Errorf(
+					"resume expected NixOS %s but repository policy now expects %s",
+					tx.ExpectedRelease,
+					expected,
+				),
+			)
+		}
+
+		if active != tx.ExpectedRelease {
+			return fail(
+				errOut,
+				fmt.Errorf(
+					"staged NixOS %s did not become active; current release is %s; automatic retry disabled",
+					tx.ExpectedRelease,
+					active,
+				),
+			)
+		}
+
+		fmt.Fprintf(
+			out,
+			"PASS: installer resumed on pinned NixOS %s\n",
+			active,
+		)
+
+		args = append([]string(nil), tx.Args...)
+	}
+
+	originalArgs := append([]string(nil), args...)
+
 	f := flag.NewFlagSet("gjallar-installer", flag.ContinueOnError)
 	f.SetOutput(errOut)
 	cwd, _ := os.Getwd()
@@ -128,7 +179,18 @@ func Run(ctx context.Context, args []string, in io.Reader, out, errOut io.Writer
 		// Recovery media is a purpose-built execution environment. Never mutate
 		// or rebuild the live recovery system before operating on the target.
 		fmt.Fprintln(out, "Recovery environment validated; live-host rebuild skipped.")
-	} else if code := prepareHost(ctx, ui, opt, s, out, errOut); code != 0 {
+	} else if code := prepareHost(
+		ctx,
+		ui,
+		opt,
+		s,
+		originalArgs,
+		out,
+		errOut,
+	); code != 0 {
+		if code == installerReleaseRebootScheduled {
+			return 0
+		}
 		return code
 	}
 	hardware := discovery.DetectHardware("/sys")
@@ -808,28 +870,85 @@ func activateJODSEnrollment(ctx context.Context, installationSucceeded bool) err
 	return nil
 }
 
-func prepareHost(ctx context.Context, ui prompt.UI, opt options, s state, out, errOut io.Writer) int {
+func prepareHost(
+	ctx context.Context,
+	ui prompt.UI,
+	opt options,
+	s state,
+	originalArgs []string,
+	out,
+	errOut io.Writer,
+) int {
 	expected, actual, err := release.Inspect(opt.repo, "/etc/os-release")
 	if err != nil {
 		return fail(errOut, err)
 	}
 	if expected != actual {
 		fmt.Fprintf(out, "NixOS %s detected; target is %s.\n", actual, expected)
-		fmt.Fprintf(out, "ACTION: automatically aligning the base system to pinned NixOS %s.\n", expected)
+		fmt.Fprintf(
+			out,
+			"ACTION: staging pinned NixOS %s for the next boot; the live desktop will not be switched in place.\n",
+			expected,
+		)
 
 		if err := release.Align(ctx, expected); err != nil {
 			return fail(errOut, err)
 		}
 
-		_, active, inspectErr := release.Inspect(opt.repo, "/run/current-system/etc/os-release")
-		if inspectErr != nil {
-			return fail(errOut, inspectErr)
-		}
-		if active != expected {
-			return fail(errOut, fmt.Errorf("release alignment completed, but NixOS %s is not active; detected %s", expected, active))
+		executable, err := os.Executable()
+		if err != nil {
+			return fail(
+				errOut,
+				fmt.Errorf(
+					"resolve installer executable for release continuation: %w",
+					err,
+				),
+			)
 		}
 
-		fmt.Fprintf(out, "NixOS release aligned: %s\n", active)
+		if err := installerresume.Arm(
+			ctx,
+			executable,
+			opt.repo,
+			originalArgs,
+			expected,
+		); err != nil {
+			return fail(
+				errOut,
+				fmt.Errorf(
+					"arm installer release continuation: %w",
+					err,
+				),
+			)
+		}
+
+		fmt.Fprintf(
+			out,
+			"PASS: NixOS %s staged and installer continuation armed.\n",
+			expected,
+		)
+		fmt.Fprintln(
+			out,
+			"Rebooting into the staged release; installation will resume automatically.",
+		)
+
+		if err := attached(
+			ctx,
+			"sudo",
+			"systemctl",
+			"reboot",
+		); err != nil {
+			return fail(
+				errOut,
+				fmt.Errorf(
+					"reboot into staged NixOS %s: %w; continuation remains armed for the next manual reboot",
+					expected,
+					err,
+				),
+			)
+		}
+
+		return installerReleaseRebootScheduled
 	}
 	// A completed GjallarOS installation is flake-owned. Rebuilding the
 	// bootstrap /etc/nixos/configuration.nix on a rerun would switch the live
