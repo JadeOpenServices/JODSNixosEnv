@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/rand"
 	"encoding/hex"
+	"encoding/json"
 	"fmt"
 	"os"
 	"os/exec"
@@ -251,4 +252,137 @@ func attached(ctx context.Context, name string, args ...string) error {
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
 	return cmd.Run()
+}
+
+type luksMetadata struct {
+	Tokens map[string]struct {
+		Type     string   `json:"type"`
+		Keyslots []string `json:"keyslots"`
+	} `json:"tokens"`
+}
+
+type TPM2KeyslotRecord struct {
+	Schema                int                 `json:"schema"`
+	Device                string              `json:"device"`
+	TPM2Tokens            map[string][]string `json:"tpm2Tokens"`
+	Policy                string              `json:"policy"`
+	HumanRecoveryVerified bool                `json:"humanRecoveryVerified"`
+}
+
+func ReadTPM2TokenID(metadataPath string) (string, error) {
+	metadata, err := readLUKSMetadata(metadataPath)
+	if err != nil {
+		return "", err
+	}
+
+	ids := make([]string, 0, 1)
+	for id, token := range metadata.Tokens {
+		if token.Type == "systemd-tpm2" {
+			ids = append(ids, id)
+		}
+	}
+
+	if len(ids) != 1 {
+		return "", fmt.Errorf(
+			"expected exactly one TPM2 token, found %d",
+			len(ids),
+		)
+	}
+
+	return ids[0], nil
+}
+
+func WriteTPM2KeyslotRecord(
+	metadataPath string,
+	targetPath string,
+	device string,
+	policy string,
+) error {
+	metadata, err := readLUKSMetadata(metadataPath)
+	if err != nil {
+		return err
+	}
+
+	tokens := make(map[string][]string)
+	for id, token := range metadata.Tokens {
+		if token.Type == "systemd-tpm2" {
+			tokens[id] = append([]string(nil), token.Keyslots...)
+		}
+	}
+
+	if len(tokens) != 1 {
+		return fmt.Errorf(
+			"expected exactly one TPM2 token after enrollment, found %d",
+			len(tokens),
+		)
+	}
+
+	record := TPM2KeyslotRecord{
+		Schema:                1,
+		Device:                device,
+		TPM2Tokens:            tokens,
+		Policy:                policy,
+		HumanRecoveryVerified: true,
+	}
+
+	data, err := json.MarshalIndent(record, "", "  ")
+	if err != nil {
+		return fmt.Errorf("encode TPM2 keyslot record: %w", err)
+	}
+	data = append(data, '\n')
+
+	dir := filepath.Dir(targetPath)
+	tmp, err := os.CreateTemp(dir, ".keyslots.json-*")
+	if err != nil {
+		return fmt.Errorf("create temporary TPM2 keyslot record: %w", err)
+	}
+
+	tmpName := tmp.Name()
+	defer os.Remove(tmpName)
+
+	if err := tmp.Chmod(0600); err != nil {
+		tmp.Close()
+		return fmt.Errorf("set TPM2 keyslot record permissions: %w", err)
+	}
+
+	if _, err := tmp.Write(data); err != nil {
+		tmp.Close()
+		return fmt.Errorf("write TPM2 keyslot record: %w", err)
+	}
+
+	if err := tmp.Sync(); err != nil {
+		tmp.Close()
+		return fmt.Errorf("sync TPM2 keyslot record: %w", err)
+	}
+
+	if err := tmp.Close(); err != nil {
+		return fmt.Errorf("close TPM2 keyslot record: %w", err)
+	}
+
+	if err := os.Rename(tmpName, targetPath); err != nil {
+		return fmt.Errorf("replace TPM2 keyslot record: %w", err)
+	}
+
+	return nil
+}
+
+func readLUKSMetadata(path string) (luksMetadata, error) {
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		return luksMetadata{}, fmt.Errorf("read LUKS metadata: %w", err)
+	}
+
+	var metadata luksMetadata
+	if err := json.Unmarshal(raw, &metadata); err != nil {
+		return luksMetadata{}, fmt.Errorf("parse LUKS metadata: %w", err)
+	}
+
+	if metadata.Tokens == nil {
+		metadata.Tokens = map[string]struct {
+			Type     string   `json:"type"`
+			Keyslots []string `json:"keyslots"`
+		}{}
+	}
+
+	return metadata, nil
 }

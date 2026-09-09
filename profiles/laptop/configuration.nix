@@ -20,6 +20,7 @@ in
     ../../system/hardware/fingerprint.nix
     ../../system/hardware/input.nix
     ../../system/recovery
+    ../../system/security/secure-boot
     ../../system/hardware/desktop/mouse.nix
     ../../system/security/laptop/firewall.nix
     ../../system/virtualization

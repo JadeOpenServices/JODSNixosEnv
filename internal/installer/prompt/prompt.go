@@ -214,21 +214,28 @@ Do not continue until you have saved both.
 	)
 }
 
-func (u UI) SecureBootEnableHandoff(ctx context.Context) error {
-	const instructions = `GJALLAROS SECURE BOOT
+func (u UI) SecureBootEnableHandoff(
+	ctx context.Context,
+	firmwareName string,
+) error {
+	firmwareName = strings.TrimSpace(firmwareName)
+	if firmwareName == "" {
+		firmwareName = "system firmware"
+	}
+
+	instructions := fmt.Sprintf(`GJALLAROS SECURE BOOT
 FINAL FIRMWARE ACTION
 
-GjallarOS ownership is already enrolled.
+GjallarOS ownership is already enrolled and verified.
 
-DO NOT clear PK, KEK, DB or DBX.
-DO NOT restore or erase Secure Boot keys.
-
-In Framework firmware:
+Firmware: %s
 
 1. Enable Secure Boot.
-2. Save and exit.
+2. Save the firmware configuration.
 3. Boot GjallarOS.
-`
+
+Do not clear, erase, reset, or replace Secure Boot keys during this final step.
+`, firmwareName)
 
 	if err := u.secureTextDialog(
 		ctx,
@@ -254,104 +261,65 @@ In Framework firmware:
 	return nil
 }
 
-func (u UI) SecureBootFirmwareHandoff(ctx context.Context) error {
-	const instructions = `GJALLAROS SECURE BOOT
+func (u UI) SecureBootFirmwareHandoff(
+	ctx context.Context,
+	firmwareName string,
+	policyInstructions []string,
+) error {
+	firmwareName = strings.TrimSpace(firmwareName)
+	if firmwareName == "" {
+		firmwareName = "system firmware"
+	}
+
+	clean := make([]string, 0, len(policyInstructions))
+	for _, instruction := range policyInstructions {
+		instruction = strings.TrimSpace(instruction)
+		if instruction != "" {
+			clean = append(clean, instruction)
+		}
+	}
+
+	if len(clean) == 0 {
+		return fmt.Errorf("Secure Boot firmware policy contains no display instructions")
+	}
+
+	instructions := fmt.Sprintf(`GJALLAROS SECURE BOOT
 FIRMWARE ACTION REQUIRED
 
-FIRST FIRMWARE VISIT
+Firmware: %s
 
-1. Open Framework Secure Boot settings.
-2. Clear/delete ONLY the Platform Key (PK).
+Follow the detected device firmware policy exactly:
 
-DO NOT:
+%s
 
-- clear KEK
-- clear DB
-- clear DBX
-- use "Erase All Secure Boot Settings"
-- enable Secure Boot yet
+After completing the firmware action:
 
-KEK, DB and DBX must remain present.
+- save the firmware configuration
+- boot GjallarOS normally
+- leave further Secure Boot changes to the GjallarOS enrollment transaction
 
-Clearing only PK enters UEFI Setup Mode while preserving the existing
-Framework/Microsoft trust databases.
+GjallarOS will verify the expected firmware state before performing enrollment.
+`,
+		firmwareName,
+		strings.Join(clean, "\n"),
+	)
 
-After clearing ONLY PK:
+	explanation := `WHY THIS IS DEVICE-SPECIFIC
 
-- Save and exit firmware.
-- Leave Secure Boot disabled.
-- Boot GjallarOS normally.
+Different firmware implementations require different steps to enter a safe
+Secure Boot enrollment state.
 
-GjallarOS will automatically:
+GjallarOS therefore does not hardcode a vendor procedure in the installer UI.
+The instructions above come from the detected device's validated ODDC firmware
+policy.
 
-- verify that firmware is in Setup Mode
-- refuse enrollment if KEK, DB or DBX were cleared
-- enroll the GjallarOS Platform Key
-- add the GjallarOS KEK and DB certificates
-- retain the existing Framework/Microsoft KEK and DB trust
-- leave DBX untouched
-- verify the GjallarOS boot chain
-- reboot back into firmware
+The policy is descriptive data only. It cannot provide commands, scripts,
+executables, URLs, or arbitrary shell input.
 
-SECOND FIRMWARE VISIT
-
-1. Enable Secure Boot.
-2. Save and exit.
-3. Boot GjallarOS.
-
-If the installer reports that firmware ownership is foreign or inconsistent,
-restore the firmware Secure Boot keys to factory defaults, leave Secure Boot
-disabled, boot GjallarOS, and rerun the installer.
+GjallarOS will independently verify the resulting firmware state before any
+key enrollment is allowed.
 `
-	const explanation = `WHY THESE STEPS ARE REQUIRED
 
-PK
-
-The Platform Key controls ownership of the Secure Boot configuration.
-
-Removing only PK places UEFI into Setup Mode. This allows GjallarOS to install
-its own Platform Key without destroying the existing KEK, DB or DBX databases.
-
-
-KEK
-
-DO NOT CLEAR KEK.
-
-GjallarOS adds its own KEK certificate while retaining the existing
-Framework/Microsoft KEK trust.
-
-
-DB
-
-DO NOT CLEAR DB.
-
-GjallarOS adds its own signing certificate while retaining compatible
-Framework/Microsoft DB trust.
-
-
-DBX
-
-DO NOT CLEAR DBX.
-
-DBX contains revocations for known-bad or compromised boot software.
-
-
-LANZABOOTE EXTERNAL KERNEL
-
-Do not individually sign /boot/EFI/nixos/kernel-*.efi.
-
-The signed generation stub records the external kernel hash. Adding a separate
-signature changes the kernel bytes and causes "Kernel hash does not match".
-
-
-WHY SECURE BOOT REMAINS DISABLED ON THE FIRST REBOOT
-
-GjallarOS still needs firmware Setup Mode to perform the ownership transfer.
-
-After enrollment succeeds, GjallarOS automatically reboots back into firmware.
-
-Only on the SECOND firmware visit should Secure Boot be enabled.
-`
 	for {
 		if err := u.secureTextDialog(
 			ctx,
@@ -401,11 +369,6 @@ Only on the SECOND firmware visit should Secure Boot be enabled.
 	}
 }
 
-// Exact requires the caller to type the exact expected value.
-//
-// Unlike Value, Exact does not trim surrounding whitespace and has no default.
-// This makes it suitable for explicit destructive-operation confirmation
-// phrases where approximate input must fail closed.
 func (u UI) Exact(ctx context.Context, label, expected string) error {
 	if expected == "" {
 		return fmt.Errorf("exact confirmation value must not be empty")

@@ -226,54 +226,92 @@ intent at `/etc/jods/preboot-policy`, but does not claim to be an anti-theft
 lock. That requires a later Secure Boot, measured-boot, remote-attestation, and
 revocable LUKS-key-release design; a local boot flag alone is bypassable.
 
-Framework profiles also expose `secureBootEnable`, disabled by default. The
-Framework provisioning sequence is:
+Secure Boot is disabled by default and is offered only when the detected ODDC
+device policy declares a supported firmware path. The Secure Boot implementation
+is shared across supported hardware; hardware modules do not own enrollment
+logic.
+
+The provisioning sequence is:
 
 ```text
-gjallar-secure-boot create-keys
-set secureBootEnable=true and rebuild
-verify with gjallar-secure-boot status
-installer arms enrollment and opens Framework firmware setup
-delete ONLY PK, keep KEK, DB, and DBX intact, then boot with Secure Boot disabled
-DO NOT use "Erase All Secure Boot Settings"; that would also remove KEK, DB, and DBX
-boot service enrolls per-device keys and verifies signed artifacts
-reboot and verify again
+installer detects the device and resolves its ODDC firmware policy
+installer validates the typed policy and prepares per-device GjallarOS keys
+encrypted Secure Boot recovery material is generated and confirmed saved
+signed Lanzaboote boot artifacts are installed and verified
+the resolved firmware policy is snapshotted for the transaction
+installer displays the detected device's firmware instructions
+user performs the required physical firmware action
+GjallarOS verifies the resulting firmware state before enrollment
+trusted Go enrollment retains only firmware trust requested by policy
+GjallarOS verifies PK/KEK/db ownership and signed boot artifacts
+user enables Secure Boot when instructed
+the finalizer proves Secure Boot enforcement and ownership
+optional TPM2 measured-boot LUKS enrollment runs after Secure Boot finalization
+installer completion is committed only after all required security stages pass
 ```
 
-The Linux-only enrollment command does not add Microsoft keys. It retains the
-Framework firmware-builtin keys needed by platform devices and firmware update
-flows. Keep `/var/lib/sbctl` private and backed up; JODS should escrow recovery
-material without distributing a shared fleet-wide private signing key.
+ODDC Secure Boot policy is declarative data only. Device manifests cannot
+provide shell commands, scripts, executable paths, hooks, URLs, or remote
+execution instructions. Privileged Secure Boot operations are implemented by
+trusted GjallarOS code.
 
-`secureBootPrompt=true` asks unmanaged Framework users whether to prepare
-Secure Boot, including when a preset is loaded. `endpointManagedDevice=true` suppresses
-that prompt: JODS must provision and escrow per-device keys itself. On an
-unmanaged device, the installer creates an encrypted recovery archive under
-`/var/lib/gjallarOS/recovery`, displays its generated passphrase outside shell
-history before rebuild or reboot, and requires two save confirmations.
-The whole installer transaction remains armed across both firmware visits.
-After `gjallar-secure-boot-finalize.service` proves that Secure Boot is
-enforcing and that GjallarOS owns the expected PK/KEK/db hierarchy,
-`gjallar-installer-post-secure-boot.service` performs the final installer
-verification and only then records installation completion.
+Firmware-provided trust material is taken from the machine's own UEFI
+databases according to the validated device policy. GjallarOS does not carry a
+Framework-specific or vendor-specific certificate bundle in the installer.
+Policies may require selected built-in KEK/db trust to be preserved and may
+mark variables such as dbx as untouched.
+
+Keep `/var/lib/sbctl` private. The installer also creates an encrypted
+Secure Boot recovery archive under `/var/lib/gjallarOS/recovery` and requires
+the recovery material to be saved before the transaction can proceed.
+
+`secureBootPrompt=true` lets an unmanaged supported device offer Secure Boot.
+`endpointManagedDevice=true` suppresses interactive enrollment and
+recovery-material prompts so managed provisioning can own that workflow.
+
+If TPM-dependent security is requested but no TPM2 device is detected, the
+interactive installer explains the limitation and asks whether installation
+should continue with Secure Boot, TPM2 LUKS unlock, and TPM-dependent JODS
+preboot policy disabled. When a loaded `user.config.json` is accepted for
+this downgrade, the corresponding settings are atomically persisted as false
+for future runs. Unattended installs do not silently downgrade requested
+security.
+
+The whole installer transaction remains armed across required firmware visits.
+`gjallar-secure-boot-enroll.service` performs the trusted enrollment stage.
+`gjallar-secure-boot-finalize.service` proves that Secure Boot is enforcing,
+Setup Mode is disabled, GjallarOS owns the expected key hierarchy, and signed
+boot artifacts verify correctly. `gjallar-installer-post-secure-boot.service`
+then performs final installed-system checks and records installation completion.
 
 The reboot-time continuation is deliberately user-visible. Progress and
 failures are written to `/var/lib/gjallarOS/installer-status.txt` and the
-system journal, are broadcast to logged-in terminals, and use a GTK/Zenity
-dialog when a graphical user session is available. If no GUI or terminal is
-currently attached, the persistent status file and journal retain the result.
-Failures leave the installer continuation marker in place so a reboot or
-repair cannot be mistaken for a completed installation.
+system journal, broadcast to logged-in terminals, and shown with a GTK/Zenity
+dialog when a graphical session is available. An incomplete security stage
+retains its continuation marker instead of being misreported as a completed
+installation.
 
-After a successful installer rebuild, a root-only marker arms automatic
-enrollment. The installer can reboot directly into firmware settings. Framework Setup Mode requires clearing ONLY PK while keeping KEK, DB, and DBX intact; once Linux boots in Setup
-Mode, `gjallar-secure-boot-enroll.service` enrolls the keys with
-`--firmware-builtin=db,KEK`, verifies the signed artifacts, and deletes its
-marker. Rerunning the installer detects keys already enrolled by an interrupted
-service, clears the stale enrollment marker, and resumes at the final firmware
-enable/verification step without enrolling keys again.
+For inspection:
 
-Laptop profiles include `thermald`, `auto-cpufreq`, UPower, conservative
+```bash
+gjallar-secure-boot status
+systemctl status gjallar-secure-boot-enroll.service
+systemctl status gjallar-secure-boot-finalize.service
+```
+
+Manual enrollment, when intentionally required, uses:
+
+```bash
+gjallar-secure-boot enroll
+```
+
+Firmware-device information is available with:
+
+```bash
+gjallar-secure-boot firmware
+```
+
+Laptop profiles include `thermald`Laptop profiles include `thermald`, `auto-cpufreq`, UPower, conservative
 battery charge thresholds, and dock-friendly lid behavior. Fan curves are not
 forced because the reference controller only supports specific hardware.
 
