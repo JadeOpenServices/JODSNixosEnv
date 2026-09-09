@@ -16,6 +16,18 @@ var machineLocalPaths = []string{
 	"profiles/*/hardware-configuration.nix",
 }
 
+func trackedPath(ctx context.Context, root, relative string) bool {
+	tracked, _ := git(
+		ctx,
+		root,
+		"ls-files",
+		"--error-unmatch",
+		"--",
+		relative,
+	)
+	return len(tracked) != 0
+}
+
 func excludePatterns() []string {
 	patterns := []string{
 		"profiles/*/hardware-configuration.nix.bak.*",
@@ -98,7 +110,7 @@ func Protect(ctx context.Context, repo, hardware string) ([]string, error) {
 		if err != nil {
 			return protected, err
 		}
-		if _, err := os.Stat(filepath.Join(root, relative)); err == nil {
+		if _, err := os.Stat(filepath.Join(root, relative)); err == nil && trackedPath(ctx, root, relative) {
 			if _, err := git(ctx, root, "update-index", "--skip-worktree", "--", relative); err != nil {
 				return protected, err
 			}
