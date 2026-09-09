@@ -1,0 +1,202 @@
+package secureboot
+
+import (
+	"context"
+	"fmt"
+	"reflect"
+	"testing"
+)
+
+func enrollmentTestSnapshot() FirmwarePolicySnapshot {
+	return FirmwarePolicySnapshot{
+		Schema:                  1,
+		DeviceProfile:           "laptop/framework",
+		SourceLayer:             "laptop/framework",
+		FirmwareName:            "Framework UEFI",
+		SetupModeStrategy:       "clear-platform-key",
+		EnrollmentBackend:       "sbctl",
+		RequiredPresent:         []string{"KEK", "db", "dbx"},
+		RequiredAbsent:          []string{"PK"},
+		PreserveFirmwareBuiltin: []string{"KEK", "db"},
+		Untouched:               []string{"dbx"},
+		FactoryOwnershipProof:   "pk-equals-pkdefault",
+		Instructions:            []string{"Delete only the Platform Key."},
+	}
+}
+
+func TestEnrollFirmwareWaitsOutsideSetupMode(t *testing.T) {
+	ops := enrollmentOps{
+		inspect: func(context.Context) (Inspection, error) {
+			return Inspection{
+				State:       StatePendingEnrollment,
+				SetupMode:   false,
+				Description: "factory PK still active",
+			}, nil
+		},
+	}
+
+	result, err := enrollFirmware(
+		context.Background(),
+		enrollmentTestSnapshot(),
+		ops,
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result != EnrollmentWaitingForSetupMode {
+		t.Fatalf("result = %q", result)
+	}
+}
+
+func TestEnrollFirmwareRefusesUnknownSetupModeOwnership(t *testing.T) {
+	ops := enrollmentOps{
+		inspect: func(context.Context) (Inspection, error) {
+			return Inspection{
+				State:       StateSetupModeUnknown,
+				SetupMode:   true,
+				Description: "no trusted pending ownership record",
+			}, nil
+		},
+	}
+
+	_, err := enrollFirmware(
+		context.Background(),
+		enrollmentTestSnapshot(),
+		ops,
+	)
+	if err == nil {
+		t.Fatal("accepted Setup Mode without trusted pending ownership")
+	}
+}
+
+func TestEnrollFirmwareFailsClosedWhenRequiredVariableMissing(t *testing.T) {
+	ops := enrollmentOps{
+		inspect: func(context.Context) (Inspection, error) {
+			return Inspection{
+				State:     StatePendingEnrollment,
+				SetupMode: true,
+			}, nil
+		},
+		present: func(name string) (bool, error) {
+			return name != "dbx", nil
+		},
+	}
+
+	_, err := enrollFirmware(
+		context.Background(),
+		enrollmentTestSnapshot(),
+		ops,
+	)
+	if err == nil {
+		t.Fatal("accepted missing required EFI variable")
+	}
+}
+
+func TestEnrollFirmwareUsesPolicyForFirmwareBuiltinEnrollment(t *testing.T) {
+	var commands [][]string
+	inspection := 0
+
+	ops := enrollmentOps{
+		inspect: func(context.Context) (Inspection, error) {
+			inspection++
+			if inspection == 1 {
+				return Inspection{
+					State:     StatePendingEnrollment,
+					SetupMode: true,
+				}, nil
+			}
+			return Inspection{
+				State:     StateGjallarManaged,
+				SetupMode: false,
+			}, nil
+		},
+		present: func(name string) (bool, error) {
+			return name != "PK", nil
+		},
+		glob: func(pattern string) ([]string, error) {
+			return []string{"/efi/" + pattern}, nil
+		},
+		command: func(_ context.Context, name string, args ...string) error {
+			call := append([]string{name}, args...)
+			commands = append(commands, call)
+			return nil
+		},
+		verifyArtifacts: func(context.Context) error {
+			return nil
+		},
+		recordOwnership: func(_ context.Context, stage string) error {
+			if stage != "enrolled" {
+				return fmt.Errorf("unexpected stage %q", stage)
+			}
+			return nil
+		},
+	}
+
+	result, err := enrollFirmware(
+		context.Background(),
+		enrollmentTestSnapshot(),
+		ops,
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result != EnrollmentCompleted {
+		t.Fatalf("result = %q", result)
+	}
+
+	want := []string{
+		"sbctl",
+		"enroll-keys",
+		"--firmware-builtin=KEK,db",
+	}
+
+	found := false
+	for _, command := range commands {
+		if reflect.DeepEqual(command, want) {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Fatalf("policy-derived sbctl invocation missing; commands = %#v", commands)
+	}
+}
+
+func TestEnrollFirmwareNeverMutatesUntouchedDBX(t *testing.T) {
+	var touched []string
+	inspection := 0
+
+	ops := enrollmentOps{
+		inspect: func(context.Context) (Inspection, error) {
+			inspection++
+			if inspection == 1 {
+				return Inspection{State: StatePendingEnrollment, SetupMode: true}, nil
+			}
+			return Inspection{State: StateGjallarManaged}, nil
+		},
+		present: func(name string) (bool, error) {
+			return name != "PK", nil
+		},
+		glob: func(pattern string) ([]string, error) {
+			touched = append(touched, pattern)
+			return []string{"/efi/" + pattern}, nil
+		},
+		command:         func(context.Context, string, ...string) error { return nil },
+		verifyArtifacts: func(context.Context) error { return nil },
+		recordOwnership: func(context.Context, string) error { return nil },
+	}
+
+	if _, err := enrollFirmware(
+		context.Background(),
+		enrollmentTestSnapshot(),
+		ops,
+	); err != nil {
+		t.Fatal(err)
+	}
+
+	for _, value := range touched {
+		if value == "/sys/firmware/efi/efivars/dbx-*" {
+			t.Fatal("untouched dbx entered mutation path")
+		}
+	}
+}

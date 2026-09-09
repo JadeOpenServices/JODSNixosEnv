@@ -42,16 +42,31 @@ type Validation struct {
 	LastValidatedAt                string `json:"lastValidatedAt,omitempty"`
 }
 
+type SecureBootFirmwarePolicy struct {
+	Supported               bool     `json:"supported"`
+	FirmwareName            string   `json:"firmwareName,omitempty"`
+	SetupModeStrategy       string   `json:"setupModeStrategy,omitempty"`
+	EnrollmentBackend       string   `json:"enrollmentBackend,omitempty"`
+	RequiredPresent         []string `json:"requiredPresent,omitempty"`
+	RequiredAbsent          []string `json:"requiredAbsent,omitempty"`
+	PreserveFirmwareBuiltin []string `json:"preserveFirmwareBuiltin,omitempty"`
+	Untouched               []string `json:"untouched,omitempty"`
+	FactoryOwnershipProof   string   `json:"factoryOwnershipProof,omitempty"`
+	Instructions            []string `json:"instructions,omitempty"`
+	UnsupportedReason       string   `json:"unsupportedReason,omitempty"`
+}
+
 type Manifest struct {
-	Schema     int        `json:"schema"`
-	ID         string     `json:"id"`
-	Class      string     `json:"class"`
-	Vendor     string     `json:"vendor,omitempty"`
-	Match      Match      `json:"match,omitempty"`
-	Inherits   []string   `json:"inherits,omitempty"`
-	Modules    []string   `json:"modules,omitempty"`
-	Lifecycle  Lifecycle  `json:"lifecycle"`
-	Validation Validation `json:"validation"`
+	Schema             int                       `json:"schema"`
+	ID                 string                    `json:"id"`
+	Class              string                    `json:"class"`
+	Vendor             string                    `json:"vendor,omitempty"`
+	Match              Match                     `json:"match,omitempty"`
+	Inherits           []string                  `json:"inherits,omitempty"`
+	Modules            []string                  `json:"modules,omitempty"`
+	Lifecycle          Lifecycle                 `json:"lifecycle"`
+	Validation         Validation                `json:"validation"`
+	SecureBootFirmware *SecureBootFirmwarePolicy `json:"secureBootFirmware,omitempty"`
 }
 
 func DecodeManifest(r io.Reader) (Manifest, error) {
@@ -123,6 +138,142 @@ func ValidateManifest(manifest Manifest) error {
 				module,
 				err,
 			)
+		}
+	}
+
+	if manifest.SecureBootFirmware != nil {
+		if err := validateSecureBootFirmwarePolicy(*manifest.SecureBootFirmware); err != nil {
+			return fmt.Errorf(
+				"oddc manifest %q secureBootFirmware: %w",
+				manifest.ID,
+				err,
+			)
+		}
+	}
+
+	return nil
+}
+
+func validateSecureBootFirmwarePolicy(policy SecureBootFirmwarePolicy) error {
+	if !policy.Supported {
+		if policy.SetupModeStrategy != "unsupported" {
+			return fmt.Errorf(
+				"unsupported policy requires setupModeStrategy %q",
+				"unsupported",
+			)
+		}
+
+		if strings.TrimSpace(policy.UnsupportedReason) == "" {
+			return fmt.Errorf("unsupported policy requires unsupportedReason")
+		}
+
+		if strings.TrimSpace(policy.FirmwareName) != "" ||
+			strings.TrimSpace(policy.EnrollmentBackend) != "" ||
+			len(policy.RequiredPresent) != 0 ||
+			len(policy.RequiredAbsent) != 0 ||
+			len(policy.PreserveFirmwareBuiltin) != 0 ||
+			len(policy.Untouched) != 0 ||
+			strings.TrimSpace(policy.FactoryOwnershipProof) != "" ||
+			len(policy.Instructions) != 0 {
+			return fmt.Errorf(
+				"unsupported policy cannot contain operational Secure Boot fields",
+			)
+		}
+
+		return nil
+	}
+
+	if strings.TrimSpace(policy.FirmwareName) == "" {
+		return fmt.Errorf("supported policy requires firmwareName")
+	}
+
+	switch policy.SetupModeStrategy {
+	case "clear-platform-key", "firmware-setup-mode":
+	default:
+		return fmt.Errorf(
+			"invalid setupModeStrategy %q",
+			policy.SetupModeStrategy,
+		)
+	}
+
+	switch policy.EnrollmentBackend {
+	case "sbctl":
+	default:
+		return fmt.Errorf(
+			"invalid enrollmentBackend %q",
+			policy.EnrollmentBackend,
+		)
+	}
+
+	switch policy.FactoryOwnershipProof {
+	case "pk-equals-pkdefault":
+	default:
+		return fmt.Errorf(
+			"invalid factoryOwnershipProof %q",
+			policy.FactoryOwnershipProof,
+		)
+	}
+
+	allowedVariables := map[string]bool{
+		"PK":  true,
+		"KEK": true,
+		"db":  true,
+		"dbx": true,
+	}
+
+	seen := map[string]string{}
+
+	sets := []struct {
+		name   string
+		values []string
+	}{
+		{"requiredPresent", policy.RequiredPresent},
+		{"requiredAbsent", policy.RequiredAbsent},
+		{"preserveFirmwareBuiltin", policy.PreserveFirmwareBuiltin},
+		{"untouched", policy.Untouched},
+	}
+
+	for _, set := range sets {
+		local := map[string]bool{}
+
+		for _, variable := range set.values {
+			if !allowedVariables[variable] {
+				return fmt.Errorf(
+					"%s contains invalid EFI variable %q",
+					set.name,
+					variable,
+				)
+			}
+
+			if local[variable] {
+				return fmt.Errorf(
+					"%s contains duplicate EFI variable %q",
+					set.name,
+					variable,
+				)
+			}
+			local[variable] = true
+
+			if previous, ok := seen[variable]; ok &&
+				((previous == "requiredPresent" && set.name == "requiredAbsent") ||
+					(previous == "requiredAbsent" && set.name == "requiredPresent")) {
+				return fmt.Errorf(
+					"EFI variable %q cannot be both required present and required absent",
+					variable,
+				)
+			}
+
+			seen[variable] = set.name
+		}
+	}
+
+	if len(policy.Instructions) == 0 {
+		return fmt.Errorf("supported policy requires firmware instructions")
+	}
+
+	for _, instruction := range policy.Instructions {
+		if strings.TrimSpace(instruction) == "" {
+			return fmt.Errorf("firmware instructions cannot contain empty entries")
 		}
 	}
 
