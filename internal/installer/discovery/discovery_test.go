@@ -62,3 +62,56 @@ func TestDetectHardwareFindsPenTablet(t *testing.T) {
 		t.Fatalf("pen tablet not detected: %+v", got)
 	}
 }
+
+func TestDetectHardwareReadsStructuredDMIIdentity(t *testing.T) {
+	root := t.TempDir()
+	dmi := filepath.Join(root, "class", "dmi", "id")
+
+	if err := os.MkdirAll(dmi, 0755); err != nil {
+		t.Fatal(err)
+	}
+
+	values := map[string]string{
+		"chassis_type":    "32\n",
+		"sys_vendor":      "HP\n",
+		"product_name":    "HP ZBook x2 G4\n",
+		"product_version": "A\n",
+		"board_vendor":    "HP\n",
+		"board_name":      "824C\n",
+		"board_version":   "KBC Version 43.72\n",
+	}
+
+	for name, value := range values {
+		if err := os.WriteFile(
+			filepath.Join(dmi, name),
+			[]byte(value),
+			0644,
+		); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	got := DetectHardware(root)
+
+	if got.FormFactor != "laptop" {
+		t.Fatalf("FormFactor=%q", got.FormFactor)
+	}
+	if got.SysVendor != "HP" {
+		t.Fatalf("SysVendor=%q", got.SysVendor)
+	}
+	if got.ProductName != "HP ZBook x2 G4" {
+		t.Fatalf("ProductName=%q", got.ProductName)
+	}
+	if got.ProductVersion != "A" {
+		t.Fatalf("ProductVersion=%q", got.ProductVersion)
+	}
+	if got.BoardVendor != "HP" {
+		t.Fatalf("BoardVendor=%q", got.BoardVendor)
+	}
+	if got.BoardName != "824C" {
+		t.Fatalf("BoardName=%q", got.BoardName)
+	}
+	if got.BoardVersion != "KBC Version 43.72" {
+		t.Fatalf("BoardVersion=%q", got.BoardVersion)
+	}
+}
