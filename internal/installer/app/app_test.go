@@ -131,8 +131,8 @@ func TestCompletedSecureBootDoesNotRebootFirmware(t *testing.T) {
 }
 
 func TestValidateSelections(t *testing.T) {
-	o := discovery.Options{Profiles: []string{"laptop"}, Shells: []string{"zsh"}, Editors: []string{"vscodium"}, Browsers: []string{"librewolf"}, Themes: []string{"noctalia"}}
-	u := config.User{Profile: "laptop", Shell: "zsh", Editors: []string{"vscodium"}, Browsers: []string{"librewolf"}, Theme: "noctalia", DotfilesDir: "/repo"}
+	o := discovery.Options{Profiles: []string{"laptop"}, Shells: []string{"zsh"}, Editors: []string{"vscodium"}, Browsers: []string{"librewolf"}}
+	u := config.User{Profile: "laptop", Shell: "zsh", Editors: []string{"vscodium"}, Browsers: []string{"librewolf"}, DotfilesDir: "/repo"}
 	if err := validateSelections(u, o); err != nil {
 		t.Fatal(err)
 	}

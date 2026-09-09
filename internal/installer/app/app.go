@@ -305,7 +305,7 @@ func Run(ctx context.Context, args []string, in io.Reader, out, errOut io.Writer
 	if err := configureSecrets(ctx, root, &s, errOut); err != nil {
 		return fail(errOut, err)
 	}
-	fmt.Fprintf(out, "\nSelected: profile=%s hostname=%s user=%s shell=%s theme=%s\n", s.user.Profile, s.user.Hostname, s.user.Username, s.user.Shell, s.user.Theme)
+	fmt.Fprintf(out, "\nSelected: profile=%s hostname=%s user=%s shell=%s\n", s.user.Profile, s.user.Hostname, s.user.Username, s.user.Shell)
 	write := s.user.WriteConfig
 	if !s.preset {
 		write, err = ui.Confirm(ctx, "Write configuration to "+filepath.Join(root, "settings.nix")+"?", false)
@@ -1215,9 +1215,10 @@ func collectInteractive(ctx context.Context, ui prompt.UI, root string, hardware
 	if err := collectProjectTools(ctx, ui, u); err != nil {
 		return err
 	}
-	u.Theme, err = ui.Choice(ctx, "Theme", first(o.Themes), o.Themes)
-	if err != nil {
-		return err
+	// Theme selection belongs to the desktop shell after installation.
+	// Keep the default theme only as the bootstrap rendering contract.
+	if u.Theme == "" {
+		u.Theme = first(o.Themes)
 	}
 	u.DockerEnable, err = ui.Confirm(ctx, "Enable Docker daemon? Docker access is root-equivalent.", false)
 	if err != nil {
@@ -1869,7 +1870,7 @@ func validateSelections(u config.User, o discovery.Options) error {
 	for _, check := range []struct {
 		name, value string
 		allowed     []string
-	}{{"profile", u.Profile, o.Profiles}, {"shell", u.Shell, o.Shells}, {"theme", u.Theme, o.Themes}} {
+	}{{"profile", u.Profile, o.Profiles}, {"shell", u.Shell, o.Shells}} {
 		if !contains(check.allowed, check.value) {
 			return fmt.Errorf("unsupported %s: %q", check.name, check.value)
 		}
