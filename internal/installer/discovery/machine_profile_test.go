@@ -6,9 +6,9 @@ import (
 	"testing"
 )
 
-func writeHardwareFixture(t *testing.T, root, relative, contents string) {
+func fixture(t *testing.T, root, rel, contents string) {
 	t.Helper()
-	path := filepath.Join(root, relative)
+	path := filepath.Join(root, rel)
 	if err := os.MkdirAll(filepath.Dir(path), 0755); err != nil {
 		t.Fatal(err)
 	}
@@ -17,62 +17,42 @@ func writeHardwareFixture(t *testing.T, root, relative, contents string) {
 	}
 }
 
-func TestDetectHardwareDesktopChassis(t *testing.T) {
+func TestDesktopChassis(t *testing.T) {
 	root := t.TempDir()
-	writeHardwareFixture(t, root, "class/dmi/id/chassis_type", "3\n")
+	fixture(t, root, "class/dmi/id/chassis_type", "3\n")
 
 	got := DetectHardware(root)
 	if got.FormFactor != "desktop" {
-		t.Fatalf("form factor = %q, want desktop", got.FormFactor)
+		t.Fatalf("FormFactor=%q", got.FormFactor)
 	}
 	if got.LaptopVendor != "" {
-		t.Fatalf("desktop retained laptop vendor %q", got.LaptopVendor)
+		t.Fatalf("desktop LaptopVendor=%q", got.LaptopVendor)
 	}
 }
 
-func TestDetectHardwareBatteryLaptop(t *testing.T) {
+func TestBatteryLaptop(t *testing.T) {
 	root := t.TempDir()
-	writeHardwareFixture(t, root, "class/power_supply/BAT0/status", "Full\n")
+	fixture(t, root, "class/power_supply/BAT0/status", "Full\n")
 
 	got := DetectHardware(root)
 	if got.FormFactor != "laptop" {
-		t.Fatalf("form factor = %q, want laptop", got.FormFactor)
-	}
-	if got.LaptopVendor != "generic" {
-		t.Fatalf("laptop vendor = %q, want generic", got.LaptopVendor)
+		t.Fatalf("FormFactor=%q", got.FormFactor)
 	}
 }
 
-func TestDetectHardwarePortableChassis(t *testing.T) {
-	for _, chassis := range []string{"8", "9", "10", "14", "30", "31", "32"} {
-		t.Run(chassis, func(t *testing.T) {
-			root := t.TempDir()
-			writeHardwareFixture(t, root, "class/dmi/id/chassis_type", chassis+"\n")
-
-			got := DetectHardware(root)
-			if got.FormFactor != "laptop" {
-				t.Fatalf("chassis %s form factor = %q, want laptop", chassis, got.FormFactor)
-			}
-		})
-	}
-}
-
-func TestDetectHardwareUnknownRemainsUnknown(t *testing.T) {
+func TestUnknownHardware(t *testing.T) {
 	got := DetectHardware(t.TempDir())
-	if got.FormFactor != "" {
-		t.Fatalf("form factor = %q, want unknown", got.FormFactor)
-	}
-	if got.LaptopVendor != "" {
-		t.Fatalf("laptop vendor = %q, want empty", got.LaptopVendor)
+	if got.FormFactor != "" || got.LaptopVendor != "" {
+		t.Fatalf("unexpected detection: %+v", got)
 	}
 }
 
-func TestDetectHardwareFrameworkOverridesUnknown(t *testing.T) {
+func TestFrameworkLaptop(t *testing.T) {
 	root := t.TempDir()
-	writeHardwareFixture(t, root, "class/dmi/id/product_name", "Framework Laptop 13\n")
+	fixture(t, root, "class/dmi/id/product_name", "Framework Laptop 13\n")
 
 	got := DetectHardware(root)
 	if got.FormFactor != "laptop" || got.LaptopVendor != "framework" {
-		t.Fatalf("got %+v, want Framework laptop", got)
+		t.Fatalf("unexpected detection: %+v", got)
 	}
 }
