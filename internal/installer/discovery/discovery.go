@@ -15,6 +15,7 @@ type Options struct{ Profiles, Shells, Editors, Browsers, Themes []string }
 
 func DetectHardware(sysRoot string) Hardware {
 	h := Hardware{}
+
 	batteries, _ := filepath.Glob(filepath.Join(sysRoot, "class", "power_supply", "BAT*"))
 	if len(batteries) > 0 {
 		h.FormFactor = "laptop"
@@ -28,6 +29,7 @@ func DetectHardware(sysRoot string) Hardware {
 			h.FormFactor = "desktop"
 		}
 	}
+
 	if data, err := os.ReadFile(filepath.Join(sysRoot, "class", "dmi", "id", "product_name")); err == nil {
 		product := strings.ToLower(string(data))
 		if strings.Contains(product, "thinkpad") {
@@ -38,6 +40,7 @@ func DetectHardware(sysRoot string) Hardware {
 			h.LaptopVendor = "framework"
 		}
 	}
+
 	h.Touchscreen = detectTouchscreen(sysRoot)
 	h.PenTablet = detectPenTablet(sysRoot)
 	return h
