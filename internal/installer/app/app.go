@@ -891,10 +891,6 @@ func prepareHost(
 			expected,
 		)
 
-		if err := release.Align(ctx, expected); err != nil {
-			return fail(errOut, err)
-		}
-
 		executable, err := os.Executable()
 		if err != nil {
 			return fail(
@@ -920,6 +916,14 @@ func prepareHost(
 					err,
 				),
 			)
+		}
+
+		if err := release.Align(
+			ctx,
+			expected,
+			installerresume.WrapperPath,
+		); err != nil {
+			return fail(errOut, err)
 		}
 
 		fmt.Fprintf(
