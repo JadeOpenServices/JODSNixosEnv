@@ -1,0 +1,62 @@
+package config
+
+import (
+	"encoding/json"
+	"os"
+	"path/filepath"
+	"testing"
+)
+
+func TestWriteAtomicPersistsUserConfigMode0600(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "user.config.json")
+
+	want := User{
+		System:            "x86_64-linux",
+		Profile:           "laptop",
+		Hostname:          "gjallarOS",
+		Username:          "baka",
+		WeatherCity:       "Frankfurt am Main",
+		WeatherCountry:    "Germany",
+		AIAgentMode:       "workspace",
+		RecoveryEnable:    true,
+		WriteConfig:       true,
+		RunRebuild:        true,
+		UnattendedInstall: false,
+	}
+
+	if err := WriteAtomic(path, want); err != nil {
+		t.Fatal(err)
+	}
+
+	info, err := os.Stat(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := info.Mode().Perm(); got != 0600 {
+		t.Fatalf("mode = %o, want 600", got)
+	}
+
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if len(data) == 0 || data[len(data)-1] != '\n' {
+		t.Fatal("user configuration is not newline terminated")
+	}
+
+	var got User
+	if err := json.Unmarshal(data, &got); err != nil {
+		t.Fatal(err)
+	}
+
+	if got.Profile != want.Profile ||
+		got.Hostname != want.Hostname ||
+		got.Username != want.Username ||
+		got.WeatherCity != want.WeatherCity ||
+		got.WeatherCountry != want.WeatherCountry ||
+		got.AIAgentMode != want.AIAgentMode ||
+		got.RecoveryEnable != want.RecoveryEnable {
+		t.Fatalf("persisted configuration mismatch: %+v", got)
+	}
+}

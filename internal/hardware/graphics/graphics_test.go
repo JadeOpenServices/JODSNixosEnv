@@ -25,3 +25,27 @@ func TestParseIntelOnly(t *testing.T) {
 		t.Fatalf("Intel must not be selected for passthrough: %#v", result.PassthroughIDs)
 	}
 }
+
+func TestParseSelectsNVIDIADeviceID(t *testing.T) {
+	input := `0000:00:02.0 VGA compatible controller [0300]: Intel Corporation HD Graphics 620 [8086:5916]
+0000:01:00.0 3D controller [0302]: NVIDIA Corporation GM107GLM [Quadro M620] [10de:13b4]
+`
+
+	result := Parse(input)
+
+	if result.Vendor != "nvidia" {
+		t.Fatalf("Vendor = %q, want nvidia", result.Vendor)
+	}
+	if result.DeviceID != "13b4" {
+		t.Fatalf("DeviceID = %q, want 13b4", result.DeviceID)
+	}
+	if result.BusID != "PCI:1:0:0" {
+		t.Fatalf("BusID = %q, want PCI:1:0:0", result.BusID)
+	}
+	if result.IntegratedBusID != "PCI:0:2:0" {
+		t.Fatalf(
+			"IntegratedBusID = %q, want PCI:0:2:0",
+			result.IntegratedBusID,
+		)
+	}
+}

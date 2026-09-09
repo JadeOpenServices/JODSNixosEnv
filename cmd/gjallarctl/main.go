@@ -614,20 +614,36 @@ func runRelease(args []string, stdout, stderr io.Writer) int {
 		return 0
 	}
 	fmt.Fprintf(stdout, "NixOS %s detected; this checkout targets NixOS %s.\n", actual, expected)
-	fmt.Fprintf(stdout, "PLAN: sudo nix-channel --add https://channels.nixos.org/nixos-%s nixos\nPLAN: sudo nix-channel --update nixos\nPLAN: sudo nixos-rebuild switch --upgrade\n", expected)
+	fmt.Fprintf(stdout, "PLAN: sudo nix-channel --add https://channels.nixos.org/nixos-%s nixos\nPLAN: sudo nix-channel --update nixos\nPLAN: sudo nixos-rebuild boot --upgrade\n", expected)
 	if !*apply {
 		return 3
 	}
-	if err := release.Align(context.Background(), expected); err != nil {
+
+	const nixosConfig = "/etc/nixos/configuration.nix"
+	if _, err := os.Stat(nixosConfig); err != nil {
+		fmt.Fprintf(
+			stderr,
+			"ERROR: NixOS configuration unavailable at %s: %v\n",
+			nixosConfig,
+			err,
+		)
+		return 1
+	}
+
+	if err := release.Align(
+		context.Background(),
+		expected,
+		nixosConfig,
+	); err != nil {
 		fmt.Fprintf(stderr, "ERROR: %v\n", err)
 		return 1
 	}
-	_, active, err := release.Inspect(*repo, "/run/current-system/etc/os-release")
-	if err != nil || active != expected {
-		fmt.Fprintf(stderr, "ERROR: rebuild completed, but NixOS %s is not active\n", expected)
-		return 1
-	}
-	fmt.Fprintf(stdout, "NixOS release verified: %s\n", active)
+
+	fmt.Fprintf(
+		stdout,
+		"NixOS %s staged for the next boot. Reboot to activate it.\n",
+		expected,
+	)
 	return 0
 }
 
