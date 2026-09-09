@@ -140,6 +140,20 @@ func Run(ctx context.Context, args []string, in io.Reader, out, errOut io.Writer
 	if err != nil {
 		return fail(errOut, err)
 	}
+	if s.preset && s.user.Profile == "auto" {
+		s.user.Profile = machineProfileForHardware(hardware)
+		if s.user.Profile == "" {
+			if s.user.UnattendedInstall {
+				return fail(errOut, errors.New("machine profile could not be detected; set profile to desktop or laptop in user.config.json"))
+			}
+			s.user.Profile, err = ui.Choice(ctx, "Machine profile could not be detected", "desktop", []string{"desktop", "laptop"})
+			if err != nil {
+				return fail(errOut, err)
+			}
+		} else {
+			fmt.Fprintf(out, "Machine profile detected: %s\n", s.user.Profile)
+		}
+	}
 	if s.preset {
 		normalizePreset(&s.user, root)
 	} else if err := collectInteractive(ctx, ui, root, hardware, choices, &s.user); err != nil {
@@ -860,6 +874,26 @@ func prepareHost(ctx context.Context, ui prompt.UI, opt options, s state, out, e
 	return 0
 }
 
+func machineProfileForHardware(hardware discovery.Hardware) string {
+	switch hardware.FormFactor {
+	case "desktop":
+		return "desktop"
+	case "laptop":
+		return "laptop"
+	default:
+		return ""
+	}
+}
+
+func containsValue(values []string, want string) bool {
+	for _, value := range values {
+		if value == want {
+			return true
+		}
+	}
+	return false
+}
+
 func collectInteractive(ctx context.Context, ui prompt.UI, root string, hardware discovery.Hardware, o discovery.Options, u *config.User) error {
 	arch := runtime.GOARCH
 	if arch == "amd64" {
@@ -871,7 +905,11 @@ func collectInteractive(ctx context.Context, ui prompt.UI, root string, hardware
 	if u.System, err = ui.Choice(ctx, "System architecture", arch+"-linux", []string{"x86_64-linux", "aarch64-linux"}); err != nil {
 		return err
 	}
-	if u.Profile, err = ui.Choice(ctx, "Profile", first(o.Profiles), o.Profiles); err != nil {
+	profileDefault := machineProfileForHardware(hardware)
+	if profileDefault == "" || !containsValue(o.Profiles, profileDefault) {
+		profileDefault = first(o.Profiles)
+	}
+	if u.Profile, err = ui.Choice(ctx, "Profile", profileDefault, o.Profiles); err != nil {
 		return err
 	}
 	host, _ := os.Hostname()
@@ -925,7 +963,7 @@ func collectInteractive(ctx context.Context, ui prompt.UI, root string, hardware
 			}
 		}
 		deviceDefault := "pc"
-		if hardware.LaptopVendor != "" {
+		if hardware.FormFactor == "laptop" {
 			deviceDefault = "laptop"
 		}
 		u.JODSDeviceClass, err = ui.Choice(ctx, "JODS device class", deviceDefault, []string{"pc", "vm", "laptop", "kiosk", "workstation"})
