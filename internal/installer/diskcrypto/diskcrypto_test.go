@@ -1,6 +1,7 @@
 package diskcrypto
 
 import (
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"strings"
@@ -58,5 +59,92 @@ func TestTPMEnrollmentCannotBecomeUnbound(t *testing.T) {
 	}
 	if strings.Contains(args, "--tpm2-pcrs=0") || strings.Contains(args, "--tpm2-pcrs=\"") {
 		t.Fatalf("TPM enrollment contains an unbound PCR policy: %s", args)
+	}
+}
+
+func TestReadTPM2TokenID(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "metadata.json")
+	doc := map[string]any{
+		"tokens": map[string]any{
+			"7": map[string]any{
+				"type":     "systemd-tpm2",
+				"keyslots": []string{"1"},
+			},
+		},
+	}
+
+	raw, err := json.Marshal(doc)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(path, raw, 0600); err != nil {
+		t.Fatal(err)
+	}
+
+	id, err := ReadTPM2TokenID(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if id != "7" {
+		t.Fatalf("token id = %q, want 7", id)
+	}
+}
+
+func TestReadTPM2TokenIDRejectsMultipleTokens(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "metadata.json")
+	raw := []byte(`{"tokens":{"1":{"type":"systemd-tpm2"},"2":{"type":"systemd-tpm2"}}}`)
+
+	if err := os.WriteFile(path, raw, 0600); err != nil {
+		t.Fatal(err)
+	}
+
+	if _, err := ReadTPM2TokenID(path); err == nil {
+		t.Fatal("accepted multiple TPM2 tokens")
+	}
+}
+
+func TestWriteTPM2KeyslotRecord(t *testing.T) {
+	dir := t.TempDir()
+	metadataPath := filepath.Join(dir, "metadata.json")
+	targetPath := filepath.Join(dir, "keyslots.json")
+
+	raw := []byte(`{"tokens":{"9":{"type":"systemd-tpm2","keyslots":["3"]}}}`)
+	if err := os.WriteFile(metadataPath, raw, 0600); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := WriteTPM2KeyslotRecord(
+		metadataPath,
+		targetPath,
+		"/dev/disk/by-uuid/test",
+		"/var/lib/systemd/pcrlock.json",
+	); err != nil {
+		t.Fatal(err)
+	}
+
+	out, err := os.ReadFile(targetPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	var record TPM2KeyslotRecord
+	if err := json.Unmarshal(out, &record); err != nil {
+		t.Fatal(err)
+	}
+
+	if record.Schema != 1 {
+		t.Fatalf("schema = %d, want 1", record.Schema)
+	}
+	if record.Device != "/dev/disk/by-uuid/test" {
+		t.Fatalf("device = %q", record.Device)
+	}
+	if record.Policy != "/var/lib/systemd/pcrlock.json" {
+		t.Fatalf("policy = %q", record.Policy)
+	}
+	if !record.HumanRecoveryVerified {
+		t.Fatal("humanRecoveryVerified = false")
+	}
+	if got := record.TPM2Tokens["9"]; len(got) != 1 || got[0] != "3" {
+		t.Fatalf("TPM2 token keyslots = %#v", got)
 	}
 }

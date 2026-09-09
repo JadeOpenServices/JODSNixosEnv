@@ -47,6 +47,7 @@ import (
 	"github.com/bakanura/gjallarOS/internal/installer/policy"
 	"github.com/bakanura/gjallarOS/internal/installer/release"
 	"github.com/bakanura/gjallarOS/internal/installer/secrets"
+	"github.com/bakanura/gjallarOS/internal/installer/secureboot"
 	"github.com/bakanura/gjallarOS/internal/installer/workpassword"
 	"github.com/bakanura/gjallarOS/internal/installercheck"
 	"github.com/bakanura/gjallarOS/internal/preset"
@@ -132,6 +133,21 @@ func runInstaller(args []string, stdout, stderr io.Writer) int {
 	}
 	if args[0] == "firmware" {
 		return runFirmware(args[1:], stdout, stderr)
+	}
+	if args[0] == "secure-boot-enroll" {
+		return runSecureBootEnroll(args[1:], stdout, stderr)
+	}
+	if args[0] == "secure-boot-verify-ownership" {
+		return runSecureBootVerifyOwnership(args[1:], stdout, stderr)
+	}
+	if args[0] == "secure-boot-firmware-instructions" {
+		return runSecureBootFirmwareInstructions(args[1:], stdout, stderr)
+	}
+	if args[0] == "tpm2-metadata-token-id" {
+		return runTPM2MetadataTokenID(args[1:], stdout, stderr)
+	}
+	if args[0] == "tpm2-write-keyslot-record" {
+		return runTPM2WriteKeyslotRecord(args[1:], stdout, stderr)
 	}
 	if args[0] == "work-password" {
 		return runWorkPassword(args[1:], stdout, stderr)
@@ -560,6 +576,143 @@ func runFirmware(args []string, stdout, stderr io.Writer) int {
 	} else {
 		fmt.Fprintln(stdout, "Firmware update process completed. A reboot may be required.")
 	}
+	return 0
+}
+
+func runSecureBootEnroll(args []string, stdout, stderr io.Writer) int {
+	if len(args) != 0 {
+		fmt.Fprintln(stderr, "Usage: gjallarctl installer secure-boot-enroll")
+		return 2
+	}
+
+	result, err := secureboot.EnrollFirmware(context.Background())
+	if err != nil {
+		fmt.Fprintf(stderr, "ERROR: Secure Boot firmware enrollment refused: %v\n", err)
+		return 1
+	}
+
+	switch result {
+	case secureboot.EnrollmentWaitingForSetupMode:
+		fmt.Fprintln(
+			stdout,
+			"Secure Boot enrollment remains armed; firmware has not entered the required Setup Mode.",
+		)
+		return 0
+
+	case secureboot.EnrollmentCompleted:
+		fmt.Fprintln(
+			stdout,
+			"Secure Boot firmware enrollment completed from the trusted ODDC policy snapshot.",
+		)
+		return 0
+
+	default:
+		fmt.Fprintf(
+			stderr,
+			"ERROR: unexpected Secure Boot enrollment result %q\n",
+			result,
+		)
+		return 1
+	}
+}
+
+func runTPM2MetadataTokenID(args []string, stdout, stderr io.Writer) int {
+	if len(args) != 1 {
+		fmt.Fprintln(stderr, "Usage: gjallarctl installer tpm2-metadata-token-id <metadata-json>")
+		return 2
+	}
+
+	id, err := diskcrypto.ReadTPM2TokenID(args[0])
+	if err != nil {
+		fmt.Fprintf(stderr, "ERROR: TPM2 metadata validation failed: %v\n", err)
+		return 1
+	}
+
+	fmt.Fprintln(stdout, id)
+	return 0
+}
+
+func runTPM2WriteKeyslotRecord(args []string, stdout, stderr io.Writer) int {
+	if len(args) != 4 {
+		fmt.Fprintln(
+			stderr,
+			"Usage: gjallarctl installer tpm2-write-keyslot-record <metadata-json> <target-json> <device> <policy>",
+		)
+		return 2
+	}
+
+	if err := diskcrypto.WriteTPM2KeyslotRecord(
+		args[0],
+		args[1],
+		args[2],
+		args[3],
+	); err != nil {
+		fmt.Fprintf(stderr, "ERROR: TPM2 keyslot record failed: %v\n", err)
+		return 1
+	}
+
+	fmt.Fprintln(stdout, "TPM2 keyslot record written")
+	return 0
+}
+
+func runSecureBootFirmwareInstructions(args []string, stdout, stderr io.Writer) int {
+	if len(args) != 0 {
+		fmt.Fprintln(
+			stderr,
+			"Usage: gjallarctl installer secure-boot-firmware-instructions",
+		)
+		return 2
+	}
+
+	instructions, err := secureboot.FirmwareInstructions(
+		secureboot.FirmwarePolicyPath,
+	)
+	if err != nil {
+		fmt.Fprintf(
+			stderr,
+			"ERROR: Secure Boot firmware instructions unavailable: %v\n",
+			err,
+		)
+		return 1
+	}
+
+	for _, instruction := range instructions {
+		fmt.Fprintln(stdout, instruction)
+	}
+
+	return 0
+}
+
+func runSecureBootVerifyOwnership(args []string, stdout, stderr io.Writer) int {
+	if len(args) > 1 {
+		fmt.Fprintln(
+			stderr,
+			"Usage: gjallarctl installer secure-boot-verify-ownership [expected-stage]",
+		)
+		return 2
+	}
+
+	expectedStage := ""
+	if len(args) == 1 {
+		expectedStage = args[0]
+	}
+
+	if err := secureboot.VerifyOwnership(
+		context.Background(),
+		expectedStage,
+	); err != nil {
+		fmt.Fprintf(
+			stderr,
+			"ERROR: Secure Boot ownership verification failed: %v\n",
+			err,
+		)
+		return 1
+	}
+
+	fmt.Fprintln(
+		stdout,
+		"PASS: active GjallarOS PK/KEK/db ownership verified.",
+	)
 	return 0
 }
 
