@@ -12,7 +12,7 @@ func TestTarget(t *testing.T) {
 		t.Fatal(err)
 	}
 	got, err := Target(root, "gjallarOS")
-	if err != nil || got != root+"#gjallarOS" {
+	if err != nil || got != "path:"+root+"#gjallarOS" {
 		t.Fatalf("got %q, %v", got, err)
 	}
 	for _, hostname := range []string{"", "bad name", "../bad"} {
