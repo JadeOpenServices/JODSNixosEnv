@@ -110,6 +110,7 @@ var presetSchema = map[string]presetValueType{
 	"lastfmUsername": presetString, "listenbrainzUsername": presetString,
 	"frameworkEnable": presetBool, "frameworkModel": presetString,
 	"deviceProfile":   presetString,
+	"deviceLayers":    presetStringList,
 	"deviceSysVendor": presetString, "deviceProductName": presetString, "deviceProductVersion": presetString,
 	"deviceBoardVendor": presetString, "deviceBoardName": presetString, "deviceBoardVersion": presetString,
 	"nemuEnable": presetBool, "nemuGpuPassthrough": presetBool, "luksTpm2Enable": presetBool,
