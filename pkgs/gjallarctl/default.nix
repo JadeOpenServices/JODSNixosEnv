@@ -22,6 +22,7 @@ buildGoModule {
       ../../internal/installercheck
       ../../internal/installer
       ../../internal/preset
+      ../../oddc
     ];
   };
 
