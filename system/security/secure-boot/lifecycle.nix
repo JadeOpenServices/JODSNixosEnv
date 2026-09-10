@@ -1,6 +1,7 @@
 {
   lib,
   pkgs,
+  gjallarctlPackage,
   settings,
   gjallarSecureBootArtifactVerifier,
   gjallarSecureBootOwnershipVerifier,
@@ -19,7 +20,7 @@
     };
 
     path = [
-      pkgs.gjallarctl
+      gjallarctlPackage
       pkgs.sbctl
       pkgs.coreutils
       pkgs.e2fsprogs
@@ -130,7 +131,7 @@
 
     path = [
       pkgs.sbctl
-      pkgs.gjallarctl
+      gjallarctlPackage
       pkgs.coreutils
       pkgs.gnugrep
       pkgs.gawk
