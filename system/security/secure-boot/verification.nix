@@ -1,5 +1,6 @@
 {
   pkgs,
+  gjallarctlPackage,
   ...
 }:
 let
@@ -59,7 +60,7 @@ let
   secureBootOwnershipVerifier = pkgs.writeShellApplication {
     name = "gjallar-verify-secure-boot-ownership";
     runtimeInputs = [
-      pkgs.gjallarctl
+      gjallarctlPackage
     ];
 
     text = ''

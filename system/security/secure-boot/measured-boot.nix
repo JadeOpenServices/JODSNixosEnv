@@ -2,6 +2,7 @@
   config,
   lib,
   pkgs,
+  gjallarctlPackage,
   settings,
   gjallarSecureBootArtifactVerifier,
   gjallarSecureBootOwnershipVerifier,
@@ -47,7 +48,7 @@ in
         };
         path = [
           pkgs.cryptsetup
-          pkgs.gjallarctl
+          gjallarctlPackage
           pkgs.systemd
           pkgs.coreutils
           pkgs.gnugrep
