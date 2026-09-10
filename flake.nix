@@ -190,6 +190,7 @@
         ${settings.hostname} = nixpkgs.lib.nixosSystem {
           modules = [
             ./system/apps/brave-backend.nix
+            ./system/security/secure-boot
             inputs.noctalia-greeter.nixosModules.default
             inputs.stylix.nixosModules.stylix
             inputs.sops-nix.nixosModules.sops
