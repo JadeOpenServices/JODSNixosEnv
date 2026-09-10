@@ -490,13 +490,45 @@ func Run(ctx context.Context, args []string, in io.Reader, out, errOut io.Writer
 	}
 	fmt.Fprintln(out, "Wrote", settingsPath)
 	hardwarePath := filepath.Join(root, "profiles", s.user.Profile, "hardware-configuration.nix")
-	skip := opt.skipHardware || (s.existing && !opt.refreshHardware)
-	if !skip {
+	hardwareResult, err := reconcileHardwareConfiguration(
+		ctx,
+		root,
+		hardwarePath,
+		s.existing,
+		opt.skipHardware,
+		opt.refreshHardware,
+		time.Now(),
+		hardwareconfig.Generate,
+	)
+	if err != nil {
+		return fail(errOut, err)
+	}
+
+	skip := hardwareResult.action != hardwareGenerate
+
+	switch hardwareResult.action {
+	case hardwareSkip:
+		fmt.Fprintln(out, "Hardware generation explicitly skipped.")
+
+	case hardwareRetain:
+		fmt.Fprintln(out, "Existing hardware configuration retained:", hardwarePath)
+
+	case hardwareGenerate:
+		if s.existing && !hardwareResult.existed {
+			fmt.Fprintln(
+				out,
+				"Existing installation is missing hardware configuration; generating it from the running machine.",
+			)
+		} else if opt.refreshHardware {
+			fmt.Fprintln(
+				out,
+				"Hardware refresh requested; regenerating from the running machine.",
+			)
+		}
+
 		fmt.Fprintln(out, "PLAN: generate and atomically replace", hardwarePath)
-		if backup, err := hardwareconfig.Generate(ctx, root, hardwarePath, time.Now()); err != nil {
-			return fail(errOut, err)
-		} else if backup != "" {
-			fmt.Fprintln(out, "Backup:", backup)
+		if hardwareResult.backup != "" {
+			fmt.Fprintln(out, "Backup:", hardwareResult.backup)
 		}
 		if s.render.EndpointManagedDevice {
 			s.render.LUKSTPM2Enable = s.user.LUKSTPM2Enable
