@@ -10,6 +10,7 @@ import (
 	"os/exec"
 	"strconv"
 	"strings"
+	"unicode/utf8"
 )
 
 var ErrCancelled = errors.New("prompt cancelled")
@@ -52,6 +53,33 @@ func gtkAvailable() bool {
 	return err == nil &&
 		(os.Getenv("DISPLAY") != "" || os.Getenv("WAYLAND_DISPLAY") != "") &&
 		os.Getenv("SSH_CONNECTION") == ""
+}
+
+func gtkConfirmationWidth(message string) int {
+	normalized := strings.ReplaceAll(message, "\r\n", "\n")
+	normalized = strings.ReplaceAll(normalized, "\r", "\n")
+
+	totalRunes := 0
+	longestParagraph := 0
+
+	for _, paragraph := range strings.Split(normalized, "\n\n") {
+		length := utf8.RuneCountInString(strings.TrimSpace(paragraph))
+		totalRunes += length
+		if length > longestParagraph {
+			longestParagraph = length
+		}
+	}
+
+	switch {
+	case totalRunes <= 90 && longestParagraph <= 90:
+		return 420
+	case totalRunes <= 240 && longestParagraph <= 180:
+		return 520
+	case totalRunes <= 600 && longestParagraph <= 400:
+		return 680
+	default:
+		return 760
+	}
 }
 
 func New(in io.Reader, out io.Writer) UI {
@@ -135,7 +163,15 @@ func (u UI) secureTextDialog(
 
 func (u UI) Confirm(ctx context.Context, message string, defaultYes bool) (bool, error) {
 	if u.GTK || gtkAvailable() {
-		args := []string{"--question", "--title=GjallarOS installer", "--text=" + message, "--ok-label=Yes", "--cancel-label=No"}
+		width := gtkConfirmationWidth(message)
+		args := []string{
+			"--question",
+			"--title=GjallarOS installer",
+			"--text=" + message,
+			"--width=" + strconv.Itoa(width),
+			"--ok-label=Yes",
+			"--cancel-label=No",
+		}
 		err := zenityCommand(ctx, args...).Run()
 		if err == nil {
 			return true, nil
