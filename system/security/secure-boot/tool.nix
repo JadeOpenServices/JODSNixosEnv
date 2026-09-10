@@ -1,5 +1,6 @@
 {
   pkgs,
+  gjallarctlPackage,
   gjallarSecureBootArtifactVerifier,
   ...
 }:
@@ -10,7 +11,7 @@ let
       pkgs.sbctl
       pkgs.systemd
       pkgs.fwupd
-      pkgs.gjallarctl
+      gjallarctlPackage
       gjallarSecureBootArtifactVerifier
     ];
 
