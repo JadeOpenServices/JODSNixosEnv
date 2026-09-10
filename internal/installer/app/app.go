@@ -354,7 +354,53 @@ func Run(ctx context.Context, args []string, in io.Reader, out, errOut io.Writer
 		s.user.DeviceProfile,
 		s.secureBootFirmware,
 	); err != nil {
-		return fail(errOut, err)
+		if mayOfferSecureBootFallback(
+			s.user.SecureBootEnable,
+			s.user.EndpointManagedDevice,
+			s.user.UnattendedInstall,
+		) {
+
+			continued, promptErr := ui.Confirm(
+				ctx,
+				fmt.Sprintf(
+					"%v Continue installation with Secure Boot disabled?",
+					err,
+				),
+				false,
+			)
+			if promptErr != nil {
+				return fail(errOut, promptErr)
+			}
+			if !continued {
+				return fail(errOut, err)
+			}
+
+			disableTPMDependentSecurity(&s.user)
+
+			if s.preset {
+				if err := config.WriteAtomic(presetPath, s.user); err != nil {
+					return fail(
+						errOut,
+						fmt.Errorf(
+							"persist unsupported-firmware security fallback to user.config.json: %w",
+							err,
+						),
+					)
+				}
+
+				fmt.Fprintln(
+					out,
+					"Updated user.config.json to keep unsupported Secure Boot and TPM2-dependent security disabled.",
+				)
+			}
+
+			fmt.Fprintln(
+				out,
+				"Continuing installation with Secure Boot and TPM2 measured-boot unlock disabled.",
+			)
+		} else {
+			return fail(errOut, err)
+		}
 	}
 
 	if s.existing &&
@@ -530,7 +576,14 @@ func Run(ctx context.Context, args []string, in io.Reader, out, errOut io.Writer
 		if hardwareResult.backup != "" {
 			fmt.Fprintln(out, "Backup:", hardwareResult.backup)
 		}
-		if s.render.EndpointManagedDevice {
+		if !tpm2AllowedForSecureBoot(s.render.SecureBootEnable) {
+			s.render.LUKSTPM2Enable = false
+			s.user.LUKSTPM2Enable = false
+			fmt.Fprintln(
+				out,
+				"Secure Boot is disabled; TPM2 measured-boot unlock remains disabled.",
+			)
+		} else if s.render.EndpointManagedDevice {
 			s.render.LUKSTPM2Enable = s.user.LUKSTPM2Enable
 		} else {
 			tpmOut, err := controlOutput(ctx, s.control, errOut, "installer", "tpm2", "--repo", root, "--hardware", hardwarePath)
