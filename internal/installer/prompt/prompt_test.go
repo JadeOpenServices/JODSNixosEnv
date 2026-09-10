@@ -109,3 +109,116 @@ func TestExactConfirmationRequiresExpectedValue(t *testing.T) {
 		t.Fatal("empty expected confirmation was accepted")
 	}
 }
+
+func TestGTKConfirmationWidthBoundaries(t *testing.T) {
+	tests := []struct {
+		name    string
+		message string
+		want    int
+	}{
+		{
+			name:    "short yes no remains compact",
+			message: "Continue?",
+			want:    420,
+		},
+		{
+			name:    "compact upper boundary",
+			message: strings.Repeat("a", 90),
+			want:    420,
+		},
+		{
+			name:    "normal by total length",
+			message: strings.Repeat("a", 91),
+			want:    520,
+		},
+		{
+			name:    "normal upper boundary",
+			message: strings.Repeat("a", 180) + "\n\n" + strings.Repeat("b", 60),
+			want:    520,
+		},
+		{
+			name:    "long by paragraph length",
+			message: strings.Repeat("a", 181),
+			want:    680,
+		},
+		{
+			name:    "long by total length",
+			message: strings.Repeat("a", 120) + "\n\n" + strings.Repeat("b", 121),
+			want:    680,
+		},
+		{
+			name:    "long upper boundary",
+			message: strings.Repeat("a", 300) + "\n\n" + strings.Repeat("b", 300),
+			want:    680,
+		},
+		{
+			name:    "very long by total length",
+			message: strings.Repeat("a", 300) + "\n\n" + strings.Repeat("b", 301),
+			want:    760,
+		},
+		{
+			name:    "very long by paragraph length",
+			message: strings.Repeat("a", 401),
+			want:    760,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := gtkConfirmationWidth(tt.message); got != tt.want {
+				t.Fatalf(
+					"gtkConfirmationWidth() = %d, want %d",
+					got,
+					tt.want,
+				)
+			}
+		})
+	}
+}
+
+func TestGTKConfirmationWidthCountsRunesNotBytes(t *testing.T) {
+	message := strings.Repeat("ä", 90)
+
+	if got := gtkConfirmationWidth(message); got != 420 {
+		t.Fatalf(
+			"90 Unicode runes produced width %d, want compact 420",
+			got,
+		)
+	}
+
+	if len(message) <= 90 {
+		t.Fatal("test fixture must contain more bytes than runes")
+	}
+}
+
+func TestGTKConfirmationWidthLongRecoveryCompatibilityWarning(t *testing.T) {
+	message := `The existing installation cannot use the requested trusted recovery layout with its current filesystem configuration.
+
+GjallarOS recovery requires compatible Btrfs state so the recovery environment can repair or reconstruct the installed system safely. Continuing without that compatibility changes which recovery guarantees are available.
+
+Do you want to continue without the incompatible recovery configuration?`
+
+	if got := gtkConfirmationWidth(message); got != 680 {
+		t.Fatalf(
+			"long recovery compatibility warning width = %d, want 680",
+			got,
+		)
+	}
+}
+
+func TestGTKConfirmationWidthVeryLongDeviceCompatibilityWarning(t *testing.T) {
+	message := `The detected device does not currently have a validated firmware ownership-transfer procedure for this security operation.
+
+GjallarOS uses the resolved ODDC device profile to determine whether firmware behavior has been validated for the exact device family. The device policy may describe supported firmware actions, but it cannot execute commands or bypass the trusted installer boundary.
+
+Continuing with an unsupported firmware procedure could leave the machine unable to boot, replace firmware-owned Secure Boot material, or produce a configuration that cannot be recovered automatically.
+
+This installation can continue only through a supported compatibility path. Review the detected device and security settings before proceeding.`
+
+	if got := gtkConfirmationWidth(message); got != 760 {
+		t.Fatalf(
+			"very long device compatibility warning width = %d, want 760",
+			got,
+		)
+	}
+}
