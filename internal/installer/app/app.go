@@ -19,9 +19,11 @@ import (
 	"github.com/bakanura/gjallarOS/internal/hardware/network"
 	"github.com/bakanura/gjallarOS/internal/input/xkb"
 	"github.com/bakanura/gjallarOS/internal/installer/background"
+	"github.com/bakanura/gjallarOS/internal/installer/baremetalinstall"
 	"github.com/bakanura/gjallarOS/internal/installer/bootstrap"
 	"github.com/bakanura/gjallarOS/internal/installer/config"
 	"github.com/bakanura/gjallarOS/internal/installer/deploy"
+	"github.com/bakanura/gjallarOS/internal/installer/deviceprofilecache"
 	"github.com/bakanura/gjallarOS/internal/installer/discovery"
 	"github.com/bakanura/gjallarOS/internal/installer/diskcrypto"
 	"github.com/bakanura/gjallarOS/internal/installer/firmware"
@@ -33,6 +35,7 @@ import (
 	"github.com/bakanura/gjallarOS/internal/installer/prompt"
 	"github.com/bakanura/gjallarOS/internal/installer/recoveryprovision"
 	"github.com/bakanura/gjallarOS/internal/installer/recoveryresize"
+	"github.com/bakanura/gjallarOS/internal/installer/recoverytarget"
 	"github.com/bakanura/gjallarOS/internal/installer/release"
 	installerresume "github.com/bakanura/gjallarOS/internal/installer/resume"
 	"github.com/bakanura/gjallarOS/internal/installer/secureboot"
@@ -162,7 +165,13 @@ func Run(ctx context.Context, args []string, in io.Reader, out, errOut io.Writer
 	}
 	ui := prompt.New(in, out)
 	s := state{control: controlBinary()}
-	presetPath := filepath.Join(root, "user.config.json")
+	installedRoot := "/"
+	presetRoot := root
+	if opt.recovery && opt.acceptExisting {
+		installedRoot = "/mnt"
+		presetRoot = installedRoot
+	}
+	presetPath := filepath.Join(presetRoot, "user.config.json")
 	if _, err := os.Stat(presetPath); err == nil {
 		s.user, err = config.Load(presetPath)
 		if err != nil {
@@ -170,17 +179,25 @@ func Run(ctx context.Context, args []string, in io.Reader, out, errOut io.Writer
 		}
 		s.preset = true
 	}
-	if opt.recovery && !opt.acceptExisting {
-		// The embedded repository is installation source material, not evidence
-		// that the recovery environment itself is an installed GjallarOS system.
-		// Recovery without --accept-existing is the explicit fresh operation.
-		s.existing = false
+	if opt.recovery {
+		if opt.acceptExisting {
+			s.existing, err = detectRecoveryInstalledRoot(ctx, installedRoot)
+			if err != nil {
+				return fail(errOut, err)
+			}
+		} else {
+			// The embedded repository is installation source material, not evidence
+			// that the recovery environment itself is an installed GjallarOS system.
+			// Recovery without --accept-existing is the explicit fresh operation.
+			s.existing = false
+		}
 	} else {
 		s.existing, err = detectExistingInstalledSystem(ctx, root)
 		if err != nil {
 			return fail(errOut, err)
 		}
 	}
+
 	if s.existing && !opt.acceptExisting {
 		approved, err := ui.Confirm(ctx, "Existing GjallarOS installation detected. Update it in place while preserving passwords, disk keys, and hardware configuration?", false)
 		if err != nil {
@@ -217,7 +234,79 @@ func Run(ctx context.Context, args []string, in io.Reader, out, errOut io.Writer
 	if err != nil {
 		return fail(errOut, err)
 	}
+	needsDeviceRebind := false
+	if opt.recovery && opt.acceptExisting {
+		capsulePath := filepath.Join(
+			installedRoot,
+			"var",
+			"lib",
+			"gjallarOS",
+			"device-profile",
+		)
+
+		capsule, err := deviceprofilecache.Verify(capsulePath)
+		if err != nil {
+			return fail(
+				errOut,
+				fmt.Errorf("verify recovery device-profile capsule: %w", err),
+			)
+		}
+
+		needsDeviceRebind = deviceprofilecache.NeedsRebind(
+			capsule,
+			discovery.ODDCIdentity(hardware),
+			resolvedDevice,
+		)
+
+		if !needsDeviceRebind {
+			resolvedDevice, err = resolveDeviceProfileFromSource(
+				oddc.EmbeddedSource{
+					Root:       filepath.Join(capsulePath, "oddc"),
+					Repository: capsule.Source.ODDCRepository,
+					Revision:   capsule.Source.ODDCRevision,
+					Integrity:  capsule.Source.ODDCIntegrity,
+				},
+				hardware,
+			)
+			if err != nil {
+				return fail(
+					errOut,
+					fmt.Errorf("resolve cached recovery device profile: %w", err),
+				)
+			}
+		}
+	}
+
 	persistDeviceIdentity(&s.user, hardware, resolvedDevice)
+
+	if needsDeviceRebind {
+		if s.user.UnattendedInstall || s.user.EndpointManagedDevice {
+			return fail(
+				errOut,
+				errors.New(
+					"cached recovery device profile does not match current hardware; explicit device rebind authorization is required",
+				),
+			)
+		}
+
+		approved, err := ui.Confirm(
+			ctx,
+			"Recovery device identity does not match the current hardware. Rebind recovery state to this machine and regenerate device-specific configuration?",
+			false,
+		)
+		if err != nil {
+			return fail(errOut, err)
+		}
+		if !approved {
+			return fail(
+				errOut,
+				errors.New("device rebind was not authorized"),
+			)
+		}
+
+		opt.refreshHardware = true
+		fmt.Fprintln(out, "Authorized device rebind; hardware configuration will be regenerated.")
+	}
 
 	s.secureBootFirmware, err = oddc.ResolveSecureBootFirmwarePolicy(resolvedDevice)
 	if err != nil {
@@ -536,6 +625,11 @@ func Run(ctx context.Context, args []string, in io.Reader, out, errOut io.Writer
 	}
 	fmt.Fprintln(out, "Wrote", settingsPath)
 	hardwarePath := filepath.Join(root, "profiles", s.user.Profile, "hardware-configuration.nix")
+	hardwareGenerator := hardwareconfig.Generate
+	if opt.recovery && opt.acceptExisting {
+		hardwareGenerator = hardwareconfig.GenerateTarget
+	}
+
 	hardwareResult, err := reconcileHardwareConfiguration(
 		ctx,
 		root,
@@ -544,7 +638,7 @@ func Run(ctx context.Context, args []string, in io.Reader, out, errOut io.Writer
 		opt.skipHardware,
 		opt.refreshHardware,
 		time.Now(),
-		hardwareconfig.Generate,
+		hardwareGenerator,
 	)
 	if err != nil {
 		return fail(errOut, err)
@@ -615,6 +709,7 @@ func Run(ctx context.Context, args []string, in io.Reader, out, errOut io.Writer
 	if s.render.JODSPrebootLockEnable && !s.render.LUKSTPM2Enable {
 		return fail(errOut, errors.New("JODS preboot locking requires verified TPM2 LUKS enrollment; configuration was left unactivated"))
 	}
+
 	if opt.recovery {
 		// Recovery media uses an embedded writable source tree, not a Git
 		// checkout. Local Git excludes are installed/development-tree hygiene
@@ -691,6 +786,15 @@ func Run(ctx context.Context, args []string, in io.Reader, out, errOut io.Writer
 			return fail(errOut, err)
 		}
 	}
+	if needsDeviceRebind && !runRebuild {
+		return fail(
+			errOut,
+			errors.New(
+				"hardware rebind requires installing the regenerated system; rebuild cannot be skipped",
+			),
+		)
+	}
+
 	if runRebuild {
 		if s.existing {
 			maintenanceRequired := false
@@ -707,6 +811,7 @@ func Run(ctx context.Context, args []string, in io.Reader, out, errOut io.Writer
 					ctx,
 					ui,
 					out,
+					installedRoot,
 					&s,
 				)
 				if err != nil {
@@ -718,13 +823,83 @@ func Run(ctx context.Context, args []string, in io.Reader, out, errOut io.Writer
 				}
 			}
 
-			target, err := deploy.Target(root, s.user.Hostname)
-			if err != nil {
-				return fail(errOut, err)
-			}
-			fmt.Fprintln(out, "PLAN: validate then install", target)
-			if err := deploy.Apply(ctx, target); err != nil {
-				return fail(errOut, err)
+			if opt.recovery && opt.acceptExisting {
+				fmt.Fprintln(
+					out,
+					"STAGE: preparing authenticated recovery target",
+				)
+
+				if err := recoverytarget.PrepareBoot(
+					ctx,
+					installedRoot,
+				); err != nil {
+					return fail(errOut, err)
+				}
+
+				fmt.Fprintln(
+					out,
+					"PLAN: reinstall existing system into",
+					installedRoot,
+				)
+
+				if _, err := baremetalinstall.Install(
+					ctx,
+					baremetalinstall.Input{
+						Repo:     root,
+						Hostname: s.user.Hostname,
+						Out:      out,
+					},
+				); err != nil {
+					return fail(errOut, err)
+				}
+
+				if needsDeviceRebind {
+					if err := materializeDeviceProfileCapsule(
+						root,
+						filepath.Join(
+							installedRoot,
+							"var",
+							"lib",
+							"gjallarOS",
+							"device-profile",
+						),
+						hardware,
+						resolvedDevice,
+						true,
+						"hardware-rebind",
+					); err != nil {
+						return fail(
+							errOut,
+							fmt.Errorf(
+								"commit recovery device-profile capsule after hardware rebind: %w",
+								err,
+							),
+						)
+					}
+
+					fmt.Fprintln(
+						out,
+						"PASS: recovery device profile rebound to current hardware.",
+					)
+				}
+			} else {
+				target, err := deploy.Target(
+					root,
+					s.user.Hostname,
+				)
+				if err != nil {
+					return fail(errOut, err)
+				}
+
+				fmt.Fprintln(
+					out,
+					"PLAN: validate then install",
+					target,
+				)
+
+				if err := deploy.Apply(ctx, target); err != nil {
+					return fail(errOut, err)
+				}
 			}
 
 			if maintenanceRequired {
@@ -741,6 +916,7 @@ func Run(ctx context.Context, args []string, in io.Reader, out, errOut io.Writer
 					ctx,
 					"sudo",
 					"gjallar-recovery-maintenance-next",
+					installedRoot,
 				); err != nil {
 					return fail(
 						errOut,
@@ -783,6 +959,9 @@ func Run(ctx context.Context, args []string, in io.Reader, out, errOut io.Writer
 				root,
 				targetDisk,
 				s.user.Hostname,
+				hardware,
+				resolvedDevice,
+				opt.recovery,
 				s.user.RecoveryEnable &&
 					s.user.RecoveryPartitionEnable,
 				[]string{
@@ -1725,6 +1904,7 @@ func configureRecoveryProvisioning(ctx context.Context, ui prompt.UI, opt option
 
 func discoverInstalledRecoveryTopology(
 	ctx context.Context,
+	installedRoot string,
 ) (recoveryresize.Topology, error) {
 	mounted, err := exec.CommandContext(
 		ctx,
@@ -1732,7 +1912,7 @@ func discoverInstalledRecoveryTopology(
 		"-nro",
 		"SOURCE",
 		"--target",
-		"/",
+		installedRoot,
 	).Output()
 	if err != nil {
 		return recoveryresize.Topology{}, fmt.Errorf(
@@ -1820,7 +2000,7 @@ func discoverInstalledRecoveryTopology(
 		ctx,
 		recoveryresize.SystemRunner(),
 		recoveryresize.DiscoveryInput{
-			RootMountpoint:            "/",
+			RootMountpoint:            installedRoot,
 			ExpectedDiskPath:          parent,
 			ExpectedRootPartitionPath: resolvedRoot,
 			ExpectedMappingPath:       mapping,
@@ -1837,9 +2017,10 @@ func prepareInstalledRecoveryStorage(
 	ctx context.Context,
 	ui prompt.UI,
 	out io.Writer,
+	installedRoot string,
 	s *state,
 ) (bool, error) {
-	topology, err := discoverInstalledRecoveryTopology(ctx)
+	topology, err := discoverInstalledRecoveryTopology(ctx, installedRoot)
 	if err != nil {
 		return false, err
 	}
