@@ -15,15 +15,30 @@ type Policy struct {
 	Release string `json:"release"`
 }
 
-func Inspect(repo, osRelease string) (expected, actual string, err error) {
+func Expected(repo string) (string, error) {
 	data, err := os.ReadFile(filepath.Join(repo, "deployment", "release-policy.json"))
 	if err != nil {
-		return "", "", fmt.Errorf("read release policy: %w", err)
+		return "", fmt.Errorf("read release policy: %w", err)
 	}
+
 	var policy Policy
 	if err := json.Unmarshal(data, &policy); err != nil {
-		return "", "", fmt.Errorf("parse release policy: %w", err)
+		return "", fmt.Errorf("parse release policy: %w", err)
 	}
+
+	if strings.TrimSpace(policy.Release) == "" {
+		return "", fmt.Errorf("release policy does not define a NixOS release")
+	}
+
+	return policy.Release, nil
+}
+
+func Inspect(repo, osRelease string) (expected, actual string, err error) {
+	expected, err = Expected(repo)
+	if err != nil {
+		return "", "", err
+	}
+
 	f, err := os.Open(osRelease)
 	if err != nil {
 		return "", "", fmt.Errorf("read OS release: %w", err)
@@ -36,10 +51,10 @@ func Inspect(repo, osRelease string) (expected, actual string, err error) {
 			actual = strings.Trim(value, `"`)
 		}
 	}
-	if policy.Release == "" || actual == "" {
-		return "", "", fmt.Errorf("could not determine the NixOS release")
+	if actual == "" {
+		return "", "", fmt.Errorf("could not determine the active NixOS release")
 	}
-	return policy.Release, actual, scanner.Err()
+	return expected, actual, scanner.Err()
 }
 
 func Align(ctx context.Context, expected, nixosConfig string) error {
