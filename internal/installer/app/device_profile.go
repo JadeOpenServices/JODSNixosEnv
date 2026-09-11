@@ -19,6 +19,13 @@ func resolveDeviceProfile(
 		Repository: "embedded:oddc",
 	}
 
+	return resolveDeviceProfileFromSource(source, hardware)
+}
+
+func resolveDeviceProfileFromSource(
+	source oddc.EmbeddedSource,
+	hardware discovery.Hardware,
+) (oddc.Resolved, error) {
 	resolved, err := source.Resolve(discovery.ODDCIdentity(hardware))
 	if err != nil {
 		if errors.Is(err, oddc.ErrNoMatch) && hardware.FormFactor != "laptop" {

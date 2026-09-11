@@ -10,12 +10,14 @@ import (
 	"time"
 
 	"github.com/bakanura/gjallarOS/internal/installer/baremetalinstall"
+	"github.com/bakanura/gjallarOS/internal/installer/discovery"
 	"github.com/bakanura/gjallarOS/internal/installer/diskplan"
 	"github.com/bakanura/gjallarOS/internal/installer/freshdiskplan"
 	"github.com/bakanura/gjallarOS/internal/installer/freshgpt"
 	"github.com/bakanura/gjallarOS/internal/installer/hardwareconfig"
 	"github.com/bakanura/gjallarOS/internal/installer/installconfirm"
 	"github.com/bakanura/gjallarOS/internal/installer/mounttree"
+	"github.com/bakanura/gjallarOS/internal/installer/oddc"
 	"github.com/bakanura/gjallarOS/internal/installer/prompt"
 	"github.com/bakanura/gjallarOS/internal/installer/rootprovision"
 	"github.com/bakanura/gjallarOS/internal/installer/targetdisk"
@@ -35,6 +37,9 @@ func runFreshBareMetal(
 	repo string,
 	targetPath string,
 	hostname string,
+	hardware discovery.Hardware,
+	resolvedDevice oddc.Resolved,
+	recovery bool,
 	enableRecovery bool,
 	passwordFiles []string,
 	out io.Writer,
@@ -149,6 +154,31 @@ func runFreshBareMetal(
 	); err != nil {
 		return freshBareMetalResult{}, fmt.Errorf(
 			"prepare fresh target mount tree: %w",
+			err,
+		)
+	}
+
+	fmt.Fprintln(
+		out,
+		"STAGE: materializing machine-local device profile into target",
+	)
+
+	if err := materializeDeviceProfileCapsule(
+		repo,
+		filepath.Join(
+			rootResult.MountPoint,
+			"var",
+			"lib",
+			"gjallarOS",
+			"device-profile",
+		),
+		hardware,
+		resolvedDevice,
+		recovery,
+		"initial",
+	); err != nil {
+		return freshBareMetalResult{}, fmt.Errorf(
+			"materialize fresh target device profile: %w",
 			err,
 		)
 	}
