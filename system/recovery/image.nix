@@ -1,11 +1,19 @@
-{ config, lib, pkgs, modulesPath, releaseVersion, settings, repoSource, ... }:
+{
+  config,
+  lib,
+  pkgs,
+  modulesPath,
+  releaseVersion,
+  settings,
+  repoSource,
+  sourceRevision,
+  ...
+}:
 let
-  tools = import ./tools.nix { inherit config pkgs; };
+  tools = import ./tools.nix { inherit config pkgs sourceRevision; };
 
-  getSetting = name: fallback:
-    if builtins.hasAttr name settings
-    then builtins.getAttr name settings
-    else fallback;
+  getSetting =
+    name: fallback: if builtins.hasAttr name settings then builtins.getAttr name settings else fallback;
 
   sourceUserConfig = repoSource + "/user.config.json";
 
@@ -96,9 +104,7 @@ let
   # Preserve the device's actual user configuration when one exists in the
   # source used to build the recovery image. This is the normal local fallback.
   installerFallbackPreset =
-    if builtins.pathExists sourceUserConfig
-    then sourceUserConfig
-    else generatedInstallerPreset;
+    if builtins.pathExists sourceUserConfig then sourceUserConfig else generatedInstallerPreset;
 in
 {
   imports = [ "${modulesPath}/installer/cd-dvd/installation-cd-minimal.nix" ];
@@ -117,13 +123,14 @@ in
   # For ordinary layouts without an XKB variant, set the VC keymap directly
   # so the selected layout is active from the first login prompt onward.
   console =
-    if settings.keyboardVariant == ""
-    then {
-      keyMap = settings.keyboardLayout;
-    }
-    else {
-      useXkbConfig = true;
-    };
+    if settings.keyboardVariant == "" then
+      {
+        keyMap = settings.keyboardLayout;
+      }
+    else
+      {
+        useXkbConfig = true;
+      };
 
   networking = {
     hostName = "gjallar-recovery";
@@ -195,7 +202,10 @@ in
   ];
 
   nix.settings = {
-    experimental-features = [ "nix-command" "flakes" ];
+    experimental-features = [
+      "nix-command"
+      "flakes"
+    ];
     require-sigs = true;
   };
 
@@ -211,8 +221,7 @@ in
     "d /run/gjallarOS/device-config 0700 root root - -"
   ];
 
-  environment.etc."gjallar/installer-fallback-user.config.json".source =
-    installerFallbackPreset;
+  environment.etc."gjallar/installer-fallback-user.config.json".source = installerFallbackPreset;
 
   environment.etc."gjallar/device-config-contract".text = ''
     GjallarOS fresh-install device configuration handoff

@@ -23,3 +23,43 @@ func TestInspect(t *testing.T) {
 		t.Fatalf("%q %q %v", expected, actual, err)
 	}
 }
+
+func TestExpected(t *testing.T) {
+	root := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(root, "deployment"), 0755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(
+		filepath.Join(root, "deployment", "release-policy.json"),
+		[]byte(`{"release":"26.05"}`),
+		0644,
+	); err != nil {
+		t.Fatal(err)
+	}
+
+	expected, err := Expected(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if expected != "26.05" {
+		t.Fatalf("expected=%q", expected)
+	}
+}
+
+func TestExpectedRejectsMissingRelease(t *testing.T) {
+	root := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(root, "deployment"), 0755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(
+		filepath.Join(root, "deployment", "release-policy.json"),
+		[]byte(`{"release":""}`),
+		0644,
+	); err != nil {
+		t.Fatal(err)
+	}
+
+	if _, err := Expected(root); err == nil {
+		t.Fatal("empty pinned release accepted")
+	}
+}
