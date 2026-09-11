@@ -37,8 +37,10 @@ let
               exec sudo "$0" "$@"
             fi
 
+            root="''${1:-/}"
+
             entry="$(
-              bootctl list --json=short |
+              bootctl --root="$root" list --json=short |
                 ${pkgs.python3}/bin/python3 -c '
       import json
       import sys
@@ -70,7 +72,7 @@ let
 
             test -n "$entry"
 
-            bootctl set-oneshot "$entry"
+            bootctl --root="$root" set-oneshot "$entry"
 
             printf '%s\n' \
               "PASS: armed one-shot GjallarOS recovery-storage maintenance boot" \

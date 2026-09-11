@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
@@ -156,6 +157,71 @@ func handleExistingRecoveryFilesystem(
 		"Wrote recoveryEnable=false and recoveryPartitionEnable=false to",
 		presetPath,
 	)
+
+	return true, nil
+}
+
+var inspectRecoveryRoot = func(
+	ctx context.Context,
+	target string,
+) ([]byte, error) {
+	return exec.CommandContext(
+		ctx,
+		"findmnt",
+		"-nro",
+		"SOURCE,OPTIONS",
+		"--target",
+		target,
+	).Output()
+}
+
+func detectRecoveryInstalledRoot(ctx context.Context, target string) (bool, error) {
+	target = filepath.Clean(target)
+	if !filepath.IsAbs(target) || target == "/" {
+		return false, fmt.Errorf("recovery installed root must be an absolute non-root path: %q", target)
+	}
+
+	out, err := inspectRecoveryRoot(ctx, target)
+	if err != nil {
+		return false, fmt.Errorf(
+			"authenticated recovery root is not mounted at %s: %w",
+			target,
+			err,
+		)
+	}
+
+	fields := strings.Fields(strings.TrimSpace(string(out)))
+	if len(fields) < 2 {
+		return false, fmt.Errorf(
+			"unexpected recovery root mount information %q",
+			strings.TrimSpace(string(out)),
+		)
+	}
+
+	source := filepath.Clean(fields[0])
+	if !strings.HasPrefix(source, "/dev/mapper/") {
+		return false, fmt.Errorf(
+			"recovery root at %s is not an authenticated LUKS mapping: %s",
+			target,
+			source,
+		)
+	}
+
+	options := "," + fields[1] + ","
+	if !strings.Contains(options, ",rw,") {
+		return false, fmt.Errorf(
+			"recovery root at %s is not mounted read-write",
+			target,
+		)
+	}
+
+	if _, err := os.Stat(filepath.Join(target, "etc", "NIXOS")); err != nil {
+		return false, fmt.Errorf(
+			"recovery root at %s is not a mounted NixOS installation: %w",
+			target,
+			err,
+		)
+	}
 
 	return true, nil
 }

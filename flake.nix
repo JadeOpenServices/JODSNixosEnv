@@ -105,6 +105,15 @@
       system = "x86_64-linux";
       lib = nixpkgs.lib;
       releasePolicy = builtins.fromJSON (builtins.readFile ./deployment/release-policy.json);
+      sourceRevision =
+        if self ? rev then
+          "git:${self.rev}"
+        else if self ? dirtyRev then
+          "git:${self.dirtyRev}"
+        else if self ? narHash then
+          "nar:${self.narHash}"
+        else
+          throw "GjallarOS source provenance is unavailable";
 
       basePkgs = nixpkgs.legacyPackages.${system};
 
@@ -170,7 +179,7 @@
           specialArgs = {
             releaseVersion = releasePolicy.release;
             repoSource = self.outPath;
-            inherit settings;
+            inherit settings sourceRevision;
           };
         };
 
@@ -183,7 +192,7 @@
           specialArgs = {
             releaseVersion = releasePolicy.release;
             repoSource = self.outPath;
-            inherit settings;
+            inherit settings sourceRevision;
           };
         };
 
