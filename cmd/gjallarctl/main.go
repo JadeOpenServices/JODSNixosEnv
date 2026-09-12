@@ -1373,7 +1373,7 @@ func runDeviceProbeDiagnose(args []string, stdout, stderr io.Writer) int {
 	if len(args) == 0 || args[0] != "zbook-x2-g4" {
 		fmt.Fprintln(
 			stderr,
-			"Usage: gjallarctl device-probe diagnose zbook-x2-g4 [--input PATH] [--force]",
+			"Usage: gjallarctl device-probe diagnose zbook-x2-g4 [--input PATH]",
 		)
 		return 2
 	}
@@ -1389,12 +1389,6 @@ func runDeviceProbeDiagnose(args []string, stdout, stderr io.Writer) int {
 		"/run/gjallarOS/device-probe.json",
 		"device probe snapshot path",
 	)
-	force := flags.Bool(
-		"force",
-		false,
-		"run ZBook diagnostics even when snapshot identity does not match",
-	)
-
 	if err := flags.Parse(args[1:]); err != nil {
 		return 2
 	}
@@ -1406,14 +1400,6 @@ func runDeviceProbeDiagnose(args []string, stdout, stderr io.Writer) int {
 	snapshot, err := deviceprobe.ReadSnapshot(*input)
 	if err != nil {
 		fmt.Fprintf(stderr, "FAIL: snapshot: %v\n", err)
-		return 1
-	}
-
-	if !zbookx2g4.MatchesDevice(snapshot) && !*force {
-		fmt.Fprintln(
-			stderr,
-			"FAIL: not an HP ZBook x2 G4 / board 824C; refusing device-specific diagnostics (use --force only for development)",
-		)
 		return 1
 	}
 
