@@ -26,6 +26,25 @@ func resolveDeviceProfileFromSource(
 	return deviceprofile.Resolve(source, hardware)
 }
 
+func persistReconciledDeviceProfile(
+	presetPath string,
+	user config.User,
+	profileDrift bool,
+) error {
+	if !profileDrift {
+		return nil
+	}
+
+	if err := config.WriteAtomic(presetPath, user); err != nil {
+		return fmt.Errorf(
+			"persist reconciled device profile: %w",
+			err,
+		)
+	}
+
+	return nil
+}
+
 func persistDeviceIdentity(
 	user *config.User,
 	hardware discovery.Hardware,
@@ -72,4 +91,25 @@ func validateSecureBootFirmwareSupport(
 		profile,
 		reason,
 	)
+}
+
+func deviceProfileDrifted(
+	user config.User,
+	resolved oddc.Resolved,
+) bool {
+	if user.DeviceProfile != resolved.Device.ID {
+		return true
+	}
+
+	if len(user.DeviceLayers) != len(resolved.Inheritance) {
+		return true
+	}
+
+	for i, layer := range resolved.Inheritance {
+		if user.DeviceLayers[i] != layer.ID {
+			return true
+		}
+	}
+
+	return false
 }

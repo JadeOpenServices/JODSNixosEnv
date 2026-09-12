@@ -22,8 +22,11 @@ func repositoryODDCSource(t *testing.T) EmbeddedSource {
 
 func TestFrameworkResolvesSupportedSecureBootFirmwarePolicy(t *testing.T) {
 	resolved, err := repositoryODDCSource(t).Resolve(Identity{
-		FormFactor: "laptop",
-		SysVendor:  "Framework",
+		FormFactor:  "laptop",
+		SysVendor:   "Framework",
+		ProductName: "Laptop 13 (AMD Ryzen 7040Series)",
+		BoardVendor: "Framework",
+		BoardName:   "FRANMDCP07",
 	})
 	if err != nil {
 		t.Fatal(err)

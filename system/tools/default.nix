@@ -251,6 +251,7 @@ in
       environment.systemPackages = with pkgs; [
         gh
         go_1_26
+        usbutils
         nixfmt
         python3
         nix-output-monitor

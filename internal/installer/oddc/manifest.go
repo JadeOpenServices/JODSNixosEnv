@@ -78,12 +78,17 @@ type Manifest struct {
 	ID                 string                    `json:"id"`
 	Class              string                    `json:"class"`
 	Vendor             string                    `json:"vendor,omitempty"`
+	Selectable         *bool                     `json:"selectable,omitempty"`
 	Match              Match                     `json:"match,omitempty"`
 	Inherits           []string                  `json:"inherits,omitempty"`
 	Modules            []string                  `json:"modules,omitempty"`
 	Lifecycle          Lifecycle                 `json:"lifecycle"`
 	Validation         Validation                `json:"validation"`
 	SecureBootFirmware *SecureBootFirmwarePolicy `json:"secureBootFirmware,omitempty"`
+}
+
+func (manifest Manifest) IsSelectable() bool {
+	return manifest.Selectable == nil || *manifest.Selectable
 }
 
 func DecodeManifest(r io.Reader) (Manifest, error) {
