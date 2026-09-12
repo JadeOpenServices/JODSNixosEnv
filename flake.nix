@@ -164,6 +164,13 @@
           self.nixosConfigurations.gjallar-recovery-vm.config.system.build.isoImage;
       };
 
+      checks.${system} = {
+        m620-legacy-nvidia-policy = import ./tests/nix/m620-policy.nix {
+          inherit nixpkgs system;
+          graphicsModule = ./system/hardware/graphics;
+        };
+      };
+
       formatter = {
 
         x86_64-linux = nixpkgs.legacyPackages.x86_64-linux.nixfmt;

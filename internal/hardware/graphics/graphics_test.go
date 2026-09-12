@@ -39,6 +39,12 @@ func TestParseSelectsNVIDIADeviceID(t *testing.T) {
 	if result.DeviceID != "13b4" {
 		t.Fatalf("DeviceID = %q, want 13b4", result.DeviceID)
 	}
+	if result.Type != "hybrid" {
+		t.Fatalf("Type = %q, want hybrid", result.Type)
+	}
+	if !result.Compute {
+		t.Fatal("Quadro M620 must be classified as compute-capable")
+	}
 	if result.BusID != "PCI:1:0:0" {
 		t.Fatalf("BusID = %q, want PCI:1:0:0", result.BusID)
 	}
