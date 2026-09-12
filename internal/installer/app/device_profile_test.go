@@ -33,7 +33,7 @@ func TestResolveDeviceProfileFallsBackToLaptopCommon(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	resolved, err := resolveDeviceProfile(repo, discovery.Hardware{
+	resolved, err := resolveDeviceProfile(repo, "git:test", discovery.Hardware{
 		FormFactor:  "laptop",
 		SysVendor:   "Unknown Vendor",
 		ProductName: "Unknown Laptop",
@@ -57,7 +57,7 @@ func TestResolveDeviceProfileAllowsNoDesktopProfile(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	resolved, err := resolveDeviceProfile(repo, discovery.Hardware{
+	resolved, err := resolveDeviceProfile(repo, "git:test", discovery.Hardware{
 		FormFactor: "desktop",
 	})
 	if err != nil {
@@ -66,6 +66,9 @@ func TestResolveDeviceProfileAllowsNoDesktopProfile(t *testing.T) {
 
 	if resolved.Device.ID != "" {
 		t.Fatalf("unexpected desktop device profile %q", resolved.Device.ID)
+	}
+	if resolved.Source.Revision != "git:test" {
+		t.Fatalf("Source.Revision=%q", resolved.Source.Revision)
 	}
 }
 
@@ -99,7 +102,7 @@ func TestPersistDeviceIdentity(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	resolved, err := resolveDeviceProfile(repo, hardware)
+	resolved, err := resolveDeviceProfile(repo, "git:test", hardware)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -308,5 +311,21 @@ func TestManagedDeviceCannotBypassUnsupportedFirmwarePolicy(t *testing.T) {
 
 	if err == nil {
 		t.Fatal("managed device bypassed unsupported firmware policy")
+	}
+}
+
+func TestSecureBootSupportGateRejectsMissingPolicy(t *testing.T) {
+	err := validateSecureBootFirmwareSupport(
+		true,
+		"laptop/test",
+		oddc.EffectiveSecureBootFirmwarePolicy{},
+	)
+
+	if err == nil {
+		t.Fatal("missing Secure Boot firmware policy was accepted")
+	}
+
+	if !strings.Contains(err.Error(), "no trusted Secure Boot firmware policy") {
+		t.Fatalf("unexpected error: %v", err)
 	}
 }
