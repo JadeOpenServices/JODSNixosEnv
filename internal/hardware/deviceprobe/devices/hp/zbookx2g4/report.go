@@ -78,9 +78,8 @@ func graphics(snapshot deviceprobe.Snapshot) Result {
 				Status: StatusPass,
 				Gate:   "graphics",
 				Detail: fmt.Sprintf(
-					"Quadro M620 detected at %s using driver %q",
+					"Quadro M620 detected at %s",
 					device.Address,
-					device.Driver,
 				),
 			}
 		}
@@ -213,21 +212,25 @@ func quickKeys(snapshot deviceprobe.Snapshot) Result {
 }
 
 func thunderbolt(snapshot deviceprobe.Snapshot) Result {
-	if len(snapshot.Thunderbolt) == 0 {
+	capabilities := deviceprobe.DetectCapabilities(snapshot)
+
+	if !capabilities.Thunderbolt.Present {
 		return Result{
 			Status: StatusWarn,
 			Gate:   "thunderbolt",
-			Detail: "no Thunderbolt devices observed",
+			Detail: "Thunderbolt capability not observed",
 		}
+	}
+
+	detail := capabilities.Thunderbolt.Details
+	if detail == "" {
+		detail = "Thunderbolt capability present"
 	}
 
 	return Result{
 		Status: StatusPass,
 		Gate:   "thunderbolt",
-		Detail: fmt.Sprintf(
-			"%d Thunderbolt device(s) observed",
-			len(snapshot.Thunderbolt),
-		),
+		Detail: detail,
 	}
 }
 
@@ -251,46 +254,44 @@ func audio(snapshot deviceprobe.Snapshot) Result {
 }
 
 func cardReader(snapshot deviceprobe.Snapshot) Result {
-	for _, device := range snapshot.Block {
-		if device.Removable {
-			return Result{
-				Status: StatusPass,
-				Gate:   "card-reader",
-				Detail: fmt.Sprintf(
-					"removable block device %s observed using driver %q",
-					device.Name,
-					device.Driver,
-				),
-			}
+	capabilities := deviceprobe.DetectCapabilities(snapshot)
+
+	if !capabilities.CardReader.Present {
+		return Result{
+			Status: StatusWarn,
+			Gate:   "card-reader",
+			Detail: "card-reader capability not observed",
 		}
 	}
 
+	detail := capabilities.CardReader.Details
+	if detail == "" {
+		detail = "card-reader capability present"
+	}
+
 	return Result{
-		Status: StatusWarn,
+		Status: StatusPass,
 		Gate:   "card-reader",
-		Detail: "no removable block device observed",
+		Detail: detail,
 	}
 }
 
 func fingerprint(snapshot deviceprobe.Snapshot) Result {
-	if !snapshot.Fingerprint.Available {
-		detail := "upstream fprintd/libfprint visibility unavailable"
-		if snapshot.Fingerprint.Warning != "" {
-			detail += ": " + snapshot.Fingerprint.Warning
-		}
+	capabilities := deviceprobe.DetectCapabilities(snapshot)
 
+	if !capabilities.Fingerprint.Present {
 		return Result{
 			Status: StatusWarn,
 			Gate:   "fingerprint",
-			Detail: detail,
+			Detail: "fingerprint hardware not observed",
 		}
 	}
 
-	if len(snapshot.Fingerprint.Devices) == 0 {
+	if !capabilities.Fingerprint.UpstreamSupported {
 		return Result{
 			Status: StatusWarn,
 			Gate:   "fingerprint",
-			Detail: "upstream fprintd/libfprint reported no fingerprint reader",
+			Detail: "fingerprint hardware present; upstream fprintd/libfprint does not expose it",
 		}
 	}
 

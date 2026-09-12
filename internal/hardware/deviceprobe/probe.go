@@ -10,21 +10,22 @@ import (
 )
 
 type Snapshot struct {
-	Schema      int                 `json:"schema"`
-	SysVendor   string              `json:"sysVendor"`
-	ProductName string              `json:"productName"`
-	BoardName   string              `json:"boardName"`
-	PCI         []string            `json:"pci"`
-	USB         []string            `json:"usb"`
-	PCIDevices  []PCIDevice         `json:"pciDevices"`
-	USBDevices  []USBDevice         `json:"usbDevices"`
-	HIDDevices  []HIDDevice         `json:"hidDevices"`
-	Input       []InputDevice       `json:"input"`
-	IIO         []IIODevice         `json:"iio"`
-	Thunderbolt []ThunderboltDevice `json:"thunderbolt"`
-	Block       []BlockDevice       `json:"block"`
-	Audio       []AudioDevice       `json:"audio"`
-	Fingerprint FingerprintState    `json:"fingerprint"`
+	Schema          int                 `json:"schema"`
+	SysVendor       string              `json:"sysVendor"`
+	ProductName     string              `json:"productName"`
+	BoardName       string              `json:"boardName"`
+	PCI             []string            `json:"pci"`
+	USB             []string            `json:"usb"`
+	PCIDevices      []PCIDevice         `json:"pciDevices"`
+	USBDevices      []USBDevice         `json:"usbDevices"`
+	HIDDevices      []HIDDevice         `json:"hidDevices"`
+	Input           []InputDevice       `json:"input"`
+	IIO             []IIODevice         `json:"iio"`
+	Thunderbolt     []ThunderboltDevice `json:"thunderbolt"`
+	ThunderboltHost bool                `json:"thunderboltHost"`
+	Block           []BlockDevice       `json:"block"`
+	Audio           []AudioDevice       `json:"audio"`
+	Fingerprint     FingerprintState    `json:"fingerprint"`
 }
 
 func Collect(ctx context.Context, sysRoot string) (Snapshot, error) {
@@ -44,6 +45,17 @@ func Collect(ctx context.Context, sysRoot string) (Snapshot, error) {
 		Block:       nonNilBlockDevices(blockDevices(sysRoot)),
 		Audio:       nonNilAudioDevices(audioDevices(sysRoot)),
 		Fingerprint: fingerprintState(ctx),
+	}
+
+	if len(s.Thunderbolt) != 0 {
+		s.ThunderboltHost = true
+	} else if out, err := command(ctx, "boltctl", "domains"); err == nil {
+		for _, line := range lines(out) {
+			if strings.Contains(strings.ToLower(line), "domain") {
+				s.ThunderboltHost = true
+				break
+			}
+		}
 	}
 
 	pci, err := command(ctx, "lspci", "-Dnn")
