@@ -391,8 +391,29 @@ func TestRecoveryHardwareRebindCannotSkipInstall(t *testing.T) {
 	}
 	body := string(data)
 
-	want := "if needsDeviceRebind && !runRebuild {"
+	want := "if (profileDrift || needsDeviceRebind) && !runRebuild {"
 	if !strings.Contains(body, want) {
-		t.Fatal("hardware rebind can still skip target installation")
+		t.Fatal("device profile reconciliation can still skip target installation")
+	}
+}
+
+func TestDeviceProfileDriftCannotSkipInstall(t *testing.T) {
+	data, err := os.ReadFile("app.go")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	body := string(data)
+
+	want := "if (profileDrift || needsDeviceRebind) && !runRebuild {"
+	if !strings.Contains(body, want) {
+		t.Fatal("device profile drift can still skip activation")
+	}
+
+	if !strings.Contains(
+		body,
+		"device profile reconciliation requires installing the regenerated system",
+	) {
+		t.Fatal("generic device profile reconciliation refusal is missing")
 	}
 }

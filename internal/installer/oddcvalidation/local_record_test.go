@@ -13,7 +13,7 @@ func validTestValidation() oddc.Validation {
 	return oddc.Validation{
 		LastValidatedNixOS:             "26.05",
 		LastValidatedGjallarOSRevision: "git:gjallar123",
-		LastValidatedDeviceID:          "laptop/framework/13-amd-7040",
+		LastValidatedDeviceID:          "laptop/framework/laptop-13/amd/ryzen-7040",
 		LastValidatedODDCRevision:      "git:oddc456",
 		LastValidatedAt:                "2026-09-11T20:30:00Z",
 	}

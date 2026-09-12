@@ -9,6 +9,9 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"github.com/bakanura/gjallarOS/internal/hardware/deviceprobe"
+	"github.com/bakanura/gjallarOS/internal/hardware/deviceprobe/devices/hp/zbookx2g4"
+	"github.com/bakanura/gjallarOS/internal/installer/repojson"
 	"io"
 	"math/rand/v2"
 	"net"
@@ -78,6 +81,8 @@ func run(args []string, stdout, stderr io.Writer) int {
 		return runODDC(args[1:], stdout, stderr)
 	case "detect":
 		return runDetect(args[1:], stdout, stderr)
+	case "device-probe":
+		return runDeviceProbe(args[1:], stdout, stderr)
 	case "ai":
 		return runAI(args[1:], stdout, stderr)
 	case "normalize":
@@ -1314,6 +1319,127 @@ func runDetect(args []string, stdout, stderr io.Writer) int {
 	return 0
 }
 
+func runDeviceProbe(args []string, stdout, stderr io.Writer) int {
+	if len(args) == 0 {
+		fmt.Fprintln(stderr, "Usage: gjallarctl device-probe {refresh|diagnose}")
+		return 2
+	}
+
+	if args[0] == "diagnose" {
+		return runDeviceProbeDiagnose(args[1:], stdout, stderr)
+	}
+
+	if args[0] != "refresh" {
+		fmt.Fprintln(stderr, "Usage: gjallarctl device-probe {refresh|diagnose}")
+		return 2
+	}
+
+	flags := flag.NewFlagSet("gjallarctl device-probe refresh", flag.ContinueOnError)
+	flags.SetOutput(stderr)
+
+	output := flags.String(
+		"output",
+		"/run/gjallarOS/device-probe.json",
+		"device probe snapshot path",
+	)
+
+	if err := flags.Parse(args[1:]); err != nil {
+		return 2
+	}
+	if flags.NArg() != 0 {
+		fmt.Fprintln(stderr, "ERROR: device-probe refresh accepts no positional arguments")
+		return 2
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	snapshot, err := deviceprobe.Collect(ctx, "/sys")
+	if err != nil {
+		fmt.Fprintf(stderr, "FAIL: device probe collection: %v\n", err)
+		return 1
+	}
+
+	if err := deviceprobe.WriteSnapshot(*output, snapshot); err != nil {
+		fmt.Fprintf(stderr, "FAIL: device probe snapshot: %v\n", err)
+		return 1
+	}
+
+	fmt.Fprintf(stdout, "PASS: device probe snapshot written to %s\n", *output)
+	return 0
+}
+
+func runDeviceProbeDiagnose(args []string, stdout, stderr io.Writer) int {
+	if len(args) == 0 || args[0] != "zbook-x2-g4" {
+		fmt.Fprintln(
+			stderr,
+			"Usage: gjallarctl device-probe diagnose zbook-x2-g4 [--input PATH] [--force]",
+		)
+		return 2
+	}
+
+	flags := flag.NewFlagSet(
+		"gjallarctl device-probe diagnose zbook-x2-g4",
+		flag.ContinueOnError,
+	)
+	flags.SetOutput(stderr)
+
+	input := flags.String(
+		"input",
+		"/run/gjallarOS/device-probe.json",
+		"device probe snapshot path",
+	)
+	force := flags.Bool(
+		"force",
+		false,
+		"run ZBook diagnostics even when snapshot identity does not match",
+	)
+
+	if err := flags.Parse(args[1:]); err != nil {
+		return 2
+	}
+	if flags.NArg() != 0 {
+		fmt.Fprintln(stderr, "ERROR: unexpected positional arguments")
+		return 2
+	}
+
+	snapshot, err := deviceprobe.ReadSnapshot(*input)
+	if err != nil {
+		fmt.Fprintf(stderr, "FAIL: snapshot: %v\n", err)
+		return 1
+	}
+
+	if !zbookx2g4.MatchesDevice(snapshot) && !*force {
+		fmt.Fprintln(
+			stderr,
+			"FAIL: not an HP ZBook x2 G4 / board 824C; refusing device-specific diagnostics (use --force only for development)",
+		)
+		return 1
+	}
+
+	report := zbookx2g4.Evaluate(snapshot)
+	failed := false
+
+	for _, result := range report.Results {
+		fmt.Fprintf(
+			stdout,
+			"%s: %s: %s\n",
+			result.Status,
+			result.Gate,
+			result.Detail,
+		)
+		if result.Status == zbookx2g4.StatusFail {
+			failed = true
+		}
+	}
+
+	if failed {
+		return 1
+	}
+
+	return 0
+}
+
 func runODDC(args []string, stdout, stderr io.Writer) int {
 	if len(args) == 0 {
 		fmt.Fprintln(stderr, "ERROR: oddc requires a subcommand")
@@ -1506,6 +1632,8 @@ func printUsage(out io.Writer) {
 	fmt.Fprintln(out, "       gjallarctl oddc validate-device [--repo PATH]")
 	fmt.Fprintln(out, "       gjallarctl rebuild --repo PATH --host HOST [-d|--debug] [-n|--no-cleanup] [NIXOS-REBUILD-ARGS...]")
 	fmt.Fprintln(out, "       gjallarctl detect {graphics|network}")
+	fmt.Fprintln(out, "       gjallarctl device-probe refresh [--output PATH]")
+	fmt.Fprintln(out, "       gjallarctl device-probe diagnose zbook-x2-g4 [--input PATH]")
 	fmt.Fprintln(out, "       gjallarctl ai profile [--config PATH]")
 	fmt.Fprintln(out, "       gjallarctl normalize keyboard --layout VALUE")
 	fmt.Fprintln(out, "       gjallarctl preset {validate|get|list|bool} --config PATH [--key NAME]")
@@ -1664,6 +1792,18 @@ func runRebuild(args []string, stdout, stderr io.Writer) int {
 	if repo == "" || host == "" {
 		fmt.Fprintln(stderr, "ERROR: rebuild requires --repo and --host")
 		return 2
+	}
+
+	formattedJSON, err := repojson.CanonicalizeChangedTracked(
+		context.Background(),
+		repo,
+	)
+	if err != nil {
+		fmt.Fprintf(stderr, "ERROR: canonicalize changed JSON: %v\n", err)
+		return 1
+	}
+	for _, path := range formattedJSON {
+		fmt.Fprintf(stdout, "PASS: canonical JSON: %s\n", path)
 	}
 
 	messagesPath := filepath.Join(repo, "system/tools/commands/rebuild-messages.json")

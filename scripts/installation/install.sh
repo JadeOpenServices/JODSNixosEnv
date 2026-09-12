@@ -14,4 +14,24 @@ printf 'Building the GjallarOS installer...\n'
 installer_path="$(nix --extra-experimental-features 'nix-command flakes' build \
     --no-link --print-out-paths "path:$repo#gjallar-installer")"
 
-exec "$installer_path/bin/gjallar-installer" --repo "$repo" "$@"
+probe_tools=(
+    nixpkgs#pciutils
+    nixpkgs#usbutils
+    nixpkgs#util-linux
+    nixpkgs#libinput
+    nixpkgs#iio-sensor-proxy
+    nixpkgs#fprintd
+    nixpkgs#bolt
+    nixpkgs#alsa-utils
+    nixpkgs#pipewire
+    nixpkgs#fwupd
+    nixpkgs#ethtool
+    nixpkgs#iw
+)
+
+printf 'Preparing GjallarOS hardware probe environment...\n'
+
+exec nix --extra-experimental-features 'nix-command flakes' shell \
+    --inputs-from "path:$repo" \
+    "${probe_tools[@]}" \
+    --command "$installer_path/bin/gjallar-installer" --repo "$repo" "$@"

@@ -71,6 +71,10 @@ func (source EmbeddedSource) Resolve(identity Identity) (Resolved, error) {
 	var best []manifestRecord
 
 	for _, record := range records {
+		if !record.manifest.IsSelectable() {
+			continue
+		}
+
 		matched, score := matchIdentity(record.manifest.Match, identity)
 		if !matched {
 			continue

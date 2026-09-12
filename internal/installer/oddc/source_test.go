@@ -557,3 +557,166 @@ func TestVendorLayersRemainIsolated(t *testing.T) {
 		}
 	}
 }
+
+func TestNonSelectableVendorLayerFallsBackToCommon(t *testing.T) {
+	root := t.TempDir()
+
+	writeSourceManifest(t, root, "laptop/common", `{
+	  "schema": 1,
+	  "id": "laptop/common",
+	  "class": "laptop",
+	  "lifecycle": {"status": "supported"},
+	  "validation": {}
+	}`)
+
+	writeSourceManifest(t, root, "laptop/vendor", `{
+	  "schema": 1,
+	  "id": "laptop/vendor",
+	  "class": "laptop",
+	  "selectable": false,
+	  "match": {"sysVendor": ["Example"]},
+	  "inherits": ["laptop/common"],
+	  "lifecycle": {"status": "supported"},
+	  "validation": {}
+	}`)
+
+	resolved, err := (EmbeddedSource{Root: root}).Resolve(Identity{
+		FormFactor:  "laptop",
+		SysVendor:   "Example",
+		ProductName: "Unknown Future Laptop",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if resolved.Device.ID != "laptop/common" {
+		t.Fatalf(
+			"unknown vendor model resolved to %q, want laptop/common",
+			resolved.Device.ID,
+		)
+	}
+}
+
+func TestConcreteChildMayInheritNonSelectableVendorLayer(t *testing.T) {
+	root := t.TempDir()
+
+	writeSourceManifest(t, root, "laptop/common", `{
+	  "schema": 1,
+	  "id": "laptop/common",
+	  "class": "laptop",
+	  "lifecycle": {"status": "supported"},
+	  "validation": {}
+	}`)
+
+	writeSourceManifest(t, root, "laptop/vendor", `{
+	  "schema": 1,
+	  "id": "laptop/vendor",
+	  "class": "laptop",
+	  "selectable": false,
+	  "match": {"sysVendor": ["Example"]},
+	  "inherits": ["laptop/common"],
+	  "lifecycle": {"status": "supported"},
+	  "validation": {}
+	}`)
+
+	writeSourceManifest(t, root, "laptop/vendor/model", `{
+	  "schema": 1,
+	  "id": "laptop/vendor/model",
+	  "class": "laptop",
+	  "match": {
+	    "sysVendor": ["Example"],
+	    "productName": ["Exact Model"],
+	    "boardName": ["BOARD1"]
+	  },
+	  "inherits": ["laptop/vendor"],
+	  "lifecycle": {"status": "experimental"},
+	  "validation": {}
+	}`)
+
+	resolved, err := (EmbeddedSource{Root: root}).Resolve(Identity{
+		FormFactor:  "laptop",
+		SysVendor:   "Example",
+		ProductName: "Exact Model",
+		BoardName:   "BOARD1",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if resolved.Device.ID != "laptop/vendor/model" {
+		t.Fatalf("resolved device=%q", resolved.Device.ID)
+	}
+
+	want := []string{
+		"laptop/common",
+		"laptop/vendor",
+		"laptop/vendor/model",
+	}
+
+	if len(resolved.Inheritance) != len(want) {
+		t.Fatalf("inheritance=%v", resolved.Inheritance)
+	}
+
+	for i, id := range want {
+		if resolved.Inheritance[i].ID != id {
+			t.Fatalf(
+				"inheritance[%d]=%q want=%q",
+				i,
+				resolved.Inheritance[i].ID,
+				id,
+			)
+		}
+	}
+}
+
+func TestMultipleDMIProductNamesResolveToSameStableDeviceID(t *testing.T) {
+	root := t.TempDir()
+
+	writeSourceManifest(t, root, "laptop/common", `{
+	  "schema": 1,
+	  "id": "laptop/common",
+	  "class": "laptop",
+	  "lifecycle": {"status": "supported"},
+	  "validation": {}
+	}`)
+
+	writeSourceManifest(t, root, "laptop/vendor/model-family", `{
+	  "schema": 1,
+	  "id": "laptop/vendor/model-family",
+	  "class": "laptop",
+	  "match": {
+	    "sysVendor": ["Example"],
+	    "productName": [
+	      "Old Firmware Product Name",
+	      "New Firmware Product Name"
+	    ]
+	  },
+	  "inherits": ["laptop/common"],
+	  "lifecycle": {"status": "experimental"},
+	  "validation": {}
+	}`)
+
+	source := EmbeddedSource{Root: root}
+
+	for _, product := range []string{
+		"Old Firmware Product Name",
+		"New Firmware Product Name",
+	} {
+		resolved, err := source.Resolve(Identity{
+			FormFactor:  "laptop",
+			SysVendor:   "Example",
+			ProductName: product,
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		if resolved.Device.ID != "laptop/vendor/model-family" {
+			t.Fatalf(
+				"product %q resolved to %q",
+				product,
+				resolved.Device.ID,
+			)
+		}
+	}
+}

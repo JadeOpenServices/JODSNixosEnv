@@ -140,6 +140,10 @@ in
   services.openssh.enable = lib.mkForce false;
   programs.ssh.startAgent = false;
 
+  # Installer-only upstream libfprint visibility. This does not enable
+  # fingerprint authentication or alter PAM.
+  services.fprintd.enable = true;
+
   # The installer needs a writable GjallarOS repository because fresh-target
   # hardware configuration and generated installer settings are produced
   # during installation. The flake source itself is immutable in the Nix
@@ -175,6 +179,64 @@ in
       test -f "$target/flake.nix"
       test -f "$target/scripts/installation/install.sh"
       test -f "$target/cmd/gjallar-installer/main.go"
+    '';
+  };
+
+  systemd.services.gjallar-device-probe = {
+    description = "Collect GjallarOS installer hardware state";
+    wantedBy = [ "multi-user.target" ];
+
+    after = [ "gjallar-installer-repository.service" ];
+    requires = [ "gjallar-installer-repository.service" ];
+
+    path = with pkgs; [
+      pciutils
+      usbutils
+      util-linux
+      libinput
+      iio-sensor-proxy
+      fprintd
+      bolt
+      alsa-utils
+      pipewire
+      fwupd
+      ethtool
+      iw
+      systemd
+    ];
+
+    serviceConfig = {
+      Type = "oneshot";
+      NoNewPrivileges = true;
+      PrivateTmp = true;
+      ProtectHome = true;
+      ProtectSystem = "strict";
+      ReadWritePaths = [ "/run/gjallarOS" ];
+      UMask = "0022";
+    };
+
+    script = ''
+      set -eu
+
+      ${tools.gjallarctl}/bin/gjallarctl         device-probe refresh         --output /run/gjallarOS/device-probe.json
+    '';
+  };
+
+  services.udev.extraRules = ''
+    ACTION=="add|remove|change", SUBSYSTEM=="pci", RUN+="${pkgs.systemd}/bin/systemctl --no-block start gjallar-device-probe.service"
+    ACTION=="add|remove|change", SUBSYSTEM=="usb", RUN+="${pkgs.systemd}/bin/systemctl --no-block start gjallar-device-probe.service"
+    ACTION=="add|remove|change", SUBSYSTEM=="input", RUN+="${pkgs.systemd}/bin/systemctl --no-block start gjallar-device-probe.service"
+    ACTION=="add|remove|change", SUBSYSTEM=="iio", RUN+="${pkgs.systemd}/bin/systemctl --no-block start gjallar-device-probe.service"
+    ACTION=="add|remove|change", SUBSYSTEM=="thunderbolt", RUN+="${pkgs.systemd}/bin/systemctl --no-block start gjallar-device-probe.service"
+  '';
+
+  environment.etc."systemd/system-sleep/gjallar-device-probe-refresh" = {
+    mode = "0755";
+    text = ''
+      #!/bin/sh
+      if [ "$1" = post ]; then
+        ${pkgs.systemd}/bin/systemctl --no-block start gjallar-device-probe.service
+      fi
     '';
   };
 

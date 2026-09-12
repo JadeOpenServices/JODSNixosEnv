@@ -240,6 +240,8 @@ func Run(ctx context.Context, args []string, in io.Reader, out, errOut io.Writer
 	if err != nil {
 		return fail(errOut, err)
 	}
+
+	profileDrift := deviceProfileDrifted(s.user, resolvedDevice)
 	needsDeviceRebind := false
 	if opt.recovery && opt.acceptExisting {
 		capsulePath := filepath.Join(
@@ -258,11 +260,12 @@ func Run(ctx context.Context, args []string, in io.Reader, out, errOut io.Writer
 			)
 		}
 
-		needsDeviceRebind = deviceprofilecache.NeedsRebind(
-			capsule,
-			discovery.ODDCIdentity(hardware),
-			resolvedDevice,
-		)
+		needsDeviceRebind = profileDrift ||
+			deviceprofilecache.NeedsRebind(
+				capsule,
+				discovery.ODDCIdentity(hardware),
+				resolvedDevice,
+			)
 
 		if !needsDeviceRebind {
 			resolvedDevice, err = resolveDeviceProfileFromSource(
@@ -808,11 +811,11 @@ func Run(ctx context.Context, args []string, in io.Reader, out, errOut io.Writer
 			return fail(errOut, err)
 		}
 	}
-	if needsDeviceRebind && !runRebuild {
+	if (profileDrift || needsDeviceRebind) && !runRebuild {
 		return fail(
 			errOut,
 			errors.New(
-				"hardware rebind requires installing the regenerated system; rebuild cannot be skipped",
+				"device profile reconciliation requires installing the regenerated system; rebuild cannot be skipped",
 			),
 		)
 	}
@@ -875,6 +878,14 @@ func Run(ctx context.Context, args []string, in io.Reader, out, errOut io.Writer
 					return fail(errOut, err)
 				}
 
+				if err := persistReconciledDeviceProfile(
+					presetPath,
+					s.user,
+					profileDrift,
+				); err != nil {
+					return fail(errOut, err)
+				}
+
 				if needsDeviceRebind {
 					if err := materializeDeviceProfileCapsule(
 						root,
@@ -920,6 +931,14 @@ func Run(ctx context.Context, args []string, in io.Reader, out, errOut io.Writer
 				)
 
 				if err := deploy.Apply(ctx, target); err != nil {
+					return fail(errOut, err)
+				}
+
+				if err := persistReconciledDeviceProfile(
+					presetPath,
+					s.user,
+					profileDrift,
+				); err != nil {
 					return fail(errOut, err)
 				}
 			}
