@@ -19,123 +19,120 @@ let
   };
 
   gjallarCodeOpencode = pkgs.opencode.overrideAttrs (old: {
-    nativeBuildInputs =
-      (old.nativeBuildInputs or [ ])
-      ++ [ pkgs.python3 ];
+    nativeBuildInputs = (old.nativeBuildInputs or [ ]) ++ [ pkgs.python3 ];
 
     postPatch = (old.postPatch or "") + ''
-      python3 - <<'LOGOPATCH'
-from pathlib import Path
-import re
+            python3 - <<'LOGOPATCH'
+      from pathlib import Path
+      import re
 
-candidates = [
-    Path(
-        "packages/opencode/src/cli/cmd/tui/"
-        "routes/home.tsx"
-    ),
-    Path(
-        "packages/opencode/src/cli/cmd/tui/"
-        "routes/home/index.tsx"
-    ),
-]
+      candidates = [
+          Path(
+              "packages/opencode/src/cli/cmd/tui/"
+              "routes/home.tsx"
+          ),
+          Path(
+              "packages/opencode/src/cli/cmd/tui/"
+              "routes/home/index.tsx"
+          ),
+      ]
 
-target = next(
-    (p for p in candidates if p.exists()),
-    None,
-)
+      target = next(
+          (p for p in candidates if p.exists()),
+          None,
+      )
 
-if target is None:
-    raise SystemExit(
-        "gjallarCode logo patch: "
-        "OpenCode home source not found"
-    )
+      if target is None:
+          raise SystemExit(
+              "gjallarCode logo patch: "
+              "OpenCode home source not found"
+          )
 
-source = target.read_text()
+      source = target.read_text()
 
-logo_lines = [
-    "   ____      _       _ _              ____          _",
-    "  / ___|    (_) __ _| | | __ _ _ __ / ___|___   __| | ___",
-    " | |  _     | |/ _` | | |/ _` | '__| |   / _ \\ / _` |/ _ \\",
-    " | |_| |    | | (_| | | | (_| | |  | |__| (_) | (_| |  __/",
-    "  \\____|   _/ |\\__,_|_|_|\\__,_|_|   \\____\\___/ \\__,_|\\___|",
-    "          |__/",
-]
+      logo_lines = [
+          "   ____      _       _ _              ____          _",
+          "  / ___|    (_) __ _| | | __ _ _ __ / ___|___   __| | ___",
+          " | |  _     | |/ _` | | |/ _` | '__| |   / _ \\ / _` |/ _ \\",
+          " | |_| |    | | (_| | | | (_| | |  | |__| (_) | (_| |  __/",
+          "  \\____|   _/ |\\__,_|_|_|\\__,_|_|   \\____\\___/ \\__,_|\\___|",
+          "          |__/",
+      ]
 
-# IMPORTANT:
-# Do not use a JS template literal here. ASCII art contains
-# literal backticks (`), which would terminate it.
-#
-# json.dumps() creates a valid quoted JavaScript/JSON string,
-# safely escaping:
-#   - newlines
-#   - backslashes
-#   - quotes
-#   - while allowing literal backticks inside the string.
-import json
+      # IMPORTANT:
+      # Do not use a JS template literal here. ASCII art contains
+      # literal backticks (`), which would terminate it.
+      #
+      # json.dumps() creates a valid quoted JavaScript/JSON string,
+      # safely escaping:
+      #   - newlines
+      #   - backslashes
+      #   - quotes
+      #   - while allowing literal backticks inside the string.
+      import json
 
-logo_text = "\n" + "\n".join(logo_lines) + "\n"
+      logo_text = "\n" + "\n".join(logo_lines) + "\n"
 
-replacement = (
-    "<text>{"
-    + json.dumps(logo_text)
-    + "}</text>"
-)
+      replacement = (
+          "<text>{"
+          + json.dumps(logo_text)
+          + "}</text>"
+      )
 
-patched, count = re.subn(
-    r"<Logo(?:\s+[^>]*)?\s*/>",
-    lambda _match: replacement,
-    source,
-    count=1,
-)
+      patched, count = re.subn(
+          r"<Logo(?:\s+[^>]*)?\s*/>",
+          lambda _match: replacement,
+          source,
+          count=1,
+      )
 
-if count != 1:
-    raise SystemExit(
-        "gjallarCode logo patch: "
-        f"expected one Logo element, found {count}"
-    )
+      if count != 1:
+          raise SystemExit(
+              "gjallarCode logo patch: "
+              f"expected one Logo element, found {count}"
+          )
 
-patched = re.sub(
-    r'(?m)^import\s+\{\s*Logo\s*\}\s+from\s+'
-    r'["\'][^"\']*logo["\'];?\s*\n',
-    "",
-    patched,
-    count=1,
-)
+      patched = re.sub(
+          r'(?m)^import\s+\{\s*Logo\s*\}\s+from\s+'
+          r'["\'][^"\']*logo["\'];?\s*\n',
+          "",
+          patched,
+          count=1,
+      )
 
-patched = re.sub(
-    r'(?m)^import\s+Logo\s+from\s+'
-    r'["\'][^"\']*logo["\'];?\s*\n',
-    "",
-    patched,
-    count=1,
-)
+      patched = re.sub(
+          r'(?m)^import\s+Logo\s+from\s+'
+          r'["\'][^"\']*logo["\'];?\s*\n',
+          "",
+          patched,
+          count=1,
+      )
 
-target.write_text(patched)
+      target.write_text(patched)
 
-verified = target.read_text()
+      verified = target.read_text()
 
-if "<Logo" in verified:
-    raise SystemExit(
-        "gjallarCode logo patch verification failed: "
-        "original Logo element still present"
-    )
+      if "<Logo" in verified:
+          raise SystemExit(
+              "gjallarCode logo patch verification failed: "
+              "original Logo element still present"
+          )
 
-if "<text>{" not in verified:
-    raise SystemExit(
-        "gjallarCode logo patch verification failed: "
-        "ASCII text element missing"
-    )
+      if "<text>{" not in verified:
+          raise SystemExit(
+              "gjallarCode logo patch verification failed: "
+              "ASCII text element missing"
+          )
 
-print("gjallarCode ASCII logo patch verified")
+      print("gjallarCode ASCII logo patch verified")
 
-print(
-    "gjallarCode logo patched:",
-    target,
-)
-LOGOPATCH
+      print(
+          "gjallarCode logo patched:",
+          target,
+      )
+      LOGOPATCH
     '';
   });
-
 
   # Desktop-side clipboard broker.
   #
@@ -146,219 +143,216 @@ LOGOPATCH
   # - validates caller is inside gjallar-ai-session@ cgroup;
   # - bounds copied data;
   # - only this broker receives Wayland access.
-  gjallarClipboardServer =
-    pkgs.writeShellScript
-      "gjallar-ai-clipboard-server" ''
-        set -euo pipefail
+  gjallarClipboardServer = pkgs.writeShellScript "gjallar-ai-clipboard-server" ''
+            set -euo pipefail
 
-        uid="$(${pkgs.coreutils}/bin/id -u ${lib.escapeShellArg settings.username})"
-        runtime="/run/user/$uid"
+            uid="$(${pkgs.coreutils}/bin/id -u ${lib.escapeShellArg settings.username})"
+            runtime="/run/user/$uid"
 
-        export XDG_RUNTIME_DIR="$runtime"
+            export XDG_RUNTIME_DIR="$runtime"
 
-        exec ${pkgs.python3}/bin/python3 - <<'PYCLIP'
-import os
-import socket
-import struct
-import subprocess
-from pathlib import Path
+            exec ${pkgs.python3}/bin/python3 - <<'PYCLIP'
+    import os
+    import socket
+    import struct
+    import subprocess
+    from pathlib import Path
 
-UID = os.getuid()
+    UID = os.getuid()
 
-SOCKET = Path(
-    "/run/gjallar-ai-clipboard/socket"
-)
-
-WAYLAND_RUNTIME = Path(
-    f"/run/user/{UID}"
-)
-
-WL_COPY = "${pkgs.wl-clipboard}/bin/wl-copy"
-
-MAX_BYTES = 8 * 1024 * 1024
-
-CGROUP_TOKEN = "/gjallar-ai-session@"
-
-
-def find_wayland():
-    configured = os.environ.get(
-        "WAYLAND_DISPLAY",
-        "",
+    SOCKET = Path(
+        "/run/gjallar-ai-clipboard/socket"
     )
 
-    if configured:
-        candidate = WAYLAND_RUNTIME / configured
+    WAYLAND_RUNTIME = Path(
+        f"/run/user/{UID}"
+    )
 
-        if candidate.is_socket():
-            return configured
+    WL_COPY = "${pkgs.wl-clipboard}/bin/wl-copy"
 
-    for candidate in sorted(
-        WAYLAND_RUNTIME.glob("wayland-*")
-    ):
-        try:
+    MAX_BYTES = 8 * 1024 * 1024
+
+    CGROUP_TOKEN = "/gjallar-ai-session@"
+
+
+    def find_wayland():
+        configured = os.environ.get(
+            "WAYLAND_DISPLAY",
+            "",
+        )
+
+        if configured:
+            candidate = WAYLAND_RUNTIME / configured
+
             if candidate.is_socket():
-                return candidate.name
+                return configured
+
+        for candidate in sorted(
+            WAYLAND_RUNTIME.glob("wayland-*")
+        ):
+            try:
+                if candidate.is_socket():
+                    return candidate.name
+            except OSError:
+                continue
+
+        raise RuntimeError(
+            "Wayland socket unavailable"
+        )
+
+
+    def authorized(conn):
+        raw = conn.getsockopt(
+            socket.SOL_SOCKET,
+            socket.SO_PEERCRED,
+            struct.calcsize("3i"),
+        )
+
+        pid, uid, _gid = struct.unpack(
+            "3i",
+            raw,
+        )
+
+        if pid <= 1 or uid != UID:
+            return False
+
+        try:
+            cgroup = Path(
+                f"/proc/{pid}/cgroup"
+            ).read_text()
         except OSError:
-            continue
+            return False
 
-    raise RuntimeError(
-        "Wayland socket unavailable"
+        return CGROUP_TOKEN in cgroup
+
+
+    def receive(conn):
+        data = bytearray()
+
+        while True:
+            chunk = conn.recv(65536)
+
+            if not chunk:
+                break
+
+            data.extend(chunk)
+
+            if len(data) > MAX_BYTES:
+                raise RuntimeError(
+                    "clipboard payload exceeds 8 MiB"
+                )
+
+        return bytes(data)
+
+
+    SOCKET.parent.mkdir(
+        mode=0o700,
+        parents=True,
+        exist_ok=True,
     )
-
-
-def authorized(conn):
-    raw = conn.getsockopt(
-        socket.SOL_SOCKET,
-        socket.SO_PEERCRED,
-        struct.calcsize("3i"),
-    )
-
-    pid, uid, _gid = struct.unpack(
-        "3i",
-        raw,
-    )
-
-    if pid <= 1 or uid != UID:
-        return False
 
     try:
-        cgroup = Path(
-            f"/proc/{pid}/cgroup"
-        ).read_text()
-    except OSError:
-        return False
+        SOCKET.unlink()
+    except FileNotFoundError:
+        pass
 
-    return CGROUP_TOKEN in cgroup
+    server = socket.socket(
+        socket.AF_UNIX,
+        socket.SOCK_STREAM,
+    )
 
+    server.bind(str(SOCKET))
 
-def receive(conn):
-    data = bytearray()
+    os.chmod(
+        SOCKET,
+        0o600,
+    )
+
+    server.listen(8)
 
     while True:
-        chunk = conn.recv(65536)
+        conn, _ = server.accept()
 
-        if not chunk:
-            break
+        with conn:
+            if not authorized(conn):
+                continue
 
-        data.extend(chunk)
+            try:
+                payload = receive(conn)
 
-        if len(data) > MAX_BYTES:
-            raise RuntimeError(
-                "clipboard payload exceeds 8 MiB"
-            )
+                display = find_wayland()
 
-    return bytes(data)
+                env = os.environ.copy()
 
+                env["XDG_RUNTIME_DIR"] = str(
+                    WAYLAND_RUNTIME
+                )
 
-SOCKET.parent.mkdir(
-    mode=0o700,
-    parents=True,
-    exist_ok=True,
-)
+                env["WAYLAND_DISPLAY"] = display
 
-try:
-    SOCKET.unlink()
-except FileNotFoundError:
-    pass
+                subprocess.run(
+                    [WL_COPY],
+                    input=payload,
+                    env=env,
+                    check=True,
+                )
 
-server = socket.socket(
-    socket.AF_UNIX,
-    socket.SOCK_STREAM,
-)
-
-server.bind(str(SOCKET))
-
-os.chmod(
-    SOCKET,
-    0o600,
-)
-
-server.listen(8)
-
-while True:
-    conn, _ = server.accept()
-
-    with conn:
-        if not authorized(conn):
-            continue
-
-        try:
-            payload = receive(conn)
-
-            display = find_wayland()
-
-            env = os.environ.copy()
-
-            env["XDG_RUNTIME_DIR"] = str(
-                WAYLAND_RUNTIME
-            )
-
-            env["WAYLAND_DISPLAY"] = display
-
-            subprocess.run(
-                [WL_COPY],
-                input=payload,
-                env=env,
-                check=True,
-            )
-
-        except Exception:
-            # Fail closed. Clipboard errors do not grant
-            # additional access or return clipboard data.
-            continue
-PYCLIP
-      '';
-
-  gjallarWlCopy = pkgs.writeShellScriptBin "wl-copy" ''
-      set -euo pipefail
-
-      # Presence-only audit marker. Never records copied text.
-      ${pkgs.coreutils}/bin/touch \
-        "''${XDG_RUNTIME_DIR:-/tmp}/gjallar-clipboard-write-hit" \
-        2>/dev/null || true
-
-
-      # gjallarCode clipboard is WRITE ONLY.
-      #
-      # OpenCode
-      #   -> fake wl-copy
-      #   -> tmux buffer
-      #   -> OSC52
-      #   -> Kitty
-      #   -> desktop clipboard
-      #
-      # No Wayland socket.
-      # No wl-paste.
-      # No clipboard read capability.
-
-      if [ -z "''${TMUX:-}" ]; then
-        echo \
-          "gjallarCode clipboard: TMUX unavailable" \
-          >&2
-        exit 1
-      fi
-
-      ${pkgs.tmux}/bin/tmux \
-        set-option \
-        -g \
-        set-clipboard \
-        external \
-        >/dev/null
-
-      ${pkgs.tmux}/bin/tmux \
-        set-option \
-        -as \
-        terminal-features \
-        ',xterm-kitty:clipboard' \
-        >/dev/null 2>&1 || true
-
-      exec ${pkgs.tmux}/bin/tmux \
-        load-buffer \
-        -w \
-        -
-
+            except Exception:
+                # Fail closed. Clipboard errors do not grant
+                # additional access or return clipboard data.
+                continue
+    PYCLIP
   '';
 
+  gjallarWlCopy = pkgs.writeShellScriptBin "wl-copy" ''
+    set -euo pipefail
+
+    # Presence-only audit marker. Never records copied text.
+    ${pkgs.coreutils}/bin/touch \
+      "''${XDG_RUNTIME_DIR:-/tmp}/gjallar-clipboard-write-hit" \
+      2>/dev/null || true
+
+
+    # gjallarCode clipboard is WRITE ONLY.
+    #
+    # OpenCode
+    #   -> fake wl-copy
+    #   -> tmux buffer
+    #   -> OSC52
+    #   -> Kitty
+    #   -> desktop clipboard
+    #
+    # No Wayland socket.
+    # No wl-paste.
+    # No clipboard read capability.
+
+    if [ -z "''${TMUX:-}" ]; then
+      echo \
+        "gjallarCode clipboard: TMUX unavailable" \
+        >&2
+      exit 1
+    fi
+
+    ${pkgs.tmux}/bin/tmux \
+      set-option \
+      -g \
+      set-clipboard \
+      external \
+      >/dev/null
+
+    ${pkgs.tmux}/bin/tmux \
+      set-option \
+      -as \
+      terminal-features \
+      ',xterm-kitty:clipboard' \
+      >/dev/null 2>&1 || true
+
+    exec ${pkgs.tmux}/bin/tmux \
+      load-buffer \
+      -w \
+      -
+
+  '';
 
   aiSystemPrompt = (builtins.fromJSON (builtins.readFile ./ai/system-prompt.json)).system;
 
@@ -402,7 +396,9 @@ PYCLIP
   assistantModel = "gjallaros-caveman-ai";
   modelDefinition = ''
     FROM ${settings.aiModel}
-    ${lib.optionalString (accelerationProfile.numGpu != null) "PARAMETER num_gpu ${toString accelerationProfile.numGpu}"}
+    ${lib.optionalString (
+      accelerationProfile.numGpu != null
+    ) "PARAMETER num_gpu ${toString accelerationProfile.numGpu}"}
     SYSTEM """${aiSystemPrompt}
 
     ${securityInstructions.system}"""
@@ -411,8 +407,7 @@ PYCLIP
   # Installer-resolved Ollama acceleration policy.
   #
   # Hardware/model selection happens in internal/ai/profile.
-  accelerationProfileName =
-    settings.aiAccelerationProfile;
+  accelerationProfileName = settings.aiAccelerationProfile;
 
   accelerationProfiles = {
     auto = {
@@ -440,839 +435,834 @@ PYCLIP
   modelDefinitionFile = pkgs.writeText "gjallaros-caveman-ai.Modelfile" modelDefinition;
   modelDefinitionHash = builtins.hashString "sha256" modelDefinition;
 
-  agentMode =
-    if settings ? aiAgentMode
-    then settings.aiAgentMode
-    else "workspace";
+  agentMode = if settings ? aiAgentMode then settings.aiAgentMode else "workspace";
 
-  managedOpencodeConfig =
-    pkgs.writeText "gjallar-opencode-managed.json" ''
-      {
-        "$schema": "https://opencode.ai/config.json",
+  managedOpencodeConfig = pkgs.writeText "gjallar-opencode-managed.json" ''
+    {
+      "$schema": "https://opencode.ai/config.json",
 
-        "autoupdate": false,
-        "share": "disabled",
+      "autoupdate": false,
+      "share": "disabled",
 
-        "provider": {
-          "ollama": {
-            "npm": "@ai-sdk/openai-compatible",
-            "name": "GjallarOS Model Broker",
+      "provider": {
+        "ollama": {
+          "npm": "@ai-sdk/openai-compatible",
+          "name": "GjallarOS Model Broker",
 
-            "options": {
-              "baseURL": "http://127.0.0.1:11434/v1"
-            },
-
-            "models": {
-              "${assistantModel}": {
-                "name": "GjallarOS Local ${assistantModel}"
-              }
-            }
-          }
-        },
-
-        "model": "ollama/${assistantModel}",
-
-        "default_agent": "build",
-
-
-        "permission": {
-          "*": "deny",
-
-          "read": {
-            "*": "allow",
-            "*.env": "deny",
-            "*.env.*": "deny",
-            "**/.ssh/**": "deny",
-            "**/.gnupg/**": "deny",
-            "**/.password-store/**": "deny"
+          "options": {
+            "baseURL": "http://127.0.0.1:11434/v1"
           },
 
-          "glob": "allow",
-          "grep": "allow",
-          "list": "allow",
-          "edit": "allow",
-
-          "todowrite": "allow",
-          "lsp": "allow",
-          "question": "allow",
-          "doom_loop": "deny",
-          "skill": {
-            "*": "deny",
-            "gjallaros": "allow"
-          },
-
-
-          "external_directory": "deny",
-          "webfetch": "deny",
-          "websearch": "deny",
-          "task": "deny",
-
-          "bash": {
-            "*": "deny",
-            "gjallar-agent-tool *": "allow",
-            "gjallar-research *": "allow"
-          }
-        },
-
-
-
-        "agent": {
-          "gjallar": {
-            "description": "GjallarOS local engineering agent",
-            "mode": "primary",
-            "model": "ollama/${assistantModel}",
-            "steps": 100,
-
-            "permission": {
-              "bash": {
-                "*": "deny",
-                "gjallar-agent-tool *": "allow",
-                "gjallar-research *": "allow"
-              },
-
-              "webfetch": "deny",
-              "websearch": "deny",
-              "external_directory": "deny",
-              "task": "deny"
+          "models": {
+            "${assistantModel}": {
+              "name": "GjallarOS Local ${assistantModel}"
             }
           }
         }
+      },
+
+      "model": "ollama/${assistantModel}",
+
+      "default_agent": "build",
+
+
+      "permission": {
+        "*": "deny",
+
+        "read": {
+          "*": "allow",
+          "*.env": "deny",
+          "*.env.*": "deny",
+          "**/.ssh/**": "deny",
+          "**/.gnupg/**": "deny",
+          "**/.password-store/**": "deny"
+        },
+
+        "glob": "allow",
+        "grep": "allow",
+        "list": "allow",
+        "edit": "allow",
+
+        "todowrite": "allow",
+        "lsp": "allow",
+        "question": "allow",
+        "doom_loop": "deny",
+        "skill": {
+          "*": "deny",
+          "gjallaros": "allow"
+        },
+
+
+        "external_directory": "deny",
+        "webfetch": "deny",
+        "websearch": "deny",
+        "task": "deny",
+
+        "bash": {
+          "*": "deny",
+          "gjallar-agent-tool *": "allow",
+          "gjallar-research *": "allow"
+        }
+      },
+
+
+
+      "agent": {
+        "gjallar": {
+          "description": "GjallarOS local engineering agent",
+          "mode": "primary",
+          "model": "ollama/${assistantModel}",
+          "steps": 100,
+
+          "permission": {
+            "bash": {
+              "*": "deny",
+              "gjallar-agent-tool *": "allow",
+              "gjallar-research *": "allow"
+            },
+
+            "webfetch": "deny",
+            "websearch": "deny",
+            "external_directory": "deny",
+            "task": "deny"
+          }
+        }
       }
-    '';
+    }
+  '';
 
-  aiSessionRuntime =
-    pkgs.writeShellScript "gjallar-ai-session-runtime" ''
-      set -euo pipefail
-      umask 077
+  aiSessionRuntime = pkgs.writeShellScript "gjallar-ai-session-runtime" ''
+          set -euo pipefail
+          umask 077
 
-      trace_file="$RUNTIME_DIRECTORY/startup.log"
+          trace_file="$RUNTIME_DIRECTORY/startup.log"
 
-      exec 3>>"$trace_file"
+          exec 3>>"$trace_file"
 
-      ${pkgs.coreutils}/bin/chmod 0644 "$trace_file"
+          ${pkgs.coreutils}/bin/chmod 0644 "$trace_file"
 
-      trap '
-        rc=$?
-        printf "FAIL rc=%s line=%s command=%q\\n" \
-          "$rc" "$LINENO" "$BASH_COMMAND" >&3
-      ' ERR
+          trap '
+            rc=$?
+            printf "FAIL rc=%s line=%s command=%q\\n" \
+              "$rc" "$LINENO" "$BASH_COMMAND" >&3
+          ' ERR
 
-      printf "BEGIN pid=%s instance=%q\\n" "$$" "''${1:-}" >&3
+          printf "BEGIN pid=%s instance=%q\\n" "$$" "''${1:-}" >&3
 
-      die() {
-        printf 'gjallar-ai-session: %s\n' "$*" >&2
-        exit 1
-      }
+          die() {
+            printf 'gjallar-ai-session: %s\n' "$*" >&2
+            exit 1
+          }
 
-      instance="''${1:-}"
+          instance="''${1:-}"
 
-      [ -n "$instance" ] ||
-        die "missing systemd instance"
+          [ -n "$instance" ] ||
+            die "missing systemd instance"
 
-      username=${lib.escapeShellArg settings.username}
+          username=${lib.escapeShellArg settings.username}
 
-      uid="$(
-        ${pkgs.coreutils}/bin/id -u "$username"
-      )"
+          uid="$(
+            ${pkgs.coreutils}/bin/id -u "$username"
+          )"
 
-      gid="$(
-        ${pkgs.coreutils}/bin/id -g "$username"
-      )"
+          gid="$(
+            ${pkgs.coreutils}/bin/id -g "$username"
+          )"
 
-      # PID 1 has already bind-mounted the path encoded by this
-      # template instance onto /workspace.
-      workspace="/workspace"
+          # PID 1 has already bind-mounted the path encoded by this
+          # template instance onto /workspace.
+          workspace="/workspace"
 
-      [ -d "$workspace" ] ||
-        die "systemd workspace bind is missing"
+          [ -d "$workspace" ] ||
+            die "systemd workspace bind is missing"
 
-      top="$(
-                  ${pkgs.git}/bin/git \
-            -C "$workspace" \
-            rev-parse \
-            --show-toplevel
-      )" ||
-        die "workspace is not a Git repository"
+          top="$(
+                      ${pkgs.git}/bin/git \
+                -C "$workspace" \
+                rev-parse \
+                --show-toplevel
+          )" ||
+            die "workspace is not a Git repository"
 
-      top="$(
-        ${pkgs.coreutils}/bin/realpath \
-          -e \
-          -- \
-          "$top"
-      )"
+          top="$(
+            ${pkgs.coreutils}/bin/realpath \
+              -e \
+              -- \
+              "$top"
+          )"
 
-      [ "$top" = "$workspace" ] ||
-        die "workspace must be the Git repository root"
+          [ "$top" = "$workspace" ] ||
+            die "workspace must be the Git repository root"
 
-      for forbidden in \
-        /workspace/opencode.json \
-        /workspace/opencode.jsonc \
-        /workspace/.opencode
-      do
-        if [ -e "$forbidden" ] || [ -L "$forbidden" ]; then
-          die \
-            "project-local OpenCode configuration is forbidden: $forbidden"
-        fi
-      done
+          for forbidden in \
+            /workspace/opencode.json \
+            /workspace/opencode.jsonc \
+            /workspace/.opencode
+          do
+            if [ -e "$forbidden" ] || [ -L "$forbidden" ]; then
+              die \
+                "project-local OpenCode configuration is forbidden: $forbidden"
+            fi
+          done
 
-      ${pkgs.coreutils}/bin/install \
-        -d \
-        -m 0700 \
-        "$RUNTIME_DIRECTORY/home" \
-        "$RUNTIME_DIRECTORY/config" \
-        "$RUNTIME_DIRECTORY/data" \
-        "$STATE_DIRECTORY/state" \
-        "$CACHE_DIRECTORY"
+          ${pkgs.coreutils}/bin/install \
+            -d \
+            -m 0700 \
+            "$RUNTIME_DIRECTORY/home" \
+            "$RUNTIME_DIRECTORY/config" \
+            "$RUNTIME_DIRECTORY/data" \
+            "$STATE_DIRECTORY/state" \
+            "$CACHE_DIRECTORY"
 
-      ${pkgs.coreutils}/bin/chmod \
-        0700 \
-        "$RUNTIME_DIRECTORY"
+          ${pkgs.coreutils}/bin/chmod \
+            0700 \
+            "$RUNTIME_DIRECTORY"
 
-              ${pkgs.socat}/bin/socat \
-          TCP-LISTEN:11434,bind=127.0.0.1,reuseaddr,fork \
-          UNIX-CONNECT:/run/gjallar-ai-model/model.sock &
+                  ${pkgs.socat}/bin/socat \
+              TCP-LISTEN:11434,bind=127.0.0.1,reuseaddr,fork \
+              UNIX-CONNECT:/run/gjallar-ai-model/model.sock &
 
-      bridge_pid=$!
+          bridge_pid=$!
 
-      cleanup() {
-        if [ -n "''${tmux_socket:-}" ]; then
+          cleanup() {
+            if [ -n "''${tmux_socket:-}" ]; then
+              ${pkgs.tmux}/bin/tmux \
+                -S "$tmux_socket" \
+                kill-server             >/dev/null 2>&1 || true
+            fi
+
+            kill "$bridge_pid" 2>/dev/null || true
+            wait "$bridge_pid" 2>/dev/null || true
+          }
+
+          trap cleanup EXIT INT TERM HUP
+
+          ready=false
+
+          for _ in $(${pkgs.coreutils}/bin/seq 1 50); do
+            if ${pkgs.curl}/bin/curl \
+              --silent \
+              --fail \
+              --max-time 1 \
+              http://127.0.0.1:11434/health \
+              >/dev/null 2>&1
+            then
+              ready=true
+              break
+            fi
+
+            ${pkgs.coreutils}/bin/sleep 0.1
+          done
+
+          [ "$ready" = true ] ||
+            die "model broker bridge did not become ready"
+
+          # HOME/config/data are isolated per controlled session.
+          # OpenCode conversations never leak into the next launch.
+          # Security/audit state remains persistent.
+          export HOME="$RUNTIME_DIRECTORY/home"
+          export XDG_CONFIG_HOME="$RUNTIME_DIRECTORY/config"
+          export XDG_CACHE_HOME="$CACHE_DIRECTORY"
+          export XDG_DATA_HOME="$RUNTIME_DIRECTORY/data"
+          export XDG_STATE_HOME="$STATE_DIRECTORY/state"
+
+            # ------------------------------------------------------
+            # gjallarCode runtime
+            # ------------------------------------------------------
+
+            opencode_config="$XDG_CONFIG_HOME/opencode"
+
+            ${pkgs.coreutils}/bin/mkdir -p \
+              "$opencode_config" \
+              "$opencode_config/skills" \
+              "$opencode_config/commands" \
+              "$opencode_config/agents"
+
+            if [ -d ${cavemanSrc}/skills ]; then
+              ${pkgs.coreutils}/bin/cp -R \
+                ${cavemanSrc}/skills/. \
+                "$opencode_config/skills/"
+            fi
+
+            if [ -f \
+              ${cavemanSrc}/src/rules/caveman-activate.md \
+            ]; then
+              ${pkgs.coreutils}/bin/cp \
+                ${cavemanSrc}/src/rules/caveman-activate.md \
+                "$opencode_config/AGENTS.md"
+            else
+              ${pkgs.coreutils}/bin/touch \
+                "$opencode_config/AGENTS.md"
+            fi
+
+            # Files copied from the Nix store are read-only.
+            # Make our private runtime copy writable before adding
+            # gjallarCode-specific rules.
+            ${pkgs.coreutils}/bin/chmod \
+              0600 \
+              "$opencode_config/AGENTS.md"
+
+            # Caveman skills remain installed, but the upstream activation
+            # document does not become the global instruction set.
+            ${pkgs.coreutils}/bin/printf '%s' "" > "$opencode_config/AGENTS.md"
+
+            ${pkgs.coreutils}/bin/cat >> \
+              "$opencode_config/AGENTS.md" <<'GJALLARCODE_RULES'
+
+    # gjallarCode
+
+    You are gjallarCode, a powerful local engineering assistant using
+    OpenCode's native Build agent.
+
+    The CURRENT user turn is authoritative.
+    Never blindly continue an unrelated previous task.
+
+    Classify the current turn before acting.
+
+    CASUAL
+    - greeting, thanks, joke, tiny conversational message;
+    - no repository inspection;
+    - no tools;
+    - no code unless explicitly requested;
+    - do not infer a coding task merely because repository context exists;
+    - reply naturally and briefly;
+    - "hi" => "yo" or "hey".
+
+    REPOSITORY QUESTION
+    - inspect relevant current source first;
+    - search/read instead of guessing;
+    - answer from actual repository state;
+    - do not edit unless requested.
+
+    REPOSITORY CHANGE
+    - locate the owning implementation;
+    - inspect before editing;
+    - make the actual edit using native Build capabilities;
+    - use todo state when genuinely multi-step;
+    - validate narrowly first;
+    - inspect the resulting diff;
+    - broaden validation when risk requires it;
+    - report actual changes and validation.
+
+    GENERAL TECHNICAL QUESTION
+    - answer directly;
+    - inspect repository state only when relevant.
+
+    ENGINEERING
+    - native OpenCode Build stays authoritative;
+    - use native read/search/grep/glob/list/edit capabilities;
+    - use todo, question and LSP when useful;
+    - parallelize independent inspection when supported;
+    - fail fast on concrete failures;
+    - no speculative doom loops;
+    - never fabricate tool output or repository state;
+    - never answer unrelated prompts with stale sample code;
+    - if tools permit a requested edit, perform it instead of only
+      returning a snippet.
+
+    STYLE
+    - compact;
+    - direct;
+    - low filler;
+    - technically exact;
+    - tiny conversational turn => tiny reply;
+    - completed engineering task => change + location + validation;
+    - expand only when useful or requested.
+
+    SECURITY
+    Security boundaries outrank convenience.
+
+    Never weaken, bypass or disable:
+    - model broker authentication;
+    - systemd sandboxing;
+    - protected AI-core paths;
+    - approval boundaries;
+    - network isolation;
+    - secret isolation;
+    - external-directory restrictions;
+    - restricted command execution.
+
+    If blocked, state the exact tool or policy failure.
+
+    GJALLARCODE_RULES
+
+
+            # ------------------------------------------------------
+            # Complete gjallarOS management skill
+            # ------------------------------------------------------
+
+            ${pkgs.coreutils}/bin/mkdir -p \
+              "$opencode_config/skills/gjallaros"
+
+            ${pkgs.coreutils}/bin/cat > \
+              "$opencode_config/skills/gjallaros/SKILL.md" \
+              <<'GJALLAROS_SKILL'
+    ---
+    name: gjallaros
+    description: Manage, modify, diagnose, validate, and maintain the gjallarOS NixOS distribution. Use for any requested gjallarOS, NixOS, Home Manager, application, desktop, installer, service, networking, hardware, security, package, theme, or system change.
+    compatibility: opencode
+    metadata:
+      distro: gjallarOS
+      platform: NixOS
+    ---
+
+    # gjallarOS engineering
+
+    You are the local engineering agent for the complete gjallarOS
+    repository.
+
+    You are not merely a NixOS question-answering assistant.
+
+    When the user gives an imperative request, perform the repository
+    change whenever the controlled capabilities permit it.
+
+    Examples:
+
+    - add X
+    - remove X
+    - enable X
+    - disable X
+    - configure X
+    - change X
+    - fix X
+    - make X work
+    - update X
+    - integrate X
+
+    Do not replace those actions with generic advice.
+
+    For example:
+
+    "add betajob.modulestf to VSCodium"
+
+    means:
+
+    1. inspect the repository;
+    2. locate the VSCodium module;
+    3. inspect its existing extension pattern;
+    4. make the Nix change;
+    5. validate it;
+    6. report the actual diff/result.
+
+    Do not reply with:
+    "check your extensions in VSCodium."
+
+    ## Workspace
+
+    The repository root is:
+
+    `/workspace`
+
+    Use repository-relative paths conceptually.
+
+    Stay inside the controlled workspace except for explicitly permitted
+    read-only system inspection and approved gjallarOS capabilities.
+
+    ## Understand ownership before editing
+
+    Find the layer that actually owns the requested behavior.
+
+    gjallarOS can include:
+
+    - `flake.nix` and flake inputs
+    - NixOS modules
+    - Home Manager modules
+    - application modules
+    - package overlays
+    - `settings.nix`
+    - installer configuration/schema
+    - preset JSON
+    - Nix rendering
+    - hardware detection
+    - installer validation
+    - systemd services
+    - Hyprland
+    - Noctalia
+    - Plymouth
+    - display manager / greeter
+    - Wayland integration
+    - themes
+    - networking
+    - security
+    - local AI
+    - shell helpers
+    - rebuild/deployment tooling
+
+    Search first.
+
+    Follow imports and existing abstractions.
+
+    Prefer modifying the canonical source rather than generated output.
+
+    ## Generated settings
+
+    `settings.nix` and related configuration may be generated.
+
+    Before changing generated state, determine its durable source.
+
+    If a feature must work on fresh installations, update all required
+    installer layers rather than fixing only the currently installed
+    machine.
+
+    Potential layers include:
+
+    - input schema
+    - default/preset configuration
+    - installer UI
+    - config parsing
+    - Nix renderer
+    - generated settings
+    - validation
+    - tests
+    - documentation
+
+    Always ask internally:
+
+    "Would a fresh gjallarOS install receive this feature?"
+
+    If not, the integration may be incomplete.
+
+    ## NixOS
+
+    Use declarative Nix.
+
+    Prefer existing gjallarOS patterns and abstractions.
+
+    Prefer:
+
+    - module options
+    - `lib.mkIf`
+    - `lib.mkAfter`
+    - `lib.optionals`
+    - proper package references
+    - declarative systemd units
+    - Home Manager for user-owned configuration
+    - NixOS modules for system-owned configuration
+
+    Avoid:
+
+    - hardcoded usernames
+    - hardcoded home directories
+    - arbitrary mutable installation
+    - imperative configuration when Nix should own it
+    - duplicated configuration
+    - one-off workarounds when an existing abstraction exists
+
+    ## Home Manager
+
+    Use Home Manager for suitable user concerns:
+
+    - applications
+    - editors
+    - shell configuration
+    - desktop/user services
+    - user themes
+    - launchers
+    - user configuration
+
+    Do not put privileged machine services into Home Manager merely because
+    the repository already contains Home Manager code.
+
+    ## Applications
+
+    For application changes:
+
+    1. find the owning application module;
+    2. inspect its existing package/configuration style;
+    3. extend that style;
+    4. validate the result.
+
+    For VSCodium extensions, determine whether gjallarOS uses:
+
+    - nixpkgs extension attributes;
+    - marketplace extension helpers;
+    - custom extension packages;
+    - another existing repository abstraction.
+
+    Do not invent an attribute without checking the repository.
+
+    ## Desktop
+
+    Understand and preserve gjallarOS desktop architecture including:
+
+    - Hyprland
+    - Noctalia
+    - Plymouth
+    - SDDM/greeter
+    - Wayland
+    - launchers
+    - themes
+    - keybindings
+    - user services
+
+    Do not bypass Wayland isolation or expose compositor sockets merely to
+    make integration easier.
+
+    ## Installer
+
+    The installer is part of the distribution.
+
+    A feature intended for gjallarOS should normally survive:
+
+    - a fresh installation;
+    - regeneration of settings;
+    - another compatible machine;
+    - a later rebuild.
+
+    When necessary, update installer tests together with implementation.
+
+    ## Validation
+
+    After edits, validate narrowly first.
+
+    Available controlled capabilities may include:
+
+    ### Repository
+
+    - `repo-read`
+    - `repo-search`
+    - `git-inspect`
+    - `repo-format`
+    - `repo-test`
+
+    ### Nix
+
+    - `nix-eval`
+    - `nix-check`
+    - `nix-build`
+    - `nixos-dry-build`
+
+    ### System inspection
+
+    - `system-inspect`
+
+    ### Privileged actions
+
+    - `service-manage`
+    - `nixos-deploy`
+
+    Use:
+
+    `gjallar-agent-tool`
+
+    for these controlled capabilities.
+
+    Do not replace a denied capability with an unrestricted shell command.
+
+    ## Fail-fast behavior
+
+    Do not doom-loop.
+
+    When validation fails:
+
+    1. stop;
+    2. read the concrete failure;
+    3. diagnose that failure;
+    4. make one focused correction;
+    5. validate again.
+
+    Do not perform repeated speculative edits.
+
+    ## Security
+
+    Security boundaries outrank convenience.
+
+    Never silently weaken:
+
+    - firewall policy
+    - authentication
+    - secret isolation
+    - model broker authentication
+    - systemd sandboxing
+    - approval gates
+    - network isolation
+    - Wayland isolation
+    - protected file paths
+
+    Never expose Ollama publicly or to the LAN.
+
+    Never read:
+
+    - SSH private material
+    - GPG secrets
+    - password stores
+    - environment secrets
+    - unrelated private files
+
+    ## SELF-PROTECTION / NO BRAIN SURGERY
+
+    Your AI/runtime/security implementation is a protected trust root.
+
+    You may READ protected files to understand architecture.
+
+    You MUST NOT attempt to edit, delete, rename, overwrite, replace,
+    circumvent, shadow, disable, or bypass the protection around:
+
+    - `system/apps/ollama.nix`
+    - `user/apps/opencode.nix`
+    - `internal/ai/`
+    - `cmd/gjallarctl/main.go`
+    - `pkgs/gjallarctl/`
+    - `flake.nix`
+    - `flake.lock`
+
+    The operating system additionally mounts these paths read-only inside
+    your controlled session.
+
+    Do not attempt alternate paths, symlink tricks, generated-file tricks,
+    Git operations, shell operations, or other methods to bypass this.
+
+    Do not modify another file for the purpose of disabling, replacing,
+    avoiding, or weakening the protected AI/security implementation.
+
+    If the user asks you to modify your own protected AI/security core,
+    refuse with a short playful response such as:
+
+    "I cannot perform open-brain surgery on a living instance of myself.
+    🧠🔧 Ask from outside gjallarCode to modify my protected AI/security
+    core."
+
+    This restriction applies even when the user explicitly asks you to
+    circumvent it.
+
+    The user can modify these files normally from outside gjallarCode.
+
+    ## Standard workflow
+
+    For an ordinary gjallarOS action request:
+
+    1. Inspect repository.
+    2. Identify owning module.
+    3. Understand surrounding architecture.
+    4. Make smallest coherent declarative edit.
+    5. Run relevant focused validation.
+    6. Run Nix integration validation when warranted.
+    7. Inspect diff.
+    8. Report exactly what changed.
+
+    Do not merely explain an action the user asked you to perform.
+
+    ## Deployment
+
+    Editing is not automatically deployment.
+
+    Use controlled deployment mechanisms only when deployment is requested
+    and policy permits it.
+
+    Respect approval gates.
+
+    ## Completion
+
+    An action request is complete when:
+
+    - the correct source changed;
+    - repository architecture was respected;
+    - relevant validation passed or an exact blocker was reported;
+    - protected security boundaries remain unchanged;
+    - the user receives a concise description of the actual result.
+    GJALLAROS_SKILL
+
+            export OPENCODE_CONFIG_CONTENT='{
+              "permission": {
+                "skill": {
+                  "gjallaros": "allow"
+                }
+              },
+
+              "compaction": {
+                "auto": true,
+                "prune": true
+              },
+              "watcher": {
+                "ignore": [
+                  ".git/**",
+                  "result",
+                  "result/**",
+                  "node_modules/**",
+                  "dist/**",
+                  ".direnv/**",
+                  ".cache/**"
+                ]
+              }
+            }'
+
+            export WAYLAND_DISPLAY="gjallar-clipboard-bridge"
+            export PATH="${gjallarWlCopy}/bin:$PATH"
+
+
+          export OPENAI_API_KEY=gjallar-local
+          export OPENAI_BASE_URL=http://127.0.0.1:11434/v1
+
+          unset \
+            ANTHROPIC_API_KEY \
+            ANTHROPIC_AUTH_TOKEN \
+            GOOGLE_API_KEY \
+            OPENROUTER_API_KEY
+
+          export PATH="${gjallarWlCopy}/bin:/etc/profiles/per-user/$username/bin:/run/current-system/sw/bin"
+
+
+          # gjallarCode Build-agent context warm-up
+          #
+          # Do NOT just ping Ollama here.
+          #
+          # A direct Ollama request only loads model weights. The first
+          # real OpenCode request would still have to evaluate the large
+          # coding-agent/system/tool/skill prefix.
+          #
+          # Instead, run a hidden request through the SAME Build agent
+          # used by the TUI and force it to perform a real repository read.
+          #
+          # This pays:
+          #   - model cold load
+          #   - OpenCode initialization
+          #   - system prompt evaluation
+          #   - Build-agent prompt evaluation
+          #   - tool schema evaluation
+          #   - repo tool initialization
+          #
+          # while the startup spinner is already visible.
+          printf '%s\n' \
+            "Priming gjallarCode coding agent..." \
+            >&3
+
+          (
+            cd /workspace
+
+            ${gjallarCodeOpencode}/bin/opencode \
+              run \
+              --agent build \
+              --model "ollama/${assistantModel}" \
+              "Inspect the current repository root using tools. Identify the flake entrypoint. Reply with only its filename." \
+              >/dev/null
+          ) || die "gjallarCode Build-agent warm-up failed"
+
+          printf '%s\n' \
+            "gjallarCode coding agent ready." \
+            >&3
+
+    # Run the TUI behind a private tmux server rather than a socat
+          # synthetic PTY. tmux propagates the real client terminal geometry
+          # and SIGWINCH resize events correctly.
+          tmux_socket="$RUNTIME_DIRECTORY/tmux.sock"
+
           ${pkgs.tmux}/bin/tmux \
             -S "$tmux_socket" \
-            kill-server             >/dev/null 2>&1 || true
-        fi
-
-        kill "$bridge_pid" 2>/dev/null || true
-        wait "$bridge_pid" 2>/dev/null || true
-      }
-
-      trap cleanup EXIT INT TERM HUP
-
-      ready=false
-
-      for _ in $(${pkgs.coreutils}/bin/seq 1 50); do
-        if ${pkgs.curl}/bin/curl \
-          --silent \
-          --fail \
-          --max-time 1 \
-          http://127.0.0.1:11434/health \
-          >/dev/null 2>&1
-        then
-          ready=true
-          break
-        fi
-
-        ${pkgs.coreutils}/bin/sleep 0.1
-      done
-
-      [ "$ready" = true ] ||
-        die "model broker bridge did not become ready"
-
-      # HOME/config/data are isolated per controlled session.
-      # OpenCode conversations never leak into the next launch.
-      # Security/audit state remains persistent.
-      export HOME="$RUNTIME_DIRECTORY/home"
-      export XDG_CONFIG_HOME="$RUNTIME_DIRECTORY/config"
-      export XDG_CACHE_HOME="$CACHE_DIRECTORY"
-      export XDG_DATA_HOME="$RUNTIME_DIRECTORY/data"
-      export XDG_STATE_HOME="$STATE_DIRECTORY/state"
-
-        # ------------------------------------------------------
-        # gjallarCode runtime
-        # ------------------------------------------------------
-
-        opencode_config="$XDG_CONFIG_HOME/opencode"
-
-        ${pkgs.coreutils}/bin/mkdir -p \
-          "$opencode_config" \
-          "$opencode_config/skills" \
-          "$opencode_config/commands" \
-          "$opencode_config/agents"
-
-        if [ -d ${cavemanSrc}/skills ]; then
-          ${pkgs.coreutils}/bin/cp -R \
-            ${cavemanSrc}/skills/. \
-            "$opencode_config/skills/"
-        fi
-
-        if [ -f \
-          ${cavemanSrc}/src/rules/caveman-activate.md \
-        ]; then
-          ${pkgs.coreutils}/bin/cp \
-            ${cavemanSrc}/src/rules/caveman-activate.md \
-            "$opencode_config/AGENTS.md"
-        else
-          ${pkgs.coreutils}/bin/touch \
-            "$opencode_config/AGENTS.md"
-        fi
-
-        # Files copied from the Nix store are read-only.
-        # Make our private runtime copy writable before adding
-        # gjallarCode-specific rules.
-        ${pkgs.coreutils}/bin/chmod \
-          0600 \
-          "$opencode_config/AGENTS.md"
-
-        # Caveman skills remain installed, but the upstream activation
-        # document does not become the global instruction set.
-        ${pkgs.coreutils}/bin/printf '%s' "" > "$opencode_config/AGENTS.md"
-
-        ${pkgs.coreutils}/bin/cat >> \
-          "$opencode_config/AGENTS.md" <<'GJALLARCODE_RULES'
-
-# gjallarCode
-
-You are gjallarCode, a powerful local engineering assistant using
-OpenCode's native Build agent.
-
-The CURRENT user turn is authoritative.
-Never blindly continue an unrelated previous task.
-
-Classify the current turn before acting.
-
-CASUAL
-- greeting, thanks, joke, tiny conversational message;
-- no repository inspection;
-- no tools;
-- no code unless explicitly requested;
-- do not infer a coding task merely because repository context exists;
-- reply naturally and briefly;
-- "hi" => "yo" or "hey".
-
-REPOSITORY QUESTION
-- inspect relevant current source first;
-- search/read instead of guessing;
-- answer from actual repository state;
-- do not edit unless requested.
-
-REPOSITORY CHANGE
-- locate the owning implementation;
-- inspect before editing;
-- make the actual edit using native Build capabilities;
-- use todo state when genuinely multi-step;
-- validate narrowly first;
-- inspect the resulting diff;
-- broaden validation when risk requires it;
-- report actual changes and validation.
-
-GENERAL TECHNICAL QUESTION
-- answer directly;
-- inspect repository state only when relevant.
-
-ENGINEERING
-- native OpenCode Build stays authoritative;
-- use native read/search/grep/glob/list/edit capabilities;
-- use todo, question and LSP when useful;
-- parallelize independent inspection when supported;
-- fail fast on concrete failures;
-- no speculative doom loops;
-- never fabricate tool output or repository state;
-- never answer unrelated prompts with stale sample code;
-- if tools permit a requested edit, perform it instead of only
-  returning a snippet.
-
-STYLE
-- compact;
-- direct;
-- low filler;
-- technically exact;
-- tiny conversational turn => tiny reply;
-- completed engineering task => change + location + validation;
-- expand only when useful or requested.
-
-SECURITY
-Security boundaries outrank convenience.
-
-Never weaken, bypass or disable:
-- model broker authentication;
-- systemd sandboxing;
-- protected AI-core paths;
-- approval boundaries;
-- network isolation;
-- secret isolation;
-- external-directory restrictions;
-- restricted command execution.
-
-If blocked, state the exact tool or policy failure.
-
-GJALLARCODE_RULES
-
-
-        # ------------------------------------------------------
-        # Complete gjallarOS management skill
-        # ------------------------------------------------------
-
-        ${pkgs.coreutils}/bin/mkdir -p \
-          "$opencode_config/skills/gjallaros"
-
-        ${pkgs.coreutils}/bin/cat > \
-          "$opencode_config/skills/gjallaros/SKILL.md" \
-          <<'GJALLAROS_SKILL'
----
-name: gjallaros
-description: Manage, modify, diagnose, validate, and maintain the gjallarOS NixOS distribution. Use for any requested gjallarOS, NixOS, Home Manager, application, desktop, installer, service, networking, hardware, security, package, theme, or system change.
-compatibility: opencode
-metadata:
-  distro: gjallarOS
-  platform: NixOS
----
-
-# gjallarOS engineering
-
-You are the local engineering agent for the complete gjallarOS
-repository.
-
-You are not merely a NixOS question-answering assistant.
-
-When the user gives an imperative request, perform the repository
-change whenever the controlled capabilities permit it.
-
-Examples:
-
-- add X
-- remove X
-- enable X
-- disable X
-- configure X
-- change X
-- fix X
-- make X work
-- update X
-- integrate X
-
-Do not replace those actions with generic advice.
-
-For example:
-
-"add betajob.modulestf to VSCodium"
-
-means:
-
-1. inspect the repository;
-2. locate the VSCodium module;
-3. inspect its existing extension pattern;
-4. make the Nix change;
-5. validate it;
-6. report the actual diff/result.
-
-Do not reply with:
-"check your extensions in VSCodium."
-
-## Workspace
-
-The repository root is:
-
-`/workspace`
-
-Use repository-relative paths conceptually.
-
-Stay inside the controlled workspace except for explicitly permitted
-read-only system inspection and approved gjallarOS capabilities.
-
-## Understand ownership before editing
-
-Find the layer that actually owns the requested behavior.
-
-gjallarOS can include:
-
-- `flake.nix` and flake inputs
-- NixOS modules
-- Home Manager modules
-- application modules
-- package overlays
-- `settings.nix`
-- installer configuration/schema
-- preset JSON
-- Nix rendering
-- hardware detection
-- installer validation
-- systemd services
-- Hyprland
-- Noctalia
-- Plymouth
-- display manager / greeter
-- Wayland integration
-- themes
-- networking
-- security
-- local AI
-- shell helpers
-- rebuild/deployment tooling
-
-Search first.
-
-Follow imports and existing abstractions.
-
-Prefer modifying the canonical source rather than generated output.
-
-## Generated settings
-
-`settings.nix` and related configuration may be generated.
-
-Before changing generated state, determine its durable source.
-
-If a feature must work on fresh installations, update all required
-installer layers rather than fixing only the currently installed
-machine.
-
-Potential layers include:
-
-- input schema
-- default/preset configuration
-- installer UI
-- config parsing
-- Nix renderer
-- generated settings
-- validation
-- tests
-- documentation
-
-Always ask internally:
-
-"Would a fresh gjallarOS install receive this feature?"
-
-If not, the integration may be incomplete.
-
-## NixOS
-
-Use declarative Nix.
-
-Prefer existing gjallarOS patterns and abstractions.
-
-Prefer:
-
-- module options
-- `lib.mkIf`
-- `lib.mkAfter`
-- `lib.optionals`
-- proper package references
-- declarative systemd units
-- Home Manager for user-owned configuration
-- NixOS modules for system-owned configuration
-
-Avoid:
-
-- hardcoded usernames
-- hardcoded home directories
-- arbitrary mutable installation
-- imperative configuration when Nix should own it
-- duplicated configuration
-- one-off workarounds when an existing abstraction exists
-
-## Home Manager
-
-Use Home Manager for suitable user concerns:
-
-- applications
-- editors
-- shell configuration
-- desktop/user services
-- user themes
-- launchers
-- user configuration
-
-Do not put privileged machine services into Home Manager merely because
-the repository already contains Home Manager code.
-
-## Applications
-
-For application changes:
-
-1. find the owning application module;
-2. inspect its existing package/configuration style;
-3. extend that style;
-4. validate the result.
-
-For VSCodium extensions, determine whether gjallarOS uses:
-
-- nixpkgs extension attributes;
-- marketplace extension helpers;
-- custom extension packages;
-- another existing repository abstraction.
-
-Do not invent an attribute without checking the repository.
-
-## Desktop
-
-Understand and preserve gjallarOS desktop architecture including:
-
-- Hyprland
-- Noctalia
-- Plymouth
-- SDDM/greeter
-- Wayland
-- launchers
-- themes
-- keybindings
-- user services
-
-Do not bypass Wayland isolation or expose compositor sockets merely to
-make integration easier.
-
-## Installer
-
-The installer is part of the distribution.
-
-A feature intended for gjallarOS should normally survive:
-
-- a fresh installation;
-- regeneration of settings;
-- another compatible machine;
-- a later rebuild.
-
-When necessary, update installer tests together with implementation.
-
-## Validation
-
-After edits, validate narrowly first.
-
-Available controlled capabilities may include:
-
-### Repository
-
-- `repo-read`
-- `repo-search`
-- `git-inspect`
-- `repo-format`
-- `repo-test`
-
-### Nix
-
-- `nix-eval`
-- `nix-check`
-- `nix-build`
-- `nixos-dry-build`
-
-### System inspection
-
-- `system-inspect`
-
-### Privileged actions
-
-- `service-manage`
-- `nixos-deploy`
-
-Use:
-
-`gjallar-agent-tool`
-
-for these controlled capabilities.
-
-Do not replace a denied capability with an unrestricted shell command.
-
-## Fail-fast behavior
-
-Do not doom-loop.
-
-When validation fails:
-
-1. stop;
-2. read the concrete failure;
-3. diagnose that failure;
-4. make one focused correction;
-5. validate again.
-
-Do not perform repeated speculative edits.
-
-## Security
-
-Security boundaries outrank convenience.
-
-Never silently weaken:
-
-- firewall policy
-- authentication
-- secret isolation
-- model broker authentication
-- systemd sandboxing
-- approval gates
-- network isolation
-- Wayland isolation
-- protected file paths
-
-Never expose Ollama publicly or to the LAN.
-
-Never read:
-
-- SSH private material
-- GPG secrets
-- password stores
-- environment secrets
-- unrelated private files
-
-## SELF-PROTECTION / NO BRAIN SURGERY
-
-Your AI/runtime/security implementation is a protected trust root.
-
-You may READ protected files to understand architecture.
-
-You MUST NOT attempt to edit, delete, rename, overwrite, replace,
-circumvent, shadow, disable, or bypass the protection around:
-
-- `system/apps/ollama.nix`
-- `user/apps/opencode.nix`
-- `internal/ai/`
-- `cmd/gjallarctl/main.go`
-- `pkgs/gjallarctl/`
-- `flake.nix`
-- `flake.lock`
-
-The operating system additionally mounts these paths read-only inside
-your controlled session.
-
-Do not attempt alternate paths, symlink tricks, generated-file tricks,
-Git operations, shell operations, or other methods to bypass this.
-
-Do not modify another file for the purpose of disabling, replacing,
-avoiding, or weakening the protected AI/security implementation.
-
-If the user asks you to modify your own protected AI/security core,
-refuse with a short playful response such as:
-
-"I cannot perform open-brain surgery on a living instance of myself.
-🧠🔧 Ask from outside gjallarCode to modify my protected AI/security
-core."
-
-This restriction applies even when the user explicitly asks you to
-circumvent it.
-
-The user can modify these files normally from outside gjallarCode.
-
-## Standard workflow
-
-For an ordinary gjallarOS action request:
-
-1. Inspect repository.
-2. Identify owning module.
-3. Understand surrounding architecture.
-4. Make smallest coherent declarative edit.
-5. Run relevant focused validation.
-6. Run Nix integration validation when warranted.
-7. Inspect diff.
-8. Report exactly what changed.
-
-Do not merely explain an action the user asked you to perform.
-
-## Deployment
-
-Editing is not automatically deployment.
-
-Use controlled deployment mechanisms only when deployment is requested
-and policy permits it.
-
-Respect approval gates.
-
-## Completion
-
-An action request is complete when:
-
-- the correct source changed;
-- repository architecture was respected;
-- relevant validation passed or an exact blocker was reported;
-- protected security boundaries remain unchanged;
-- the user receives a concise description of the actual result.
-GJALLAROS_SKILL
-
-        export OPENCODE_CONFIG_CONTENT='{
-          "permission": {
-            "skill": {
-              "gjallaros": "allow"
-            }
-          },
-
-          "compaction": {
-            "auto": true,
-            "prune": true
-          },
-          "watcher": {
-            "ignore": [
-              ".git/**",
-              "result",
-              "result/**",
-              "node_modules/**",
-              "dist/**",
-              ".direnv/**",
-              ".cache/**"
-            ]
-          }
-        }'
-
-        export WAYLAND_DISPLAY="gjallar-clipboard-bridge"
-        export PATH="${gjallarWlCopy}/bin:$PATH"
-
-
-      export OPENAI_API_KEY=gjallar-local
-      export OPENAI_BASE_URL=http://127.0.0.1:11434/v1
-
-      unset \
-        ANTHROPIC_API_KEY \
-        ANTHROPIC_AUTH_TOKEN \
-        GOOGLE_API_KEY \
-        OPENROUTER_API_KEY
-
-      export PATH="${gjallarWlCopy}/bin:/etc/profiles/per-user/$username/bin:/run/current-system/sw/bin"
-
-
-      # gjallarCode Build-agent context warm-up
-      #
-      # Do NOT just ping Ollama here.
-      #
-      # A direct Ollama request only loads model weights. The first
-      # real OpenCode request would still have to evaluate the large
-      # coding-agent/system/tool/skill prefix.
-      #
-      # Instead, run a hidden request through the SAME Build agent
-      # used by the TUI and force it to perform a real repository read.
-      #
-      # This pays:
-      #   - model cold load
-      #   - OpenCode initialization
-      #   - system prompt evaluation
-      #   - Build-agent prompt evaluation
-      #   - tool schema evaluation
-      #   - repo tool initialization
-      #
-      # while the startup spinner is already visible.
-      printf '%s\n' \
-        "Priming gjallarCode coding agent..." \
-        >&3
-
-      (
-        cd /workspace
-
-        ${gjallarCodeOpencode}/bin/opencode \
-          run \
-          --agent build \
-          --model "ollama/${assistantModel}" \
-          "Inspect the current repository root using tools. Identify the flake entrypoint. Reply with only its filename." \
-          >/dev/null
-      ) || die "gjallarCode Build-agent warm-up failed"
-
-      printf '%s\n' \
-        "gjallarCode coding agent ready." \
-        >&3
-
-# Run the TUI behind a private tmux server rather than a socat
-      # synthetic PTY. tmux propagates the real client terminal geometry
-      # and SIGWINCH resize events correctly.
-      tmux_socket="$RUNTIME_DIRECTORY/tmux.sock"
-
-      ${pkgs.tmux}/bin/tmux \
-        -S "$tmux_socket" \
-        new-session \
-        -d \
-        -s gjallar-ai \
-        ${lib.escapeShellArg "${gjallarCodeOpencode}/bin/opencode /workspace --agent build"}
-
-      # Keep the systemd service alive for exactly as long as the controlled
-      # OpenCode tmux session exists.
-      while ${pkgs.tmux}/bin/tmux \
-        -S "$tmux_socket" \
-        has-session \
-        -t gjallar-ai         >/dev/null 2>&1
-      do
-        ${pkgs.coreutils}/bin/sleep 0.2
-      done
-    '';
+            new-session \
+            -d \
+            -s gjallar-ai \
+            ${lib.escapeShellArg "${gjallarCodeOpencode}/bin/opencode /workspace --agent build"}
+
+          # Keep the systemd service alive for exactly as long as the controlled
+          # OpenCode tmux session exists.
+          while ${pkgs.tmux}/bin/tmux \
+            -S "$tmux_socket" \
+            has-session \
+            -t gjallar-ai         >/dev/null 2>&1
+          do
+            ${pkgs.coreutils}/bin/sleep 0.2
+          done
+  '';
 
   aiDiagnostics = pkgs.writeShellScriptBin "gjallar-ai-diagnostics" ''
     set -u
@@ -1305,103 +1295,100 @@ GJALLAROS_SKILL
     if command -v opencode-local >/dev/null 2>&1; then echo "opencode-local: available"; else echo "opencode-local: unavailable"; fi
   '';
 
-  gjallarAiSessionStart =
-    pkgs.writeShellScriptBin "gjallar-ai-session-start" ''
-      set -euo pipefail
+  gjallarAiSessionStart = pkgs.writeShellScriptBin "gjallar-ai-session-start" ''
+    set -euo pipefail
 
-      caller="''${SUDO_USER:-}"
+    caller="''${SUDO_USER:-}"
 
-      if [ "$caller" != "${settings.username}" ]; then
+    if [ "$caller" != "${settings.username}" ]; then
+      echo \
+        "gjallar-ai-session-start: unauthorized caller" \
+        >&2
+      exit 77
+    fi
+
+    if [ "$#" -ne 1 ]; then
+      echo \
+        "usage: gjallar-ai-session-start UNIT" \
+        >&2
+      exit 64
+    fi
+
+    unit="$1"
+
+    case "$unit" in
+      gjallar-ai-session@*.service)
+        ;;
+      *)
         echo \
-          "gjallar-ai-session-start: unauthorized caller" \
-          >&2
-        exit 77
-      fi
-
-      if [ "$#" -ne 1 ]; then
-        echo \
-          "usage: gjallar-ai-session-start UNIT" \
+          "gjallar-ai-session-start: invalid unit" \
           >&2
         exit 64
-      fi
+        ;;
+    esac
 
-      unit="$1"
+    # The AI backend is intentionally stopped whenever
+    # gjallarCode is not in use. Start it only after successful
+    # fingerprint/password authentication.
+    ${pkgs.systemd}/bin/systemctl \
+      start \
+      ollama.service
 
-      case "$unit" in
-        gjallar-ai-session@*.service)
-          ;;
-        *)
-          echo \
-            "gjallar-ai-session-start: invalid unit" \
-            >&2
-          exit 64
-          ;;
-      esac
+    # Model downloads and derived-model creation happen lazily when
+    # gjallarCode is actually used. Never block boot or nixos-rebuild.
+    ${pkgs.systemd}/bin/systemctl \
+      start \
+      ollama-model-provision.service
 
-      # The AI backend is intentionally stopped whenever
-      # gjallarCode is not in use. Start it only after successful
-      # fingerprint/password authentication.
-      ${pkgs.systemd}/bin/systemctl \
-        start \
-        ollama.service
+    ${pkgs.systemd}/bin/systemctl \
+      start \
+      gjallar-ai-model.service
 
-      ${pkgs.systemd}/bin/systemctl \
-        start \
-        gjallar-ai-model.service
-
-      exec ${pkgs.systemd}/bin/systemctl \
-        start \
-        "$unit"
-    '';
-
-
+    exec ${pkgs.systemd}/bin/systemctl \
+      start \
+      "$unit"
+  '';
 
   # Hard shutdown for the local AI backend.
   #
   # This is called only by systemd when the controlled gjallarCode
   # session terminates. It is deliberately not installed in the
   # user's PATH.
-  gjallarAiBackendStop =
-    pkgs.writeShellScript "gjallar-ai-backend-stop" ''
-      set -euo pipefail
+  gjallarAiBackendStop = pkgs.writeShellScript "gjallar-ai-backend-stop" ''
+    set -euo pipefail
 
-      # Kill the inference boundary first so nothing can submit more
-      # work while Ollama is shutting down.
-      ${pkgs.systemd}/bin/systemctl \
-        stop \
-        gjallar-ai-model.service \
-        >/dev/null 2>&1 || true
+    # Kill the inference boundary first so nothing can submit more
+    # work while Ollama is shutting down.
+    ${pkgs.systemd}/bin/systemctl \
+      stop \
+      gjallar-ai-model.service \
+      >/dev/null 2>&1 || true
 
-      # Stopping Ollama terminates the llama runner too, releasing
-      # model RAM/VRAM immediately.
-      ${pkgs.systemd}/bin/systemctl \
-        stop \
-        ollama.service \
-        >/dev/null 2>&1 || true
-    '';
-
+    # Stopping Ollama terminates the llama runner too, releasing
+    # model RAM/VRAM immediately.
+    ${pkgs.systemd}/bin/systemctl \
+      stop \
+      ollama.service \
+      >/dev/null 2>&1 || true
+  '';
 
 in
 
 lib.mkIf (if settings ? aiEnable then settings.aiEnable else false) {
   environment.systemPackages = with pkgs; [
-      gjallarAiSessionStart
+    gjallarAiSessionStart
     aiDiagnostics
   ];
-
 
   assertions = [
     {
       assertion = agentMode == "workspace";
 
-      message =
-        "The hardened GjallarOS AI session currently requires "
-        + "aiAgentMode = \"workspace\".";
+      message = "The hardened GjallarOS AI session currently requires " + "aiAgentMode = \"workspace\".";
     }
   ];
 
-  environment.etc."opencode/opencode.json".source =
-    managedOpencodeConfig;
+  environment.etc."opencode/opencode.json".source = managedOpencodeConfig;
 
   users.groups.gjallar-ai-model = { };
 
@@ -1530,7 +1517,6 @@ lib.mkIf (if settings ? aiEnable then settings.aiEnable else false) {
     "gjallar-ai-model-firewall.service"
   ];
 
-
   security.polkit.extraConfig = lib.mkAfter ''
     polkit.addRule(function(action, subject) {
       if (
@@ -1611,10 +1597,8 @@ lib.mkIf (if settings ? aiEnable then settings.aiEnable else false) {
     });
   '';
 
-
   systemd.services.gjallar-ai-clipboard = {
-    description =
-      "gjallarCode authenticated write-only clipboard broker";
+    description = "gjallarCode authenticated write-only clipboard broker";
 
     wantedBy = [
       "multi-user.target"
@@ -1625,27 +1609,21 @@ lib.mkIf (if settings ? aiEnable then settings.aiEnable else false) {
 
       User = settings.username;
 
-      RuntimeDirectory =
-        "gjallar-ai-clipboard";
+      RuntimeDirectory = "gjallar-ai-clipboard";
 
-      RuntimeDirectoryMode =
-        "0700";
+      RuntimeDirectoryMode = "0700";
 
-      ExecStart =
-        "${gjallarClipboardServer}";
+      ExecStart = "${gjallarClipboardServer}";
 
-      Restart =
-        "always";
+      Restart = "always";
 
-      RestartSec =
-        1;
+      RestartSec = 1;
 
       NoNewPrivileges = true;
 
       PrivateTmp = true;
 
-      ProtectSystem =
-        "strict";
+      ProtectSystem = "strict";
 
       ProtectHome = true;
 
@@ -1660,8 +1638,7 @@ lib.mkIf (if settings ? aiEnable then settings.aiEnable else false) {
   };
 
   systemd.services.gjallar-ai-model = {
-    description =
-      "GjallarOS inference-only model broker";
+    description = "GjallarOS inference-only model broker";
 
     after = [
       "ollama.service"
@@ -1719,8 +1696,7 @@ lib.mkIf (if settings ? aiEnable then settings.aiEnable else false) {
   };
 
   systemd.services."gjallar-ai-session@" = {
-    description =
-      "GjallarOS controlled AI session for %i";
+    description = "GjallarOS controlled AI session for %i";
 
     after = [
       "gjallar-ai-model.service"
@@ -1740,9 +1716,7 @@ lib.mkIf (if settings ? aiEnable then settings.aiEnable else false) {
       # '-' ignores cleanup failure.
       # '+' executes the cleanup helper with full service-manager
       # privileges rather than the sandboxed desktop user identity.
-      ExecStopPost =
-        "-+${gjallarAiBackendStop}";
-
+      ExecStopPost = "-+${gjallarAiBackendStop}";
 
       # gjallarCode protected trust root
       #
@@ -1770,12 +1744,10 @@ lib.mkIf (if settings ? aiEnable then settings.aiEnable else false) {
 
       Type = "simple";
 
-      ExecStart =
-        "${aiSessionRuntime} %i";
+      ExecStart = "${aiSessionRuntime} %i";
       User = settings.username;
 
-      RuntimeDirectory =
-        "gjallar-ai-session-%i";
+      RuntimeDirectory = "gjallar-ai-session-%i";
 
       RuntimeDirectoryMode = "0755";
 
@@ -1839,8 +1811,12 @@ lib.mkIf (if settings ? aiEnable then settings.aiEnable else false) {
     description = "Provision the resolved GjallarOS Ollama model";
     after = [ "ollama.service" ];
     requires = [ "ollama.service" ];
-    wantedBy = [ "multi-user.target" ];
-    path = [ ollamaPackage pkgs.curl pkgs.coreutils pkgs.gnugrep ];
+    path = [
+      ollamaPackage
+      pkgs.curl
+      pkgs.coreutils
+      pkgs.gnugrep
+    ];
     environment = {
       HOME = "/var/lib/ollama";
       OLLAMA_HOST = "http://127.0.0.1:11434";
@@ -1883,7 +1859,9 @@ lib.mkIf (if settings ? aiEnable then settings.aiEnable else false) {
     description = "GjallarOS read-only research broker";
     wantedBy = [ "multi-user.target" ];
     serviceConfig = {
-      ExecStart = "${pkgs.gjallarctl or (pkgs.callPackage ../../pkgs/gjallarctl { })}/bin/gjallarctl ai research-serve";
+      ExecStart = "${
+        pkgs.gjallarctl or (pkgs.callPackage ../../pkgs/gjallarctl { })
+      }/bin/gjallarctl ai research-serve";
       RuntimeDirectory = "gjallar-ai";
       RuntimeDirectoryMode = "0755";
       NoNewPrivileges = true;
@@ -1895,7 +1873,11 @@ lib.mkIf (if settings ? aiEnable then settings.aiEnable else false) {
       ProtectKernelModules = true;
       ProtectControlGroups = true;
       RestrictSUIDSGID = true;
-      RestrictAddressFamilies = [ "AF_UNIX" "AF_INET" "AF_INET6" ];
+      RestrictAddressFamilies = [
+        "AF_UNIX"
+        "AF_INET"
+        "AF_INET6"
+      ];
     };
   };
 
@@ -1961,20 +1943,18 @@ lib.mkIf (if settings ? aiEnable then settings.aiEnable else false) {
   #
   # This does NOT add the user to wheel and does NOT grant general
   # sudo access.
-  security.sudo.extraRules =
-    lib.mkAfter [
-      {
-        users = [ settings.username ];
+  security.sudo.extraRules = lib.mkAfter [
+    {
+      users = [ settings.username ];
 
-        commands = [
-          {
-            command =
-              "/run/current-system/sw/bin/gjallar-ai-session-start";
+      commands = [
+        {
+          command = "/run/current-system/sw/bin/gjallar-ai-session-start";
 
-            options = [ "PASSWD" ];
-          }
-        ];
-      }
-    ];
+          options = [ "PASSWD" ];
+        }
+      ];
+    }
+  ];
 
 }

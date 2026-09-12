@@ -24,7 +24,6 @@
     ../../system/tools
     ../../system/users/work.nix
     ../../system/users/privilege.nix
-    ../../system/hardware/framework
     ../../system/apps/ollama.nix
   ]
   ++ (map (wm: ../../system/wm/${wm}) settings.wms);
