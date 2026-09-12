@@ -61,9 +61,16 @@
     desktop = null;
     publicShare = null;
     extraConfig = {
-      DOTFILES = "${settings.dotfilesDir}";
       BOOK = "${config.home.homeDirectory}/Media/Books";
-    };
+    }
+    // (
+      if settings.dotfilesDir != "" then
+        {
+          DOTFILES = settings.dotfilesDir;
+        }
+      else
+        { }
+    );
   };
 
   home.sessionVariables = {

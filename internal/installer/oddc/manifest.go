@@ -39,7 +39,24 @@ type Lifecycle struct {
 type Validation struct {
 	LastValidatedNixOS             string `json:"lastValidatedNixOS,omitempty"`
 	LastValidatedGjallarOSRevision string `json:"lastValidatedGjallarOSRevision,omitempty"`
+	LastValidatedDeviceID          string `json:"lastValidatedDeviceID,omitempty"`
+	LastValidatedODDCRevision      string `json:"lastValidatedODDCRevision,omitempty"`
 	LastValidatedAt                string `json:"lastValidatedAt,omitempty"`
+}
+
+type ValidationTarget struct {
+	NixOSRelease      string
+	GjallarOSRevision string
+	DeviceID          string
+	ODDCRevision      string
+}
+
+func (v Validation) Matches(target ValidationTarget) bool {
+	return strings.TrimSpace(v.LastValidatedNixOS) == strings.TrimSpace(target.NixOSRelease) &&
+		strings.TrimSpace(v.LastValidatedGjallarOSRevision) == strings.TrimSpace(target.GjallarOSRevision) &&
+		strings.TrimSpace(v.LastValidatedDeviceID) == strings.TrimSpace(target.DeviceID) &&
+		strings.TrimSpace(v.LastValidatedODDCRevision) == strings.TrimSpace(target.ODDCRevision) &&
+		strings.TrimSpace(v.LastValidatedAt) != ""
 }
 
 type SecureBootFirmwarePolicy struct {

@@ -44,6 +44,7 @@ import (
 	"github.com/bakanura/gjallarOS/internal/installer/hardwareconfig"
 	"github.com/bakanura/gjallarOS/internal/installer/localgit"
 	"github.com/bakanura/gjallarOS/internal/installer/nixrender"
+	"github.com/bakanura/gjallarOS/internal/installer/oddcvalidation"
 	"github.com/bakanura/gjallarOS/internal/installer/policy"
 	"github.com/bakanura/gjallarOS/internal/installer/release"
 	"github.com/bakanura/gjallarOS/internal/installer/secrets"
@@ -73,6 +74,8 @@ func run(args []string, stdout, stderr io.Writer) int {
 		return runInstaller(args[1:], stdout, stderr)
 	case "check":
 		return runCheck(args[1:], stdout, stderr)
+	case "oddc":
+		return runODDC(args[1:], stdout, stderr)
 	case "detect":
 		return runDetect(args[1:], stdout, stderr)
 	case "ai":
@@ -1311,6 +1314,157 @@ func runDetect(args []string, stdout, stderr io.Writer) int {
 	return 0
 }
 
+func runODDC(args []string, stdout, stderr io.Writer) int {
+	if len(args) == 0 {
+		fmt.Fprintln(stderr, "ERROR: oddc requires a subcommand")
+		return 2
+	}
+
+	switch args[0] {
+	case "validate-device":
+		return runODDCValidateDevice(args[1:], stdout, stderr)
+	default:
+		fmt.Fprintf(stderr, "ERROR: unknown oddc command %q\n", args[0])
+		return 2
+	}
+}
+
+func runODDCValidateDevice(args []string, stdout, stderr io.Writer) int {
+	flags := flag.NewFlagSet("gjallarctl oddc validate-device", flag.ContinueOnError)
+	flags.SetOutput(stderr)
+
+	repo := flags.String("repo", ".", "GjallarOS repository root")
+
+	if err := flags.Parse(args); err != nil {
+		return 2
+	}
+	if flags.NArg() != 0 {
+		fmt.Fprintln(stderr, "ERROR: oddc validate-device accepts no positional arguments")
+		return 2
+	}
+
+	root, err := installercheck.ResolveRepository(*repo)
+	if err != nil {
+		fmt.Fprintf(stderr, "ERROR: %v\n", err)
+		return 2
+	}
+
+	return runODDCValidateDeviceResolved(root, stdout, stderr)
+}
+
+type oddcValidationRunner func(
+	context.Context,
+	string,
+	oddcvalidation.CommandRunner,
+) (oddcvalidation.Report, oddcvalidation.DeviceContext, error)
+
+func runODDCValidateDeviceResolved(
+	root string,
+	stdout io.Writer,
+	stderr io.Writer,
+) int {
+	report, device, err := oddcvalidation.Run(
+		context.Background(),
+		root,
+		nil,
+	)
+	if err == nil {
+		pinnedRelease, releaseErr := release.Expected(root)
+		if releaseErr != nil {
+			err = releaseErr
+		} else {
+			validation, metadataErr := oddcvalidation.ValidationMetadata(
+				report,
+				device,
+				pinnedRelease,
+				time.Now(),
+			)
+			if metadataErr != nil {
+				err = metadataErr
+			} else {
+				authority := oddcvalidation.CheckContributorAuthority(
+					context.Background(),
+					root,
+					"bakanura/JODSNixosEnv",
+				)
+				mode, finalizeErr := oddcvalidation.FinalizeValidation(
+					context.Background(),
+					root,
+					device.Resolved.Device.ID,
+					validation,
+					authority,
+				)
+				if finalizeErr != nil {
+					err = finalizeErr
+				} else {
+					fmt.Fprintf(stdout, "PASS: validation recorded (%s)\n", mode)
+				}
+			}
+		}
+	}
+
+	for _, result := range report.Results {
+		status := "PASS"
+		if !result.Passed {
+			status = "FAIL"
+		}
+		if result.Details != "" {
+			fmt.Fprintf(stdout, "%s: %s - %s\n", status, result.Gate, result.Details)
+		} else {
+			fmt.Fprintf(stdout, "%s: %s\n", status, result.Gate)
+		}
+	}
+
+	if err != nil {
+		fmt.Fprintf(stderr, "ERROR: %v\n", err)
+		return 1
+	}
+
+	fmt.Fprintln(stdout, "PASS: ODDC real-device validation complete")
+	return 0
+}
+
+func runODDCValidateDeviceWith(
+	root string,
+	stdout io.Writer,
+	stderr io.Writer,
+	runValidation oddcValidationRunner,
+) int {
+	report, _, err := runValidation(
+		context.Background(),
+		root,
+		nil,
+	)
+
+	for _, result := range report.Results {
+		status := "PASS"
+		if !result.Passed {
+			status = "FAIL"
+		}
+
+		if result.Details != "" {
+			fmt.Fprintf(
+				stdout,
+				"%s: %s - %s\n",
+				status,
+				result.Gate,
+				result.Details,
+			)
+			continue
+		}
+
+		fmt.Fprintf(stdout, "%s: %s\n", status, result.Gate)
+	}
+
+	if err != nil {
+		fmt.Fprintf(stderr, "ERROR: %v\n", err)
+		return 1
+	}
+
+	fmt.Fprintln(stdout, "PASS: ODDC real-device validation complete")
+	return 0
+}
+
 func runCheck(args []string, stdout, stderr io.Writer) int {
 	flags := flag.NewFlagSet("gjallarctl check", flag.ContinueOnError)
 	flags.SetOutput(stderr)
@@ -1348,8 +1502,15 @@ func runCheck(args []string, stdout, stderr io.Writer) int {
 }
 
 func printUsage(out io.Writer) {
-	fmt.Fprintln(out, "Usage: gjallarctl check [--repo PATH] [--timeout DURATION]\n       gjallarctl rebuild --repo PATH --host HOST [-d|--debug] [-n|--no-cleanup] [NIXOS-REBUILD-ARGS...]\n       gjallarctl detect {graphics|network}\n       gjallarctl ai profile [--config PATH]\n       gjallarctl normalize keyboard --layout VALUE\n       gjallarctl preset {validate|get|list|bool} --config PATH [--key NAME]")
-	fmt.Fprintln(out, "\nSafe GjallarOS maintenance commands. Rebuild invokes sudo explicitly.")
+	fmt.Fprintln(out, "Usage: gjallarctl check [--repo PATH] [--timeout DURATION]")
+	fmt.Fprintln(out, "       gjallarctl oddc validate-device [--repo PATH]")
+	fmt.Fprintln(out, "       gjallarctl rebuild --repo PATH --host HOST [-d|--debug] [-n|--no-cleanup] [NIXOS-REBUILD-ARGS...]")
+	fmt.Fprintln(out, "       gjallarctl detect {graphics|network}")
+	fmt.Fprintln(out, "       gjallarctl ai profile [--config PATH]")
+	fmt.Fprintln(out, "       gjallarctl normalize keyboard --layout VALUE")
+	fmt.Fprintln(out, "       gjallarctl preset {validate|get|list|bool} --config PATH [--key NAME]")
+	fmt.Fprintln(out)
+	fmt.Fprintln(out, "Safe GjallarOS maintenance commands. Rebuild invokes sudo explicitly.")
 }
 
 func syncProjectToolSettings(settingsPath string, user config.User) error {
@@ -1568,8 +1729,6 @@ func runRebuild(args []string, stdout, stderr io.Writer) int {
 		return 1
 	}
 
-	fmt.Fprintln(stdout, "[GjallarOS] Synced Plane/Draw.io settings from user.config.json.")
-
 	managedDevice, err := document.Bool("endpointManagedDevice")
 	if err != nil {
 		fmt.Fprintf(stderr, "[GjallarOS] Error: read endpointManagedDevice: %v\n", err)
@@ -1621,7 +1780,7 @@ func runRebuild(args []string, stdout, stderr io.Writer) int {
 	}
 
 	started := time.Now()
-	commandArgs := []string{"nixos-rebuild", "switch", "--flake", repo + "#" + host}
+	commandArgs := []string{"nixos-rebuild", "switch", "--flake", "path:" + repo + "#" + host}
 	rebuildHome := os.Getenv("GJALLAR_REBUILD_CALLER_HOME")
 	if rebuildHome == "" {
 		rebuildHome, _ = os.UserHomeDir()

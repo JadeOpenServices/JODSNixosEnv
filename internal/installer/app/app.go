@@ -39,6 +39,7 @@ import (
 	"github.com/bakanura/gjallarOS/internal/installer/release"
 	installerresume "github.com/bakanura/gjallarOS/internal/installer/resume"
 	"github.com/bakanura/gjallarOS/internal/installer/secureboot"
+	"github.com/bakanura/gjallarOS/internal/installer/sourcerevision"
 	"github.com/bakanura/gjallarOS/internal/installercheck"
 )
 
@@ -226,11 +227,16 @@ func Run(ctx context.Context, args []string, in io.Reader, out, errOut io.Writer
 		}
 		return code
 	}
+	sourceRevision, err := sourcerevision.Resolve(root, opt.recovery)
+	if err != nil {
+		return fail(errOut, fmt.Errorf("resolve GjallarOS source revision: %w", err))
+	}
+
 	hardware := discovery.DetectHardware("/sys")
 	s.touchscreen = hardware.Touchscreen
 	s.penTablet = hardware.PenTablet
 
-	resolvedDevice, err := resolveDeviceProfile(root, hardware)
+	resolvedDevice, err := resolveDeviceProfile(root, sourceRevision, hardware)
 	if err != nil {
 		return fail(errOut, err)
 	}
@@ -306,6 +312,22 @@ func Run(ctx context.Context, args []string, in io.Reader, out, errOut io.Writer
 
 		opt.refreshHardware = true
 		fmt.Fprintln(out, "Authorized device rebind; hardware configuration will be regenerated.")
+	}
+
+	pinnedRelease, err := release.Expected(root)
+	if err != nil {
+		return fail(errOut, fmt.Errorf("resolve pinned NixOS release: %w", err))
+	}
+
+	if err := enforceDeviceValidation(
+		ctx,
+		ui,
+		s.user,
+		resolvedDevice,
+		pinnedRelease,
+		sourceRevision,
+	); err != nil {
+		return fail(errOut, err)
 	}
 
 	s.secureBootFirmware, err = oddc.ResolveSecureBootFirmwarePolicy(resolvedDevice)

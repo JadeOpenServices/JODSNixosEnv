@@ -1,40 +1,29 @@
 package app
 
 import (
-	"errors"
 	"fmt"
-	"path/filepath"
 
 	"github.com/bakanura/gjallarOS/internal/installer/config"
+	"github.com/bakanura/gjallarOS/internal/installer/deviceprofile"
 	"github.com/bakanura/gjallarOS/internal/installer/discovery"
 	"github.com/bakanura/gjallarOS/internal/installer/oddc"
 )
 
 func resolveDeviceProfile(
 	repo string,
+	revision string,
 	hardware discovery.Hardware,
 ) (oddc.Resolved, error) {
-	source := oddc.EmbeddedSource{
-		Root:       filepath.Join(repo, "oddc"),
-		Repository: "embedded:oddc",
-	}
+	source := deviceprofile.CurrentEmbeddedSource(repo, revision)
 
 	return resolveDeviceProfileFromSource(source, hardware)
 }
 
 func resolveDeviceProfileFromSource(
-	source oddc.EmbeddedSource,
+	source oddc.DeviceSource,
 	hardware discovery.Hardware,
 ) (oddc.Resolved, error) {
-	resolved, err := source.Resolve(discovery.ODDCIdentity(hardware))
-	if err != nil {
-		if errors.Is(err, oddc.ErrNoMatch) && hardware.FormFactor != "laptop" {
-			return oddc.Resolved{}, nil
-		}
-		return oddc.Resolved{}, fmt.Errorf("resolve oddc device profile: %w", err)
-	}
-
-	return resolved, nil
+	return deviceprofile.Resolve(source, hardware)
 }
 
 func persistDeviceIdentity(

@@ -35,12 +35,11 @@ func materializeDeviceProfileCapsule(
 		)
 	}
 
-	resolved.Source.Revision = revision
-
 	source := oddc.EmbeddedSource{
 		Root:       filepath.Join(repo, "oddc"),
-		Repository: "embedded:oddc",
-		Revision:   revision,
+		Repository: resolved.Source.Repository,
+		Revision:   resolved.Source.Revision,
+		Integrity:  resolved.Source.Integrity,
 	}
 
 	if _, err := deviceprofilecache.Materialize(
