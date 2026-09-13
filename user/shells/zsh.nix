@@ -76,7 +76,7 @@
           local dir
           dir="$(mktemp)"
 
-          ${lib.getExe pkgs.superfile} --print-last-dir "$@" > "$dir"
+          command superfile --print-last-dir "$@" > "$dir"
 
           if [[ -s "$dir" ]]; then
               cd -- "$(cat "$dir")"
