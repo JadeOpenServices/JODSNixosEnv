@@ -980,8 +980,6 @@ func Run(ctx context.Context, args []string, in io.Reader, out, errOut io.Writer
 					return fail(errOut, err)
 				}
 
-				runPostRebuildGC(ctx, out)
-
 				if err := persistReconciledDeviceProfile(
 					presetPath,
 					s.user,
@@ -1370,27 +1368,6 @@ func Run(ctx context.Context, args []string, in io.Reader, out, errOut io.Writer
 
 	fmt.Fprintln(out, "GjallarOS installation complete.")
 	return 0
-}
-
-func runPostRebuildGC(ctx context.Context, out io.Writer) {
-	fmt.Fprintln(out, "STAGE: garbage-collecting Nix generations older than 3d")
-
-	if err := attached(
-		ctx,
-		"sudo",
-		"nix-collect-garbage",
-		"--delete-older-than",
-		"3d",
-	); err != nil {
-		fmt.Fprintf(
-			out,
-			"WARN: post-rebuild garbage collection failed: %v\n",
-			err,
-		)
-		return
-	}
-
-	fmt.Fprintln(out, "PASS: post-rebuild garbage collection complete")
 }
 
 func confirmInsecureJODS(ctx context.Context, ui prompt.UI) error {

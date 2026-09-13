@@ -2,7 +2,10 @@
   description = "GjallarOS — a practical Nordic NixOS workstation";
 
   inputs = {
-    superfile.url = "github:yorukot/superfile";
+    yazi-disk-space = {
+      url = "github:shafayetejaman/sduf.yazi";
+      flake = false;
+    };
 
     nixpkgs.url = "github:nixos/nixpkgs/nixos-26.05";
 
@@ -122,36 +125,9 @@
         inherit inputs;
       };
 
-      superfileOverlay = final: prev: {
-        superfile = inputs.superfile.packages.${system}.superfile.overrideAttrs (old: {
-          patches = (old.patches or [ ]) ++ [
-            ./patches/superfile-disk-footer.patch
-          ];
-
-          nativeBuildInputs =
-            (lib.filter (
-              input:
-              let
-                name = lib.getName input;
-              in
-              name != "go" && !(lib.hasPrefix "go-" name)
-            ) (old.nativeBuildInputs or [ ]))
-            ++ [ final.go_1_26 ];
-
-          env = (old.env or { }) // {
-            GOTOOLCHAIN = "local";
-          };
-
-          meta = (old.meta or { }) // {
-            mainProgram = "superfile";
-          };
-        });
-      };
-
       pkgs = import nixpkgs {
         inherit system;
         overlays = [
-          superfileOverlay
         ];
       };
     in
@@ -220,7 +196,6 @@
             {
               nixpkgs.overlays = [
                 inputs.nur.overlays.default
-                superfileOverlay
               ];
 
               home-manager.useGlobalPkgs = true;

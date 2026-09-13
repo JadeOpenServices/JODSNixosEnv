@@ -61,3 +61,32 @@ func TestParseSelectsNVIDIADeviceID(t *testing.T) {
 		)
 	}
 }
+
+func TestParseFramework13AMD(t *testing.T) {
+	result := Parse(`0000:c1:00.0 VGA compatible controller [0300]: Advanced Micro Devices, Inc. [AMD/ATI] Phoenix1 [Radeon 780M] [1002:15bf] (rev c8)`)
+
+	if result.Vendor != "amd" {
+		t.Fatalf("Vendor = %q, want amd", result.Vendor)
+	}
+	if result.DeviceID != "15bf" {
+		t.Fatalf("DeviceID = %q, want 15bf", result.DeviceID)
+	}
+	if result.Type != "integrated" {
+		t.Fatalf("Type = %q, want integrated", result.Type)
+	}
+	if !result.Compute {
+		t.Fatal("Phoenix1 must be compute-capable")
+	}
+	if result.DriverBranch != "" {
+		t.Fatalf("DriverBranch = %q, want empty for non-NVIDIA GPU", result.DriverBranch)
+	}
+	if result.BusID != "PCI:193:0:0" {
+		t.Fatalf("BusID = %q, want PCI:193:0:0", result.BusID)
+	}
+	if result.IntegratedBusID != "PCI:193:0:0" {
+		t.Fatalf("IntegratedBusID = %q, want PCI:193:0:0", result.IntegratedBusID)
+	}
+	if len(result.PassthroughIDs) != 1 || result.PassthroughIDs[0] != "1002:15bf" {
+		t.Fatalf("unexpected passthrough IDs: %#v", result.PassthroughIDs)
+	}
+}

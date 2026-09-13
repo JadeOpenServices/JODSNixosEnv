@@ -27,7 +27,7 @@ let
     editor = lib.getExe pkgs.${settings.preferredEditor};
     browser = lib.getExe pkgs.${settings.preferredBrowser};
 
-    fileManager = "${lib.getExe pkgs.kitty} -e ${lib.getExe pkgs.superfile}";
+    fileManager = "${commands.terminal} -e ${lib.getExe config.programs.yazi.package}";
 
     # GjallarOS-AI
     gjallarAI = "gjallar-ai";

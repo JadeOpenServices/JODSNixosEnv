@@ -9,7 +9,7 @@
     ./opencode.nix
     ./plane.nix
     ./rust.nix
-    ./superfile.nix
+    ./yazi.nix
     ./teams.nix
     ./zathura.nix
   ];
