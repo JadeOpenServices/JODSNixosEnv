@@ -290,6 +290,9 @@ func Run(ctx context.Context, args []string, in io.Reader, out, errOut io.Writer
 
 	persistDeviceIdentity(&s.user, hardware, resolvedDevice)
 
+	fmt.Fprintf(out, "Device profile resolved: %s\n", s.user.DeviceProfile)
+	fmt.Fprintf(out, "Device profile layers: %s\n", strings.Join(s.user.DeviceLayers, " -> "))
+
 	if needsDeviceRebind {
 		if s.user.UnattendedInstall || s.user.EndpointManagedDevice {
 			return fail(
@@ -345,9 +348,6 @@ func Run(ctx context.Context, args []string, in io.Reader, out, errOut io.Writer
 
 	fmt.Fprintf(out, "Touchscreen detected: %t\n", hardware.Touchscreen)
 	fmt.Fprintf(out, "Pen/tablet detected: %t\n", hardware.PenTablet)
-	if s.user.DeviceProfile != "" {
-		fmt.Fprintf(out, "Device profile resolved: %s\n", s.user.DeviceProfile)
-	}
 
 	choices, err := discovery.Discover(root, s.preset, hardware)
 	if err != nil {
