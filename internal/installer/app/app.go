@@ -53,19 +53,20 @@ type options struct {
 	recoverySigningPublicKey                                 string
 }
 type state struct {
-	user                     config.User
-	render                   nixrender.Settings
-	passthroughIDs           []string
-	preset, existing         bool
-	control                  string
-	touchscreen              bool
-	penTablet                bool
-	orientationSensor        bool
-	recoveryDisk             string
-	recoveryPartition        string
-	recoverySigningKey       string
-	recoverySigningPublicKey string
-	secureBootFirmware       oddc.EffectiveSecureBootFirmwarePolicy
+	user                         config.User
+	render                       nixrender.Settings
+	passthroughIDs               []string
+	preset, existing             bool
+	control                      string
+	touchscreen                  bool
+	penTablet                    bool
+	orientationSensor            bool
+	graphicsDriverBranchOverride string
+	recoveryDisk                 string
+	recoveryPartition            string
+	recoverySigningKey           string
+	recoverySigningPublicKey     string
+	secureBootFirmware           oddc.EffectiveSecureBootFirmwarePolicy
 }
 
 const (
@@ -328,6 +329,12 @@ func Run(ctx context.Context, args []string, in io.Reader, out, errOut io.Writer
 			}
 		}
 	}
+
+	effectiveGraphics, err := oddc.ResolveGraphicsPolicy(resolvedDevice)
+	if err != nil {
+		return fail(errOut, err)
+	}
+	s.graphicsDriverBranchOverride = effectiveGraphics.Policy.DriverBranch
 
 	persistDeviceIdentity(&s.user, hardware, resolvedDevice)
 
@@ -2276,6 +2283,9 @@ func detectAndRenderState(ctx context.Context, root string, s *state) error {
 	g, err := graphics.Detect(ctx)
 	if err != nil {
 		return err
+	}
+	if g.Vendor == "nvidia" && strings.TrimSpace(s.graphicsDriverBranchOverride) != "" {
+		g.DriverBranch = s.graphicsDriverBranchOverride
 	}
 	wifi, err := network.DetectWiFiDriver(ctx)
 	if err != nil {
