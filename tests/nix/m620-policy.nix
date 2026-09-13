@@ -7,6 +7,7 @@ let
   settings = {
     graphicsVendor = "nvidia";
     graphicsDeviceId = "13b4";
+    graphicsDriverBranch = "legacy_580";
     graphicsType = "hybrid";
     graphicsCompute = true;
     graphicsBusId = "PCI:1:0:0";

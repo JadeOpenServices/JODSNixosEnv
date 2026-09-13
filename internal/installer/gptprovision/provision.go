@@ -444,6 +444,7 @@ func inspectDisk(
 		"-J",
 		"-b",
 		"-p",
+		"--tree",
 		"-o",
 		"PATH,TYPE,SIZE,START,MODEL,SERIAL,WWN,PTTYPE,PARTN,PARTLABEL,PARTTYPE,PARTUUID,MOUNTPOINTS",
 		"--",

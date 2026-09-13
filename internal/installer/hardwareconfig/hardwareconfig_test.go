@@ -137,7 +137,7 @@ func TestGenerateTargetUsesMountedMnt(t *testing.T) {
 	joined := callsText(r.calls)
 	if !strings.Contains(
 		joined,
-		"nixos-generate-config --root /mnt --no-filesystems --show-hardware-config",
+		"sudo nixos-generate-config --root /mnt --show-hardware-config",
 	) {
 		t.Fatalf(
 			"fresh target generation did not use --root /mnt:\n%s",
@@ -184,7 +184,7 @@ func TestGenerateCurrentMachinePreservesExistingBehavior(t *testing.T) {
 	joined := callsText(r.calls)
 	if !strings.Contains(
 		joined,
-		"nixos-generate-config --show-hardware-config",
+		"sudo nixos-generate-config --show-hardware-config",
 	) {
 		t.Fatalf(
 			"existing generation behavior changed:\n%s",

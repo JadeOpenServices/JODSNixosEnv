@@ -121,15 +121,23 @@ func generate(
 	}
 
 	if root != "" {
-		if filepath.Clean(root) != freshTargetRoot {
+		cleanRoot := filepath.Clean(root)
+		isolatedRoot := strings.HasPrefix(
+			filepath.Base(cleanRoot),
+			"gjallar-hardware-root-",
+		)
+
+		if cleanRoot != freshTargetRoot && !isolatedRoot {
 			return "", fmt.Errorf(
-				"fresh-install hardware root must be %s, got %s",
-				freshTargetRoot,
+				"unsupported hardware discovery root %s",
 				root,
 			)
 		}
-		if err := verifyFreshTargetMount(ctx, runner, root); err != nil {
-			return "", err
+
+		if cleanRoot == freshTargetRoot {
+			if err := verifyFreshTargetMount(ctx, runner, root); err != nil {
+				return "", err
+			}
 		}
 	}
 
@@ -164,24 +172,20 @@ func generate(
 	args := []string{}
 	if root != "" {
 		args = append(args, "--root", root)
-
-		// The fresh installer owns the canonical filesystem layout.
-		// nixos-generate-config must contribute hardware discovery only.
-		//
-		// Without --no-filesystems it probes the currently running system's
-		// filesystems while generating the target configuration. On an existing
-		// Btrfs host this can fail before fresh provisioning even begins, for
-		// example with "Failed to retrieve subvolume info for /".
-		args = append(args, "--no-filesystems")
 	}
 	args = append(args, "--show-hardware-config")
+
+	commandArgs := append(
+		[]string{"nixos-generate-config"},
+		args...,
+	)
 
 	if err := runner.Run(
 		ctx,
 		tmp,
 		os.Stderr,
-		"nixos-generate-config",
-		args...,
+		"sudo",
+		commandArgs...,
 	); err != nil {
 		_ = tmp.Close()
 		return backup, fmt.Errorf("nixos-generate-config: %w", err)

@@ -7,6 +7,11 @@
 }:
 let
   details = settings.themeDetails;
+  wallpaper =
+    if builtins.isAttrs details.wallpaper then
+      details.wallpaper.center
+    else
+      details.wallpaper;
   noctaliaPalettePath = builtins.getEnv "GJALLAR_NOCTALIA_PALETTE";
   noctaliaPalette =
     if noctaliaPalettePath != "" && builtins.pathExists noctaliaPalettePath then
@@ -18,7 +23,7 @@ in
   stylix = {
     enable = true;
     polarity = "dark";
-    image = details.wallpaper.center;
+    image = wallpaper;
     base16Scheme = lib.mkIf (
       details.themeName != null
     ) "${pkgs.base16-schemes}/share/themes/${details.themeName}.yaml";

@@ -8,7 +8,7 @@
 }:
 let
   shell = settings.themeDetails.shell or "noctalia";
-  gjallarctl = pkgs.callPackage ../../pkgs/gjallarctl { };
+  gjallarctl = pkgs.callPackage ../../../pkgs/gjallarctl { };
   hyprlandSession = pkgs.writeShellScriptBin "gjallar-hyprland-session" ''
         state_dir="''${XDG_STATE_HOME:-$HOME/.local/state}/hyprland"
         noctalia_state_dir="''${XDG_STATE_HOME:-$HOME/.local/state}/noctalia"

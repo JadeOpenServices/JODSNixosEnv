@@ -69,25 +69,12 @@ func detectExistingInstalledSystem(
 	ctx context.Context,
 	repo string,
 ) (bool, error) {
-	if existingInstall(repo) {
+
+	if privilegedFileExists(ctx, "/var/lib/gjallarOS/installation-complete") {
 		return true, nil
 	}
 
-	source, filesystem, err := inspectCurrentRoot(ctx)
-	if err != nil {
-		return false, err
-	}
-
-	switch filesystem {
-	case "tmpfs", "ramfs", "overlay", "squashfs", "iso9660":
-		return false, nil
-	}
-
-	if !strings.HasPrefix(source, "/dev/") {
-		return false, nil
-	}
-
-	return true, nil
+	return false, nil
 }
 
 func handleExistingRecoveryFilesystem(
@@ -224,4 +211,19 @@ func detectRecoveryInstalledRoot(ctx context.Context, target string) (bool, erro
 	}
 
 	return true, nil
+}
+
+func detectPersistentInstalledHost(
+	ctx context.Context,
+) (bool, error) {
+	source, filesystem, err := inspectCurrentRoot(ctx)
+	if err != nil {
+		return false, err
+	}
+
+	if source == "overlay" || filesystem == "overlay" {
+		return false, nil
+	}
+
+	return strings.HasPrefix(source, "/dev/"), nil
 }

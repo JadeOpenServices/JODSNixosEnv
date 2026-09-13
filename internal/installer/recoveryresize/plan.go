@@ -61,7 +61,9 @@ type Topology struct {
 	BtrfsDeviceBytes        uint64
 	BtrfsUsedBytes          uint64
 	BtrfsExclusiveOperation string
-	SwapActive              bool
+	// SwapActive is true only when active swap is backed by the root
+	// partition/mapping being resized. Unrelated sibling swap is permitted.
+	SwapActive bool
 }
 
 type Requirements struct {
@@ -114,21 +116,29 @@ func BuildPlan(topology Topology, req Requirements) (Plan, error) {
 		return Plan{}, err
 	}
 
-	shrinkBytes, err := add(req.RecoveryBytes, req.SafetyMarginBytes)
+	requestedShrink, err := add(req.RecoveryBytes, req.SafetyMarginBytes)
 	if err != nil {
 		return Plan{}, fmt.Errorf("calculate recovery shrink: %w", err)
 	}
-	shrinkBytes = alignUp(shrinkBytes, req.AlignmentBytes)
 
-	if shrinkBytes >= topology.RootSizeBytes {
+	if requestedShrink >= topology.RootSizeBytes {
 		return Plan{}, fmt.Errorf(
 			"requested recovery shrink %d is not smaller than root partition %d",
-			shrinkBytes,
+			requestedShrink,
 			topology.RootSizeBytes,
 		)
 	}
 
-	newRootSize := topology.RootSizeBytes - shrinkBytes
+	unroundedEnd := topology.RootEndBytes - requestedShrink
+	newEnd := alignDown(unroundedEnd, req.AlignmentBytes)
+	if newEnd <= topology.RootStartBytes {
+		return Plan{}, errors.New(
+			"aligned recovery shrink leaves no usable root partition",
+		)
+	}
+
+	shrinkBytes := topology.RootEndBytes - newEnd
+	newRootSize := newEnd - topology.RootStartBytes
 	if newRootSize <= topology.LUKSPayloadOffsetBytes {
 		return Plan{}, fmt.Errorf(
 			"new root size %d does not preserve LUKS payload offset %d",
@@ -166,7 +176,6 @@ func BuildPlan(topology Topology, req Requirements) (Plan, error) {
 		)
 	}
 
-	newEnd := topology.RootStartBytes + newRootSize
 	if newEnd >= topology.RootEndBytes {
 		return Plan{}, errors.New(
 			"planned root end was not reduced",
@@ -330,6 +339,13 @@ func printableFilesystem(fs string) string {
 		return "unknown"
 	}
 	return fs
+}
+
+func alignDown(value, alignment uint64) uint64 {
+	if alignment == 0 {
+		return value
+	}
+	return value - value%alignment
 }
 
 func alignUp(value, alignment uint64) uint64 {

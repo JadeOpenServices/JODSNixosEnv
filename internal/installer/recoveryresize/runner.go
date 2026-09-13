@@ -8,11 +8,26 @@ import (
 
 type systemRunner struct{}
 
+func privilegedReadOnlyCommand(
+	name string,
+	args []string,
+) (string, []string) {
+	switch name {
+	case "cryptsetup", "blockdev", "btrfs":
+		sudoArgs := []string{"-n", "--", name}
+		sudoArgs = append(sudoArgs, args...)
+		return "sudo", sudoArgs
+	default:
+		return name, args
+	}
+}
+
 func (systemRunner) Output(
 	ctx context.Context,
 	name string,
 	args ...string,
 ) ([]byte, error) {
+	name, args = privilegedReadOnlyCommand(name, args)
 	return exec.CommandContext(ctx, name, args...).Output()
 }
 

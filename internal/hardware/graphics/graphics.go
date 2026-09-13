@@ -22,6 +22,7 @@ type Controller struct {
 type Result struct {
 	Vendor          string
 	DeviceID        string
+	DriverBranch    string
 	Type            string
 	Compute         bool
 	BusID           string
@@ -83,6 +84,9 @@ func Parse(output string) Result {
 	}
 
 	result.DeviceID = strings.ToLower(selected.DeviceID)
+	if result.Vendor == "nvidia" {
+		result.DriverBranch = nvidiaDriverBranch(selected.Text)
+	}
 	result.BusID = xorgBusID(selected.BDF)
 	integrated := firstIntegrated(controllers)
 	if len(controllers) > 1 {
@@ -147,6 +151,15 @@ func isAMDIntegrated(text string) bool {
 		}
 	}
 	return false
+}
+
+var nvidiaLegacy580Chip = regexp.MustCompile(`\b(?:GM|GP|GV)[0-9]{2,3}[A-Z]*\b`)
+
+func nvidiaDriverBranch(text string) string {
+	if nvidiaLegacy580Chip.MatchString(strings.ToUpper(text)) {
+		return "legacy_580"
+	}
+	return "stable"
 }
 
 func xorgBusID(bdf string) string {

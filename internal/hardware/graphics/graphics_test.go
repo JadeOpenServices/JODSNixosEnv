@@ -8,6 +8,9 @@ func TestParseHybridNvidiaAndAMD(t *testing.T) {
 	if result.Vendor != "nvidia" || result.Type != "hybrid" || !result.Compute {
 		t.Fatalf("unexpected topology: %#v", result)
 	}
+	if result.DriverBranch != "stable" {
+		t.Fatalf("DriverBranch = %q, want stable", result.DriverBranch)
+	}
 	if result.BusID != "PCI:5:0:0" || result.IntegratedBusID != "PCI:193:0:0" {
 		t.Fatalf("unexpected bus IDs: %#v", result)
 	}
@@ -38,6 +41,9 @@ func TestParseSelectsNVIDIADeviceID(t *testing.T) {
 	}
 	if result.DeviceID != "13b4" {
 		t.Fatalf("DeviceID = %q, want 13b4", result.DeviceID)
+	}
+	if result.DriverBranch != "legacy_580" {
+		t.Fatalf("DriverBranch = %q, want legacy_580", result.DriverBranch)
 	}
 	if result.Type != "hybrid" {
 		t.Fatalf("Type = %q, want hybrid", result.Type)

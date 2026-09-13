@@ -57,6 +57,7 @@ func BuildExistingPlan(
 		"-J",
 		"-b",
 		"-p",
+		"--tree",
 		"-o",
 		"PATH,TYPE,SIZE,MODEL,SERIAL,WWN,PTTYPE,PTUUID,PARTN,PARTLABEL,PARTTYPE,PARTUUID,FSTYPE,MOUNTPOINTS",
 		"--",
