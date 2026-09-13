@@ -222,3 +222,13 @@ This installation can continue only through a supported compatibility path. Revi
 		)
 	}
 }
+
+func TestNewWithInjectedIODisablesGTK(t *testing.T) {
+	var out bytes.Buffer
+
+	ui := New(strings.NewReader("yes\n"), &out)
+
+	if ui.GTK {
+		t.Fatal("injected prompt I/O unexpectedly enabled GTK")
+	}
+}
