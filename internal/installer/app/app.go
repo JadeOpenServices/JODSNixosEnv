@@ -47,6 +47,7 @@ type options struct {
 	recovery                                                 bool
 	repo                                                     string
 	skipHardware, refreshHardware, noRebuild, acceptExisting bool
+	forceRedeploy                                            bool
 	targetDisk                                               string
 	recoveryDisk, recoveryPartition, recoverySigningKey      string
 	recoverySigningPublicKey                                 string
@@ -142,6 +143,7 @@ func Run(ctx context.Context, args []string, in io.Reader, out, errOut io.Writer
 	f.BoolVar(&opt.refreshHardware, "refresh-hardware", false, "regenerate hardware configuration")
 	f.BoolVar(&opt.noRebuild, "no-rebuild", false, "do not install a boot generation")
 	f.BoolVar(&opt.acceptExisting, "accept-existing", false, "allow an existing GjallarOS installation to be updated")
+	f.BoolVar(&opt.forceRedeploy, "force-redeploy", false, "force a full clean GjallarOS redeployment without repartitioning or wiping user data")
 	f.BoolVar(&opt.recovery, "recovery", false, "run from the trusted GjallarOS recovery environment")
 	f.StringVar(&opt.targetDisk, "target-disk", "", "whole physical disk for a destructive fresh GjallarOS installation")
 	f.StringVar(&opt.recoveryDisk, "recovery-disk", "", "GPT disk with unallocated space for a recovery partition")
@@ -200,7 +202,38 @@ func Run(ctx context.Context, args []string, in io.Reader, out, errOut io.Writer
 		}
 	}
 
-	if s.existing && !opt.acceptExisting {
+	forceRedeploy := opt.forceRedeploy || s.user.ForceRedeploy
+
+	if s.existing &&
+		!forceRedeploy &&
+		!opt.acceptExisting &&
+		!s.user.UnattendedInstall {
+		forceRedeploy, err = ui.Confirm(
+			ctx,
+			"Force a full clean GjallarOS redeployment instead of an in-place update? This reinstalls the system configuration without repartitioning, formatting, or wiping user data.",
+			false,
+		)
+		if err != nil {
+			return fail(errOut, err)
+		}
+
+	}
+
+	opt.forceRedeploy = forceRedeploy
+
+	if forceRedeploy && opt.noRebuild {
+		return fail(
+			errOut,
+			errors.New("force redeployment requires a rebuild; --force-redeploy cannot be combined with --no-rebuild"),
+		)
+	}
+
+	if s.existing && forceRedeploy {
+		fmt.Fprintln(
+			out,
+			"Force clean redeployment selected; preserving disk layout, credentials, encryption keys, and user data.",
+		)
+	} else if s.existing && !opt.acceptExisting {
 		approved, err := ui.Confirm(ctx, "Existing GjallarOS installation detected. Update it in place while preserving passwords, disk keys, and hardware configuration?", false)
 		if err != nil {
 			return fail(errOut, err)
@@ -807,7 +840,10 @@ func Run(ctx context.Context, args []string, in io.Reader, out, errOut io.Writer
 		}
 	}
 	runRebuild := s.user.RunRebuild && !opt.noRebuild
-	if !s.preset && !opt.noRebuild {
+	if opt.forceRedeploy {
+		runRebuild = true
+	}
+	if !s.preset && !opt.noRebuild && !opt.forceRedeploy {
 		runRebuild, err = ui.Confirm(ctx, "Install the next NixOS boot generation now?", false)
 		if err != nil {
 			return fail(errOut, err)
@@ -935,6 +971,8 @@ func Run(ctx context.Context, args []string, in io.Reader, out, errOut io.Writer
 				if err := deploy.Apply(ctx, target); err != nil {
 					return fail(errOut, err)
 				}
+
+				runPostRebuildGC(ctx, out)
 
 				if err := persistReconciledDeviceProfile(
 					presetPath,
@@ -1321,6 +1359,27 @@ func Run(ctx context.Context, args []string, in io.Reader, out, errOut io.Writer
 	return 0
 }
 
+func runPostRebuildGC(ctx context.Context, out io.Writer) {
+	fmt.Fprintln(out, "STAGE: garbage-collecting Nix generations older than 3d")
+
+	if err := attached(
+		ctx,
+		"sudo",
+		"nix-collect-garbage",
+		"--delete-older-than",
+		"3d",
+	); err != nil {
+		fmt.Fprintf(
+			out,
+			"WARN: post-rebuild garbage collection failed: %v\n",
+			err,
+		)
+		return
+	}
+
+	fmt.Fprintln(out, "PASS: post-rebuild garbage collection complete")
+}
+
 func confirmInsecureJODS(ctx context.Context, ui prompt.UI) error {
 	confirmed, err := ui.Confirm(ctx, "SECURITY WARNING: disable TLS certificate verification for this local-development JODS endpoint? This permits machine-in-the-middle attacks.", false)
 	if err != nil {
@@ -1439,9 +1498,12 @@ func prepareHost(
 	// bootstrap /etc/nixos/configuration.nix on a rerun would switch the live
 	// machine back to its pre-install base generation before deploying the
 	// requested flake generation.
-	if s.existing {
+	if s.existing && !opt.forceRedeploy {
 		fmt.Fprintln(out, "Existing GjallarOS installation detected; skipping /etc/nixos bootstrap rebuild.")
 	} else {
+		if s.existing && opt.forceRedeploy {
+			fmt.Fprintln(out, "Force redeployment requested; running prerequisite bootstrap despite existing-install detection.")
+		}
 		configPath := "/etc/nixos/configuration.nix"
 		data, err := os.ReadFile(configPath)
 		if err != nil {

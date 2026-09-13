@@ -92,6 +92,7 @@ type User struct {
 	RunUpdateChecks               bool     `json:"runUpdateChecks"`
 	WriteConfig                   bool     `json:"writeConfig"`
 	RunRebuild                    bool     `json:"runRebuild"`
+	ForceRedeploy                 bool     `json:"forceRedeploy"`
 }
 
 // WriteAtomic persists the confirmed machine-local installer input.
