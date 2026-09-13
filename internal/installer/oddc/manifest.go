@@ -59,6 +59,12 @@ func (v Validation) Matches(target ValidationTarget) bool {
 		strings.TrimSpace(v.LastValidatedAt) != ""
 }
 
+type GraphicsPolicy struct {
+	IntegratedKernelDriver string `json:"integratedKernelDriver,omitempty"`
+	DiscreteKernelDriver   string `json:"discreteKernelDriver,omitempty"`
+	DriverBranch           string `json:"driverBranch,omitempty"`
+}
+
 type SecureBootFirmwarePolicy struct {
 	Supported               bool     `json:"supported"`
 	FirmwareName            string   `json:"firmwareName,omitempty"`
@@ -84,6 +90,7 @@ type Manifest struct {
 	Modules            []string                  `json:"modules,omitempty"`
 	Lifecycle          Lifecycle                 `json:"lifecycle"`
 	Validation         Validation                `json:"validation"`
+	Graphics           *GraphicsPolicy           `json:"graphics,omitempty"`
 	SecureBootFirmware *SecureBootFirmwarePolicy `json:"secureBootFirmware,omitempty"`
 }
 
@@ -158,6 +165,16 @@ func ValidateManifest(manifest Manifest) error {
 				"oddc manifest %q module %q: %w",
 				manifest.ID,
 				module,
+				err,
+			)
+		}
+	}
+
+	if manifest.Graphics != nil {
+		if err := validateGraphicsPolicy(*manifest.Graphics); err != nil {
+			return fmt.Errorf(
+				"oddc manifest %q graphics: %w",
+				manifest.ID,
 				err,
 			)
 		}
