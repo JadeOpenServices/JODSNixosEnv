@@ -94,3 +94,53 @@ func TestThunderboltHostPersistsWithoutEnumeratedController(t *testing.T) {
 		t.Fatal("persistent Thunderbolt host/domain reported absent")
 	}
 }
+
+func TestDetectCapabilitiesFindsOrientationFromAccelerometer(t *testing.T) {
+	got := DetectCapabilities(Snapshot{
+		IIO: []IIODevice{
+			{
+				Device: "iio:device4",
+				Name:   "accel_3d",
+				Channels: []string{
+					"in_accel_x_raw",
+					"in_accel_y_raw",
+					"in_accel_z_raw",
+				},
+			},
+		},
+	})
+
+	if !got.Orientation.Present {
+		t.Fatal("accelerometer did not enable orientation capability")
+	}
+}
+
+func TestDetectCapabilitiesFindsOrientationDevice(t *testing.T) {
+	got := DetectCapabilities(Snapshot{
+		IIO: []IIODevice{
+			{
+				Device: "iio:device6",
+				Name:   "relative_orientation",
+			},
+		},
+	})
+
+	if !got.Orientation.Present {
+		t.Fatal("orientation IIO device was not detected")
+	}
+}
+
+func TestDetectCapabilitiesDoesNotTreatALSAsOrientation(t *testing.T) {
+	got := DetectCapabilities(Snapshot{
+		IIO: []IIODevice{
+			{
+				Device: "iio:device0",
+				Name:   "als",
+			},
+		},
+	})
+
+	if got.Orientation.Present {
+		t.Fatal("ambient-light sensor incorrectly enabled orientation capability")
+	}
+}

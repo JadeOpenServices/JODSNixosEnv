@@ -37,7 +37,7 @@ type Settings struct {
 	KeyboardLayout, KeyboardVariant                                string
 	WeatherCity, WeatherCountry                                    string
 	TouchpadWorkspaceSwipe, TouchscreenEnable                      bool
-	PenTabletEnable                                                bool
+	PenTabletEnable, OrientationSensorEnable                       bool
 	ClamshellEnable, USBGuardEnable                                bool
 	Name, Email, GitHubUsername, DotfilesDir                       string
 	WorkUserEnable                                                 bool
@@ -102,6 +102,7 @@ func Render(s Settings) []byte {
 	boolean("touchpadWorkspaceSwipe", s.TouchpadWorkspaceSwipe)
 	boolean("touchscreenEnable", s.TouchscreenEnable)
 	boolean("penTabletEnable", s.PenTabletEnable)
+	boolean("orientationSensorEnable", s.OrientationSensorEnable)
 	boolean("clamshellEnable", s.ClamshellEnable)
 	boolean("usbguardEnable", s.USBGuardEnable)
 	str("name", s.Name)

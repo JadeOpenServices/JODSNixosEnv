@@ -137,3 +137,13 @@ func TestRenderDeviceLayers(t *testing.T) {
 		t.Fatalf("missing %q in:\n%s", want, got)
 	}
 }
+
+func TestRenderIncludesOrientationSensorSetting(t *testing.T) {
+	rendered := string(Render(Settings{
+		OrientationSensorEnable: true,
+	}))
+
+	if !strings.Contains(rendered, "orientationSensorEnable = true;") {
+		t.Fatalf("orientation setting missing from render: %s", rendered)
+	}
+}
