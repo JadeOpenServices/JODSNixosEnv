@@ -573,3 +573,95 @@ func TestDiscoveryCommandsAreReadOnly(t *testing.T) {
 		}
 	}
 }
+
+func TestDiscoverAllowsActiveSiblingSwap(t *testing.T) {
+	r := validDiscoveryRunner()
+
+	r.outputs[commandKey(
+		"swapon",
+		"--show=NAME",
+		"--noheadings",
+	)] = []byte("/dev/dm-1\n")
+
+	r.outputs[commandKey(
+		"lsblk",
+		"-s",
+		"-nro",
+		"PATH",
+		"/dev/dm-1",
+	)] = []byte(
+		"/dev/mapper/cryptswap\n" +
+			"/dev/nvme0n1p3\n" +
+			"/dev/nvme0n1\n",
+	)
+
+	top, err := DiscoverTopology(
+		context.Background(),
+		r,
+		discoveryInput(),
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if top.SwapActive {
+		t.Fatal("unrelated sibling swap marked as root-backed")
+	}
+}
+
+func TestDiscoverRejectsRootBackedSwap(t *testing.T) {
+	r := validDiscoveryRunner()
+
+	r.outputs[commandKey(
+		"swapon",
+		"--show=NAME",
+		"--noheadings",
+	)] = []byte("/dev/dm-0\n")
+
+	r.outputs[commandKey(
+		"lsblk",
+		"-s",
+		"-nro",
+		"PATH",
+		"/dev/dm-0",
+	)] = []byte(
+		"/dev/mapper/cryptroot\n" +
+			"/dev/nvme0n1p2\n" +
+			"/dev/nvme0n1\n",
+	)
+
+	_, err := DiscoverTopology(
+		context.Background(),
+		r,
+		discoveryInput(),
+	)
+	if err == nil || !strings.Contains(err.Error(), "active swap") {
+		t.Fatalf("error=%v", err)
+	}
+}
+
+func TestDiscoverRejectsRootSwapfile(t *testing.T) {
+	r := validDiscoveryRunner()
+
+	r.outputs[commandKey(
+		"swapon",
+		"--show=NAME",
+		"--noheadings",
+	)] = []byte("/mnt/swapfile\n")
+
+	r.outputs[commandKey(
+		"findmnt",
+		"-nro",
+		"SOURCE",
+		"--target",
+		"/mnt/swapfile",
+	)] = []byte("/dev/mapper/cryptroot\n")
+
+	_, err := DiscoverTopology(
+		context.Background(),
+		r,
+		discoveryInput(),
+	)
+	if err == nil || !strings.Contains(err.Error(), "active swap") {
+		t.Fatalf("error=%v", err)
+	}
+}

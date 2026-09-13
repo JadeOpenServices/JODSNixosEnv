@@ -7,9 +7,45 @@
 }:
 let
   vendor = settings.graphicsVendor;
-  deviceId = lib.toLower (settings.graphicsDeviceId or "");
-  legacy580 = vendor == "nvidia" && deviceId == "13b4";
+  driverBranch = settings.graphicsDriverBranch or "stable";
+  legacy580 = vendor == "nvidia" && driverBranch == "legacy_580";
   hybrid = settings.graphicsType == "hybrid";
+
+  selectedNvidiaPackage =
+    if legacy580 then
+      config.boot.kernelPackages.nvidiaPackages.legacy_580
+    else
+      config.boot.kernelPackages.nvidiaPackages.stable;
+
+  nvidiaPackage =
+    if vendor == "nvidia" && lib.hasPrefix "580." selectedNvidiaPackage.version then
+      selectedNvidiaPackage.overrideAttrs (old: {
+        postPatch = (if old.postPatch == null then "" else old.postPatch) + ''
+          target=""
+
+          for candidate in \
+            nvidia/os-interface.c \
+            kernel/nvidia/os-interface.c \
+            kernel-open/nvidia/os-interface.c
+          do
+            if [ -f "$candidate" ]; then
+              target="$candidate"
+              break
+            fi
+          done
+
+          if [ -z "$target" ]; then
+            echo "ERROR: NVIDIA 580 os-interface.c not found" >&2
+            false
+          fi
+
+          if ! grep -q '<linux/string.h>' "$target"; then
+            sed -i '/#include <linux\/sys_soc.h>/a #include <linux/string.h>' "$target"
+          fi
+        '';
+      })
+    else
+      selectedNvidiaPackage;
 in
 {
   services.xserver.enable = true;
@@ -34,11 +70,7 @@ in
     ];
 
   hardware.nvidia = lib.mkIf (vendor == "nvidia") {
-    package =
-      if legacy580 then
-        config.boot.kernelPackages.nvidiaPackages.legacy_580
-      else
-        config.boot.kernelPackages.nvidiaPackages.stable;
+    package = nvidiaPackage;
     open = !legacy580;
     modesetting.enable = true;
     powerManagement.enable = true;

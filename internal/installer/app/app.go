@@ -202,6 +202,14 @@ func Run(ctx context.Context, args []string, in io.Reader, out, errOut io.Writer
 		}
 	}
 
+	persistentInstalledHost := s.existing
+	if !opt.recovery && !persistentInstalledHost {
+		persistentInstalledHost, err = detectPersistentInstalledHost(ctx)
+		if err != nil {
+			return fail(errOut, err)
+		}
+	}
+
 	forceRedeploy := opt.forceRedeploy || s.user.ForceRedeploy
 
 	if s.existing &&
@@ -859,7 +867,7 @@ func Run(ctx context.Context, args []string, in io.Reader, out, errOut io.Writer
 	}
 
 	if runRebuild {
-		if s.existing {
+		if persistentInstalledHost {
 			maintenanceRequired := false
 
 			if s.user.RecoveryEnable &&
@@ -1014,6 +1022,11 @@ func Run(ctx context.Context, args []string, in io.Reader, out, errOut io.Writer
 				return fail(errOut, err)
 			}
 		} else {
+			return fail(
+				errOut,
+				errors.New("refusing destructive fresh-disk provisioning; GjallarOS installation must preserve the existing system layout"),
+			)
+
 			targetDisk, err := selectFreshTargetDisk(
 				ctx,
 				ui,
@@ -2036,9 +2049,14 @@ func discoverInstalledRecoveryTopology(
 
 	mappingName := filepath.Base(mapping)
 
+	if err := attached(ctx, "sudo", "-v"); err != nil {
+		return recoveryresize.Topology{}, fmt.Errorf("authorize encrypted-root inspection: %w", err)
+	}
+
 	status, err := exec.CommandContext(
 		ctx,
 		"sudo",
+		"-n",
 		"cryptsetup",
 		"status",
 		mappingName,
@@ -2300,7 +2318,7 @@ func detectAndRenderState(ctx context.Context, root string, s *state) error {
 	}
 	s.passthroughIDs = append([]string(nil), g.PassthroughIDs...)
 	passthrough := u.NemuGPUPassthrough && len(g.PassthroughIDs) > 0
-	s.render = nixrender.Settings{System: u.System, Profile: u.Profile, Hostname: u.Hostname, Username: u.Username, Timezone: u.Timezone, Locale: u.Locale, KeyboardLayout: u.KeyboardLayout, KeyboardVariant: u.KeyboardVariant, WeatherCity: u.WeatherCity, WeatherCountry: u.WeatherCountry, TouchpadWorkspaceSwipe: u.TouchpadWorkspaceSwipe, TouchscreenEnable: s.touchscreen, PenTabletEnable: s.penTablet, OrientationSensorEnable: s.orientationSensor, ClamshellEnable: u.ClamshellEnable, USBGuardEnable: u.USBGuardEnable, Name: u.Name, Email: u.Email, GitHubUsername: u.GitHubUsername, DotfilesDir: u.DotfilesDir, WorkUserEnable: u.WorkUserEnable, WorkUsername: u.WorkUsername, DockerEnable: u.DockerEnable, DebugFunctions: u.DebugFunctions, Shell: u.Shell, Editors: u.Editors, Browsers: u.Browsers, PreferredEditor: u.PreferredEditor, PreferredBrowser: u.PreferredBrowser, PlaneEnable: u.PlaneEnable, PlaneHost: u.PlaneHost, DrawioEnable: u.DrawioEnable, DrawioSelfHosted: u.DrawioSelfHosted, DrawioHost: u.DrawioHost, BackgroundNormal: u.BackgroundNormal, BackgroundWork: u.BackgroundWork, BackgroundGaming: u.BackgroundGaming, EnableScrobbling: u.EnableScrobbling, EnableLastfm: u.EnableLastfm, EnableListenbrainz: u.EnableListenbrainz, LastfmUsername: u.LastfmUsername, ListenbrainzUsername: u.ListenbrainzUsername, FrameworkEnable: u.FrameworkEnable, FrameworkModel: u.FrameworkModel, DeviceProfile: u.DeviceProfile, DeviceLayers: u.DeviceLayers, DeviceSysVendor: u.DeviceSysVendor, DeviceProductName: u.DeviceProductName, DeviceProductVersion: u.DeviceProductVersion, DeviceBoardVendor: u.DeviceBoardVendor, DeviceBoardName: u.DeviceBoardName, DeviceBoardVersion: u.DeviceBoardVersion, GraphicsVendor: g.Vendor, GraphicsDeviceID: g.DeviceID, GraphicsType: g.Type, GraphicsCompute: g.Compute, GraphicsBusID: g.BusID, GraphicsIntegratedBusID: g.IntegratedBusID, WiFiDriver: wifi, AIEnable: u.AIEnable, AIModel: ai.Model, AIAccelerationProfile: ai.AccelerationProfile, AIAgentMode: u.AIAgentMode, AIContextTokens: ai.ContextTokens, AIVRAMMB: ai.VRAMMB, NemuEnable: u.NemuEnable, NemuGPUPassthrough: passthrough, LUKSTPM2Enable: u.LUKSTPM2Enable, RecoveryEnable: u.RecoveryEnable, RecoveryPartitionEnable: u.RecoveryPartitionEnable, JODSPrebootLockEnable: u.JODSPrebootLockEnable, SecureBootEnable: u.SecureBootEnable, EndpointManagedDevice: u.EndpointManagedDevice, JODSEndpoint: u.JODSEndpoint, JODSPolicySigningPublicKey: u.JODSPolicySigningKey, JODSRecoveryCommandSigningPublicKey: u.JODSRecoverySigningKey, JODSEnrollmentMode: u.JODSEnrollmentMode, JODSAllowInsecureTLS: u.JODSAllowInsecureTLS, JODSDeviceClass: u.JODSDeviceClass, JODSDesktopProfile: u.JODSDesktopProfile, JODSFingerprintEnrollmentAllowed: u.JODSFingerprintEnroll, WMs: []string{"hyprland"}, Theme: u.Theme}
+	s.render = nixrender.Settings{System: u.System, Profile: u.Profile, Hostname: u.Hostname, Username: u.Username, Timezone: u.Timezone, Locale: u.Locale, KeyboardLayout: u.KeyboardLayout, KeyboardVariant: u.KeyboardVariant, WeatherCity: u.WeatherCity, WeatherCountry: u.WeatherCountry, TouchpadWorkspaceSwipe: u.TouchpadWorkspaceSwipe, TouchscreenEnable: s.touchscreen, PenTabletEnable: s.penTablet, OrientationSensorEnable: s.orientationSensor, ClamshellEnable: u.ClamshellEnable, USBGuardEnable: u.USBGuardEnable, Name: u.Name, Email: u.Email, GitHubUsername: u.GitHubUsername, DotfilesDir: u.DotfilesDir, WorkUserEnable: u.WorkUserEnable, WorkUsername: u.WorkUsername, DockerEnable: u.DockerEnable, DebugFunctions: u.DebugFunctions, Shell: u.Shell, Editors: u.Editors, Browsers: u.Browsers, PreferredEditor: u.PreferredEditor, PreferredBrowser: u.PreferredBrowser, PlaneEnable: u.PlaneEnable, PlaneHost: u.PlaneHost, DrawioEnable: u.DrawioEnable, DrawioSelfHosted: u.DrawioSelfHosted, DrawioHost: u.DrawioHost, BackgroundNormal: u.BackgroundNormal, BackgroundWork: u.BackgroundWork, BackgroundGaming: u.BackgroundGaming, EnableScrobbling: u.EnableScrobbling, EnableLastfm: u.EnableLastfm, EnableListenbrainz: u.EnableListenbrainz, LastfmUsername: u.LastfmUsername, ListenbrainzUsername: u.ListenbrainzUsername, FrameworkEnable: u.FrameworkEnable, FrameworkModel: u.FrameworkModel, DeviceProfile: u.DeviceProfile, DeviceLayers: u.DeviceLayers, DeviceSysVendor: u.DeviceSysVendor, DeviceProductName: u.DeviceProductName, DeviceProductVersion: u.DeviceProductVersion, DeviceBoardVendor: u.DeviceBoardVendor, DeviceBoardName: u.DeviceBoardName, DeviceBoardVersion: u.DeviceBoardVersion, GraphicsVendor: g.Vendor, GraphicsDeviceID: g.DeviceID, GraphicsDriverBranch: g.DriverBranch, GraphicsType: g.Type, GraphicsCompute: g.Compute, GraphicsBusID: g.BusID, GraphicsIntegratedBusID: g.IntegratedBusID, WiFiDriver: wifi, AIEnable: u.AIEnable, AIModel: ai.Model, AIAccelerationProfile: ai.AccelerationProfile, AIAgentMode: u.AIAgentMode, AIContextTokens: ai.ContextTokens, AIVRAMMB: ai.VRAMMB, NemuEnable: u.NemuEnable, NemuGPUPassthrough: passthrough, LUKSTPM2Enable: u.LUKSTPM2Enable, RecoveryEnable: u.RecoveryEnable, RecoveryPartitionEnable: u.RecoveryPartitionEnable, JODSPrebootLockEnable: u.JODSPrebootLockEnable, SecureBootEnable: u.SecureBootEnable, EndpointManagedDevice: u.EndpointManagedDevice, JODSEndpoint: u.JODSEndpoint, JODSPolicySigningPublicKey: u.JODSPolicySigningKey, JODSRecoveryCommandSigningPublicKey: u.JODSRecoverySigningKey, JODSEnrollmentMode: u.JODSEnrollmentMode, JODSAllowInsecureTLS: u.JODSAllowInsecureTLS, JODSDeviceClass: u.JODSDeviceClass, JODSDesktopProfile: u.JODSDesktopProfile, JODSFingerprintEnrollmentAllowed: u.JODSFingerprintEnroll, WMs: []string{"hyprland"}, Theme: u.Theme}
 	if passthrough {
 		s.render.NemuGPUIDs = g.PassthroughIDs
 	}

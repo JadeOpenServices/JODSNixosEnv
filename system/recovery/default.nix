@@ -3,10 +3,13 @@
   lib,
   pkgs,
   settings,
+  sourceRevision,
   ...
 }:
 let
-  tools = import ./tools.nix { inherit config pkgs; };
+  tools = import ./tools.nix {
+    inherit config pkgs sourceRevision;
+  };
   inherit (tools) gjallarctl recovery recoveryExecutor;
 
   maintenanceCandidates = lib.concatStringsSep "\n" (

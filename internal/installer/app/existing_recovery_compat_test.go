@@ -13,7 +13,7 @@ import (
 	"github.com/bakanura/gjallarOS/internal/installer/prompt"
 )
 
-func TestExistingInstalledSystemDetectedFromPersistentRoot(t *testing.T) {
+func TestVanillaPersistentRootIsFresh(t *testing.T) {
 	original := inspectCurrentRoot
 	t.Cleanup(func() { inspectCurrentRoot = original })
 
@@ -30,8 +30,8 @@ func TestExistingInstalledSystemDetectedFromPersistentRoot(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !existing {
-		t.Fatal("persistent ext4 installed system was treated as fresh")
+	if existing {
+		t.Fatal("vanilla persistent NixOS root was treated as existing GjallarOS")
 	}
 }
 

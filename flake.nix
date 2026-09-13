@@ -267,7 +267,7 @@
           ];
 
           specialArgs = {
-            inherit inputs settings;
+            inherit inputs settings sourceRevision;
           };
         };
       };

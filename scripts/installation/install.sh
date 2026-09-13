@@ -1,4 +1,14 @@
 #!/usr/bin/env bash
+
+# Enable the modern Nix CLI and flakes for the entire installer bootstrap.
+if [ -n "${NIX_CONFIG:-}" ]; then
+    NIX_CONFIG="${NIX_CONFIG}
+extra-experimental-features = nix-command flakes"
+    export NIX_CONFIG
+else
+    export NIX_CONFIG='extra-experimental-features = nix-command flakes'
+fi
+
 # Build and launch the installer without changing the caller's environment.
 set -euo pipefail
 
