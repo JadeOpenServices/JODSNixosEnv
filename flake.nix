@@ -124,6 +124,10 @@
 
       superfileOverlay = final: prev: {
         superfile = inputs.superfile.packages.${system}.superfile.overrideAttrs (old: {
+          patches = (old.patches or [ ]) ++ [
+            ./patches/superfile-disk-footer.patch
+          ];
+
           nativeBuildInputs =
             (lib.filter (
               input:
