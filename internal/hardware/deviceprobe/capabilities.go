@@ -1,6 +1,10 @@
 package deviceprobe
 
-import "strings"
+import (
+	"strings"
+
+	"github.com/bakanura/gjallarOS/internal/hardware/orientation"
+)
 
 type CapabilityState struct {
 	Present bool   `json:"present"`
@@ -16,6 +20,7 @@ type Capabilities struct {
 	Thunderbolt CapabilityState       `json:"thunderbolt"`
 	CardReader  CapabilityState       `json:"cardReader"`
 	Fingerprint FingerprintCapability `json:"fingerprint"`
+	Orientation CapabilityState       `json:"orientation"`
 }
 
 func DetectCapabilities(snapshot Snapshot) Capabilities {
@@ -23,6 +28,7 @@ func DetectCapabilities(snapshot Snapshot) Capabilities {
 		Thunderbolt: detectThunderboltCapability(snapshot),
 		CardReader:  detectCardReaderCapability(snapshot),
 		Fingerprint: detectFingerprintCapability(snapshot),
+		Orientation: detectOrientationCapability(snapshot),
 	}
 }
 
@@ -117,4 +123,17 @@ func detectFingerprintCapability(snapshot Snapshot) FingerprintCapability {
 	}
 
 	return FingerprintCapability{}
+}
+
+func detectOrientationCapability(snapshot Snapshot) CapabilityState {
+	for _, device := range snapshot.IIO {
+		if orientation.IsSensor(device.Name, device.Channels) {
+			return CapabilityState{
+				Present: true,
+				Details: "orientation-capable IIO sensor present",
+			}
+		}
+	}
+
+	return CapabilityState{}
 }

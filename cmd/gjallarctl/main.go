@@ -83,6 +83,8 @@ func run(args []string, stdout, stderr io.Writer) int {
 		return runDetect(args[1:], stdout, stderr)
 	case "device-probe":
 		return runDeviceProbe(args[1:], stdout, stderr)
+	case "hyprland-rotate":
+		return runHyprlandRotate(args[1:], stdout, stderr)
 	case "ai":
 		return runAI(args[1:], stdout, stderr)
 	case "normalize":
@@ -2414,4 +2416,192 @@ func terminalRuneWidth(r rune) int {
 		return 2
 	}
 	return 1
+}
+
+type hyprMonitor struct {
+	Name        string  `json:"name"`
+	Width       int     `json:"width"`
+	Height      int     `json:"height"`
+	RefreshRate float64 `json:"refreshRate"`
+	X           int     `json:"x"`
+	Y           int     `json:"y"`
+	Scale       float64 `json:"scale"`
+}
+
+func internalDRMConnector(sysRoot string) (string, error) {
+	paths, err := filepath.Glob(filepath.Join(sysRoot, "class", "drm", "card*-eDP-*"))
+	if err != nil {
+		return "", err
+	}
+
+	for _, path := range paths {
+		status, err := os.ReadFile(filepath.Join(path, "status"))
+		if err != nil {
+			continue
+		}
+		if strings.TrimSpace(string(status)) == "connected" {
+			name := filepath.Base(path)
+			if i := strings.Index(name, "-eDP-"); i >= 0 {
+				return name[i+1:], nil
+			}
+		}
+	}
+
+	return "", fmt.Errorf("no connected internal eDP connector found")
+}
+
+func hyprlandMonitors() ([]hyprMonitor, error) {
+	out, err := exec.Command("hyprctl", "monitors", "-j").Output()
+	if err != nil {
+		return nil, fmt.Errorf("hyprctl monitors: %w", err)
+	}
+
+	var monitors []hyprMonitor
+	if err := json.Unmarshal(out, &monitors); err != nil {
+		return nil, fmt.Errorf("decode hyprctl monitors: %w", err)
+	}
+
+	return monitors, nil
+}
+
+func orientationTransform(value string) (int, bool) {
+	switch strings.TrimSpace(value) {
+	case "normal":
+		return 0, true
+	case "right-up":
+		return 1, true
+	case "bottom-up":
+		return 2, true
+	case "left-up":
+		return 3, true
+	default:
+		return 0, false
+	}
+}
+
+func applyHyprlandRotation(sysRoot, orientation string) error {
+	transform, ok := orientationTransform(orientation)
+	if !ok {
+		return nil
+	}
+
+	connector, err := internalDRMConnector(sysRoot)
+	if err != nil {
+		return err
+	}
+
+	monitors, err := hyprlandMonitors()
+	if err != nil {
+		return err
+	}
+
+	var monitor *hyprMonitor
+	for i := range monitors {
+		if monitors[i].Name == connector {
+			monitor = &monitors[i]
+			break
+		}
+	}
+	if monitor == nil {
+		return fmt.Errorf("internal connector %q not present in Hyprland", connector)
+	}
+
+	mode := fmt.Sprintf("%dx%d@%.3f", monitor.Width, monitor.Height, monitor.RefreshRate)
+	position := fmt.Sprintf("%dx%d", monitor.X, monitor.Y)
+	scale := strconv.FormatFloat(monitor.Scale, 'f', -1, 64)
+	spec := fmt.Sprintf(
+		"%s,%s,%s,%s,transform,%d",
+		monitor.Name,
+		mode,
+		position,
+		scale,
+		transform,
+	)
+
+	for _, args := range [][]string{
+		{"keyword", "monitor", spec},
+		{"keyword", "input:touchdevice:transform", strconv.Itoa(transform)},
+		{"keyword", "input:tablet:transform", strconv.Itoa(transform)},
+	} {
+		cmd := exec.Command("hyprctl", args...)
+		if out, err := cmd.CombinedOutput(); err != nil {
+			return fmt.Errorf(
+				"hyprctl %s: %w: %s",
+				strings.Join(args, " "),
+				err,
+				strings.TrimSpace(string(out)),
+			)
+		}
+	}
+
+	return nil
+}
+
+func runHyprlandRotate(args []string, stdout, stderr io.Writer) int {
+	if len(args) != 0 {
+		fmt.Fprintln(stderr, "usage: gjallarctl hyprland-rotate")
+		return 2
+	}
+
+	cmd := exec.Command("monitor-sensor")
+	pipe, err := cmd.StdoutPipe()
+	if err != nil {
+		fmt.Fprintf(stderr, "FAIL: monitor-sensor stdout: %v\n", err)
+		return 1
+	}
+	cmd.Stderr = stderr
+
+	if err := cmd.Start(); err != nil {
+		fmt.Fprintf(stderr, "FAIL: start monitor-sensor: %v\n", err)
+		return 1
+	}
+
+	scanner := bufio.NewScanner(pipe)
+	for scanner.Scan() {
+		line := scanner.Text()
+
+		var orientation string
+		switch {
+		case strings.Contains(line, "Accelerometer orientation changed:"):
+			orientation = strings.TrimSpace(
+				strings.TrimPrefix(
+					line[strings.Index(line, "Accelerometer orientation changed:"):],
+					"Accelerometer orientation changed:",
+				),
+			)
+
+		case strings.Contains(line, "Has accelerometer (orientation:"):
+			start := strings.Index(line, "orientation:")
+			if start >= 0 {
+				rest := line[start+len("orientation:"):]
+				if end := strings.IndexAny(rest, ",)"); end >= 0 {
+					rest = rest[:end]
+				}
+				orientation = strings.TrimSpace(rest)
+			}
+		}
+
+		if orientation == "" {
+			continue
+		}
+
+		if err := applyHyprlandRotation("/sys", orientation); err != nil {
+			fmt.Fprintf(stderr, "WARN: rotate %s: %v\n", orientation, err)
+			continue
+		}
+
+		fmt.Fprintf(stdout, "PASS: orientation %s applied\n", orientation)
+	}
+
+	if err := scanner.Err(); err != nil {
+		fmt.Fprintf(stderr, "FAIL: read monitor-sensor: %v\n", err)
+		return 1
+	}
+
+	if err := cmd.Wait(); err != nil {
+		fmt.Fprintf(stderr, "FAIL: monitor-sensor: %v\n", err)
+		return 1
+	}
+
+	return 0
 }

@@ -115,3 +115,45 @@ func TestDetectHardwareReadsStructuredDMIIdentity(t *testing.T) {
 		t.Fatalf("BoardVersion=%q", got.BoardVersion)
 	}
 }
+
+func TestDetectHardwareFindsOrientationSensor(t *testing.T) {
+	root := t.TempDir()
+	device := filepath.Join(root, "bus", "iio", "devices", "iio:device4")
+
+	if err := os.MkdirAll(device, 0755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(
+		filepath.Join(device, "name"),
+		[]byte("accel_3d\n"),
+		0644,
+	); err != nil {
+		t.Fatal(err)
+	}
+
+	got := DetectHardware(root)
+	if !got.OrientationSensor {
+		t.Fatalf("orientation sensor not detected: %+v", got)
+	}
+}
+
+func TestDetectHardwareDoesNotTreatALSAsOrientationSensor(t *testing.T) {
+	root := t.TempDir()
+	device := filepath.Join(root, "bus", "iio", "devices", "iio:device0")
+
+	if err := os.MkdirAll(device, 0755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(
+		filepath.Join(device, "name"),
+		[]byte("als\n"),
+		0644,
+	); err != nil {
+		t.Fatal(err)
+	}
+
+	got := DetectHardware(root)
+	if got.OrientationSensor {
+		t.Fatalf("ALS incorrectly detected as orientation sensor: %+v", got)
+	}
+}

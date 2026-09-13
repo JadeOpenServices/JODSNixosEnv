@@ -2,6 +2,7 @@ package discovery
 
 import (
 	"github.com/bakanura/gjallarOS/internal/hardware/inputclass"
+	"github.com/bakanura/gjallarOS/internal/hardware/orientation"
 	"os"
 	"path/filepath"
 	"sort"
@@ -19,8 +20,9 @@ type Hardware struct {
 	BoardName      string
 	BoardVersion   string
 
-	Touchscreen bool
-	PenTablet   bool
+	Touchscreen       bool
+	PenTablet         bool
+	OrientationSensor bool
 }
 type Options struct{ Profiles, Shells, Editors, Browsers, Themes []string }
 
@@ -61,6 +63,7 @@ func DetectHardware(sysRoot string) Hardware {
 
 	h.Touchscreen = detectTouchscreen(sysRoot)
 	h.PenTablet = detectPenTablet(sysRoot)
+	h.OrientationSensor = detectOrientationSensor(sysRoot)
 	return h
 }
 
@@ -97,6 +100,29 @@ func detectTouchscreen(sysRoot string) bool {
 			return true
 		}
 	}
+	return false
+}
+
+func detectOrientationSensor(sysRoot string) bool {
+	devices, _ := filepath.Glob(
+		filepath.Join(sysRoot, "bus", "iio", "devices", "iio:device*"),
+	)
+
+	for _, device := range devices {
+		nameData, _ := os.ReadFile(filepath.Join(device, "name"))
+		name := strings.TrimSpace(string(nameData))
+
+		entries, _ := filepath.Glob(filepath.Join(device, "in_*"))
+		channels := make([]string, 0, len(entries))
+		for _, entry := range entries {
+			channels = append(channels, filepath.Base(entry))
+		}
+
+		if orientation.IsSensor(name, channels) {
+			return true
+		}
+	}
+
 	return false
 }
 
