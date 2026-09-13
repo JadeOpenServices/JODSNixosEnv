@@ -417,3 +417,59 @@ func TestDeviceProfileDriftCannotSkipInstall(t *testing.T) {
 		t.Fatal("generic device profile reconciliation refusal is missing")
 	}
 }
+
+func TestForceRedeployPreservesExistingInstallState(t *testing.T) {
+	appSource, err := os.ReadFile("app.go")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	body := string(appSource)
+
+	for _, want := range []string{
+		`f.BoolVar(&opt.forceRedeploy, "force-redeploy"`,
+		`forceRedeploy := opt.forceRedeploy || s.user.ForceRedeploy`,
+		`opt.forceRedeploy = forceRedeploy`,
+		`if opt.forceRedeploy {`,
+		`if s.existing && !opt.forceRedeploy {`,
+		`Force redeployment requested; running prerequisite bootstrap despite existing-install detection.`,
+		`--force-redeploy cannot be combined with --no-rebuild`,
+	} {
+		if !strings.Contains(body, want) {
+			t.Fatalf("force-redeploy lifecycle boundary missing %q", want)
+		}
+	}
+
+	start := strings.Index(body, "func prepareHost(")
+	if start < 0 {
+		t.Fatal("prepareHost is missing")
+	}
+
+	prepareHost := body[start:]
+	if next := strings.Index(prepareHost[1:], "\nfunc "); next >= 0 {
+		prepareHost = prepareHost[:next+1]
+	}
+
+	if strings.Contains(prepareHost, "s.existing = false") {
+		t.Fatal("force redeployment must not erase existing-install state")
+	}
+
+	if strings.Contains(body, "forceBootstrap") ||
+		strings.Contains(body, "force-bootstrap") {
+		t.Fatal("obsolete force-bootstrap lifecycle remains")
+	}
+}
+
+func TestForceRedeployIsNonDestructive(t *testing.T) {
+	appSource, err := os.ReadFile("app.go")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	body := string(appSource)
+
+	want := "Force clean redeployment selected; preserving disk layout, credentials, encryption keys, and user data."
+	if !strings.Contains(body, want) {
+		t.Fatal("force redeployment preservation boundary is missing")
+	}
+}
