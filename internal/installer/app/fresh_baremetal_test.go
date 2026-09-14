@@ -373,14 +373,23 @@ func TestRecoveryMaintenanceBootUsesInstalledRoot(t *testing.T) {
 	}
 
 	text := string(body)
-	call := strings.Index(text, "\"gjallar-recovery-maintenance-next\",")
-	if call < 0 {
-		t.Fatal("maintenance boot helper invocation is missing")
+
+	required := []string{
+		`filepath.EvalSymlinks(`,
+		`nix/var/nix/profiles/system`,
+		`sw/bin/gjallar-recovery-maintenance-next`,
+		`maintenanceNext,`,
+		`installedRoot,`,
 	}
 
-	window := text[call:]
-	if !strings.Contains(window, "installedRoot") {
-		t.Fatal("maintenance boot helper is not passed installedRoot")
+	for _, needle := range required {
+		if !strings.Contains(text, needle) {
+			t.Fatalf("maintenance boot handoff is missing %q", needle)
+		}
+	}
+
+	if strings.Contains(text, `"gjallar-recovery-maintenance-next",`) {
+		t.Fatal("maintenance helper must not be resolved from the live environment PATH")
 	}
 }
 
