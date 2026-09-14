@@ -1006,10 +1006,28 @@ func Run(ctx context.Context, args []string, in io.Reader, out, errOut io.Writer
 					"STAGE: arming one-shot maintenance boot",
 				)
 
+				systemPath, err := filepath.EvalSymlinks(
+					filepath.Join(installedRoot, "nix/var/nix/profiles/system"),
+				)
+				if err != nil {
+					return fail(
+						errOut,
+						fmt.Errorf(
+							"resolve installed system generation: %w",
+							err,
+						),
+					)
+				}
+
+				maintenanceNext := filepath.Join(
+					systemPath,
+					"sw/bin/gjallar-recovery-maintenance-next",
+				)
+
 				if err := attached(
 					ctx,
 					"sudo",
-					"gjallar-recovery-maintenance-next",
+					maintenanceNext,
 					installedRoot,
 				); err != nil {
 					return fail(
