@@ -59,8 +59,6 @@ type User struct {
 	EnableListenbrainz            bool     `json:"enableListenbrainz"`
 	LastfmUsername                string   `json:"lastfmUsername"`
 	ListenbrainzUsername          string   `json:"listenbrainzUsername"`
-	FrameworkEnable               bool     `json:"frameworkEnable"`
-	FrameworkModel                string   `json:"frameworkModel"`
 	DeviceProfile                 string   `json:"deviceProfile"`
 	DeviceLayers                  []string `json:"deviceLayers"`
 	DeviceSysVendor               string   `json:"deviceSysVendor"`

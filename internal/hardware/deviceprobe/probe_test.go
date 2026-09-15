@@ -16,17 +16,21 @@ func TestLinesDropsEmptyRows(t *testing.T) {
 
 func TestCollectSnapshotArraysMarshalAsArrays(t *testing.T) {
 	s := Snapshot{
-		Schema:      1,
-		PCI:         []string{},
-		USB:         []string{},
-		PCIDevices:  []PCIDevice{},
-		USBDevices:  []USBDevice{},
-		HIDDevices:  []HIDDevice{},
-		Input:       []InputDevice{},
-		IIO:         []IIODevice{},
-		Thunderbolt: []ThunderboltDevice{},
-		Block:       []BlockDevice{},
-		Audio:       []AudioDevice{},
+		Schema:        1,
+		PCI:           []string{},
+		USB:           []string{},
+		PCIDevices:    []PCIDevice{},
+		USBDevices:    []USBDevice{},
+		HIDDevices:    []HIDDevice{},
+		Input:         []InputDevice{},
+		IIO:           []IIODevice{},
+		Thunderbolt:   []ThunderboltDevice{},
+		Block:         []BlockDevice{},
+		Audio:         []AudioDevice{},
+		PowerSupplies: []PowerSupply{},
+		Backlights:    []BacklightDevice{},
+		VideoDevices:  []VideoDevice{},
+		Fans:          []FanDevice{},
 	}
 
 	data, err := json.Marshal(s)
@@ -46,6 +50,10 @@ func TestCollectSnapshotArraysMarshalAsArrays(t *testing.T) {
 		`"thunderbolt":[]`,
 		`"block":[]`,
 		`"audio":[]`,
+		`"powerSupplies":[]`,
+		`"backlights":[]`,
+		`"videoDevices":[]`,
+		`"fans":[]`,
 	} {
 		if !strings.Contains(text, field) {
 			t.Fatalf("missing canonical empty array %s in %s", field, text)

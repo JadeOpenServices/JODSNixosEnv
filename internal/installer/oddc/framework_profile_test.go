@@ -26,14 +26,14 @@ func TestEmbeddedRepositoryResolvesFramework13AMD7040Exactly(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if resolved.Device.ID != "laptop/framework/laptop-13/amd/ryzen-7040" {
+	if resolved.Device.ID != "laptop/framework/laptop-13-amd-ryzen-7040" {
 		t.Fatalf("resolved device=%q", resolved.Device.ID)
 	}
 
 	want := []string{
 		"laptop/common",
 		"laptop/framework",
-		"laptop/framework/laptop-13/amd/ryzen-7040",
+		"laptop/framework/laptop-13-amd-ryzen-7040",
 	}
 
 	if len(resolved.Inheritance) != len(want) {

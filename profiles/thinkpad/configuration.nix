@@ -17,7 +17,7 @@
     ../../system/hardware/thinkpad/boot.nix
     ../../system/recovery
     ../../system/security/laptop/firewall.nix
-    ../../system/hardware/laptop/battery.nix
+    ../../oddc/devices/laptop/common/battery.nix
     ../../system/virtualization
     ../../system/gaming/nethack.nix
     ../../themes/lib/common.nix

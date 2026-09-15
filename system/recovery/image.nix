@@ -71,9 +71,6 @@ let
       enableLastfm = getSetting "enableLastfm" false;
       enableListenbrainz = getSetting "enableListenbrainz" false;
 
-      frameworkEnable = getSetting "frameworkEnable" false;
-      frameworkModel = getSetting "frameworkModel" "";
-
       aiEnable = getSetting "aiEnable" false;
       aiAgentMode = getSetting "aiAgentMode" "workspace";
       overrideAiSelection = false;

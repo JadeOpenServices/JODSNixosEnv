@@ -26,7 +26,7 @@ func TestValidationMetadataFromCompleteReport(t *testing.T) {
 		Revision: "git:gjallar123",
 		Resolved: oddc.Resolved{
 			Device: oddc.Manifest{
-				ID: "laptop/framework/laptop-13/amd/ryzen-7040",
+				ID: "laptop/framework/laptop-13-amd-ryzen-7040",
 			},
 			Source: oddc.SourceMetadata{
 				Revision: "git:oddc456",
@@ -59,7 +59,7 @@ func TestValidationMetadataFromCompleteReport(t *testing.T) {
 			got.LastValidatedGjallarOSRevision,
 		)
 	}
-	if got.LastValidatedDeviceID != "laptop/framework/laptop-13/amd/ryzen-7040" {
+	if got.LastValidatedDeviceID != "laptop/framework/laptop-13-amd-ryzen-7040" {
 		t.Fatalf("LastValidatedDeviceID=%q", got.LastValidatedDeviceID)
 	}
 	if got.LastValidatedODDCRevision != "git:oddc456" {

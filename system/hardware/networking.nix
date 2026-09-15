@@ -50,4 +50,7 @@ in
   # minute. Applications which can react dynamically to connectivity still do.
   systemd.services.NetworkManager-wait-online.environment.NM_ONLINE_TIMEOUT = "12";
   # gjallarOS NetworkManager fast-start END
+
+  # Tailscale VPN daemon
+  services.tailscale.enable = true;
 }

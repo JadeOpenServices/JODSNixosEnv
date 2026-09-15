@@ -439,7 +439,7 @@ func TestValidationRejectsChangedTarget(t *testing.T) {
 		{
 			NixOSRelease:      "26.05",
 			GjallarOSRevision: "git:abc123",
-			DeviceID:          "laptop/framework/laptop-13/amd/ryzen-7040",
+			DeviceID:          "laptop/framework/laptop-13-amd-ryzen-7040",
 			ODDCRevision:      "git:abc123",
 		},
 		{

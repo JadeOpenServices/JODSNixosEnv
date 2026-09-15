@@ -36,8 +36,8 @@ let
   config = evaluated.config;
 in
 assert
-  config.hardware.nvidia.package.drvPath
-  == config.boot.kernelPackages.nvidiaPackages.legacy_580.drvPath;
+  config.hardware.nvidia.package.version
+  == config.boot.kernelPackages.nvidiaPackages.legacy_580.version;
 assert config.hardware.nvidia.open == false;
 assert config.hardware.nvidia.prime.offload.enable;
 assert config.hardware.nvidia.prime.intelBusId == "PCI:0:2:0";

@@ -51,8 +51,6 @@ type Settings struct {
 	BackgroundNormal, BackgroundWork, BackgroundGaming                   string
 	EnableScrobbling, EnableLastfm, EnableListenbrainz                   bool
 	LastfmUsername, ListenbrainzUsername                                 string
-	FrameworkEnable                                                      bool
-	FrameworkModel                                                       string
 	DeviceProfile                                                        string
 	DeviceLayers                                                         []string
 	DeviceSysVendor, DeviceProductName, DeviceProductVersion             string
@@ -133,8 +131,6 @@ func Render(s Settings) []byte {
 	boolean("enableListenbrainz", s.EnableListenbrainz)
 	str("lastfmUsername", s.LastfmUsername)
 	str("listenbrainzUsername", s.ListenbrainzUsername)
-	boolean("frameworkEnable", s.FrameworkEnable)
-	str("frameworkModel", s.FrameworkModel)
 	str("deviceProfile", s.DeviceProfile)
 	list("deviceLayers", s.DeviceLayers)
 	str("deviceSysVendor", s.DeviceSysVendor)

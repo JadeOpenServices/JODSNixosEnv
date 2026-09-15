@@ -109,7 +109,6 @@ var presetSchema = map[string]presetValueType{
 	"jodsFingerprintEnrollmentAllowed": presetBool,
 	"enableScrobbling":                 presetBool, "enableLastfm": presetBool, "enableListenbrainz": presetBool,
 	"lastfmUsername": presetString, "listenbrainzUsername": presetString,
-	"frameworkEnable": presetBool, "frameworkModel": presetString,
 	"deviceProfile":   presetString,
 	"deviceLayers":    presetStringList,
 	"deviceSysVendor": presetString, "deviceProductName": presetString, "deviceProductVersion": presetString,

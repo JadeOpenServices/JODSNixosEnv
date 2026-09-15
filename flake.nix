@@ -132,6 +132,8 @@
       };
     in
     {
+      nixosModules = import ./oddc/nixos/registry.nix;
+
       packages.${system} = rec {
         gjallarctl = pkgs.callPackage ./pkgs/gjallarctl { };
         "gjallar-installer" = gjallarctl.overrideAttrs (old: {

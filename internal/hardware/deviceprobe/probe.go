@@ -10,41 +10,53 @@ import (
 )
 
 type Snapshot struct {
-	Schema          int                 `json:"schema"`
-	SysVendor       string              `json:"sysVendor"`
-	ProductName     string              `json:"productName"`
-	BoardName       string              `json:"boardName"`
-	PCI             []string            `json:"pci"`
-	USB             []string            `json:"usb"`
-	PCIDevices      []PCIDevice         `json:"pciDevices"`
-	USBDevices      []USBDevice         `json:"usbDevices"`
-	HIDDevices      []HIDDevice         `json:"hidDevices"`
-	Input           []InputDevice       `json:"input"`
-	IIO             []IIODevice         `json:"iio"`
-	Thunderbolt     []ThunderboltDevice `json:"thunderbolt"`
-	ThunderboltHost bool                `json:"thunderboltHost"`
-	Block           []BlockDevice       `json:"block"`
-	Audio           []AudioDevice       `json:"audio"`
-	Fingerprint     FingerprintState    `json:"fingerprint"`
+	Schema          int                     `json:"schema"`
+	SysVendor       string                  `json:"sysVendor"`
+	ProductName     string                  `json:"productName"`
+	BoardName       string                  `json:"boardName"`
+	PCI             []string                `json:"pci"`
+	USB             []string                `json:"usb"`
+	PCIDevices      []PCIDevice             `json:"pciDevices"`
+	USBDevices      []USBDevice             `json:"usbDevices"`
+	HIDDevices      []HIDDevice             `json:"hidDevices"`
+	Input           []InputDevice           `json:"input"`
+	IIO             []IIODevice             `json:"iio"`
+	Thunderbolt     []ThunderboltDevice     `json:"thunderbolt"`
+	ThunderboltHost bool                    `json:"thunderboltHost"`
+	Block           []BlockDevice           `json:"block"`
+	Audio           []AudioDevice           `json:"audio"`
+	Fingerprint     FingerprintState        `json:"fingerprint"`
+	PowerSupplies   []PowerSupply           `json:"powerSupplies"`
+	Backlights      []BacklightDevice       `json:"backlights"`
+	VideoDevices    []VideoDevice           `json:"videoDevices"`
+	EmbeddedControl EmbeddedControllerState `json:"embeddedController"`
+	Fans            []FanDevice             `json:"fans"`
+	AMDPower        AMDPowerState           `json:"amdPower"`
 }
 
 func Collect(ctx context.Context, sysRoot string) (Snapshot, error) {
 	s := Snapshot{
-		Schema:      1,
-		SysVendor:   read(filepath.Join(sysRoot, "class/dmi/id/sys_vendor")),
-		ProductName: read(filepath.Join(sysRoot, "class/dmi/id/product_name")),
-		BoardName:   read(filepath.Join(sysRoot, "class/dmi/id/board_name")),
-		PCI:         []string{},
-		USB:         []string{},
-		PCIDevices:  nonNilPCIDevices(pciDevices(sysRoot)),
-		USBDevices:  nonNilUSBDevices(usbDevices(sysRoot)),
-		HIDDevices:  nonNilHIDDevices(hidDevices(sysRoot)),
-		Input:       nonNilInputDevices(inputDevices(sysRoot)),
-		IIO:         nonNilIIODevices(iioDevices(sysRoot)),
-		Thunderbolt: nonNilThunderboltDevices(thunderboltDevices(sysRoot)),
-		Block:       nonNilBlockDevices(blockDevices(sysRoot)),
-		Audio:       nonNilAudioDevices(audioDevices(sysRoot)),
-		Fingerprint: fingerprintState(ctx),
+		Schema:          1,
+		SysVendor:       read(filepath.Join(sysRoot, "class/dmi/id/sys_vendor")),
+		ProductName:     read(filepath.Join(sysRoot, "class/dmi/id/product_name")),
+		BoardName:       read(filepath.Join(sysRoot, "class/dmi/id/board_name")),
+		PCI:             []string{},
+		USB:             []string{},
+		PCIDevices:      nonNilPCIDevices(pciDevices(sysRoot)),
+		USBDevices:      nonNilUSBDevices(usbDevices(sysRoot)),
+		HIDDevices:      nonNilHIDDevices(hidDevices(sysRoot)),
+		Input:           nonNilInputDevices(inputDevices(sysRoot)),
+		IIO:             nonNilIIODevices(iioDevices(sysRoot)),
+		Thunderbolt:     nonNilThunderboltDevices(thunderboltDevices(sysRoot)),
+		Block:           nonNilBlockDevices(blockDevices(sysRoot)),
+		Audio:           nonNilAudioDevices(audioDevices(sysRoot)),
+		Fingerprint:     fingerprintState(ctx),
+		PowerSupplies:   nonNilPowerSupplies(powerSupplies(sysRoot)),
+		Backlights:      nonNilBacklights(backlightDevices(sysRoot)),
+		VideoDevices:    nonNilVideoDevices(videoDevices(sysRoot)),
+		EmbeddedControl: embeddedControllerState(sysRoot),
+		Fans:            nonNilFans(fanDevices(sysRoot)),
+		AMDPower:        amdPowerState(sysRoot),
 	}
 
 	if len(s.Thunderbolt) != 0 {
@@ -118,6 +130,34 @@ func nonNilBlockDevices(value []BlockDevice) []BlockDevice {
 func nonNilAudioDevices(value []AudioDevice) []AudioDevice {
 	if value == nil {
 		return []AudioDevice{}
+	}
+	return value
+}
+
+func nonNilPowerSupplies(value []PowerSupply) []PowerSupply {
+	if value == nil {
+		return []PowerSupply{}
+	}
+	return value
+}
+
+func nonNilBacklights(value []BacklightDevice) []BacklightDevice {
+	if value == nil {
+		return []BacklightDevice{}
+	}
+	return value
+}
+
+func nonNilVideoDevices(value []VideoDevice) []VideoDevice {
+	if value == nil {
+		return []VideoDevice{}
+	}
+	return value
+}
+
+func nonNilFans(value []FanDevice) []FanDevice {
+	if value == nil {
+		return []FanDevice{}
 	}
 	return value
 }

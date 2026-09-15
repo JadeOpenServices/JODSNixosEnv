@@ -341,12 +341,12 @@ func TestDeviceProfileDriftDetectsNewExactProfile(t *testing.T) {
 
 	resolved := oddc.Resolved{
 		Device: oddc.Manifest{
-			ID: "laptop/framework/laptop-13/amd/ryzen-7040",
+			ID: "laptop/framework/laptop-13-amd-ryzen-7040",
 		},
 		Inheritance: []oddc.Manifest{
 			{ID: "laptop/common"},
 			{ID: "laptop/framework"},
-			{ID: "laptop/framework/laptop-13/amd/ryzen-7040"},
+			{ID: "laptop/framework/laptop-13-amd-ryzen-7040"},
 		},
 	}
 
