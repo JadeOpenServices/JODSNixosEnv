@@ -9,18 +9,16 @@ func TestDeviceIdentitySurvivesConfigRoundTrip(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "user.config.json")
 
 	want := User{
-		System:           "x86_64-linux",
-		Profile:          "laptop",
-		Hostname:         "testhost",
-		Username:         "tester",
-		Theme:            "noctalia",
-		Shell:            "zsh",
-		Editors:          []string{"vscodium"},
-		Browsers:         []string{"librewolf"},
-		PreferredEditor:  "vscodium",
-		PreferredBrowser: "librewolf",
-
-		DeviceProfile:        "laptop/common",
+		System:               "x86_64-linux",
+		Profile:              "laptop",
+		Hostname:             "testhost",
+		Username:             "tester",
+		Theme:                "noctalia",
+		Shell:                "zsh",
+		Editors:              []string{"vscodium"},
+		Browsers:             []string{"librewolf"},
+		PreferredEditor:      "vscodium",
+		PreferredBrowser:     "librewolf",
 		DeviceSysVendor:      "HP",
 		DeviceProductName:    "HP ZBook x2 G4",
 		DeviceProductVersion: "A",
@@ -38,8 +36,7 @@ func TestDeviceIdentitySurvivesConfigRoundTrip(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if got.DeviceProfile != want.DeviceProfile ||
-		got.DeviceSysVendor != want.DeviceSysVendor ||
+	if got.DeviceSysVendor != want.DeviceSysVendor ||
 		got.DeviceProductName != want.DeviceProductName ||
 		got.DeviceProductVersion != want.DeviceProductVersion ||
 		got.DeviceBoardVendor != want.DeviceBoardVendor ||

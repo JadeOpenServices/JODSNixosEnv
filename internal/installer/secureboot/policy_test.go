@@ -13,7 +13,7 @@ import (
 
 func frameworkEffectivePolicy() oddc.EffectiveSecureBootFirmwarePolicy {
 	return oddc.EffectiveSecureBootFirmwarePolicy{
-		SourceLayer: "laptop/framework",
+		SourceEntity: "vendor/framework",
 		Policy: oddc.SecureBootFirmwarePolicy{
 			Supported:               true,
 			FirmwareName:            "Framework UEFI",
@@ -34,19 +34,19 @@ func frameworkEffectivePolicy() oddc.EffectiveSecureBootFirmwarePolicy {
 
 func TestSnapshotFirmwarePolicyCapturesDetectedPolicy(t *testing.T) {
 	snapshot, err := SnapshotFirmwarePolicy(
-		"laptop/framework",
+		"model/framework/laptop-13-amd-ryzen-7040",
 		frameworkEffectivePolicy(),
 	)
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	if snapshot.DeviceProfile != "laptop/framework" {
-		t.Fatalf("DeviceProfile=%q", snapshot.DeviceProfile)
+	if snapshot.ModelID != "model/framework/laptop-13-amd-ryzen-7040" {
+		t.Fatalf("ModelID=%q", snapshot.ModelID)
 	}
 
-	if snapshot.SourceLayer != "laptop/framework" {
-		t.Fatalf("SourceLayer=%q", snapshot.SourceLayer)
+	if snapshot.SourceEntity != "vendor/framework" {
+		t.Fatalf("SourceEntity=%q", snapshot.SourceEntity)
 	}
 
 	if snapshot.SetupModeStrategy != "clear-platform-key" {
@@ -65,9 +65,9 @@ func TestSnapshotFirmwarePolicyCapturesDetectedPolicy(t *testing.T) {
 
 func TestSnapshotFirmwarePolicyRejectsUnsupportedPolicy(t *testing.T) {
 	_, err := SnapshotFirmwarePolicy(
-		"laptop/hp/zbook-x2-g4",
+		"model/hp/zbook-x2-g4",
 		oddc.EffectiveSecureBootFirmwarePolicy{
-			SourceLayer: "laptop/hp",
+			SourceEntity: "vendor/hp",
 			Policy: oddc.SecureBootFirmwarePolicy{
 				Supported:         false,
 				SetupModeStrategy: "unsupported",
@@ -83,7 +83,7 @@ func TestSnapshotFirmwarePolicyRejectsUnsupportedPolicy(t *testing.T) {
 
 func TestFirmwarePolicySnapshotRoundTrip(t *testing.T) {
 	snapshot, err := SnapshotFirmwarePolicy(
-		"laptop/framework",
+		"model/framework/laptop-13-amd-ryzen-7040",
 		frameworkEffectivePolicy(),
 	)
 	if err != nil {
@@ -110,8 +110,8 @@ func TestFirmwarePolicySnapshotRoundTrip(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if loaded.DeviceProfile != snapshot.DeviceProfile ||
-		loaded.SourceLayer != snapshot.SourceLayer ||
+	if loaded.ModelID != snapshot.ModelID ||
+		loaded.SourceEntity != snapshot.SourceEntity ||
 		loaded.FirmwareName != snapshot.FirmwareName {
 		t.Fatalf("loaded snapshot differs: %+v", loaded)
 	}
@@ -121,9 +121,9 @@ func TestFirmwarePolicySnapshotRejectsUnknownField(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "firmware-policy.json")
 
 	data := `{
-	  "schema": 1,
-	  "deviceProfile": "laptop/framework",
-	  "sourceLayer": "laptop/framework",
+	  "schema": 2,
+	  "modelId": "model/framework/laptop-13-amd-ryzen-7040",
+	  "sourceEntity": "vendor/framework",
 	  "firmwareName": "Framework UEFI",
 	  "setupModeStrategy": "clear-platform-key",
 	  "enrollmentBackend": "sbctl",
@@ -148,7 +148,7 @@ func TestFirmwarePolicySnapshotRejectsUnknownField(t *testing.T) {
 
 func TestFirmwarePolicySnapshotRejectsArbitraryEFIName(t *testing.T) {
 	snapshot, err := SnapshotFirmwarePolicy(
-		"laptop/framework",
+		"model/framework/laptop-13-amd-ryzen-7040",
 		frameworkEffectivePolicy(),
 	)
 	if err != nil {

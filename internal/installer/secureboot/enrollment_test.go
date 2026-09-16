@@ -10,9 +10,9 @@ import (
 
 func enrollmentTestSnapshot() FirmwarePolicySnapshot {
 	return FirmwarePolicySnapshot{
-		Schema:                  1,
-		DeviceProfile:           "laptop/framework",
-		SourceLayer:             "laptop/framework",
+		Schema:                  2,
+		ModelID:                 "model/framework/laptop-13-amd-ryzen-7040",
+		SourceEntity:            "vendor/framework",
 		FirmwareName:            "Framework UEFI",
 		SetupModeStrategy:       "clear-platform-key",
 		EnrollmentBackend:       "sbctl",
@@ -27,9 +27,9 @@ func enrollmentTestSnapshot() FirmwarePolicySnapshot {
 
 func frameworkPolicySnapshotForEnrollmentTest() FirmwarePolicySnapshot {
 	return FirmwarePolicySnapshot{
-		Schema:                  1,
-		DeviceProfile:           "laptop/framework",
-		SourceLayer:             "laptop/framework",
+		Schema:                  2,
+		ModelID:                 "model/framework/laptop-13-amd-ryzen-7040",
+		SourceEntity:            "vendor/framework",
 		FirmwareName:            "Framework UEFI",
 		SetupModeStrategy:       "clear-platform-key",
 		EnrollmentBackend:       "sbctl",

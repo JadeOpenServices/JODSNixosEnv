@@ -9,19 +9,27 @@ import (
 func FinalizeValidation(
 	ctx context.Context,
 	repo string,
-	deviceID string,
+	modelID string,
 	validation oddc.Validation,
 	authority Authority,
 ) (WritebackMode, error) {
-	if err := WriteLocalValidation(ctx, validation); err != nil {
+	if err := WriteLocalValidation(
+		ctx,
+		validation,
+	); err != nil {
 		return WritebackLocalOnly, err
 	}
 
-	if DecideWriteback(authority) != WritebackUpstream {
+	if DecideWriteback(authority) !=
+		WritebackUpstream {
 		return WritebackLocalOnly, nil
 	}
 
-	if err := UpdateDeviceValidation(repo, deviceID, validation); err != nil {
+	if err := WriteValidationEvidence(
+		repo,
+		modelID,
+		validation,
+	); err != nil {
 		return WritebackLocalOnly, err
 	}
 

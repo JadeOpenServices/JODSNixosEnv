@@ -20,7 +20,7 @@ func TestFreshBareMetalPipelineIsWired(t *testing.T) {
 		"freshgpt.Provision(",
 		"rootprovision.Provision(",
 		"mounttree.Prepare(",
-		"materializeDeviceProfileCapsule",
+		"materializeODDCCapsule",
 		"stageFreshPasswordFiles(",
 		"hardwareconfig.GenerateTarget(",
 		"baremetalinstall.Install(",
@@ -300,7 +300,7 @@ func TestRecoveryHardwareRebindRematerializesAfterHardwareReconciliation(t *test
 
 	rebindMaterializeRel := strings.Index(
 		body[rebindGate:],
-		"materializeDeviceProfileCapsule(",
+		"materializeODDCCapsule(",
 	)
 	if rebindMaterializeRel < 0 {
 		t.Fatal("device rebind does not rematerialize the recovery capsule")
@@ -400,13 +400,13 @@ func TestRecoveryHardwareRebindCannotSkipInstall(t *testing.T) {
 	}
 	body := string(data)
 
-	want := "if (profileDrift || needsDeviceRebind) && !runRebuild {"
+	want := "if (modelDrift || needsDeviceRebind) && !runRebuild {"
 	if !strings.Contains(body, want) {
-		t.Fatal("device profile reconciliation can still skip target installation")
+		t.Fatal("ODDC model reconciliation can still skip target installation")
 	}
 }
 
-func TestDeviceProfileDriftCannotSkipInstall(t *testing.T) {
+func TestODDCModelDriftCannotSkipInstall(t *testing.T) {
 	data, err := os.ReadFile("app.go")
 	if err != nil {
 		t.Fatal(err)
@@ -414,16 +414,16 @@ func TestDeviceProfileDriftCannotSkipInstall(t *testing.T) {
 
 	body := string(data)
 
-	want := "if (profileDrift || needsDeviceRebind) && !runRebuild {"
+	want := "if (modelDrift || needsDeviceRebind) && !runRebuild {"
 	if !strings.Contains(body, want) {
 		t.Fatal("device profile drift can still skip activation")
 	}
 
 	if !strings.Contains(
 		body,
-		"device profile reconciliation requires installing the regenerated system",
+		"ODDC model reconciliation requires installing the regenerated system",
 	) {
-		t.Fatal("generic device profile reconciliation refusal is missing")
+		t.Fatal("generic ODDC model reconciliation refusal is missing")
 	}
 }
 

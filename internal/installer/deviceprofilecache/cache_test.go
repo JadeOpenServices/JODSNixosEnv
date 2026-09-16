@@ -8,69 +8,75 @@ import (
 	"testing"
 
 	"github.com/bakanura/gjallarOS/internal/installer/oddc"
+	portable "github.com/bakanura/gjallarOS/pkg/oddc"
 )
 
-func writeLayer(t *testing.T, root, id, body string, module string) {
+func writeCanonicalTestModel(
+	t *testing.T,
+	root string,
+) {
 	t.Helper()
 
-	dir := filepath.Join(root, "devices", filepath.FromSlash(id))
-	if err := os.MkdirAll(dir, 0755); err != nil {
+	path := filepath.Join(
+		root,
+		"catalog",
+		"entities",
+		"models",
+		"test",
+		"test-laptop.json",
+	)
+
+	if err := os.MkdirAll(
+		filepath.Dir(path),
+		0755,
+	); err != nil {
 		t.Fatal(err)
 	}
+
+	body := `{
+	  "apiVersion": "oddc.openjade.de/v2",
+	  "kind": "DeviceModel",
+	  "metadata": {
+	    "id": "model/test/test-laptop",
+	    "name": "Test Laptop"
+	  },
+	  "data": {
+	    "class": {
+	      "formFactor": "laptop"
+	    },
+	    "identity": {
+	      "dmi": {
+	        "systemVendor": {
+	          "hp": "HP"
+	        },
+	        "productName": {
+	          "test-laptop": "Test Laptop"
+	        }
+	      }
+	    }
+	  }
+	}`
+
 	if err := os.WriteFile(
-		filepath.Join(dir, "device.json"),
+		path,
 		[]byte(body),
 		0644,
 	); err != nil {
 		t.Fatal(err)
 	}
-	if module != "" {
-		if err := os.WriteFile(
-			filepath.Join(dir, module),
-			[]byte("# "+id+"\n"),
-			0644,
-		); err != nil {
-			t.Fatal(err)
-		}
-	}
 }
 
-func testResolved(t *testing.T) (oddc.EmbeddedSource, oddc.Identity, oddc.Resolved) {
+func testResolved(
+	t *testing.T,
+) (
+	oddc.EmbeddedSource,
+	oddc.Identity,
+	oddc.Resolved,
+) {
 	t.Helper()
 
 	root := t.TempDir()
-
-	writeLayer(
-		t,
-		root,
-		"laptop/common",
-		`{
-		  "schema":1,
-		  "id":"laptop/common",
-		  "class":"laptop",
-		  "modules":["default.nix"],
-		  "lifecycle":{"status":"supported"},
-		  "validation":{}
-		}`,
-		"default.nix",
-	)
-
-	writeLayer(
-		t,
-		root,
-		"laptop/hp",
-		`{
-		  "schema":1,
-		  "id":"laptop/hp",
-		  "class":"laptop",
-		  "match":{"sysVendor":["HP"]},
-		  "inherits":["laptop/common"],
-		  "modules":["default.nix"],
-		  "lifecycle":{"status":"supported"},
-		  "validation":{}
-		}`,
-		"default.nix",
-	)
+	writeCanonicalTestModel(t, root)
 
 	source := oddc.EmbeddedSource{
 		Root:       root,
@@ -89,9 +95,23 @@ func testResolved(t *testing.T) (oddc.EmbeddedSource, oddc.Identity, oddc.Resolv
 		BoardVersion:   "firmware-a",
 	}
 
-	resolved, err := source.Resolve(identity)
+	registry, err := portable.LoadRegistry(root)
 	if err != nil {
 		t.Fatal(err)
+	}
+
+	canonical, err := registry.ResolveModel(
+		"model/test/test-laptop",
+		nil,
+		nil,
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	resolved := oddc.Resolved{
+		ModelID:   "model/test/test-laptop",
+		Canonical: canonical,
 	}
 
 	return source, identity, resolved
@@ -136,35 +156,39 @@ func TestMaterializeAndVerify(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if capsule.Manifest.DeviceID != "laptop/hp" {
-		t.Fatalf("device id=%q", capsule.Manifest.DeviceID)
+	if capsule.Manifest.Schema != Schema {
+		t.Fatalf("schema=%d", capsule.Manifest.Schema)
 	}
 
-	wantLayers := []string{"laptop/common", "laptop/hp"}
-	if len(capsule.Manifest.Inheritance) != len(wantLayers) {
-		t.Fatalf("inheritance=%v", capsule.Manifest.Inheritance)
+	if capsule.Manifest.ModelID != "model/test/test-laptop" {
+		t.Fatalf("model id=%q", capsule.Manifest.ModelID)
 	}
-	for i, want := range wantLayers {
-		if capsule.Manifest.Inheritance[i] != want {
+
+	wantPaths := map[string]bool{
+		"oddc/catalog/entities/models/test/test-laptop.json": false,
+		"oddc/resolved.json": false,
+	}
+
+	for _, file := range capsule.Manifest.Files {
+		if _, ok := wantPaths[file.Path]; ok {
+			wantPaths[file.Path] = true
+		}
+
+		if len(file.SHA256) != 64 {
 			t.Fatalf(
-				"inheritance[%d]=%q want=%q",
-				i,
-				capsule.Manifest.Inheritance[i],
-				want,
+				"invalid sha256 for %q: %q",
+				file.Path,
+				file.SHA256,
 			)
 		}
 	}
 
-	if len(capsule.Manifest.Files) != 4 {
-		t.Fatalf("files=%d", len(capsule.Manifest.Files))
-	}
-
-	for _, file := range capsule.Manifest.Files {
-		if !strings.HasPrefix(file.Path, "oddc/devices/") {
-			t.Fatalf("materialized path outside oddc/devices/: %q", file.Path)
-		}
-		if len(file.SHA256) != 64 {
-			t.Fatalf("invalid sha256 for %q: %q", file.Path, file.SHA256)
+	for wanted, found := range wantPaths {
+		if !found {
+			t.Fatalf(
+				"canonical capsule missing %q",
+				wanted,
+			)
 		}
 	}
 
@@ -186,7 +210,7 @@ func TestMaterializeAndVerify(t *testing.T) {
 	}
 }
 
-func TestVerifyDetectsModifiedModule(t *testing.T) {
+func TestVerifyDetectsModifiedCanonicalFile(t *testing.T) {
 	source, identity, resolved := testResolved(t)
 
 	destination := filepath.Join(t.TempDir(), "device-profile")
@@ -271,7 +295,7 @@ func TestNeedsRebindDetectsReplacementHardware(t *testing.T) {
 	}
 }
 
-func TestNeedsRebindDetectsResolvedProfileChange(t *testing.T) {
+func TestNeedsRebindDetectsResolvedModelChange(t *testing.T) {
 	source, identity, resolved := testResolved(t)
 
 	destination := filepath.Join(t.TempDir(), "device-profile")
@@ -289,7 +313,7 @@ func TestNeedsRebindDetectsResolvedProfileChange(t *testing.T) {
 	}
 
 	changed := resolved
-	changed.Device.ID = "desktop/common"
+	changed.ModelID = "model/test/replacement"
 
 	if !NeedsRebind(capsule, identity, changed) {
 		t.Fatal("resolved device profile change was not detected")
@@ -336,7 +360,7 @@ func TestMaterializeReplacesOldCapsuleWithoutRetainingOldModules(t *testing.T) {
 	}
 }
 
-func TestVerifyRejectsUnlistedModule(t *testing.T) {
+func TestVerifyRejectsUnlistedCanonicalFile(t *testing.T) {
 	source, identity, resolved := testResolved(t)
 
 	destination := filepath.Join(t.TempDir(), "device-profile")
@@ -353,8 +377,20 @@ func TestVerifyRejectsUnlistedModule(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	extra := filepath.Join(destination, "oddc", "devices", "laptop", "hp", "unexpected.nix")
-	if err := os.WriteFile(extra, []byte("malicious-or-stale\n"), 0600); err != nil {
+	extra := filepath.Join(
+		destination,
+		"oddc",
+		"catalog",
+		"entities",
+		"models",
+		"test",
+		"unexpected.json",
+	)
+	if err := os.WriteFile(
+		extra,
+		[]byte("{}\n"),
+		0600,
+	); err != nil {
 		t.Fatal(err)
 	}
 
@@ -437,7 +473,7 @@ func TestMaterializeRejectsMissingODDCRevision(t *testing.T) {
 	}
 }
 
-func TestVerifyRejectsListedModuleSymlink(t *testing.T) {
+func TestVerifyRejectsListedCanonicalFileSymlink(t *testing.T) {
 	source, identity, resolved := testResolved(t)
 
 	destination := filepath.Join(t.TempDir(), "device-profile")
@@ -453,7 +489,7 @@ func TestVerifyRejectsListedModuleSymlink(t *testing.T) {
 		t.Fatal(err)
 	}
 	if len(capsule.Manifest.Files) == 0 {
-		t.Fatal("test capsule contains no materialized modules")
+		t.Fatal("test capsule contains no canonical files")
 	}
 
 	target := filepath.Join(
@@ -479,7 +515,7 @@ func TestVerifyRejectsListedModuleSymlink(t *testing.T) {
 	}
 
 	if _, err := Verify(destination); err == nil {
-		t.Fatal("listed module symlink was accepted")
+		t.Fatal("listed canonical file symlink was accepted")
 	}
 }
 
@@ -510,22 +546,36 @@ func TestMaterializeSupportsMachineWithoutODDCProfile(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if capsule.Manifest.DeviceID != "" {
-		t.Fatalf("DeviceID=%q, want empty for unmatched machine", capsule.Manifest.DeviceID)
+	if capsule.Manifest.ModelID != "" {
+		t.Fatalf(
+			"ModelID=%q, want empty for unmatched machine",
+			capsule.Manifest.ModelID,
+		)
 	}
 	if capsule.Identity.ProductName != identity.ProductName {
 		t.Fatalf("identity not preserved: %+v", capsule.Identity)
 	}
-	if len(capsule.Manifest.Inheritance) != 0 {
-		t.Fatalf("unexpected inheritance: %v", capsule.Manifest.Inheritance)
-	}
-
 	verified, err := Verify(destination)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if verified.Manifest.DeviceID != "" {
-		t.Fatalf("verified DeviceID=%q, want empty", verified.Manifest.DeviceID)
+	if verified.Manifest.ModelID != "" {
+		t.Fatalf(
+			"verified ModelID=%q, want empty",
+			verified.Manifest.ModelID,
+		)
+	}
+	if _, err := os.Stat(
+		filepath.Join(
+			destination,
+			"oddc",
+			"resolved.json",
+		),
+	); !os.IsNotExist(err) {
+		t.Fatalf(
+			"unmatched machine unexpectedly has resolved.json: %v",
+			err,
+		)
 	}
 }
 
@@ -591,40 +641,63 @@ func TestVerifyRejectsNonCanonicalManifestPath(t *testing.T) {
 	}
 }
 
-func TestVerifyRejectsMissingInheritanceManifest(t *testing.T) {
+func TestVerifyRejectsMissingResolvedSnapshot(t *testing.T) {
 	dir := materializedTestCapsule(t)
 
-	manifestPath := filepath.Join(dir, "manifest.json")
+	manifestPath := filepath.Join(
+		dir,
+		"manifest.json",
+	)
+
 	var manifest Manifest
 
 	data, err := os.ReadFile(manifestPath)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := json.Unmarshal(data, &manifest); err != nil {
+
+	if err := json.Unmarshal(
+		data,
+		&manifest,
+	); err != nil {
 		t.Fatal(err)
 	}
 
-	target := "oddc/devices/laptop/hp/device.json"
 	files := manifest.Files[:0]
 	for _, file := range manifest.Files {
-		if file.Path != target {
+		if file.Path != "oddc/resolved.json" {
 			files = append(files, file)
 		}
 	}
 	manifest.Files = files
 
-	data, err = json.MarshalIndent(manifest, "", "  ")
+	data, err = json.MarshalIndent(
+		manifest,
+		"",
+		"  ",
+	)
 	if err != nil {
 		t.Fatal(err)
 	}
 	data = append(data, '\n')
-	if err := os.WriteFile(manifestPath, data, 0600); err != nil {
+
+	if err := os.WriteFile(
+		manifestPath,
+		data,
+		0600,
+	); err != nil {
 		t.Fatal(err)
 	}
 
 	_, err = Verify(dir)
-	if err == nil || !strings.Contains(err.Error(), "missing manifest for inheritance layer") {
-		t.Fatalf("expected missing inheritance manifest rejection, got %v", err)
+	if err == nil ||
+		!strings.Contains(
+			err.Error(),
+			"missing resolved.json",
+		) {
+		t.Fatalf(
+			"expected missing resolved snapshot rejection, got %v",
+			err,
+		)
 	}
 }

@@ -13,13 +13,15 @@ import (
 )
 
 func validationFixture() oddc.Resolved {
+	const modelID = "model/framework/laptop-13-amd-ryzen-7040"
+
 	return oddc.Resolved{
-		Device: oddc.Manifest{
-			ID: "laptop/framework",
-			Validation: oddc.Validation{
+		ModelID: modelID,
+		Validations: []oddc.Validation{
+			{
 				LastValidatedNixOS:             "26.05",
 				LastValidatedGjallarOSRevision: "git:gjallar",
-				LastValidatedDeviceID:          "laptop/framework",
+				LastValidatedDeviceID:          modelID,
 				LastValidatedODDCRevision:      "git:oddc",
 				LastValidatedAt:                "2026-09-11T14:00:00Z",
 			},
@@ -61,7 +63,7 @@ func TestDeviceValidationGateAcceptsValidatedProfile(t *testing.T) {
 
 func TestDeviceValidationGateRequiresInteractiveConfirmation(t *testing.T) {
 	resolved := validationFixture()
-	resolved.Device.Validation.LastValidatedNixOS = "25.11"
+	resolved.Validations[0].LastValidatedNixOS = "25.11"
 
 	ui, out := validationTestUI("yes\n")
 
@@ -84,7 +86,7 @@ func TestDeviceValidationGateRequiresInteractiveConfirmation(t *testing.T) {
 
 func TestDeviceValidationGateRejectsUnattendedProfile(t *testing.T) {
 	resolved := validationFixture()
-	resolved.Device.Validation.LastValidatedNixOS = "25.11"
+	resolved.Validations[0].LastValidatedNixOS = "25.11"
 
 	ui, _ := validationTestUI("")
 
@@ -100,14 +102,14 @@ func TestDeviceValidationGateRejectsUnattendedProfile(t *testing.T) {
 		t.Fatal("unvalidated unattended profile was accepted")
 	}
 
-	if !strings.Contains(err.Error(), "allowUnvalidatedDeviceProfile=true") {
+	if !strings.Contains(err.Error(), "allowUnvalidatedODDCModel=true") {
 		t.Fatalf("unexpected error: %v", err)
 	}
 }
 
 func TestDeviceValidationGateAllowsExplicitUnattendedOverride(t *testing.T) {
 	resolved := validationFixture()
-	resolved.Device.Validation.LastValidatedNixOS = "25.11"
+	resolved.Validations[0].LastValidatedNixOS = "25.11"
 
 	ui, _ := validationTestUI("")
 
@@ -115,8 +117,8 @@ func TestDeviceValidationGateAllowsExplicitUnattendedOverride(t *testing.T) {
 		context.Background(),
 		ui,
 		config.User{
-			UnattendedInstall:             true,
-			AllowUnvalidatedDeviceProfile: true,
+			UnattendedInstall:         true,
+			AllowUnvalidatedODDCModel: true,
 		},
 		resolved,
 		"26.05",
@@ -129,7 +131,7 @@ func TestDeviceValidationGateAllowsExplicitUnattendedOverride(t *testing.T) {
 
 func TestDeviceValidationGateRejectsUnvalidatedManagedUnattendedProfile(t *testing.T) {
 	resolved := validationFixture()
-	resolved.Device.Validation.LastValidatedNixOS = "25.11"
+	resolved.Validations[0].LastValidatedNixOS = "25.11"
 
 	ui, _ := validationTestUI("")
 
@@ -148,14 +150,14 @@ func TestDeviceValidationGateRejectsUnvalidatedManagedUnattendedProfile(t *testi
 		t.Fatal("unvalidated managed unattended profile was accepted")
 	}
 
-	if !strings.Contains(err.Error(), "allowUnvalidatedDeviceProfile=true") {
+	if !strings.Contains(err.Error(), "allowUnvalidatedODDCModel=true") {
 		t.Fatalf("unexpected error: %v", err)
 	}
 }
 
 func TestDeviceValidationGateAllowsExplicitManagedOverride(t *testing.T) {
 	resolved := validationFixture()
-	resolved.Device.Validation.LastValidatedNixOS = "25.11"
+	resolved.Validations[0].LastValidatedNixOS = "25.11"
 
 	ui, _ := validationTestUI("")
 
@@ -163,9 +165,9 @@ func TestDeviceValidationGateAllowsExplicitManagedOverride(t *testing.T) {
 		context.Background(),
 		ui,
 		config.User{
-			EndpointManagedDevice:         true,
-			UnattendedInstall:             true,
-			AllowUnvalidatedDeviceProfile: true,
+			EndpointManagedDevice:     true,
+			UnattendedInstall:         true,
+			AllowUnvalidatedODDCModel: true,
 		},
 		resolved,
 		"26.05",
@@ -178,7 +180,7 @@ func TestDeviceValidationGateAllowsExplicitManagedOverride(t *testing.T) {
 
 func TestDeviceValidationGateAcceptsMatchingLocalRecord(t *testing.T) {
 	resolved := validationFixture()
-	resolved.Device.Validation.LastValidatedNixOS = "25.11"
+	resolved.Validations[0].LastValidatedNixOS = "25.11"
 
 	original := localValidationMatches
 	localValidationMatches = func(

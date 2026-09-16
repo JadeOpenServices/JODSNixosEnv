@@ -1,6 +1,7 @@
 package oddcvalidation
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/bakanura/gjallarOS/internal/installer/config"
@@ -37,31 +38,47 @@ func TestHardwareIdentityGate(t *testing.T) {
 	}
 }
 
-func TestProfilePropagationGate(t *testing.T) {
+func TestProfilePropagationGateUsesCanonicalModel(t *testing.T) {
+	const modelID = "model/framework/laptop-13-amd-ryzen-7040"
+
 	resolved := oddc.Resolved{
-		Device: oddc.Manifest{
-			ID: "laptop/framework",
-		},
-		Inheritance: []oddc.Manifest{
-			{ID: "laptop/common"},
-			{ID: "laptop/framework"},
-		},
+		ModelID: modelID,
 	}
 
-	user := config.User{
-		DeviceProfile: "laptop/framework",
-		DeviceLayers: []string{
-			"laptop/common",
-			"laptop/framework",
+	result := profilePropagationResult(
+		config.User{
+			ODDCModel: modelID,
 		},
+		resolved,
+	)
+
+	if !result.Passed {
+		t.Fatalf(
+			"matching canonical model rejected: %+v",
+			result,
+		)
 	}
 
-	if result := profilePropagationResult(user, resolved); !result.Passed {
-		t.Fatalf("matching propagation rejected: %+v", result)
+	result = profilePropagationResult(
+		config.User{
+			ODDCModel: "model/framework/old-device",
+		},
+		resolved,
+	)
+
+	if result.Passed {
+		t.Fatal(
+			"canonical model mismatch was accepted",
+		)
 	}
 
-	user.DeviceLayers = []string{"laptop/framework"}
-	if result := profilePropagationResult(user, resolved); result.Passed {
-		t.Fatal("incomplete inheritance propagation accepted")
+	if !strings.Contains(
+		result.Details,
+		"oddcModel=",
+	) {
+		t.Fatalf(
+			"unexpected propagation failure: %q",
+			result.Details,
+		)
 	}
 }

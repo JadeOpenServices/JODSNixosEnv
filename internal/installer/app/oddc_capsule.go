@@ -11,7 +11,7 @@ import (
 	"github.com/bakanura/gjallarOS/internal/installer/sourcerevision"
 )
 
-func materializeDeviceProfileCapsule(
+func materializeODDCCapsule(
 	repo string,
 	destination string,
 	hardware discovery.Hardware,

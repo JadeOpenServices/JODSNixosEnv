@@ -13,13 +13,6 @@ func (noMatchSource) Resolve(oddc.Identity) (oddc.Resolved, error) {
 	return oddc.Resolved{}, oddc.ErrNoMatch
 }
 
-func (noMatchSource) Materialize(
-	oddc.Resolved,
-	string,
-) (oddc.Materialized, error) {
-	return oddc.Materialized{}, nil
-}
-
 func (noMatchSource) Metadata() oddc.SourceMetadata {
 	return oddc.SourceMetadata{
 		Kind:     "test",
@@ -36,24 +29,10 @@ func TestResolvePreservesSourceForUnmatchedDesktop(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if resolved.Device.ID != "" {
-		t.Fatalf("unexpected device %q", resolved.Device.ID)
-	}
-
 	if resolved.Source.Revision != "test-revision" {
 		t.Fatalf(
 			"Source.Revision=%q",
 			resolved.Source.Revision,
 		)
-	}
-}
-
-func TestResolveRequiresLaptopFallback(t *testing.T) {
-	_, err := Resolve(
-		noMatchSource{},
-		discovery.Hardware{FormFactor: "laptop"},
-	)
-	if err == nil {
-		t.Fatal("unmatched laptop was accepted")
 	}
 }
