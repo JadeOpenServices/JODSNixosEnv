@@ -1,6 +1,8 @@
 package discovery
 
 import (
+	"github.com/bakanura/gjallarOS/internal/hardware/inputclass"
+	"github.com/bakanura/gjallarOS/internal/hardware/orientation"
 	"os"
 	"path/filepath"
 	"sort"
@@ -18,8 +20,9 @@ type Hardware struct {
 	BoardName      string
 	BoardVersion   string
 
-	Touchscreen bool
-	PenTablet   bool
+	Touchscreen       bool
+	PenTablet         bool
+	OrientationSensor bool
 }
 type Options struct{ Profiles, Shells, Editors, Browsers, Themes []string }
 
@@ -60,6 +63,7 @@ func DetectHardware(sysRoot string) Hardware {
 
 	h.Touchscreen = detectTouchscreen(sysRoot)
 	h.PenTablet = detectPenTablet(sysRoot)
+	h.OrientationSensor = detectOrientationSensor(sysRoot)
 	return h
 }
 
@@ -74,17 +78,11 @@ func readDMI(sysRoot, name string) string {
 func detectPenTablet(sysRoot string) bool {
 	devices, _ := filepath.Glob(filepath.Join(sysRoot, "class", "input", "event*", "device"))
 	for _, device := range devices {
-		name, _ := os.ReadFile(filepath.Join(device, "name"))
-		lowerName := strings.ToLower(string(name))
-		if strings.Contains(lowerName, "stylus") || strings.Contains(lowerName, " pen") {
-			return true
-		}
-		keys, keysErr := os.ReadFile(filepath.Join(device, "capabilities", "key"))
-		absolute, absoluteErr := os.ReadFile(filepath.Join(device, "capabilities", "abs"))
-		if keysErr == nil && absoluteErr == nil &&
-			capabilityBit(string(keys), 320) && // BTN_TOOL_PEN
-			capabilityBit(string(absolute), 0) && // ABS_X
-			capabilityBit(string(absolute), 1) { // ABS_Y
+		if inputclass.IsPen(inputclass.Device{
+			Name: readInput(device, "name"),
+			Key:  readInput(device, "capabilities", "key"),
+			Abs:  readInput(device, "capabilities", "abs"),
+		}) {
 			return true
 		}
 	}
@@ -94,45 +92,51 @@ func detectPenTablet(sysRoot string) bool {
 func detectTouchscreen(sysRoot string) bool {
 	devices, _ := filepath.Glob(filepath.Join(sysRoot, "class", "input", "event*", "device"))
 	for _, device := range devices {
-		name, _ := os.ReadFile(filepath.Join(device, "name"))
-		if strings.Contains(strings.ToLower(string(name)), "touchscreen") {
-			return true
-		}
-		properties, propertiesErr := os.ReadFile(filepath.Join(device, "properties"))
-		absolute, absoluteErr := os.ReadFile(filepath.Join(device, "capabilities", "abs"))
-		if propertiesErr == nil && absoluteErr == nil &&
-			capabilityBit(string(properties), 1) && // INPUT_PROP_DIRECT
-			capabilityBit(string(absolute), 53) && // ABS_MT_POSITION_X
-			capabilityBit(string(absolute), 54) { // ABS_MT_POSITION_Y
+		if inputclass.IsTouchscreen(inputclass.Device{
+			Name:       readInput(device, "name"),
+			Properties: readInput(device, "properties"),
+			Abs:        readInput(device, "capabilities", "abs"),
+		}) {
 			return true
 		}
 	}
 	return false
 }
 
-// Linux exposes input capability bitsets as hexadecimal, most-significant
-// word first. Reading from the right keeps this independent of word size.
-func capabilityBit(value string, bit uint) bool {
-	hex := strings.ReplaceAll(strings.TrimSpace(value), " ", "")
-	nibble := int(bit / 4)
-	if nibble >= len(hex) {
-		return false
+func detectOrientationSensor(sysRoot string) bool {
+	devices, _ := filepath.Glob(
+		filepath.Join(sysRoot, "bus", "iio", "devices", "iio:device*"),
+	)
+
+	for _, device := range devices {
+		nameData, _ := os.ReadFile(filepath.Join(device, "name"))
+		name := strings.TrimSpace(string(nameData))
+
+		entries, _ := filepath.Glob(filepath.Join(device, "in_*"))
+		channels := make([]string, 0, len(entries))
+		for _, entry := range entries {
+			channels = append(channels, filepath.Base(entry))
+		}
+
+		if orientation.IsSensor(name, channels) {
+			return true
+		}
 	}
-	digit := hex[len(hex)-1-nibble]
-	var number byte
-	switch {
-	case digit >= '0' && digit <= '9':
-		number = digit - '0'
-	case digit >= 'a' && digit <= 'f':
-		number = digit - 'a' + 10
-	case digit >= 'A' && digit <= 'F':
-		number = digit - 'A' + 10
-	default:
-		return false
-	}
-	return number&(1<<(bit%4)) != 0
+
+	return false
 }
 
+func readInput(device string, parts ...string) string {
+	path := filepath.Join(append([]string{device}, parts...)...)
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return ""
+	}
+	return strings.TrimSpace(string(data))
+}
+
+// Linux exposes input capability bitsets as hexadecimal, most-significant
+// word first. Reading from the right keeps this independent of word size.
 func Discover(repo string, preset bool, hardware Hardware) (Options, error) {
 	profiles, err := directories(filepath.Join(repo, "profiles"))
 	if err != nil {

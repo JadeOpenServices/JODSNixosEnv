@@ -95,8 +95,9 @@ var presetSchema = map[string]presetValueType{
 	"system": presetString, "profile": presetString, "hostname": presetString, "username": presetString,
 	"timezone": presetString, "locale": presetString, "keyboardLayout": presetString, "keyboardVariant": presetString,
 	"touchpadWorkspaceSwipe": presetBool, "clamshellEnable": presetBool, "usbguardEnable": presetBool,
-	"unattendedInstall": presetBool,
-	"name":              presetString, "email": presetString, "githubUsername": presetString, "dotfilesDir": presetString,
+	"allowUnvalidatedDeviceProfile": presetBool,
+	"unattendedInstall":             presetBool,
+	"name":                          presetString, "email": presetString, "githubUsername": presetString, "dotfilesDir": presetString,
 	"shell": presetString, "editors": presetStringList, "browsers": presetStringList,
 	"preferredEditor": presetString, "preferredBrowser": presetString, "theme": presetString,
 	"weatherCity": presetString, "weatherCountry": presetString,
@@ -108,7 +109,6 @@ var presetSchema = map[string]presetValueType{
 	"jodsFingerprintEnrollmentAllowed": presetBool,
 	"enableScrobbling":                 presetBool, "enableLastfm": presetBool, "enableListenbrainz": presetBool,
 	"lastfmUsername": presetString, "listenbrainzUsername": presetString,
-	"frameworkEnable": presetBool, "frameworkModel": presetString,
 	"deviceProfile":   presetString,
 	"deviceLayers":    presetStringList,
 	"deviceSysVendor": presetString, "deviceProductName": presetString, "deviceProductVersion": presetString,
@@ -120,7 +120,7 @@ var presetSchema = map[string]presetValueType{
 	"jodsEndpoint": presetString, "jodsPolicySigningPublicKey": presetString,
 	"jodsRecoveryCommandSigningPublicKey": presetString, "jodsEnrollmentMode": presetString,
 	"jodsAllowInsecureTls": presetBool, "jodsDeviceClass": presetString, "jodsDesktopProfile": presetString,
-	"autoReboot": presetBool, "runUpdateChecks": presetBool, "writeConfig": presetBool, "runRebuild": presetBool,
+	"autoReboot": presetBool, "runUpdateChecks": presetBool, "writeConfig": presetBool, "runRebuild": presetBool, "forceRedeploy": presetBool,
 }
 
 func validatePresetSchema(r *Report, user map[string]json.RawMessage) {

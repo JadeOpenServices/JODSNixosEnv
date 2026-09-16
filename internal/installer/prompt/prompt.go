@@ -10,6 +10,7 @@ import (
 	"os/exec"
 	"strconv"
 	"strings"
+	"unicode/utf8"
 )
 
 var ErrCancelled = errors.New("prompt cancelled")
@@ -54,8 +55,45 @@ func gtkAvailable() bool {
 		os.Getenv("SSH_CONNECTION") == ""
 }
 
+func gtkConfirmationWidth(message string) int {
+	normalized := strings.ReplaceAll(message, "\r\n", "\n")
+	normalized = strings.ReplaceAll(normalized, "\r", "\n")
+
+	totalRunes := 0
+	longestParagraph := 0
+
+	for _, paragraph := range strings.Split(normalized, "\n\n") {
+		length := utf8.RuneCountInString(strings.TrimSpace(paragraph))
+		totalRunes += length
+		if length > longestParagraph {
+			longestParagraph = length
+		}
+	}
+
+	switch {
+	case totalRunes <= 90 && longestParagraph <= 90:
+		return 420
+	case totalRunes <= 240 && longestParagraph <= 180:
+		return 520
+	case totalRunes <= 600 && longestParagraph <= 400:
+		return 680
+	default:
+		return 760
+	}
+}
+
 func New(in io.Reader, out io.Writer) UI {
-	return UI{bufio.NewReader(in), out, gtkAvailable()}
+	gtk := false
+
+	input, inputOK := in.(*os.File)
+	output, outputOK := out.(*os.File)
+	if inputOK && outputOK &&
+		input == os.Stdin &&
+		(output == os.Stdout || output == os.Stderr) {
+		gtk = gtkAvailable()
+	}
+
+	return UI{bufio.NewReader(in), out, gtk}
 }
 
 func (u UI) secureTextDialog(
@@ -134,8 +172,16 @@ func (u UI) secureTextDialog(
 }
 
 func (u UI) Confirm(ctx context.Context, message string, defaultYes bool) (bool, error) {
-	if u.GTK || gtkAvailable() {
-		args := []string{"--question", "--title=GjallarOS installer", "--text=" + message, "--ok-label=Yes", "--cancel-label=No"}
+	if u.GTK {
+		width := gtkConfirmationWidth(message)
+		args := []string{
+			"--question",
+			"--title=GjallarOS installer",
+			"--text=" + message,
+			"--width=" + strconv.Itoa(width),
+			"--ok-label=Yes",
+			"--cancel-label=No",
+		}
 		err := zenityCommand(ctx, args...).Run()
 		if err == nil {
 			return true, nil
@@ -376,7 +422,7 @@ func (u UI) Exact(ctx context.Context, label, expected string) error {
 
 	var value string
 
-	if u.GTK || gtkAvailable() {
+	if u.GTK {
 		out, err := zenityCommand(
 			ctx,
 			"--entry",
@@ -406,7 +452,7 @@ func (u UI) Exact(ctx context.Context, label, expected string) error {
 }
 
 func (u UI) Value(ctx context.Context, label, def string) (string, error) {
-	if u.GTK || gtkAvailable() {
+	if u.GTK {
 		out, err := zenityCommand(ctx, "--entry", "--title=GjallarOS installer", "--text="+label, "--entry-text="+def).Output()
 		if err != nil {
 			return "", ErrCancelled
@@ -429,7 +475,7 @@ func (u UI) Choice(ctx context.Context, label, def string, options []string) (st
 	if len(options) == 0 {
 		return "", fmt.Errorf("no options for %s", label)
 	}
-	if u.GTK || gtkAvailable() {
+	if u.GTK {
 		args := []string{"--list", "--radiolist", "--title=GjallarOS installer", "--text=" + label, "--column=Selected", "--column=Value"}
 		for _, v := range options {
 			args = append(args, strconv.FormatBool(v == def), v)
@@ -469,7 +515,7 @@ func (u UI) Multi(ctx context.Context, label string, defaults, options []string)
 	for _, v := range defaults {
 		selected[v] = true
 	}
-	if u.GTK || gtkAvailable() {
+	if u.GTK {
 		args := []string{"--list", "--checklist", "--title=GjallarOS installer", "--text=" + label, "--separator=\n", "--column=Selected", "--column=Value"}
 		for _, v := range options {
 			args = append(args, strconv.FormatBool(selected[v]), v)

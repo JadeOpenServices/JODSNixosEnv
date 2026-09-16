@@ -1,33 +1,48 @@
 package app
 
 import (
-	"errors"
 	"fmt"
-	"path/filepath"
 
 	"github.com/bakanura/gjallarOS/internal/installer/config"
+	"github.com/bakanura/gjallarOS/internal/installer/deviceprofile"
 	"github.com/bakanura/gjallarOS/internal/installer/discovery"
 	"github.com/bakanura/gjallarOS/internal/installer/oddc"
 )
 
 func resolveDeviceProfile(
 	repo string,
+	revision string,
 	hardware discovery.Hardware,
 ) (oddc.Resolved, error) {
-	source := oddc.EmbeddedSource{
-		Root:       filepath.Join(repo, "oddc"),
-		Repository: "embedded:oddc",
+	source := deviceprofile.CurrentEmbeddedSource(repo, revision)
+
+	return resolveDeviceProfileFromSource(source, hardware)
+}
+
+func resolveDeviceProfileFromSource(
+	source oddc.DeviceSource,
+	hardware discovery.Hardware,
+) (oddc.Resolved, error) {
+	return deviceprofile.Resolve(source, hardware)
+}
+
+func persistReconciledDeviceProfile(
+	presetPath string,
+	user config.User,
+	profileDrift bool,
+) error {
+	if !profileDrift {
+		return nil
 	}
 
-	resolved, err := source.Resolve(discovery.ODDCIdentity(hardware))
-	if err != nil {
-		if errors.Is(err, oddc.ErrNoMatch) && hardware.FormFactor != "laptop" {
-			return oddc.Resolved{}, nil
-		}
-		return oddc.Resolved{}, fmt.Errorf("resolve oddc device profile: %w", err)
+	if err := config.WriteAtomic(presetPath, user); err != nil {
+		return fmt.Errorf(
+			"persist reconciled device profile: %w",
+			err,
+		)
 	}
 
-	return resolved, nil
+	return nil
 }
 
 func persistDeviceIdentity(
@@ -76,4 +91,25 @@ func validateSecureBootFirmwareSupport(
 		profile,
 		reason,
 	)
+}
+
+func deviceProfileDrifted(
+	user config.User,
+	resolved oddc.Resolved,
+) bool {
+	if user.DeviceProfile != resolved.Device.ID {
+		return true
+	}
+
+	if len(user.DeviceLayers) != len(resolved.Inheritance) {
+		return true
+	}
+
+	for i, layer := range resolved.Inheritance {
+		if user.DeviceLayers[i] != layer.ID {
+			return true
+		}
+	}
+
+	return false
 }

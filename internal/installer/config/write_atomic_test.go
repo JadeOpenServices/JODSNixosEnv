@@ -14,13 +14,14 @@ func TestWriteAtomicPersistsUserConfigMode0600(t *testing.T) {
 		System:            "x86_64-linux",
 		Profile:           "laptop",
 		Hostname:          "gjallarOS",
-		Username:          "baka",
+		Username:          "testuser",
 		WeatherCity:       "Frankfurt am Main",
 		WeatherCountry:    "Germany",
 		AIAgentMode:       "workspace",
 		RecoveryEnable:    true,
 		WriteConfig:       true,
 		RunRebuild:        true,
+		ForceRedeploy:     true,
 		UnattendedInstall: false,
 	}
 
@@ -56,7 +57,8 @@ func TestWriteAtomicPersistsUserConfigMode0600(t *testing.T) {
 		got.WeatherCity != want.WeatherCity ||
 		got.WeatherCountry != want.WeatherCountry ||
 		got.AIAgentMode != want.AIAgentMode ||
-		got.RecoveryEnable != want.RecoveryEnable {
+		got.RecoveryEnable != want.RecoveryEnable ||
+		got.ForceRedeploy != want.ForceRedeploy {
 		t.Fatalf("persisted configuration mismatch: %+v", got)
 	}
 }

@@ -33,7 +33,7 @@ func TestResolveDeviceProfileFallsBackToLaptopCommon(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	resolved, err := resolveDeviceProfile(repo, discovery.Hardware{
+	resolved, err := resolveDeviceProfile(repo, "git:test", discovery.Hardware{
 		FormFactor:  "laptop",
 		SysVendor:   "Unknown Vendor",
 		ProductName: "Unknown Laptop",
@@ -57,7 +57,7 @@ func TestResolveDeviceProfileAllowsNoDesktopProfile(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	resolved, err := resolveDeviceProfile(repo, discovery.Hardware{
+	resolved, err := resolveDeviceProfile(repo, "git:test", discovery.Hardware{
 		FormFactor: "desktop",
 	})
 	if err != nil {
@@ -66,6 +66,9 @@ func TestResolveDeviceProfileAllowsNoDesktopProfile(t *testing.T) {
 
 	if resolved.Device.ID != "" {
 		t.Fatalf("unexpected desktop device profile %q", resolved.Device.ID)
+	}
+	if resolved.Source.Revision != "git:test" {
+		t.Fatalf("Source.Revision=%q", resolved.Source.Revision)
 	}
 }
 
@@ -99,7 +102,7 @@ func TestPersistDeviceIdentity(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	resolved, err := resolveDeviceProfile(repo, hardware)
+	resolved, err := resolveDeviceProfile(repo, "git:test", hardware)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -308,5 +311,96 @@ func TestManagedDeviceCannotBypassUnsupportedFirmwarePolicy(t *testing.T) {
 
 	if err == nil {
 		t.Fatal("managed device bypassed unsupported firmware policy")
+	}
+}
+
+func TestSecureBootSupportGateRejectsMissingPolicy(t *testing.T) {
+	err := validateSecureBootFirmwareSupport(
+		true,
+		"laptop/test",
+		oddc.EffectiveSecureBootFirmwarePolicy{},
+	)
+
+	if err == nil {
+		t.Fatal("missing Secure Boot firmware policy was accepted")
+	}
+
+	if !strings.Contains(err.Error(), "no trusted Secure Boot firmware policy") {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+func TestDeviceProfileDriftDetectsNewExactProfile(t *testing.T) {
+	user := config.User{
+		DeviceProfile: "laptop/framework",
+		DeviceLayers: []string{
+			"laptop/common",
+			"laptop/framework",
+		},
+	}
+
+	resolved := oddc.Resolved{
+		Device: oddc.Manifest{
+			ID: "laptop/framework/laptop-13-amd-ryzen-7040",
+		},
+		Inheritance: []oddc.Manifest{
+			{ID: "laptop/common"},
+			{ID: "laptop/framework"},
+			{ID: "laptop/framework/laptop-13-amd-ryzen-7040"},
+		},
+	}
+
+	if !deviceProfileDrifted(user, resolved) {
+		t.Fatal("stale vendor-only profile was not detected")
+	}
+}
+
+func TestDeviceProfileDriftAcceptsResolvedProfile(t *testing.T) {
+	user := config.User{
+		DeviceProfile: "laptop/hp/zbook-x2-g4",
+		DeviceLayers: []string{
+			"laptop/common",
+			"laptop/hp",
+			"laptop/hp/zbook-x2-g4",
+		},
+	}
+
+	resolved := oddc.Resolved{
+		Device: oddc.Manifest{
+			ID: "laptop/hp/zbook-x2-g4",
+		},
+		Inheritance: []oddc.Manifest{
+			{ID: "laptop/common"},
+			{ID: "laptop/hp"},
+			{ID: "laptop/hp/zbook-x2-g4"},
+		},
+	}
+
+	if deviceProfileDrifted(user, resolved) {
+		t.Fatal("matching resolved profile reported drift")
+	}
+}
+
+func TestDeviceProfileDriftDetectsGenericFallback(t *testing.T) {
+	user := config.User{
+		DeviceProfile: "laptop/vendor/old-model",
+		DeviceLayers: []string{
+			"laptop/common",
+			"laptop/vendor",
+			"laptop/vendor/old-model",
+		},
+	}
+
+	resolved := oddc.Resolved{
+		Device: oddc.Manifest{
+			ID: "laptop/common",
+		},
+		Inheritance: []oddc.Manifest{
+			{ID: "laptop/common"},
+		},
+	}
+
+	if !deviceProfileDrifted(user, resolved) {
+		t.Fatal("fallback from removed concrete profile was not detected")
 	}
 }

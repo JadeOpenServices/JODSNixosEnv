@@ -482,6 +482,20 @@ func DiscoverTopology(
 		)
 	}
 
+	rootBackedSwap, err := hasRootBackedSwap(
+		ctx,
+		runner,
+		string(swapRaw),
+		rootPart,
+		source,
+	)
+	if err != nil {
+		return Topology{}, fmt.Errorf(
+			"inspect active swap backing: %w",
+			err,
+		)
+	}
+
 	topology := Topology{
 		DiskPath:           diskPath,
 		DiskGUID:           diskGUID,
@@ -511,7 +525,7 @@ func DiscoverTopology(
 		BtrfsDeviceBytes:        btrfsDeviceSize,
 		BtrfsUsedBytes:          btrfsUsed,
 		BtrfsExclusiveOperation: exclusive,
-		SwapActive:              strings.TrimSpace(string(swapRaw)) != "",
+		SwapActive:              rootBackedSwap,
 	}
 
 	if err := ValidateTopology(topology); err != nil {
@@ -522,6 +536,67 @@ func DiscoverTopology(
 	}
 
 	return topology, nil
+}
+
+func hasRootBackedSwap(
+	ctx context.Context,
+	runner OutputRunner,
+	raw string,
+	rootPartitionPath string,
+	rootMappingPath string,
+) (bool, error) {
+	rootPartitionPath = filepath.Clean(rootPartitionPath)
+	rootMappingPath = filepath.Clean(rootMappingPath)
+
+	for _, swapPath := range strings.Fields(raw) {
+		swapPath = strings.TrimSpace(swapPath)
+		if swapPath == "" {
+			continue
+		}
+
+		ancestryRaw, ancestryErr := runner.Output(
+			ctx,
+			"lsblk",
+			"-s",
+			"-nro",
+			"PATH",
+			swapPath,
+		)
+		if ancestryErr == nil {
+			for _, path := range strings.Fields(string(ancestryRaw)) {
+				path = filepath.Clean(strings.TrimSpace(path))
+				if path == rootPartitionPath || path == rootMappingPath {
+					return true, nil
+				}
+			}
+			continue
+		}
+
+		source, err := outputTrim(
+			ctx,
+			runner,
+			"findmnt",
+			"-nro",
+			"SOURCE",
+			"--target",
+			swapPath,
+		)
+		if err != nil {
+			return false, fmt.Errorf(
+				"resolve swap source %q: lsblk: %v; findmnt: %w",
+				swapPath,
+				ancestryErr,
+				err,
+			)
+		}
+
+		source = filepath.Clean(source)
+		if source == rootPartitionPath || source == rootMappingPath {
+			return true, nil
+		}
+	}
+
+	return false, nil
 }
 
 func parseFindmnt(raw string) (

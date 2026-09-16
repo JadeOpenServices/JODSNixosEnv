@@ -9,6 +9,10 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"github.com/bakanura/gjallarOS/internal/hardware/deviceprobe"
+	"github.com/bakanura/gjallarOS/internal/hardware/deviceprobe/devices/framework/laptop13amd7040"
+	"github.com/bakanura/gjallarOS/internal/hardware/deviceprobe/devices/hp/zbookx2g4"
+	"github.com/bakanura/gjallarOS/internal/installer/repojson"
 	"io"
 	"math/rand/v2"
 	"net"
@@ -44,6 +48,7 @@ import (
 	"github.com/bakanura/gjallarOS/internal/installer/hardwareconfig"
 	"github.com/bakanura/gjallarOS/internal/installer/localgit"
 	"github.com/bakanura/gjallarOS/internal/installer/nixrender"
+	"github.com/bakanura/gjallarOS/internal/installer/oddcvalidation"
 	"github.com/bakanura/gjallarOS/internal/installer/policy"
 	"github.com/bakanura/gjallarOS/internal/installer/release"
 	"github.com/bakanura/gjallarOS/internal/installer/secrets"
@@ -73,8 +78,16 @@ func run(args []string, stdout, stderr io.Writer) int {
 		return runInstaller(args[1:], stdout, stderr)
 	case "check":
 		return runCheck(args[1:], stdout, stderr)
+	case "oddc":
+		return runODDC(args[1:], stdout, stderr)
 	case "detect":
 		return runDetect(args[1:], stdout, stderr)
+	case "device-probe":
+		return runDeviceProbe(args[1:], stdout, stderr)
+	case "fan":
+		return runFan(args[1:], stdout, stderr)
+	case "hyprland-rotate":
+		return runHyprlandRotate(args[1:], stdout, stderr)
 	case "ai":
 		return runAI(args[1:], stdout, stderr)
 	case "normalize":
@@ -948,8 +961,6 @@ func runRender(args []string, stdout, stderr io.Writer) int {
 	f.BoolVar(&s.EnableListenbrainz, "enable-listenbrainz", false, "")
 	f.StringVar(&s.LastfmUsername, "lastfm-username", "", "")
 	f.StringVar(&s.ListenbrainzUsername, "listenbrainz-username", "", "")
-	f.BoolVar(&s.FrameworkEnable, "framework-enable", false, "")
-	f.StringVar(&s.FrameworkModel, "framework-model", "", "")
 	f.StringVar(&s.DeviceProfile, "device-profile", "", "")
 	f.Var((*stringList)(&s.DeviceLayers), "device-layer", "repeatable resolved oddc device layer")
 	f.StringVar(&s.DeviceSysVendor, "device-sys-vendor", "", "")
@@ -1311,6 +1322,730 @@ func runDetect(args []string, stdout, stderr io.Writer) int {
 	return 0
 }
 
+func runDeviceProbe(args []string, stdout, stderr io.Writer) int {
+	if len(args) == 0 {
+		fmt.Fprintln(stderr, "Usage: gjallarctl device-probe {refresh|diagnose}")
+		return 2
+	}
+
+	if args[0] == "diagnose" {
+		return runDeviceProbeDiagnose(args[1:], stdout, stderr)
+	}
+
+	if args[0] != "refresh" {
+		fmt.Fprintln(stderr, "Usage: gjallarctl device-probe {refresh|diagnose}")
+		return 2
+	}
+
+	flags := flag.NewFlagSet("gjallarctl device-probe refresh", flag.ContinueOnError)
+	flags.SetOutput(stderr)
+
+	output := flags.String(
+		"output",
+		"/run/gjallarOS/device-probe.json",
+		"device probe snapshot path",
+	)
+
+	if err := flags.Parse(args[1:]); err != nil {
+		return 2
+	}
+	if flags.NArg() != 0 {
+		fmt.Fprintln(stderr, "ERROR: device-probe refresh accepts no positional arguments")
+		return 2
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	snapshot, err := deviceprobe.Collect(ctx, "/sys")
+	if err != nil {
+		fmt.Fprintf(stderr, "FAIL: device probe collection: %v\n", err)
+		return 1
+	}
+
+	if err := deviceprobe.WriteSnapshot(*output, snapshot); err != nil {
+		fmt.Fprintf(stderr, "FAIL: device probe snapshot: %v\n", err)
+		return 1
+	}
+
+	fmt.Fprintf(stdout, "PASS: device probe snapshot written to %s\n", *output)
+	return 0
+}
+
+func runDeviceProbeDiagnose(args []string, stdout, stderr io.Writer) int {
+	if len(args) == 0 {
+		fmt.Fprintln(
+			stderr,
+			"Usage: gjallarctl device-probe diagnose {zbook-x2-g4|framework-13-amd-7040} [--input PATH]",
+		)
+		return 2
+	}
+
+	device := args[0]
+	if device != "zbook-x2-g4" && device != "framework-13-amd-7040" {
+		fmt.Fprintln(
+			stderr,
+			"Usage: gjallarctl device-probe diagnose {zbook-x2-g4|framework-13-amd-7040} [--input PATH]",
+		)
+		return 2
+	}
+
+	flags := flag.NewFlagSet(
+		"gjallarctl device-probe diagnose "+device,
+		flag.ContinueOnError,
+	)
+	flags.SetOutput(stderr)
+
+	input := flags.String(
+		"input",
+		"/run/gjallarOS/device-probe.json",
+		"device probe snapshot path",
+	)
+	if err := flags.Parse(args[1:]); err != nil {
+		return 2
+	}
+	if flags.NArg() != 0 {
+		fmt.Fprintln(stderr, "ERROR: unexpected positional arguments")
+		return 2
+	}
+
+	snapshot, err := deviceprobe.ReadSnapshot(*input)
+	if err != nil {
+		fmt.Fprintf(stderr, "FAIL: snapshot: %v\n", err)
+		return 1
+	}
+
+	failed := false
+
+	switch device {
+	case "zbook-x2-g4":
+		report := zbookx2g4.Evaluate(snapshot)
+		for _, result := range report.Results {
+			fmt.Fprintf(stdout, "%s: %s: %s\n", result.Status, result.Gate, result.Detail)
+			if result.Status == zbookx2g4.StatusFail {
+				failed = true
+			}
+		}
+
+	case "framework-13-amd-7040":
+		report := laptop13amd7040.Evaluate(snapshot)
+		for _, result := range report.Results {
+			fmt.Fprintf(stdout, "%s: %s: %s\n", result.Status, result.Gate, result.Detail)
+			if result.Status == laptop13amd7040.StatusFail {
+				failed = true
+			}
+		}
+	}
+
+	if failed {
+		return 1
+	}
+	return 0
+}
+
+func runODDC(args []string, stdout, stderr io.Writer) int {
+	if len(args) == 0 {
+		fmt.Fprintln(stderr, "ERROR: oddc requires a subcommand")
+		return 2
+	}
+
+	switch args[0] {
+	case "validate-device":
+		return runODDCValidateDevice(args[1:], stdout, stderr)
+	default:
+		fmt.Fprintf(stderr, "ERROR: unknown oddc command %q\n", args[0])
+		return 2
+	}
+}
+
+func runODDCValidateDevice(args []string, stdout, stderr io.Writer) int {
+	flags := flag.NewFlagSet("gjallarctl oddc validate-device", flag.ContinueOnError)
+	flags.SetOutput(stderr)
+
+	repo := flags.String("repo", ".", "GjallarOS repository root")
+
+	if err := flags.Parse(args); err != nil {
+		return 2
+	}
+	if flags.NArg() != 0 {
+		fmt.Fprintln(stderr, "ERROR: oddc validate-device accepts no positional arguments")
+		return 2
+	}
+
+	root, err := installercheck.ResolveRepository(*repo)
+	if err != nil {
+		fmt.Fprintf(stderr, "ERROR: %v\n", err)
+		return 2
+	}
+
+	return runODDCValidateDeviceResolved(root, stdout, stderr)
+}
+
+type oddcValidationRunner func(
+	context.Context,
+	string,
+	oddcvalidation.CommandRunner,
+) (oddcvalidation.Report, oddcvalidation.DeviceContext, error)
+
+func runODDCValidateDeviceResolved(
+	root string,
+	stdout io.Writer,
+	stderr io.Writer,
+) int {
+	report, device, err := oddcvalidation.Run(
+		context.Background(),
+		root,
+		nil,
+	)
+	if err == nil {
+		pinnedRelease, releaseErr := release.Expected(root)
+		if releaseErr != nil {
+			err = releaseErr
+		} else {
+			validation, metadataErr := oddcvalidation.ValidationMetadata(
+				report,
+				device,
+				pinnedRelease,
+				time.Now(),
+			)
+			if metadataErr != nil {
+				err = metadataErr
+			} else {
+				authority := oddcvalidation.CheckContributorAuthority(
+					context.Background(),
+					root,
+					"bakanura/JODSNixosEnv",
+				)
+				mode, finalizeErr := oddcvalidation.FinalizeValidation(
+					context.Background(),
+					root,
+					device.Resolved.Device.ID,
+					validation,
+					authority,
+				)
+				if finalizeErr != nil {
+					err = finalizeErr
+				} else {
+					fmt.Fprintf(stdout, "PASS: validation recorded (%s)\n", mode)
+				}
+			}
+		}
+	}
+
+	for _, result := range report.Results {
+		status := "PASS"
+		if !result.Passed {
+			status = "FAIL"
+		}
+		if result.Details != "" {
+			fmt.Fprintf(stdout, "%s: %s - %s\n", status, result.Gate, result.Details)
+		} else {
+			fmt.Fprintf(stdout, "%s: %s\n", status, result.Gate)
+		}
+	}
+
+	if err != nil {
+		fmt.Fprintf(stderr, "ERROR: %v\n", err)
+		return 1
+	}
+
+	fmt.Fprintln(stdout, "PASS: ODDC real-device validation complete")
+	return 0
+}
+
+func runODDCValidateDeviceWith(
+	root string,
+	stdout io.Writer,
+	stderr io.Writer,
+	runValidation oddcValidationRunner,
+) int {
+	report, _, err := runValidation(
+		context.Background(),
+		root,
+		nil,
+	)
+
+	for _, result := range report.Results {
+		status := "PASS"
+		if !result.Passed {
+			status = "FAIL"
+		}
+
+		if result.Details != "" {
+			fmt.Fprintf(
+				stdout,
+				"%s: %s - %s\n",
+				status,
+				result.Gate,
+				result.Details,
+			)
+			continue
+		}
+
+		fmt.Fprintf(stdout, "%s: %s\n", status, result.Gate)
+	}
+
+	if err != nil {
+		fmt.Fprintf(stderr, "ERROR: %v\n", err)
+		return 1
+	}
+
+	fmt.Fprintln(stdout, "PASS: ODDC real-device validation complete")
+	return 0
+}
+
+type fanSystemPolicy struct {
+	QuietStrategy           string `json:"quietStrategy"`
+	QuietEnterC             int    `json:"quietEnterC"`
+	QuietExitC              int    `json:"quietExitC"`
+	PerformanceStrategy     string `json:"performanceStrategy"`
+	ThermalOverrideStrategy string `json:"thermalOverrideStrategy"`
+	ThermalEnterC           int    `json:"thermalEnterC"`
+	ThermalExitC            int    `json:"thermalExitC"`
+}
+
+type fanRuntimeConfig struct {
+	Schema                int             `json:"schema"`
+	Enabled               bool            `json:"enabled"`
+	Backend               string          `json:"backend"`
+	Profile               string          `json:"profile"`
+	DefaultStrategy       string          `json:"defaultStrategy"`
+	StrategyOnDischarging *string         `json:"strategyOnDischarging"`
+	Strategies            []string        `json:"strategies"`
+	SystemPolicy          fanSystemPolicy `json:"systemPolicy"`
+}
+
+type fwFanCurrent struct {
+	Status   string `json:"status"`
+	Strategy string `json:"strategy"`
+	Default  bool   `json:"default"`
+}
+
+type fwFanActive struct {
+	Status string `json:"status"`
+	Active bool   `json:"active"`
+}
+
+type fwFanSpeed struct {
+	Status string `json:"status"`
+	Speed  string `json:"speed"`
+}
+
+type fanStatus struct {
+	Enabled               bool     `json:"enabled"`
+	Backend               string   `json:"backend"`
+	Profile               string   `json:"profile,omitempty"`
+	Current               string   `json:"current"`
+	DefaultStrategy       string   `json:"defaultStrategy"`
+	StrategyOnDischarging *string  `json:"strategyOnDischarging"`
+	Strategies            []string `json:"strategies"`
+	Active                bool     `json:"active"`
+	SpeedPercent          int      `json:"speedPercent"`
+	RequestedMode         string   `json:"requestedMode"`
+	EffectiveStrategy     string   `json:"effectiveStrategy"`
+}
+
+func loadFanRuntimeConfig(path string) (fanRuntimeConfig, error) {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return fanRuntimeConfig{}, fmt.Errorf("read fan runtime config: %w", err)
+	}
+
+	var cfg fanRuntimeConfig
+	if err := json.Unmarshal(data, &cfg); err != nil {
+		return fanRuntimeConfig{}, fmt.Errorf("decode fan runtime config: %w", err)
+	}
+
+	if cfg.Schema != 1 {
+		return fanRuntimeConfig{}, fmt.Errorf("unsupported fan runtime schema %d", cfg.Schema)
+	}
+	if !cfg.Enabled {
+		return fanRuntimeConfig{}, errors.New("ODDC fan control is not enabled")
+	}
+	if strings.TrimSpace(cfg.Backend) == "" {
+		return fanRuntimeConfig{}, errors.New("ODDC fan control has no backend")
+	}
+	if len(cfg.Strategies) == 0 {
+		return fanRuntimeConfig{}, errors.New("ODDC fan control has no strategies")
+	}
+
+	return cfg, nil
+}
+
+func readPlatformProfile() string {
+	path := os.Getenv("GJALLAR_PLATFORM_PROFILE")
+	if path == "" {
+		path = "/sys/firmware/acpi/platform_profile"
+	}
+
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return ""
+	}
+	return strings.TrimSpace(string(data))
+}
+
+func readFanTemperatureC() (int, error) {
+	root := os.Getenv("GJALLAR_FAN_HWMON_ROOT")
+	if root == "" {
+		root = "/sys/class/hwmon"
+	}
+
+	preferred := []string{
+		"tctl",
+		"tdie",
+		"package",
+		"cpu",
+	}
+
+	type candidate struct {
+		priority int
+		tempC    int
+	}
+
+	var best *candidate
+
+	hwmons, err := filepath.Glob(filepath.Join(root, "hwmon*"))
+	if err != nil {
+		return 0, err
+	}
+
+	for _, hwmon := range hwmons {
+		inputs, err := filepath.Glob(filepath.Join(hwmon, "temp*_input"))
+		if err != nil {
+			continue
+		}
+
+		for _, input := range inputs {
+			raw, err := os.ReadFile(input)
+			if err != nil {
+				continue
+			}
+
+			milliC, err := strconv.Atoi(strings.TrimSpace(string(raw)))
+			if err != nil {
+				continue
+			}
+
+			base := strings.TrimSuffix(input, "_input")
+			labelData, _ := os.ReadFile(base + "_label")
+			label := strings.ToLower(strings.TrimSpace(string(labelData)))
+
+			priority := len(preferred) + 1
+			for i, token := range preferred {
+				if strings.Contains(label, token) {
+					priority = i
+					break
+				}
+			}
+
+			if priority > len(preferred) {
+				continue
+			}
+
+			tempC := milliC / 1000
+			if best == nil ||
+				priority < best.priority ||
+				(priority == best.priority && tempC > best.tempC) {
+				best = &candidate{
+					priority: priority,
+					tempC:    tempC,
+				}
+			}
+		}
+	}
+
+	if best == nil {
+		return 0, fmt.Errorf("no CPU/package hwmon temperature found")
+	}
+
+	return best.tempC, nil
+}
+
+func chooseFanStrategy(
+	cfg fanRuntimeConfig,
+	currentStrategy string,
+	temperatureC int,
+	powerProfile string,
+) (string, string) {
+	policy := cfg.SystemPolicy
+
+	if policy.ThermalOverrideStrategy != "" {
+		if temperatureC >= policy.ThermalEnterC {
+			return policy.ThermalOverrideStrategy, "thermal"
+		}
+		if currentStrategy == policy.ThermalOverrideStrategy &&
+			temperatureC > policy.ThermalExitC {
+			return policy.ThermalOverrideStrategy, "thermal"
+		}
+	}
+
+	if policy.QuietStrategy != "" {
+		if temperatureC <= policy.QuietEnterC {
+			return policy.QuietStrategy, "temperature"
+		}
+
+		if currentStrategy == policy.QuietStrategy &&
+			temperatureC < policy.QuietExitC {
+			return policy.QuietStrategy, "temperature"
+		}
+	}
+
+	if powerProfile == "performance" && policy.PerformanceStrategy != "" {
+		return policy.PerformanceStrategy, "power-profile"
+	}
+
+	if cfg.DefaultStrategy != "" {
+		return cfg.DefaultStrategy, "system"
+	}
+
+	return currentStrategy, "system"
+}
+
+func fanStrategyAllowed(cfg fanRuntimeConfig, strategy string) bool {
+	for _, candidate := range cfg.Strategies {
+		if strategy == candidate {
+			return true
+		}
+	}
+	return false
+}
+
+func fwFanCtrlBinary() string {
+	if path := os.Getenv("GJALLAR_FW_FANCTRL_BIN"); path != "" {
+		return path
+	}
+	return "fw-fanctrl"
+}
+
+func runFanJSONCommand(target any, args ...string) error {
+	command := exec.Command(fwFanCtrlBinary(), args...)
+	output, err := command.Output()
+	if err != nil {
+		var exitErr *exec.ExitError
+		if errors.As(err, &exitErr) {
+			return fmt.Errorf(
+				"fw-fanctrl %s: %s",
+				strings.Join(args, " "),
+				strings.TrimSpace(string(exitErr.Stderr)),
+			)
+		}
+		return fmt.Errorf("fw-fanctrl %s: %w", strings.Join(args, " "), err)
+	}
+
+	if err := json.Unmarshal(output, target); err != nil {
+		return fmt.Errorf(
+			"decode fw-fanctrl %s output: %w",
+			strings.Join(args, " "),
+			err,
+		)
+	}
+
+	return nil
+}
+
+func reconcileFanOnce(cfg fanRuntimeConfig, stdout, stderr io.Writer) int {
+	temperatureC, err := readFanTemperatureC()
+	if err != nil {
+		fmt.Fprintf(stderr, "ERROR: read fan temperature: %v\n", err)
+		return 1
+	}
+
+	powerProfile := readPlatformProfile()
+
+	switch cfg.Backend {
+	case "fw-fanctrl":
+		var current fwFanCurrent
+		if err := runFanJSONCommand(
+			&current,
+			"--output-format", "JSON",
+			"print", "current",
+		); err != nil {
+			fmt.Fprintf(stderr, "ERROR: %v\n", err)
+			return 1
+		}
+
+		effective, reason := chooseFanStrategy(
+			cfg,
+			current.Strategy,
+			temperatureC,
+			powerProfile,
+		)
+
+		if !fanStrategyAllowed(cfg, effective) {
+			fmt.Fprintf(
+				stderr,
+				"ERROR: policy selected unknown fan strategy %q\n",
+				effective,
+			)
+			return 1
+		}
+
+		changed := effective != current.Strategy
+		if changed {
+			command := exec.Command(fwFanCtrlBinary(), "use", effective)
+			if output, err := command.CombinedOutput(); err != nil {
+				fmt.Fprintf(
+					stderr,
+					"ERROR: switch fan strategy: %v: %s\n",
+					err,
+					strings.TrimSpace(string(output)),
+				)
+				return 1
+			}
+		}
+
+		if changed {
+			result := map[string]any{
+				"requestedMode":     "system",
+				"effectiveStrategy": effective,
+				"previousStrategy":  current.Strategy,
+				"temperatureC":      temperatureC,
+				"powerProfile":      powerProfile,
+				"reason":            reason,
+				"changed":           true,
+			}
+
+			if err := json.NewEncoder(stdout).Encode(result); err != nil {
+				fmt.Fprintf(stderr, "ERROR: encode fan reconcile result: %v\n", err)
+				return 1
+			}
+		}
+
+		return 0
+
+	default:
+		fmt.Fprintf(stderr, "ERROR: unsupported fan backend %q\n", cfg.Backend)
+		return 1
+	}
+}
+
+func runFan(args []string, stdout, stderr io.Writer) int {
+	if len(args) == 0 {
+		fmt.Fprintln(stderr, "Usage: gjallarctl fan {status|list|reconcile|controller}")
+		return 2
+	}
+
+	configPath := os.Getenv("GJALLAR_FAN_CONFIG")
+	if configPath == "" {
+		configPath = "/etc/gjallarOS/fan-control.json"
+	}
+
+	cfg, err := loadFanRuntimeConfig(configPath)
+	if err != nil {
+		fmt.Fprintf(stderr, "ERROR: %v\n", err)
+		return 1
+	}
+
+	switch args[0] {
+	case "list":
+		if len(args) != 1 {
+			fmt.Fprintln(stderr, "Usage: gjallarctl fan list")
+			return 2
+		}
+
+		for _, strategy := range cfg.Strategies {
+			fmt.Fprintln(stdout, strategy)
+		}
+		return 0
+
+	case "reconcile":
+		if len(args) != 1 {
+			fmt.Fprintln(stderr, "Usage: gjallarctl fan reconcile")
+			return 2
+		}
+		return reconcileFanOnce(cfg, stdout, stderr)
+
+	case "controller":
+		if len(args) != 1 {
+			fmt.Fprintln(stderr, "Usage: gjallarctl fan controller")
+			return 2
+		}
+
+		for {
+			if code := reconcileFanOnce(cfg, stdout, stderr); code != 0 {
+				return code
+			}
+			time.Sleep(3 * time.Second)
+		}
+
+	case "status":
+		if len(args) != 1 {
+			fmt.Fprintln(stderr, "Usage: gjallarctl fan status")
+			return 2
+		}
+
+		switch cfg.Backend {
+		case "fw-fanctrl":
+			var current fwFanCurrent
+			var active fwFanActive
+			var speed fwFanSpeed
+
+			if err := runFanJSONCommand(
+				&current,
+				"--output-format", "JSON",
+				"print", "current",
+			); err != nil {
+				fmt.Fprintf(stderr, "ERROR: %v\n", err)
+				return 1
+			}
+
+			if err := runFanJSONCommand(
+				&active,
+				"--output-format", "JSON",
+				"print", "active",
+			); err != nil {
+				fmt.Fprintf(stderr, "ERROR: %v\n", err)
+				return 1
+			}
+
+			if err := runFanJSONCommand(
+				&speed,
+				"--output-format", "JSON",
+				"print", "speed",
+			); err != nil {
+				fmt.Fprintf(stderr, "ERROR: %v\n", err)
+				return 1
+			}
+
+			speedPercent, err := strconv.Atoi(speed.Speed)
+			if err != nil {
+				fmt.Fprintf(stderr, "ERROR: invalid fw-fanctrl speed %q\n", speed.Speed)
+				return 1
+			}
+
+			status := fanStatus{
+				Enabled:               true,
+				Backend:               cfg.Backend,
+				Profile:               cfg.Profile,
+				Current:               current.Strategy,
+				DefaultStrategy:       cfg.DefaultStrategy,
+				StrategyOnDischarging: cfg.StrategyOnDischarging,
+				Strategies:            cfg.Strategies,
+				Active:                active.Active,
+				SpeedPercent:          speedPercent,
+				RequestedMode:         "system",
+				EffectiveStrategy:     current.Strategy,
+			}
+
+			encoder := json.NewEncoder(stdout)
+			if err := encoder.Encode(status); err != nil {
+				fmt.Fprintf(stderr, "ERROR: encode fan status: %v\n", err)
+				return 1
+			}
+			return 0
+
+		default:
+			fmt.Fprintf(stderr, "ERROR: unsupported fan backend %q\n", cfg.Backend)
+			return 1
+		}
+
+	default:
+		fmt.Fprintln(stderr, "Usage: gjallarctl fan {status|list|reconcile|controller}")
+		return 2
+	}
+}
+
 func runCheck(args []string, stdout, stderr io.Writer) int {
 	flags := flag.NewFlagSet("gjallarctl check", flag.ContinueOnError)
 	flags.SetOutput(stderr)
@@ -1348,8 +2083,18 @@ func runCheck(args []string, stdout, stderr io.Writer) int {
 }
 
 func printUsage(out io.Writer) {
-	fmt.Fprintln(out, "Usage: gjallarctl check [--repo PATH] [--timeout DURATION]\n       gjallarctl rebuild --repo PATH --host HOST [-d|--debug] [-n|--no-cleanup] [NIXOS-REBUILD-ARGS...]\n       gjallarctl detect {graphics|network}\n       gjallarctl ai profile [--config PATH]\n       gjallarctl normalize keyboard --layout VALUE\n       gjallarctl preset {validate|get|list|bool} --config PATH [--key NAME]")
-	fmt.Fprintln(out, "\nSafe GjallarOS maintenance commands. Rebuild invokes sudo explicitly.")
+	fmt.Fprintln(out, "Usage: gjallarctl check [--repo PATH] [--timeout DURATION]")
+	fmt.Fprintln(out, "       gjallarctl oddc validate-device [--repo PATH]")
+	fmt.Fprintln(out, "       gjallarctl rebuild --repo PATH --host HOST [-d|--debug] [-n|--no-cleanup] [NIXOS-REBUILD-ARGS...]")
+	fmt.Fprintln(out, "       gjallarctl detect {graphics|network}")
+	fmt.Fprintln(out, "       gjallarctl device-probe refresh [--output PATH]")
+	fmt.Fprintln(out, "       gjallarctl fan {status|list|reconcile}")
+	fmt.Fprintln(out, "       gjallarctl device-probe diagnose {zbook-x2-g4|framework-13-amd-7040} [--input PATH]")
+	fmt.Fprintln(out, "       gjallarctl ai profile [--config PATH]")
+	fmt.Fprintln(out, "       gjallarctl normalize keyboard --layout VALUE")
+	fmt.Fprintln(out, "       gjallarctl preset {validate|get|list|bool} --config PATH [--key NAME]")
+	fmt.Fprintln(out)
+	fmt.Fprintln(out, "Safe GjallarOS maintenance commands. Rebuild invokes sudo explicitly.")
 }
 
 func syncProjectToolSettings(settingsPath string, user config.User) error {
@@ -1505,6 +2250,15 @@ func runRebuild(args []string, stdout, stderr io.Writer) int {
 		return 2
 	}
 
+	_, err := repojson.CanonicalizeChangedTracked(
+		context.Background(),
+		repo,
+	)
+	if err != nil {
+		fmt.Fprintf(stderr, "ERROR: canonicalize changed JSON: %v\n", err)
+		return 1
+	}
+
 	messagesPath := filepath.Join(repo, "system/tools/commands/rebuild-messages.json")
 	if _, err := os.Stat(messagesPath); errors.Is(err, os.ErrNotExist) {
 		messagesPath = filepath.Join(repo, "system/tools/scripts/rebuild-messages.json")
@@ -1568,8 +2322,6 @@ func runRebuild(args []string, stdout, stderr io.Writer) int {
 		return 1
 	}
 
-	fmt.Fprintln(stdout, "[GjallarOS] Synced Plane/Draw.io settings from user.config.json.")
-
 	managedDevice, err := document.Bool("endpointManagedDevice")
 	if err != nil {
 		fmt.Fprintf(stderr, "[GjallarOS] Error: read endpointManagedDevice: %v\n", err)
@@ -1621,7 +2373,7 @@ func runRebuild(args []string, stdout, stderr io.Writer) int {
 	}
 
 	started := time.Now()
-	commandArgs := []string{"nixos-rebuild", "switch", "--flake", repo + "#" + host}
+	commandArgs := []string{"nixos-rebuild", "switch", "--impure", "--flake", "path:" + repo + "#" + host}
 	rebuildHome := os.Getenv("GJALLAR_REBUILD_CALLER_HOME")
 	if rebuildHome == "" {
 		rebuildHome, _ = os.UserHomeDir()
@@ -2129,4 +2881,192 @@ func terminalRuneWidth(r rune) int {
 		return 2
 	}
 	return 1
+}
+
+type hyprMonitor struct {
+	Name        string  `json:"name"`
+	Width       int     `json:"width"`
+	Height      int     `json:"height"`
+	RefreshRate float64 `json:"refreshRate"`
+	X           int     `json:"x"`
+	Y           int     `json:"y"`
+	Scale       float64 `json:"scale"`
+}
+
+func internalDRMConnector(sysRoot string) (string, error) {
+	paths, err := filepath.Glob(filepath.Join(sysRoot, "class", "drm", "card*-eDP-*"))
+	if err != nil {
+		return "", err
+	}
+
+	for _, path := range paths {
+		status, err := os.ReadFile(filepath.Join(path, "status"))
+		if err != nil {
+			continue
+		}
+		if strings.TrimSpace(string(status)) == "connected" {
+			name := filepath.Base(path)
+			if i := strings.Index(name, "-eDP-"); i >= 0 {
+				return name[i+1:], nil
+			}
+		}
+	}
+
+	return "", fmt.Errorf("no connected internal eDP connector found")
+}
+
+func hyprlandMonitors() ([]hyprMonitor, error) {
+	out, err := exec.Command("hyprctl", "monitors", "-j").Output()
+	if err != nil {
+		return nil, fmt.Errorf("hyprctl monitors: %w", err)
+	}
+
+	var monitors []hyprMonitor
+	if err := json.Unmarshal(out, &monitors); err != nil {
+		return nil, fmt.Errorf("decode hyprctl monitors: %w", err)
+	}
+
+	return monitors, nil
+}
+
+func orientationTransform(value string) (int, bool) {
+	switch strings.TrimSpace(value) {
+	case "normal":
+		return 0, true
+	case "right-up":
+		return 1, true
+	case "bottom-up":
+		return 2, true
+	case "left-up":
+		return 3, true
+	default:
+		return 0, false
+	}
+}
+
+func applyHyprlandRotation(sysRoot, orientation string) error {
+	transform, ok := orientationTransform(orientation)
+	if !ok {
+		return nil
+	}
+
+	connector, err := internalDRMConnector(sysRoot)
+	if err != nil {
+		return err
+	}
+
+	monitors, err := hyprlandMonitors()
+	if err != nil {
+		return err
+	}
+
+	var monitor *hyprMonitor
+	for i := range monitors {
+		if monitors[i].Name == connector {
+			monitor = &monitors[i]
+			break
+		}
+	}
+	if monitor == nil {
+		return fmt.Errorf("internal connector %q not present in Hyprland", connector)
+	}
+
+	mode := fmt.Sprintf("%dx%d@%.3f", monitor.Width, monitor.Height, monitor.RefreshRate)
+	position := fmt.Sprintf("%dx%d", monitor.X, monitor.Y)
+	scale := strconv.FormatFloat(monitor.Scale, 'f', -1, 64)
+	spec := fmt.Sprintf(
+		"%s,%s,%s,%s,transform,%d",
+		monitor.Name,
+		mode,
+		position,
+		scale,
+		transform,
+	)
+
+	for _, args := range [][]string{
+		{"keyword", "monitor", spec},
+		{"keyword", "input:touchdevice:transform", strconv.Itoa(transform)},
+		{"keyword", "input:tablet:transform", strconv.Itoa(transform)},
+	} {
+		cmd := exec.Command("hyprctl", args...)
+		if out, err := cmd.CombinedOutput(); err != nil {
+			return fmt.Errorf(
+				"hyprctl %s: %w: %s",
+				strings.Join(args, " "),
+				err,
+				strings.TrimSpace(string(out)),
+			)
+		}
+	}
+
+	return nil
+}
+
+func runHyprlandRotate(args []string, stdout, stderr io.Writer) int {
+	if len(args) != 0 {
+		fmt.Fprintln(stderr, "usage: gjallarctl hyprland-rotate")
+		return 2
+	}
+
+	cmd := exec.Command("monitor-sensor")
+	pipe, err := cmd.StdoutPipe()
+	if err != nil {
+		fmt.Fprintf(stderr, "FAIL: monitor-sensor stdout: %v\n", err)
+		return 1
+	}
+	cmd.Stderr = stderr
+
+	if err := cmd.Start(); err != nil {
+		fmt.Fprintf(stderr, "FAIL: start monitor-sensor: %v\n", err)
+		return 1
+	}
+
+	scanner := bufio.NewScanner(pipe)
+	for scanner.Scan() {
+		line := scanner.Text()
+
+		var orientation string
+		switch {
+		case strings.Contains(line, "Accelerometer orientation changed:"):
+			orientation = strings.TrimSpace(
+				strings.TrimPrefix(
+					line[strings.Index(line, "Accelerometer orientation changed:"):],
+					"Accelerometer orientation changed:",
+				),
+			)
+
+		case strings.Contains(line, "Has accelerometer (orientation:"):
+			start := strings.Index(line, "orientation:")
+			if start >= 0 {
+				rest := line[start+len("orientation:"):]
+				if end := strings.IndexAny(rest, ",)"); end >= 0 {
+					rest = rest[:end]
+				}
+				orientation = strings.TrimSpace(rest)
+			}
+		}
+
+		if orientation == "" {
+			continue
+		}
+
+		if err := applyHyprlandRotation("/sys", orientation); err != nil {
+			fmt.Fprintf(stderr, "WARN: rotate %s: %v\n", orientation, err)
+			continue
+		}
+
+		fmt.Fprintf(stdout, "PASS: orientation %s applied\n", orientation)
+	}
+
+	if err := scanner.Err(); err != nil {
+		fmt.Fprintf(stderr, "FAIL: read monitor-sensor: %v\n", err)
+		return 1
+	}
+
+	if err := cmd.Wait(); err != nil {
+		fmt.Fprintf(stderr, "FAIL: monitor-sensor: %v\n", err)
+		return 1
+	}
+
+	return 0
 }

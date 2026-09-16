@@ -39,7 +39,30 @@ type Lifecycle struct {
 type Validation struct {
 	LastValidatedNixOS             string `json:"lastValidatedNixOS,omitempty"`
 	LastValidatedGjallarOSRevision string `json:"lastValidatedGjallarOSRevision,omitempty"`
+	LastValidatedDeviceID          string `json:"lastValidatedDeviceID,omitempty"`
+	LastValidatedODDCRevision      string `json:"lastValidatedODDCRevision,omitempty"`
 	LastValidatedAt                string `json:"lastValidatedAt,omitempty"`
+}
+
+type ValidationTarget struct {
+	NixOSRelease      string
+	GjallarOSRevision string
+	DeviceID          string
+	ODDCRevision      string
+}
+
+func (v Validation) Matches(target ValidationTarget) bool {
+	return strings.TrimSpace(v.LastValidatedNixOS) == strings.TrimSpace(target.NixOSRelease) &&
+		strings.TrimSpace(v.LastValidatedGjallarOSRevision) == strings.TrimSpace(target.GjallarOSRevision) &&
+		strings.TrimSpace(v.LastValidatedDeviceID) == strings.TrimSpace(target.DeviceID) &&
+		strings.TrimSpace(v.LastValidatedODDCRevision) == strings.TrimSpace(target.ODDCRevision) &&
+		strings.TrimSpace(v.LastValidatedAt) != ""
+}
+
+type GraphicsPolicy struct {
+	IntegratedKernelDriver string `json:"integratedKernelDriver,omitempty"`
+	DiscreteKernelDriver   string `json:"discreteKernelDriver,omitempty"`
+	DriverBranch           string `json:"driverBranch,omitempty"`
 }
 
 type SecureBootFirmwarePolicy struct {
@@ -61,12 +84,18 @@ type Manifest struct {
 	ID                 string                    `json:"id"`
 	Class              string                    `json:"class"`
 	Vendor             string                    `json:"vendor,omitempty"`
+	Selectable         *bool                     `json:"selectable,omitempty"`
 	Match              Match                     `json:"match,omitempty"`
 	Inherits           []string                  `json:"inherits,omitempty"`
 	Modules            []string                  `json:"modules,omitempty"`
 	Lifecycle          Lifecycle                 `json:"lifecycle"`
 	Validation         Validation                `json:"validation"`
+	Graphics           *GraphicsPolicy           `json:"graphics,omitempty"`
 	SecureBootFirmware *SecureBootFirmwarePolicy `json:"secureBootFirmware,omitempty"`
+}
+
+func (manifest Manifest) IsSelectable() bool {
+	return manifest.Selectable == nil || *manifest.Selectable
 }
 
 func DecodeManifest(r io.Reader) (Manifest, error) {
@@ -136,6 +165,16 @@ func ValidateManifest(manifest Manifest) error {
 				"oddc manifest %q module %q: %w",
 				manifest.ID,
 				module,
+				err,
+			)
+		}
+	}
+
+	if manifest.Graphics != nil {
+		if err := validateGraphicsPolicy(*manifest.Graphics); err != nil {
+			return fmt.Errorf(
+				"oddc manifest %q graphics: %w",
+				manifest.ID,
 				err,
 			)
 		}

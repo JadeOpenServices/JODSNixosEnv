@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"reflect"
+	"strings"
 	"testing"
 )
 
@@ -21,6 +22,23 @@ func enrollmentTestSnapshot() FirmwarePolicySnapshot {
 		Untouched:               []string{"dbx"},
 		FactoryOwnershipProof:   "pk-equals-pkdefault",
 		Instructions:            []string{"Delete only the Platform Key."},
+	}
+}
+
+func frameworkPolicySnapshotForEnrollmentTest() FirmwarePolicySnapshot {
+	return FirmwarePolicySnapshot{
+		Schema:                  1,
+		DeviceProfile:           "laptop/framework",
+		SourceLayer:             "laptop/framework",
+		FirmwareName:            "Framework UEFI",
+		SetupModeStrategy:       "clear-platform-key",
+		EnrollmentBackend:       "sbctl",
+		RequiredPresent:         []string{"KEK", "db", "dbx"},
+		RequiredAbsent:          []string{"PK"},
+		PreserveFirmwareBuiltin: []string{"KEK", "db"},
+		Untouched:               []string{"dbx"},
+		FactoryOwnershipProof:   "pk-equals-pkdefault",
+		Instructions:            []string{"Delete only PK."},
 	}
 }
 
@@ -113,6 +131,9 @@ func TestEnrollFirmwareUsesPolicyForFirmwareBuiltinEnrollment(t *testing.T) {
 		present: func(name string) (bool, error) {
 			return name != "PK", nil
 		},
+		payload: func(name string) ([]byte, bool, error) {
+			return []byte("stable-" + name), true, nil
+		},
 		glob: func(pattern string) ([]string, error) {
 			return []string{"/efi/" + pattern}, nil
 		},
@@ -177,6 +198,9 @@ func TestEnrollFirmwareNeverMutatesUntouchedDBX(t *testing.T) {
 		present: func(name string) (bool, error) {
 			return name != "PK", nil
 		},
+		payload: func(name string) ([]byte, bool, error) {
+			return []byte("stable-" + name), true, nil
+		},
 		glob: func(pattern string) ([]string, error) {
 			touched = append(touched, pattern)
 			return []string{"/efi/" + pattern}, nil
@@ -198,5 +222,63 @@ func TestEnrollFirmwareNeverMutatesUntouchedDBX(t *testing.T) {
 		if value == "/sys/firmware/efi/efivars/dbx-*" {
 			t.Fatal("untouched dbx entered mutation path")
 		}
+	}
+}
+
+func TestEnrollFirmwareRejectsModifiedUntouchedVariable(t *testing.T) {
+	snapshot := frameworkPolicySnapshotForEnrollmentTest()
+
+	payloadReads := 0
+
+	ops := enrollmentOps{
+		present: func(name string) (bool, error) {
+			return name != "PK", nil
+		},
+		payload: func(name string) ([]byte, bool, error) {
+			if name != "dbx" {
+				return []byte("stable"), true, nil
+			}
+
+			payloadReads++
+			if payloadReads == 1 {
+				return []byte("factory-dbx"), true, nil
+			}
+
+			return []byte("modified-dbx"), true, nil
+		},
+		inspect: func(context.Context) (Inspection, error) {
+			if payloadReads == 0 {
+				return Inspection{
+					State:     StatePendingEnrollment,
+					SetupMode: true,
+				}, nil
+			}
+
+			return Inspection{
+				State:     StateGjallarManaged,
+				SetupMode: false,
+			}, nil
+		},
+		command: func(context.Context, string, ...string) error {
+			return nil
+		},
+		verifyArtifacts: func(context.Context) error {
+			return nil
+		},
+		recordOwnership: func(context.Context, string) error {
+			return nil
+		},
+		glob: func(pattern string) ([]string, error) {
+			return []string{"/sys/firmware/efi/efivars/KEK-test"}, nil
+		},
+	}
+
+	_, err := enrollFirmware(context.Background(), snapshot, ops)
+	if err == nil {
+		t.Fatal("accepted mutation of untouched EFI variable")
+	}
+
+	if !strings.Contains(err.Error(), "dbx changed during enrollment") {
+		t.Fatalf("unexpected error: %v", err)
 	}
 }

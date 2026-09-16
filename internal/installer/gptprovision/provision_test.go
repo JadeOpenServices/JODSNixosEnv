@@ -175,7 +175,8 @@ func lsblk(withRecovery bool) []byte {
 func runnerForFreeSpace() *fakeRunner {
 	disk := "/dev/nvme0n1"
 	return &fakeRunner{outputs: map[string][]byte{
-		key("lsblk", "-J", "-b", "-p", "-o",
+		key("lsblk", "-J", "-b", "-p", "--tree",
+			"-o",
 			"PATH,TYPE,SIZE,START,MODEL,SERIAL,WWN,PTTYPE,PARTN,PARTLABEL,PARTTYPE,PARTUUID,MOUNTPOINTS",
 			"--", disk): lsblk(false),
 
@@ -201,12 +202,14 @@ func TestCreatesOnlyRecoveryGPTEntry(t *testing.T) {
 	// Second lsblk inspection sees the new recovery partition.
 	count := 0
 	original := r.outputs[key(
-		"lsblk", "-J", "-b", "-p", "-o",
+		"lsblk", "-J", "-b", "-p", "--tree",
+		"-o",
 		"PATH,TYPE,SIZE,START,MODEL,SERIAL,WWN,PTTYPE,PARTN,PARTLABEL,PARTTYPE,PARTUUID,MOUNTPOINTS",
 		"--", p.TargetDisk.Path,
 	)]
 	delete(r.outputs, key(
-		"lsblk", "-J", "-b", "-p", "-o",
+		"lsblk", "-J", "-b", "-p", "--tree",
+		"-o",
 		"PATH,TYPE,SIZE,START,MODEL,SERIAL,WWN,PTTYPE,PARTN,PARTLABEL,PARTTYPE,PARTUUID,MOUNTPOINTS",
 		"--", p.TargetDisk.Path,
 	))
@@ -291,7 +294,8 @@ func TestExistingCanonicalRecoveryIsAccepted(t *testing.T) {
 	p := plan()
 	r := runnerForFreeSpace()
 	r.outputs[key(
-		"lsblk", "-J", "-b", "-p", "-o",
+		"lsblk", "-J", "-b", "-p", "--tree",
+		"-o",
 		"PATH,TYPE,SIZE,START,MODEL,SERIAL,WWN,PTTYPE,PARTN,PARTLABEL,PARTTYPE,PARTUUID,MOUNTPOINTS",
 		"--", p.TargetDisk.Path,
 	)] = lsblk(true)

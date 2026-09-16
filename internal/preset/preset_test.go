@@ -8,7 +8,7 @@ import (
 
 func TestTypedValues(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "preset.json")
-	if err := os.WriteFile(path, []byte(`{"name":"baka","enabled":true,"items":["one","two"]}`), 0o600); err != nil {
+	if err := os.WriteFile(path, []byte(`{"name":"testuser","enabled":true,"items":["one","two"]}`), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	document, err := Load(path)
@@ -18,7 +18,7 @@ func TestTypedValues(t *testing.T) {
 	name, _ := document.String("name")
 	enabled, _ := document.Bool("enabled")
 	items, _ := document.Strings("items")
-	if name != "baka" || !enabled || len(items) != 2 {
+	if name != "testuser" || !enabled || len(items) != 2 {
 		t.Fatalf("unexpected values: %q %t %#v", name, enabled, items)
 	}
 }

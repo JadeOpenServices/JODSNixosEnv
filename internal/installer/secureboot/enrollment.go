@@ -1,6 +1,7 @@
 package secureboot
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"os"
@@ -17,6 +18,7 @@ const (
 
 type enrollmentOps struct {
 	present         func(string) (bool, error)
+	payload         func(string) ([]byte, bool, error)
 	inspect         func(context.Context) (Inspection, error)
 	command         func(context.Context, string, ...string) error
 	verifyArtifacts func(context.Context) error
@@ -39,6 +41,7 @@ func EnrollFirmware(ctx context.Context) (EnrollmentResult, error) {
 			_, present, err := efivarPayload(name)
 			return present, err
 		},
+		payload:         efivarPayload,
 		inspect:         Inspect,
 		command:         run,
 		verifyArtifacts: verifyBootArtifacts,
@@ -101,6 +104,26 @@ func enrollFirmware(
 		}
 	}
 
+	untouchedBefore := make(map[string][]byte, len(snapshot.Untouched))
+	for _, name := range snapshot.Untouched {
+		payload, present, err := ops.payload(name)
+		if err != nil {
+			return "", fmt.Errorf(
+				"read untouched EFI variable %s before enrollment: %w",
+				name,
+				err,
+			)
+		}
+		if !present {
+			return "", fmt.Errorf(
+				"untouched EFI variable %s is missing before enrollment",
+				name,
+			)
+		}
+
+		untouchedBefore[name] = append([]byte(nil), payload...)
+	}
+
 	for _, name := range snapshot.PreserveFirmwareBuiltin {
 		matches, err := ops.glob("/sys/firmware/efi/efivars/" + name + "-*")
 		if err != nil {
@@ -132,6 +155,29 @@ func enrollFirmware(
 
 	if err := ops.command(ctx, "sbctl", args...); err != nil {
 		return "", fmt.Errorf("enroll Secure Boot keys: %w", err)
+	}
+
+	for _, name := range snapshot.Untouched {
+		payload, present, err := ops.payload(name)
+		if err != nil {
+			return "", fmt.Errorf(
+				"read untouched EFI variable %s after enrollment: %w",
+				name,
+				err,
+			)
+		}
+		if !present {
+			return "", fmt.Errorf(
+				"untouched EFI variable %s disappeared during enrollment",
+				name,
+			)
+		}
+		if !bytes.Equal(untouchedBefore[name], payload) {
+			return "", fmt.Errorf(
+				"untouched EFI variable %s changed during enrollment",
+				name,
+			)
+		}
 	}
 
 	if err := ops.verifyArtifacts(ctx); err != nil {

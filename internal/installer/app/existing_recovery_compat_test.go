@@ -13,7 +13,7 @@ import (
 	"github.com/bakanura/gjallarOS/internal/installer/prompt"
 )
 
-func TestExistingInstalledSystemDetectedFromPersistentRoot(t *testing.T) {
+func TestVanillaPersistentRootIsFresh(t *testing.T) {
 	original := inspectCurrentRoot
 	t.Cleanup(func() { inspectCurrentRoot = original })
 
@@ -30,8 +30,8 @@ func TestExistingInstalledSystemDetectedFromPersistentRoot(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !existing {
-		t.Fatal("persistent ext4 installed system was treated as fresh")
+	if existing {
+		t.Fatal("vanilla persistent NixOS root was treated as existing GjallarOS")
 	}
 }
 
@@ -265,5 +265,52 @@ func TestUnattendedExt4FailsClosed(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "recovery requires Btrfs") {
 		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+func TestRecoveryInstalledRootRequiresAuthenticatedMapper(t *testing.T) {
+	original := inspectRecoveryRoot
+	t.Cleanup(func() { inspectRecoveryRoot = original })
+
+	target := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(target, "etc"), 0755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(target, "etc", "NIXOS"), nil, 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	inspectRecoveryRoot = func(context.Context, string) ([]byte, error) {
+		return []byte("/dev/nvme0n1p2 rw,relatime\n"), nil
+	}
+
+	if _, err := detectRecoveryInstalledRoot(context.Background(), target); err == nil ||
+		!strings.Contains(err.Error(), "authenticated LUKS mapping") {
+		t.Fatalf("error=%v", err)
+	}
+}
+
+func TestRecoveryInstalledRootAcceptsAuthenticatedMapper(t *testing.T) {
+	original := inspectRecoveryRoot
+	t.Cleanup(func() { inspectRecoveryRoot = original })
+
+	target := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(target, "etc"), 0755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(target, "etc", "NIXOS"), nil, 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	inspectRecoveryRoot = func(context.Context, string) ([]byte, error) {
+		return []byte("/dev/mapper/gjallar-recovery-root rw,relatime\n"), nil
+	}
+
+	existing, err := detectRecoveryInstalledRoot(context.Background(), target)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !existing {
+		t.Fatal("authenticated mounted recovery root was not accepted")
 	}
 }

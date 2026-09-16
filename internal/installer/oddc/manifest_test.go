@@ -392,3 +392,77 @@ func TestDecodeManifestRejectsSecureBootCommandField(t *testing.T) {
 		)
 	}
 }
+
+func TestValidationMatchesCurrentTarget(t *testing.T) {
+	v := Validation{
+		LastValidatedNixOS:             "26.05",
+		LastValidatedGjallarOSRevision: "git:abc123",
+		LastValidatedDeviceID:          "laptop/framework",
+		LastValidatedODDCRevision:      "git:abc123",
+		LastValidatedAt:                "2026-09-11T14:00:00Z",
+	}
+
+	target := ValidationTarget{
+		NixOSRelease:      "26.05",
+		GjallarOSRevision: "git:abc123",
+		DeviceID:          "laptop/framework",
+		ODDCRevision:      "git:abc123",
+	}
+
+	if !v.Matches(target) {
+		t.Fatal("matching validation target was rejected")
+	}
+}
+
+func TestValidationRejectsChangedTarget(t *testing.T) {
+	base := Validation{
+		LastValidatedNixOS:             "26.05",
+		LastValidatedGjallarOSRevision: "git:abc123",
+		LastValidatedDeviceID:          "laptop/framework",
+		LastValidatedODDCRevision:      "git:abc123",
+		LastValidatedAt:                "2026-09-11T14:00:00Z",
+	}
+
+	tests := []ValidationTarget{
+		{
+			NixOSRelease:      "26.11",
+			GjallarOSRevision: "git:abc123",
+			DeviceID:          "laptop/framework",
+			ODDCRevision:      "git:abc123",
+		},
+		{
+			NixOSRelease:      "26.05",
+			GjallarOSRevision: "git:def456",
+			DeviceID:          "laptop/framework",
+			ODDCRevision:      "git:abc123",
+		},
+		{
+			NixOSRelease:      "26.05",
+			GjallarOSRevision: "git:abc123",
+			DeviceID:          "laptop/framework/laptop-13-amd-ryzen-7040",
+			ODDCRevision:      "git:abc123",
+		},
+		{
+			NixOSRelease:      "26.05",
+			GjallarOSRevision: "git:abc123",
+			DeviceID:          "laptop/framework",
+			ODDCRevision:      "git:def456",
+		},
+	}
+
+	for _, target := range tests {
+		if base.Matches(target) {
+			t.Fatalf("changed validation target was accepted: %+v", target)
+		}
+	}
+
+	base.LastValidatedAt = ""
+	if base.Matches(ValidationTarget{
+		NixOSRelease:      "26.05",
+		GjallarOSRevision: "git:abc123",
+		DeviceID:          "laptop/framework",
+		ODDCRevision:      "git:abc123",
+	}) {
+		t.Fatal("validation without timestamp was accepted")
+	}
+}

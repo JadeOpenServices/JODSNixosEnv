@@ -16,15 +16,13 @@
     ../../system/hardware/input.nix
     ../../system/hardware/work/boot.nix
     ../../system/recovery
-    ../../system/security/secure-boot
-    ../../system/hardware/laptop/battery.nix
+    ../../oddc/devices/laptop/common/battery.nix
     ../../system/security/laptop/firewall.nix
     ../../system/virtualization
     ../../themes/lib/common.nix
     ../../system/tools
     ../../system/users/work.nix
     ../../system/users/privilege.nix
-    ../../system/hardware/framework
     ../../system/apps/ollama.nix
   ]
   ++ (map (wm: ../../system/wm/${wm}) settings.wms);

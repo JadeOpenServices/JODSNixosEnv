@@ -16,16 +16,14 @@
     ../../system/hardware/input.nix
     ../../system/hardware/thinkpad/boot.nix
     ../../system/recovery
-    ../../system/security/secure-boot
     ../../system/security/laptop/firewall.nix
-    ../../system/hardware/laptop/battery.nix
+    ../../oddc/devices/laptop/common/battery.nix
     ../../system/virtualization
     ../../system/gaming/nethack.nix
     ../../themes/lib/common.nix
     ../../system/tools
     ../../system/users/work.nix
     ../../system/users/privilege.nix
-    ../../system/hardware/framework
     ../../system/apps/ollama.nix
   ]
   ++ (map (wm: ../../system/wm/${wm}) settings.wms);

@@ -1,4 +1,8 @@
-{ config, pkgs }:
+{
+  config,
+  pkgs,
+  sourceRevision,
+}:
 let
   gjallarctl = pkgs.callPackage ../../pkgs/gjallarctl { };
   recoveryExecutor = pkgs.writeShellApplication {
@@ -106,10 +110,10 @@ let
 
         if [ -f "$live_repo/flake.nix" ]; then
           prepare_installer_device_config || return 1
-          exec gjallar-installer --repo "$live_repo" "$@"
+          GJALLAROS_REVISION=${sourceRevision} exec gjallar-installer --repo "$live_repo" "$@"
         fi
 
-        exec gjallar-installer "$@"
+        GJALLAROS_REVISION=${sourceRevision} exec gjallar-installer "$@"
       }
 
       case "''${1:-help}" in

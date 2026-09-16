@@ -1,11 +1,19 @@
-{ config, lib, pkgs, modulesPath, releaseVersion, settings, repoSource, ... }:
+{
+  config,
+  lib,
+  pkgs,
+  modulesPath,
+  releaseVersion,
+  settings,
+  repoSource,
+  sourceRevision,
+  ...
+}:
 let
-  tools = import ./tools.nix { inherit config pkgs; };
+  tools = import ./tools.nix { inherit config pkgs sourceRevision; };
 
-  getSetting = name: fallback:
-    if builtins.hasAttr name settings
-    then builtins.getAttr name settings
-    else fallback;
+  getSetting =
+    name: fallback: if builtins.hasAttr name settings then builtins.getAttr name settings else fallback;
 
   sourceUserConfig = repoSource + "/user.config.json";
 
@@ -63,9 +71,6 @@ let
       enableLastfm = getSetting "enableLastfm" false;
       enableListenbrainz = getSetting "enableListenbrainz" false;
 
-      frameworkEnable = getSetting "frameworkEnable" false;
-      frameworkModel = getSetting "frameworkModel" "";
-
       aiEnable = getSetting "aiEnable" false;
       aiAgentMode = getSetting "aiAgentMode" "workspace";
       overrideAiSelection = false;
@@ -96,9 +101,7 @@ let
   # Preserve the device's actual user configuration when one exists in the
   # source used to build the recovery image. This is the normal local fallback.
   installerFallbackPreset =
-    if builtins.pathExists sourceUserConfig
-    then sourceUserConfig
-    else generatedInstallerPreset;
+    if builtins.pathExists sourceUserConfig then sourceUserConfig else generatedInstallerPreset;
 in
 {
   imports = [ "${modulesPath}/installer/cd-dvd/installation-cd-minimal.nix" ];
@@ -117,13 +120,14 @@ in
   # For ordinary layouts without an XKB variant, set the VC keymap directly
   # so the selected layout is active from the first login prompt onward.
   console =
-    if settings.keyboardVariant == ""
-    then {
-      keyMap = settings.keyboardLayout;
-    }
-    else {
-      useXkbConfig = true;
-    };
+    if settings.keyboardVariant == "" then
+      {
+        keyMap = settings.keyboardLayout;
+      }
+    else
+      {
+        useXkbConfig = true;
+      };
 
   networking = {
     hostName = "gjallar-recovery";
@@ -132,6 +136,10 @@ in
   };
   services.openssh.enable = lib.mkForce false;
   programs.ssh.startAgent = false;
+
+  # Installer-only upstream libfprint visibility. This does not enable
+  # fingerprint authentication or alter PAM.
+  services.fprintd.enable = true;
 
   # The installer needs a writable GjallarOS repository because fresh-target
   # hardware configuration and generated installer settings are produced
@@ -171,6 +179,64 @@ in
     '';
   };
 
+  systemd.services.gjallar-device-probe = {
+    description = "Collect GjallarOS installer hardware state";
+    wantedBy = [ "multi-user.target" ];
+
+    after = [ "gjallar-installer-repository.service" ];
+    requires = [ "gjallar-installer-repository.service" ];
+
+    path = with pkgs; [
+      pciutils
+      usbutils
+      util-linux
+      libinput
+      iio-sensor-proxy
+      fprintd
+      bolt
+      alsa-utils
+      pipewire
+      fwupd
+      ethtool
+      iw
+      systemd
+    ];
+
+    serviceConfig = {
+      Type = "oneshot";
+      NoNewPrivileges = true;
+      PrivateTmp = true;
+      ProtectHome = true;
+      ProtectSystem = "strict";
+      ReadWritePaths = [ "/run/gjallarOS" ];
+      UMask = "0022";
+    };
+
+    script = ''
+      set -eu
+
+      ${tools.gjallarctl}/bin/gjallarctl         device-probe refresh         --output /run/gjallarOS/device-probe.json
+    '';
+  };
+
+  services.udev.extraRules = ''
+    ACTION=="add|remove|change", SUBSYSTEM=="pci", RUN+="${pkgs.systemd}/bin/systemctl --no-block start gjallar-device-probe.service"
+    ACTION=="add|remove|change", SUBSYSTEM=="usb", RUN+="${pkgs.systemd}/bin/systemctl --no-block start gjallar-device-probe.service"
+    ACTION=="add|remove|change", SUBSYSTEM=="input", RUN+="${pkgs.systemd}/bin/systemctl --no-block start gjallar-device-probe.service"
+    ACTION=="add|remove|change", SUBSYSTEM=="iio", RUN+="${pkgs.systemd}/bin/systemctl --no-block start gjallar-device-probe.service"
+    ACTION=="add|remove|change", SUBSYSTEM=="thunderbolt", RUN+="${pkgs.systemd}/bin/systemctl --no-block start gjallar-device-probe.service"
+  '';
+
+  environment.etc."systemd/system-sleep/gjallar-device-probe-refresh" = {
+    mode = "0755";
+    text = ''
+      #!/bin/sh
+      if [ "$1" = post ]; then
+        ${pkgs.systemd}/bin/systemctl --no-block start gjallar-device-probe.service
+      fi
+    '';
+  };
+
   environment.systemPackages = with pkgs; [
     btrfs-progs
     dosfstools
@@ -195,7 +261,10 @@ in
   ];
 
   nix.settings = {
-    experimental-features = [ "nix-command" "flakes" ];
+    experimental-features = [
+      "nix-command"
+      "flakes"
+    ];
     require-sigs = true;
   };
 
@@ -211,8 +280,7 @@ in
     "d /run/gjallarOS/device-config 0700 root root - -"
   ];
 
-  environment.etc."gjallar/installer-fallback-user.config.json".source =
-    installerFallbackPreset;
+  environment.etc."gjallar/installer-fallback-user.config.json".source = installerFallbackPreset;
 
   environment.etc."gjallar/device-config-contract".text = ''
     GjallarOS fresh-install device configuration handoff

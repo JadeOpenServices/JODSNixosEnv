@@ -8,6 +8,9 @@ func TestParseHybridNvidiaAndAMD(t *testing.T) {
 	if result.Vendor != "nvidia" || result.Type != "hybrid" || !result.Compute {
 		t.Fatalf("unexpected topology: %#v", result)
 	}
+	if result.DriverBranch != "stable" {
+		t.Fatalf("DriverBranch = %q, want stable", result.DriverBranch)
+	}
 	if result.BusID != "PCI:5:0:0" || result.IntegratedBusID != "PCI:193:0:0" {
 		t.Fatalf("unexpected bus IDs: %#v", result)
 	}
@@ -39,6 +42,15 @@ func TestParseSelectsNVIDIADeviceID(t *testing.T) {
 	if result.DeviceID != "13b4" {
 		t.Fatalf("DeviceID = %q, want 13b4", result.DeviceID)
 	}
+	if result.DriverBranch != "legacy_580" {
+		t.Fatalf("DriverBranch = %q, want legacy_580", result.DriverBranch)
+	}
+	if result.Type != "hybrid" {
+		t.Fatalf("Type = %q, want hybrid", result.Type)
+	}
+	if !result.Compute {
+		t.Fatal("Quadro M620 must be classified as compute-capable")
+	}
 	if result.BusID != "PCI:1:0:0" {
 		t.Fatalf("BusID = %q, want PCI:1:0:0", result.BusID)
 	}
@@ -47,5 +59,34 @@ func TestParseSelectsNVIDIADeviceID(t *testing.T) {
 			"IntegratedBusID = %q, want PCI:0:2:0",
 			result.IntegratedBusID,
 		)
+	}
+}
+
+func TestParseFramework13AMD(t *testing.T) {
+	result := Parse(`0000:c1:00.0 VGA compatible controller [0300]: Advanced Micro Devices, Inc. [AMD/ATI] Phoenix1 [Radeon 780M] [1002:15bf] (rev c8)`)
+
+	if result.Vendor != "amd" {
+		t.Fatalf("Vendor = %q, want amd", result.Vendor)
+	}
+	if result.DeviceID != "15bf" {
+		t.Fatalf("DeviceID = %q, want 15bf", result.DeviceID)
+	}
+	if result.Type != "integrated" {
+		t.Fatalf("Type = %q, want integrated", result.Type)
+	}
+	if !result.Compute {
+		t.Fatal("Phoenix1 must be compute-capable")
+	}
+	if result.DriverBranch != "" {
+		t.Fatalf("DriverBranch = %q, want empty for non-NVIDIA GPU", result.DriverBranch)
+	}
+	if result.BusID != "PCI:193:0:0" {
+		t.Fatalf("BusID = %q, want PCI:193:0:0", result.BusID)
+	}
+	if result.IntegratedBusID != "PCI:193:0:0" {
+		t.Fatalf("IntegratedBusID = %q, want PCI:193:0:0", result.IntegratedBusID)
+	}
+	if len(result.PassthroughIDs) != 1 || result.PassthroughIDs[0] != "1002:15bf" {
+		t.Fatalf("unexpected passthrough IDs: %#v", result.PassthroughIDs)
 	}
 }

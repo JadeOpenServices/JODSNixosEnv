@@ -2,7 +2,10 @@
   description = "GjallarOS — a practical Nordic NixOS workstation";
 
   inputs = {
-    superfile.url = "github:yorukot/superfile";
+    yazi-disk-space = {
+      url = "github:shafayetejaman/sduf.yazi";
+      flake = false;
+    };
 
     nixpkgs.url = "github:nixos/nixpkgs/nixos-26.05";
 
@@ -105,6 +108,15 @@
       system = "x86_64-linux";
       lib = nixpkgs.lib;
       releasePolicy = builtins.fromJSON (builtins.readFile ./deployment/release-policy.json);
+      sourceRevision =
+        if self ? rev then
+          "git:${self.rev}"
+        else if self ? dirtyRev then
+          "git:${self.dirtyRev}"
+        else if self ? narHash then
+          "nar:${self.narHash}"
+        else
+          throw "GjallarOS source provenance is unavailable";
 
       basePkgs = nixpkgs.legacyPackages.${system};
 
@@ -113,36 +125,15 @@
         inherit inputs;
       };
 
-      superfileOverlay = final: prev: {
-        superfile = inputs.superfile.packages.${system}.superfile.overrideAttrs (old: {
-          nativeBuildInputs =
-            (lib.filter (
-              input:
-              let
-                name = lib.getName input;
-              in
-              name != "go" && !(lib.hasPrefix "go-" name)
-            ) (old.nativeBuildInputs or [ ]))
-            ++ [ final.go_1_26 ];
-
-          env = (old.env or { }) // {
-            GOTOOLCHAIN = "local";
-          };
-
-          meta = (old.meta or { }) // {
-            mainProgram = "superfile";
-          };
-        });
-      };
-
       pkgs = import nixpkgs {
         inherit system;
         overlays = [
-          superfileOverlay
         ];
       };
     in
     {
+      nixosModules = import ./oddc/nixos/registry.nix;
+
       packages.${system} = rec {
         gjallarctl = pkgs.callPackage ./pkgs/gjallarctl { };
         "gjallar-installer" = gjallarctl.overrideAttrs (old: {
@@ -153,6 +144,13 @@
         "gjallar-recovery-iso" = self.nixosConfigurations.gjallar-recovery.config.system.build.isoImage;
         "gjallar-recovery-vm-iso" =
           self.nixosConfigurations.gjallar-recovery-vm.config.system.build.isoImage;
+      };
+
+      checks.${system} = {
+        m620-legacy-nvidia-policy = import ./tests/nix/m620-policy.nix {
+          inherit nixpkgs system;
+          graphicsModule = ./system/hardware/graphics;
+        };
       };
 
       formatter = {
@@ -170,7 +168,7 @@
           specialArgs = {
             releaseVersion = releasePolicy.release;
             repoSource = self.outPath;
-            inherit settings;
+            inherit settings sourceRevision;
           };
         };
 
@@ -183,13 +181,14 @@
           specialArgs = {
             releaseVersion = releasePolicy.release;
             repoSource = self.outPath;
-            inherit settings;
+            inherit settings sourceRevision;
           };
         };
 
         ${settings.hostname} = nixpkgs.lib.nixosSystem {
           modules = [
             ./system/apps/brave-backend.nix
+            ./system/security/secure-boot
             inputs.noctalia-greeter.nixosModules.default
             inputs.stylix.nixosModules.stylix
             inputs.sops-nix.nixosModules.sops
@@ -199,7 +198,6 @@
             {
               nixpkgs.overlays = [
                 inputs.nur.overlays.default
-                superfileOverlay
               ];
 
               home-manager.useGlobalPkgs = true;
@@ -246,7 +244,7 @@
           ];
 
           specialArgs = {
-            inherit inputs settings;
+            inherit inputs settings sourceRevision;
           };
         };
       };

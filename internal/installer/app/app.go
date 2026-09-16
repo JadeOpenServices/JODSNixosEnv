@@ -19,9 +19,11 @@ import (
 	"github.com/bakanura/gjallarOS/internal/hardware/network"
 	"github.com/bakanura/gjallarOS/internal/input/xkb"
 	"github.com/bakanura/gjallarOS/internal/installer/background"
+	"github.com/bakanura/gjallarOS/internal/installer/baremetalinstall"
 	"github.com/bakanura/gjallarOS/internal/installer/bootstrap"
 	"github.com/bakanura/gjallarOS/internal/installer/config"
 	"github.com/bakanura/gjallarOS/internal/installer/deploy"
+	"github.com/bakanura/gjallarOS/internal/installer/deviceprofilecache"
 	"github.com/bakanura/gjallarOS/internal/installer/discovery"
 	"github.com/bakanura/gjallarOS/internal/installer/diskcrypto"
 	"github.com/bakanura/gjallarOS/internal/installer/firmware"
@@ -33,9 +35,11 @@ import (
 	"github.com/bakanura/gjallarOS/internal/installer/prompt"
 	"github.com/bakanura/gjallarOS/internal/installer/recoveryprovision"
 	"github.com/bakanura/gjallarOS/internal/installer/recoveryresize"
+	"github.com/bakanura/gjallarOS/internal/installer/recoverytarget"
 	"github.com/bakanura/gjallarOS/internal/installer/release"
 	installerresume "github.com/bakanura/gjallarOS/internal/installer/resume"
 	"github.com/bakanura/gjallarOS/internal/installer/secureboot"
+	"github.com/bakanura/gjallarOS/internal/installer/sourcerevision"
 	"github.com/bakanura/gjallarOS/internal/installercheck"
 )
 
@@ -43,23 +47,26 @@ type options struct {
 	recovery                                                 bool
 	repo                                                     string
 	skipHardware, refreshHardware, noRebuild, acceptExisting bool
+	forceRedeploy                                            bool
 	targetDisk                                               string
 	recoveryDisk, recoveryPartition, recoverySigningKey      string
 	recoverySigningPublicKey                                 string
 }
 type state struct {
-	user                     config.User
-	render                   nixrender.Settings
-	passthroughIDs           []string
-	preset, existing         bool
-	control                  string
-	touchscreen              bool
-	penTablet                bool
-	recoveryDisk             string
-	recoveryPartition        string
-	recoverySigningKey       string
-	recoverySigningPublicKey string
-	secureBootFirmware       oddc.EffectiveSecureBootFirmwarePolicy
+	user                         config.User
+	render                       nixrender.Settings
+	passthroughIDs               []string
+	preset, existing             bool
+	control                      string
+	touchscreen                  bool
+	penTablet                    bool
+	orientationSensor            bool
+	graphicsDriverBranchOverride string
+	recoveryDisk                 string
+	recoveryPartition            string
+	recoverySigningKey           string
+	recoverySigningPublicKey     string
+	secureBootFirmware           oddc.EffectiveSecureBootFirmwarePolicy
 }
 
 const (
@@ -137,6 +144,7 @@ func Run(ctx context.Context, args []string, in io.Reader, out, errOut io.Writer
 	f.BoolVar(&opt.refreshHardware, "refresh-hardware", false, "regenerate hardware configuration")
 	f.BoolVar(&opt.noRebuild, "no-rebuild", false, "do not install a boot generation")
 	f.BoolVar(&opt.acceptExisting, "accept-existing", false, "allow an existing GjallarOS installation to be updated")
+	f.BoolVar(&opt.forceRedeploy, "force-redeploy", false, "force a full clean GjallarOS redeployment without repartitioning or wiping user data")
 	f.BoolVar(&opt.recovery, "recovery", false, "run from the trusted GjallarOS recovery environment")
 	f.StringVar(&opt.targetDisk, "target-disk", "", "whole physical disk for a destructive fresh GjallarOS installation")
 	f.StringVar(&opt.recoveryDisk, "recovery-disk", "", "GPT disk with unallocated space for a recovery partition")
@@ -162,7 +170,13 @@ func Run(ctx context.Context, args []string, in io.Reader, out, errOut io.Writer
 	}
 	ui := prompt.New(in, out)
 	s := state{control: controlBinary()}
-	presetPath := filepath.Join(root, "user.config.json")
+	installedRoot := "/"
+	presetRoot := root
+	if opt.recovery && opt.acceptExisting {
+		installedRoot = "/mnt"
+		presetRoot = installedRoot
+	}
+	presetPath := filepath.Join(presetRoot, "user.config.json")
 	if _, err := os.Stat(presetPath); err == nil {
 		s.user, err = config.Load(presetPath)
 		if err != nil {
@@ -170,18 +184,65 @@ func Run(ctx context.Context, args []string, in io.Reader, out, errOut io.Writer
 		}
 		s.preset = true
 	}
-	if opt.recovery && !opt.acceptExisting {
-		// The embedded repository is installation source material, not evidence
-		// that the recovery environment itself is an installed GjallarOS system.
-		// Recovery without --accept-existing is the explicit fresh operation.
-		s.existing = false
+	if opt.recovery {
+		if opt.acceptExisting {
+			s.existing, err = detectRecoveryInstalledRoot(ctx, installedRoot)
+			if err != nil {
+				return fail(errOut, err)
+			}
+		} else {
+			// The embedded repository is installation source material, not evidence
+			// that the recovery environment itself is an installed GjallarOS system.
+			// Recovery without --accept-existing is the explicit fresh operation.
+			s.existing = false
+		}
 	} else {
 		s.existing, err = detectExistingInstalledSystem(ctx, root)
 		if err != nil {
 			return fail(errOut, err)
 		}
 	}
-	if s.existing && !opt.acceptExisting {
+
+	persistentInstalledHost := s.existing
+	if !opt.recovery && !persistentInstalledHost {
+		persistentInstalledHost, err = detectPersistentInstalledHost(ctx)
+		if err != nil {
+			return fail(errOut, err)
+		}
+	}
+
+	forceRedeploy := opt.forceRedeploy || s.user.ForceRedeploy
+
+	if s.existing &&
+		!forceRedeploy &&
+		!opt.acceptExisting &&
+		!s.user.UnattendedInstall {
+		forceRedeploy, err = ui.Confirm(
+			ctx,
+			"Force a full clean GjallarOS redeployment instead of an in-place update? This reinstalls the system configuration without repartitioning, formatting, or wiping user data.",
+			false,
+		)
+		if err != nil {
+			return fail(errOut, err)
+		}
+
+	}
+
+	opt.forceRedeploy = forceRedeploy
+
+	if forceRedeploy && opt.noRebuild {
+		return fail(
+			errOut,
+			errors.New("force redeployment requires a rebuild; --force-redeploy cannot be combined with --no-rebuild"),
+		)
+	}
+
+	if s.existing && forceRedeploy {
+		fmt.Fprintln(
+			out,
+			"Force clean redeployment selected; preserving disk layout, credentials, encryption keys, and user data.",
+		)
+	} else if s.existing && !opt.acceptExisting {
 		approved, err := ui.Confirm(ctx, "Existing GjallarOS installation detected. Update it in place while preserving passwords, disk keys, and hardware configuration?", false)
 		if err != nil {
 			return fail(errOut, err)
@@ -209,15 +270,121 @@ func Run(ctx context.Context, args []string, in io.Reader, out, errOut io.Writer
 		}
 		return code
 	}
+	sourceRevision, err := sourcerevision.Resolve(root, opt.recovery)
+	if err != nil {
+		return fail(errOut, fmt.Errorf("resolve GjallarOS source revision: %w", err))
+	}
+
 	hardware := discovery.DetectHardware("/sys")
 	s.touchscreen = hardware.Touchscreen
 	s.penTablet = hardware.PenTablet
+	s.orientationSensor = hardware.OrientationSensor
 
-	resolvedDevice, err := resolveDeviceProfile(root, hardware)
+	resolvedDevice, err := resolveDeviceProfile(root, sourceRevision, hardware)
 	if err != nil {
 		return fail(errOut, err)
 	}
+
+	profileDrift := deviceProfileDrifted(s.user, resolvedDevice)
+	needsDeviceRebind := false
+	if opt.recovery && opt.acceptExisting {
+		capsulePath := filepath.Join(
+			installedRoot,
+			"var",
+			"lib",
+			"gjallarOS",
+			"device-profile",
+		)
+
+		capsule, err := deviceprofilecache.Verify(capsulePath)
+		if err != nil {
+			return fail(
+				errOut,
+				fmt.Errorf("verify recovery device-profile capsule: %w", err),
+			)
+		}
+
+		needsDeviceRebind = profileDrift ||
+			deviceprofilecache.NeedsRebind(
+				capsule,
+				discovery.ODDCIdentity(hardware),
+				resolvedDevice,
+			)
+
+		if !needsDeviceRebind {
+			resolvedDevice, err = resolveDeviceProfileFromSource(
+				oddc.EmbeddedSource{
+					Root:       filepath.Join(capsulePath, "oddc"),
+					Repository: capsule.Source.ODDCRepository,
+					Revision:   capsule.Source.ODDCRevision,
+					Integrity:  capsule.Source.ODDCIntegrity,
+				},
+				hardware,
+			)
+			if err != nil {
+				return fail(
+					errOut,
+					fmt.Errorf("resolve cached recovery device profile: %w", err),
+				)
+			}
+		}
+	}
+
+	effectiveGraphics, err := oddc.ResolveGraphicsPolicy(resolvedDevice)
+	if err != nil {
+		return fail(errOut, err)
+	}
+	s.graphicsDriverBranchOverride = effectiveGraphics.Policy.DriverBranch
+
 	persistDeviceIdentity(&s.user, hardware, resolvedDevice)
+
+	fmt.Fprintf(out, "Device profile resolved: %s\n", s.user.DeviceProfile)
+	fmt.Fprintf(out, "Device profile layers: %s\n", strings.Join(s.user.DeviceLayers, " -> "))
+
+	if needsDeviceRebind {
+		if s.user.UnattendedInstall || s.user.EndpointManagedDevice {
+			return fail(
+				errOut,
+				errors.New(
+					"cached recovery device profile does not match current hardware; explicit device rebind authorization is required",
+				),
+			)
+		}
+
+		approved, err := ui.Confirm(
+			ctx,
+			"Recovery device identity does not match the current hardware. Rebind recovery state to this machine and regenerate device-specific configuration?",
+			false,
+		)
+		if err != nil {
+			return fail(errOut, err)
+		}
+		if !approved {
+			return fail(
+				errOut,
+				errors.New("device rebind was not authorized"),
+			)
+		}
+
+		opt.refreshHardware = true
+		fmt.Fprintln(out, "Authorized device rebind; hardware configuration will be regenerated.")
+	}
+
+	pinnedRelease, err := release.Expected(root)
+	if err != nil {
+		return fail(errOut, fmt.Errorf("resolve pinned NixOS release: %w", err))
+	}
+
+	if err := enforceDeviceValidation(
+		ctx,
+		ui,
+		s.user,
+		resolvedDevice,
+		pinnedRelease,
+		sourceRevision,
+	); err != nil {
+		return fail(errOut, err)
+	}
 
 	s.secureBootFirmware, err = oddc.ResolveSecureBootFirmwarePolicy(resolvedDevice)
 	if err != nil {
@@ -229,9 +396,6 @@ func Run(ctx context.Context, args []string, in io.Reader, out, errOut io.Writer
 
 	fmt.Fprintf(out, "Touchscreen detected: %t\n", hardware.Touchscreen)
 	fmt.Fprintf(out, "Pen/tablet detected: %t\n", hardware.PenTablet)
-	if s.user.DeviceProfile != "" {
-		fmt.Fprintf(out, "Device profile resolved: %s\n", s.user.DeviceProfile)
-	}
 
 	choices, err := discovery.Discover(root, s.preset, hardware)
 	if err != nil {
@@ -354,7 +518,53 @@ func Run(ctx context.Context, args []string, in io.Reader, out, errOut io.Writer
 		s.user.DeviceProfile,
 		s.secureBootFirmware,
 	); err != nil {
-		return fail(errOut, err)
+		if mayOfferSecureBootFallback(
+			s.user.SecureBootEnable,
+			s.user.EndpointManagedDevice,
+			s.user.UnattendedInstall,
+		) {
+
+			continued, promptErr := ui.Confirm(
+				ctx,
+				fmt.Sprintf(
+					"%v Continue installation with Secure Boot disabled?",
+					err,
+				),
+				false,
+			)
+			if promptErr != nil {
+				return fail(errOut, promptErr)
+			}
+			if !continued {
+				return fail(errOut, err)
+			}
+
+			disableTPMDependentSecurity(&s.user)
+
+			if s.preset {
+				if err := config.WriteAtomic(presetPath, s.user); err != nil {
+					return fail(
+						errOut,
+						fmt.Errorf(
+							"persist unsupported-firmware security fallback to user.config.json: %w",
+							err,
+						),
+					)
+				}
+
+				fmt.Fprintln(
+					out,
+					"Updated user.config.json to keep unsupported Secure Boot and TPM2-dependent security disabled.",
+				)
+			}
+
+			fmt.Fprintln(
+				out,
+				"Continuing installation with Secure Boot and TPM2 measured-boot unlock disabled.",
+			)
+		} else {
+			return fail(errOut, err)
+		}
 	}
 
 	if s.existing &&
@@ -490,15 +700,59 @@ func Run(ctx context.Context, args []string, in io.Reader, out, errOut io.Writer
 	}
 	fmt.Fprintln(out, "Wrote", settingsPath)
 	hardwarePath := filepath.Join(root, "profiles", s.user.Profile, "hardware-configuration.nix")
-	skip := opt.skipHardware || (s.existing && !opt.refreshHardware)
-	if !skip {
-		fmt.Fprintln(out, "PLAN: generate and atomically replace", hardwarePath)
-		if backup, err := hardwareconfig.Generate(ctx, root, hardwarePath, time.Now()); err != nil {
-			return fail(errOut, err)
-		} else if backup != "" {
-			fmt.Fprintln(out, "Backup:", backup)
+	hardwareGenerator := hardwareconfig.Generate
+	if opt.recovery && opt.acceptExisting {
+		hardwareGenerator = hardwareconfig.GenerateTarget
+	}
+
+	hardwareResult, err := reconcileHardwareConfiguration(
+		ctx,
+		root,
+		hardwarePath,
+		s.existing,
+		opt.skipHardware,
+		opt.refreshHardware,
+		time.Now(),
+		hardwareGenerator,
+	)
+	if err != nil {
+		return fail(errOut, err)
+	}
+
+	skip := hardwareResult.action != hardwareGenerate
+
+	switch hardwareResult.action {
+	case hardwareSkip:
+		fmt.Fprintln(out, "Hardware generation explicitly skipped.")
+
+	case hardwareRetain:
+		fmt.Fprintln(out, "Existing hardware configuration retained:", hardwarePath)
+
+	case hardwareGenerate:
+		if s.existing && !hardwareResult.existed {
+			fmt.Fprintln(
+				out,
+				"Existing installation is missing hardware configuration; generating it from the running machine.",
+			)
+		} else if opt.refreshHardware {
+			fmt.Fprintln(
+				out,
+				"Hardware refresh requested; regenerating from the running machine.",
+			)
 		}
-		if s.render.EndpointManagedDevice {
+
+		fmt.Fprintln(out, "PLAN: generate and atomically replace", hardwarePath)
+		if hardwareResult.backup != "" {
+			fmt.Fprintln(out, "Backup:", hardwareResult.backup)
+		}
+		if !tpm2AllowedForSecureBoot(s.render.SecureBootEnable) {
+			s.render.LUKSTPM2Enable = false
+			s.user.LUKSTPM2Enable = false
+			fmt.Fprintln(
+				out,
+				"Secure Boot is disabled; TPM2 measured-boot unlock remains disabled.",
+			)
+		} else if s.render.EndpointManagedDevice {
 			s.render.LUKSTPM2Enable = s.user.LUKSTPM2Enable
 		} else {
 			tpmOut, err := controlOutput(ctx, s.control, errOut, "installer", "tpm2", "--repo", root, "--hardware", hardwarePath)
@@ -530,6 +784,7 @@ func Run(ctx context.Context, args []string, in io.Reader, out, errOut io.Writer
 	if s.render.JODSPrebootLockEnable && !s.render.LUKSTPM2Enable {
 		return fail(errOut, errors.New("JODS preboot locking requires verified TPM2 LUKS enrollment; configuration was left unactivated"))
 	}
+
 	if opt.recovery {
 		// Recovery media uses an embedded writable source tree, not a Git
 		// checkout. Local Git excludes are installed/development-tree hygiene
@@ -600,14 +855,26 @@ func Run(ctx context.Context, args []string, in io.Reader, out, errOut io.Writer
 		}
 	}
 	runRebuild := s.user.RunRebuild && !opt.noRebuild
-	if !s.preset && !opt.noRebuild {
+	if opt.forceRedeploy {
+		runRebuild = true
+	}
+	if !s.preset && !opt.noRebuild && !opt.forceRedeploy {
 		runRebuild, err = ui.Confirm(ctx, "Install the next NixOS boot generation now?", false)
 		if err != nil {
 			return fail(errOut, err)
 		}
 	}
+	if (profileDrift || needsDeviceRebind) && !runRebuild {
+		return fail(
+			errOut,
+			errors.New(
+				"device profile reconciliation requires installing the regenerated system; rebuild cannot be skipped",
+			),
+		)
+	}
+
 	if runRebuild {
-		if s.existing {
+		if persistentInstalledHost {
 			maintenanceRequired := false
 
 			if s.user.RecoveryEnable &&
@@ -622,6 +889,7 @@ func Run(ctx context.Context, args []string, in io.Reader, out, errOut io.Writer
 					ctx,
 					ui,
 					out,
+					installedRoot,
 					&s,
 				)
 				if err != nil {
@@ -633,13 +901,99 @@ func Run(ctx context.Context, args []string, in io.Reader, out, errOut io.Writer
 				}
 			}
 
-			target, err := deploy.Target(root, s.user.Hostname)
-			if err != nil {
-				return fail(errOut, err)
-			}
-			fmt.Fprintln(out, "PLAN: validate then install", target)
-			if err := deploy.Apply(ctx, target); err != nil {
-				return fail(errOut, err)
+			if opt.recovery && opt.acceptExisting {
+				fmt.Fprintln(
+					out,
+					"STAGE: preparing authenticated recovery target",
+				)
+
+				if err := recoverytarget.PrepareBoot(
+					ctx,
+					installedRoot,
+				); err != nil {
+					return fail(errOut, err)
+				}
+
+				fmt.Fprintln(
+					out,
+					"PLAN: reinstall existing system into",
+					installedRoot,
+				)
+
+				if _, err := baremetalinstall.Install(
+					ctx,
+					baremetalinstall.Input{
+						Repo:     root,
+						Hostname: s.user.Hostname,
+						Out:      out,
+					},
+				); err != nil {
+					return fail(errOut, err)
+				}
+
+				if err := persistReconciledDeviceProfile(
+					presetPath,
+					s.user,
+					profileDrift,
+				); err != nil {
+					return fail(errOut, err)
+				}
+
+				if needsDeviceRebind {
+					if err := materializeDeviceProfileCapsule(
+						root,
+						filepath.Join(
+							installedRoot,
+							"var",
+							"lib",
+							"gjallarOS",
+							"device-profile",
+						),
+						hardware,
+						resolvedDevice,
+						true,
+						"hardware-rebind",
+					); err != nil {
+						return fail(
+							errOut,
+							fmt.Errorf(
+								"commit recovery device-profile capsule after hardware rebind: %w",
+								err,
+							),
+						)
+					}
+
+					fmt.Fprintln(
+						out,
+						"PASS: recovery device profile rebound to current hardware.",
+					)
+				}
+			} else {
+				target, err := deploy.Target(
+					root,
+					s.user.Hostname,
+				)
+				if err != nil {
+					return fail(errOut, err)
+				}
+
+				fmt.Fprintln(
+					out,
+					"PLAN: validate then install",
+					target,
+				)
+
+				if err := deploy.Apply(ctx, target); err != nil {
+					return fail(errOut, err)
+				}
+
+				if err := persistReconciledDeviceProfile(
+					presetPath,
+					s.user,
+					profileDrift,
+				); err != nil {
+					return fail(errOut, err)
+				}
 			}
 
 			if maintenanceRequired {
@@ -652,10 +1006,29 @@ func Run(ctx context.Context, args []string, in io.Reader, out, errOut io.Writer
 					"STAGE: arming one-shot maintenance boot",
 				)
 
+				systemPath, err := filepath.EvalSymlinks(
+					filepath.Join(installedRoot, "nix/var/nix/profiles/system"),
+				)
+				if err != nil {
+					return fail(
+						errOut,
+						fmt.Errorf(
+							"resolve installed system generation: %w",
+							err,
+						),
+					)
+				}
+
+				maintenanceNext := filepath.Join(
+					systemPath,
+					"sw/bin/gjallar-recovery-maintenance-next",
+				)
+
 				if err := attached(
 					ctx,
 					"sudo",
-					"gjallar-recovery-maintenance-next",
+					maintenanceNext,
+					installedRoot,
 				); err != nil {
 					return fail(
 						errOut,
@@ -672,6 +1045,11 @@ func Run(ctx context.Context, args []string, in io.Reader, out, errOut io.Writer
 				return fail(errOut, err)
 			}
 		} else {
+			return fail(
+				errOut,
+				errors.New("refusing destructive fresh-disk provisioning; GjallarOS installation must preserve the existing system layout"),
+			)
+
 			targetDisk, err := selectFreshTargetDisk(
 				ctx,
 				ui,
@@ -698,6 +1076,9 @@ func Run(ctx context.Context, args []string, in io.Reader, out, errOut io.Writer
 				root,
 				targetDisk,
 				s.user.Hostname,
+				hardware,
+				resolvedDevice,
+				opt.recovery,
 				s.user.RecoveryEnable &&
 					s.user.RecoveryPartitionEnable,
 				[]string{
@@ -1132,9 +1513,12 @@ func prepareHost(
 	// bootstrap /etc/nixos/configuration.nix on a rerun would switch the live
 	// machine back to its pre-install base generation before deploying the
 	// requested flake generation.
-	if s.existing {
+	if s.existing && !opt.forceRedeploy {
 		fmt.Fprintln(out, "Existing GjallarOS installation detected; skipping /etc/nixos bootstrap rebuild.")
 	} else {
+		if s.existing && opt.forceRedeploy {
+			fmt.Fprintln(out, "Force redeployment requested; running prerequisite bootstrap despite existing-install detection.")
+		}
 		configPath := "/etc/nixos/configuration.nix"
 		data, err := os.ReadFile(configPath)
 		if err != nil {
@@ -1403,13 +1787,9 @@ func collectInteractive(ctx context.Context, ui prompt.UI, root string, hardware
 			return err
 		}
 	}
-	if hardware.LaptopVendor == "framework" || strings.HasPrefix(u.Profile, "framework") {
-		u.FrameworkEnable = true
-		u.FrameworkModel, err = ui.Choice(ctx, "Framework model", "13", []string{"13", "16", "12"})
-		if err != nil {
-			return err
-		}
-	}
+	// Device-specific hardware policy is resolved through ODDC.
+	// Do not ask users to manually select a vendor/model that hardware
+	// discovery and the resolved ODDC device graph already determine.
 	u.WriteConfig = true
 	u.RunRebuild = true
 	return nil
@@ -1640,6 +2020,7 @@ func configureRecoveryProvisioning(ctx context.Context, ui prompt.UI, opt option
 
 func discoverInstalledRecoveryTopology(
 	ctx context.Context,
+	installedRoot string,
 ) (recoveryresize.Topology, error) {
 	mounted, err := exec.CommandContext(
 		ctx,
@@ -1647,7 +2028,7 @@ func discoverInstalledRecoveryTopology(
 		"-nro",
 		"SOURCE",
 		"--target",
-		"/",
+		installedRoot,
 	).Output()
 	if err != nil {
 		return recoveryresize.Topology{}, fmt.Errorf(
@@ -1666,9 +2047,14 @@ func discoverInstalledRecoveryTopology(
 
 	mappingName := filepath.Base(mapping)
 
+	if err := attached(ctx, "sudo", "-v"); err != nil {
+		return recoveryresize.Topology{}, fmt.Errorf("authorize encrypted-root inspection: %w", err)
+	}
+
 	status, err := exec.CommandContext(
 		ctx,
 		"sudo",
+		"-n",
 		"cryptsetup",
 		"status",
 		mappingName,
@@ -1735,7 +2121,7 @@ func discoverInstalledRecoveryTopology(
 		ctx,
 		recoveryresize.SystemRunner(),
 		recoveryresize.DiscoveryInput{
-			RootMountpoint:            "/",
+			RootMountpoint:            installedRoot,
 			ExpectedDiskPath:          parent,
 			ExpectedRootPartitionPath: resolvedRoot,
 			ExpectedMappingPath:       mapping,
@@ -1752,9 +2138,10 @@ func prepareInstalledRecoveryStorage(
 	ctx context.Context,
 	ui prompt.UI,
 	out io.Writer,
+	installedRoot string,
 	s *state,
 ) (bool, error) {
-	topology, err := discoverInstalledRecoveryTopology(ctx)
+	topology, err := discoverInstalledRecoveryTopology(ctx, installedRoot)
 	if err != nil {
 		return false, err
 	}
@@ -1911,6 +2298,9 @@ func detectAndRenderState(ctx context.Context, root string, s *state) error {
 	if err != nil {
 		return err
 	}
+	if g.Vendor == "nvidia" && strings.TrimSpace(s.graphicsDriverBranchOverride) != "" {
+		g.DriverBranch = s.graphicsDriverBranchOverride
+	}
 	wifi, err := network.DetectWiFiDriver(ctx)
 	if err != nil {
 		return err
@@ -1929,7 +2319,7 @@ func detectAndRenderState(ctx context.Context, root string, s *state) error {
 	}
 	s.passthroughIDs = append([]string(nil), g.PassthroughIDs...)
 	passthrough := u.NemuGPUPassthrough && len(g.PassthroughIDs) > 0
-	s.render = nixrender.Settings{System: u.System, Profile: u.Profile, Hostname: u.Hostname, Username: u.Username, Timezone: u.Timezone, Locale: u.Locale, KeyboardLayout: u.KeyboardLayout, KeyboardVariant: u.KeyboardVariant, WeatherCity: u.WeatherCity, WeatherCountry: u.WeatherCountry, TouchpadWorkspaceSwipe: u.TouchpadWorkspaceSwipe, TouchscreenEnable: s.touchscreen, PenTabletEnable: s.penTablet, ClamshellEnable: u.ClamshellEnable, USBGuardEnable: u.USBGuardEnable, Name: u.Name, Email: u.Email, GitHubUsername: u.GitHubUsername, DotfilesDir: u.DotfilesDir, WorkUserEnable: u.WorkUserEnable, WorkUsername: u.WorkUsername, DockerEnable: u.DockerEnable, DebugFunctions: u.DebugFunctions, Shell: u.Shell, Editors: u.Editors, Browsers: u.Browsers, PreferredEditor: u.PreferredEditor, PreferredBrowser: u.PreferredBrowser, PlaneEnable: u.PlaneEnable, PlaneHost: u.PlaneHost, DrawioEnable: u.DrawioEnable, DrawioSelfHosted: u.DrawioSelfHosted, DrawioHost: u.DrawioHost, BackgroundNormal: u.BackgroundNormal, BackgroundWork: u.BackgroundWork, BackgroundGaming: u.BackgroundGaming, EnableScrobbling: u.EnableScrobbling, EnableLastfm: u.EnableLastfm, EnableListenbrainz: u.EnableListenbrainz, LastfmUsername: u.LastfmUsername, ListenbrainzUsername: u.ListenbrainzUsername, FrameworkEnable: u.FrameworkEnable, FrameworkModel: u.FrameworkModel, DeviceProfile: u.DeviceProfile, DeviceLayers: u.DeviceLayers, DeviceSysVendor: u.DeviceSysVendor, DeviceProductName: u.DeviceProductName, DeviceProductVersion: u.DeviceProductVersion, DeviceBoardVendor: u.DeviceBoardVendor, DeviceBoardName: u.DeviceBoardName, DeviceBoardVersion: u.DeviceBoardVersion, GraphicsVendor: g.Vendor, GraphicsDeviceID: g.DeviceID, GraphicsType: g.Type, GraphicsCompute: g.Compute, GraphicsBusID: g.BusID, GraphicsIntegratedBusID: g.IntegratedBusID, WiFiDriver: wifi, AIEnable: u.AIEnable, AIModel: ai.Model, AIAccelerationProfile: ai.AccelerationProfile, AIAgentMode: u.AIAgentMode, AIContextTokens: ai.ContextTokens, AIVRAMMB: ai.VRAMMB, NemuEnable: u.NemuEnable, NemuGPUPassthrough: passthrough, LUKSTPM2Enable: u.LUKSTPM2Enable, RecoveryEnable: u.RecoveryEnable, RecoveryPartitionEnable: u.RecoveryPartitionEnable, JODSPrebootLockEnable: u.JODSPrebootLockEnable, SecureBootEnable: u.SecureBootEnable, EndpointManagedDevice: u.EndpointManagedDevice, JODSEndpoint: u.JODSEndpoint, JODSPolicySigningPublicKey: u.JODSPolicySigningKey, JODSRecoveryCommandSigningPublicKey: u.JODSRecoverySigningKey, JODSEnrollmentMode: u.JODSEnrollmentMode, JODSAllowInsecureTLS: u.JODSAllowInsecureTLS, JODSDeviceClass: u.JODSDeviceClass, JODSDesktopProfile: u.JODSDesktopProfile, JODSFingerprintEnrollmentAllowed: u.JODSFingerprintEnroll, WMs: []string{"hyprland"}, Theme: u.Theme}
+	s.render = nixrender.Settings{System: u.System, Profile: u.Profile, Hostname: u.Hostname, Username: u.Username, Timezone: u.Timezone, Locale: u.Locale, KeyboardLayout: u.KeyboardLayout, KeyboardVariant: u.KeyboardVariant, WeatherCity: u.WeatherCity, WeatherCountry: u.WeatherCountry, TouchpadWorkspaceSwipe: u.TouchpadWorkspaceSwipe, TouchscreenEnable: s.touchscreen, PenTabletEnable: s.penTablet, OrientationSensorEnable: s.orientationSensor, ClamshellEnable: u.ClamshellEnable, USBGuardEnable: u.USBGuardEnable, Name: u.Name, Email: u.Email, GitHubUsername: u.GitHubUsername, DotfilesDir: u.DotfilesDir, WorkUserEnable: u.WorkUserEnable, WorkUsername: u.WorkUsername, DockerEnable: u.DockerEnable, DebugFunctions: u.DebugFunctions, Shell: u.Shell, Editors: u.Editors, Browsers: u.Browsers, PreferredEditor: u.PreferredEditor, PreferredBrowser: u.PreferredBrowser, PlaneEnable: u.PlaneEnable, PlaneHost: u.PlaneHost, DrawioEnable: u.DrawioEnable, DrawioSelfHosted: u.DrawioSelfHosted, DrawioHost: u.DrawioHost, BackgroundNormal: u.BackgroundNormal, BackgroundWork: u.BackgroundWork, BackgroundGaming: u.BackgroundGaming, EnableScrobbling: u.EnableScrobbling, EnableLastfm: u.EnableLastfm, EnableListenbrainz: u.EnableListenbrainz, LastfmUsername: u.LastfmUsername, ListenbrainzUsername: u.ListenbrainzUsername, DeviceProfile: u.DeviceProfile, DeviceLayers: u.DeviceLayers, DeviceSysVendor: u.DeviceSysVendor, DeviceProductName: u.DeviceProductName, DeviceProductVersion: u.DeviceProductVersion, DeviceBoardVendor: u.DeviceBoardVendor, DeviceBoardName: u.DeviceBoardName, DeviceBoardVersion: u.DeviceBoardVersion, GraphicsVendor: g.Vendor, GraphicsDeviceID: g.DeviceID, GraphicsDriverBranch: g.DriverBranch, GraphicsType: g.Type, GraphicsCompute: g.Compute, GraphicsBusID: g.BusID, GraphicsIntegratedBusID: g.IntegratedBusID, WiFiDriver: wifi, AIEnable: u.AIEnable, AIModel: ai.Model, AIAccelerationProfile: ai.AccelerationProfile, AIAgentMode: u.AIAgentMode, AIContextTokens: ai.ContextTokens, AIVRAMMB: ai.VRAMMB, NemuEnable: u.NemuEnable, NemuGPUPassthrough: passthrough, LUKSTPM2Enable: u.LUKSTPM2Enable, RecoveryEnable: u.RecoveryEnable, RecoveryPartitionEnable: u.RecoveryPartitionEnable, JODSPrebootLockEnable: u.JODSPrebootLockEnable, SecureBootEnable: u.SecureBootEnable, EndpointManagedDevice: u.EndpointManagedDevice, JODSEndpoint: u.JODSEndpoint, JODSPolicySigningPublicKey: u.JODSPolicySigningKey, JODSRecoveryCommandSigningPublicKey: u.JODSRecoverySigningKey, JODSEnrollmentMode: u.JODSEnrollmentMode, JODSAllowInsecureTLS: u.JODSAllowInsecureTLS, JODSDeviceClass: u.JODSDeviceClass, JODSDesktopProfile: u.JODSDesktopProfile, JODSFingerprintEnrollmentAllowed: u.JODSFingerprintEnroll, WMs: []string{"hyprland"}, Theme: u.Theme}
 	if passthrough {
 		s.render.NemuGPUIDs = g.PassthroughIDs
 	}

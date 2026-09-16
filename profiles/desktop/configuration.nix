@@ -17,7 +17,6 @@
     ../../system/hardware/desktop/mouse.nix
     ../../system/hardware/desktop/boot.nix
     ../../system/recovery
-    ../../system/security/secure-boot
     ../../system/hardware/desktop/nfs.nix
     ../../system/security/desktop/firewall.nix
     ../../system/virtualization
@@ -27,7 +26,6 @@
     ../../system/tools
     ../../system/users/work.nix
     ../../system/users/privilege.nix
-    ../../system/hardware/framework
     ../../system/apps/thunar.nix
     # ../../system/apps/open-webui.nix
     ../../system/apps/guix.nix
@@ -77,7 +75,8 @@
       "networkmanager"
       "gamemode"
       "dialout"
-    ] ++ lib.optionals (!settings.endpointManagedDevice) [ "wheel" ];
+    ]
+    ++ lib.optionals (!settings.endpointManagedDevice) [ "wheel" ];
   };
 
   # See https://nix.dev/permalink/stub-ld.

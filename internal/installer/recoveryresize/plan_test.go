@@ -190,3 +190,46 @@ func TestLUKSPayloadOffsetPreserved(t *testing.T) {
 		)
 	}
 }
+
+func TestBuildPlanAlignsUnalignedExistingRootEnd(t *testing.T) {
+	top := topology()
+
+	const unalignedTail = uint64(790528)
+
+	top.RootEndBytes += unalignedTail
+	top.RootSizeBytes += unalignedTail
+	top.BtrfsDeviceBytes += unalignedTail
+
+	plan, err := BuildPlan(top, requirements())
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if plan.NewRootEndBytes%requirements().AlignmentBytes != 0 {
+		t.Fatalf(
+			"new root end %d is not aligned to %d",
+			plan.NewRootEndBytes,
+			requirements().AlignmentBytes,
+		)
+	}
+
+	if plan.NewRootStartBytes != top.RootStartBytes {
+		t.Fatalf(
+			"root start moved: got=%d want=%d",
+			plan.NewRootStartBytes,
+			top.RootStartBytes,
+		)
+	}
+
+	minimumShrink :=
+		requirements().RecoveryBytes +
+			requirements().SafetyMarginBytes
+
+	if plan.ShrinkBytes < minimumShrink {
+		t.Fatalf(
+			"shrink=%d smaller than required=%d",
+			plan.ShrinkBytes,
+			minimumShrink,
+		)
+	}
+}

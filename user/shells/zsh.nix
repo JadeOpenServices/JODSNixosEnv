@@ -72,18 +72,6 @@
       set -o emacs
       export PATH=$PATH:${config.home.homeDirectory}/.local/bin
 
-      spf() {
-          local dir
-          dir="$(mktemp)"
-
-          ${lib.getExe pkgs.superfile} --print-last-dir "$@" > "$dir"
-
-          if [[ -s "$dir" ]]; then
-              cd -- "$(cat "$dir")"
-          fi
-
-          rm -f "$dir"
-      }
     ''
     + (builtins.readFile ./lib/television/zshrc);
   };

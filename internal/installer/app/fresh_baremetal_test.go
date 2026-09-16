@@ -20,6 +20,7 @@ func TestFreshBareMetalPipelineIsWired(t *testing.T) {
 		"freshgpt.Provision(",
 		"rootprovision.Provision(",
 		"mounttree.Prepare(",
+		"materializeDeviceProfileCapsule",
 		"stageFreshPasswordFiles(",
 		"hardwareconfig.GenerateTarget(",
 		"baremetalinstall.Install(",
@@ -121,8 +122,14 @@ func TestRecoveryFreshModeDoesNotTreatSourceRepoAsExistingInstall(t *testing.T) 
 
 	body := string(appSource)
 
-	if !strings.Contains(body, `if opt.recovery && !opt.acceptExisting`) {
-		t.Fatal("recovery fresh operation does not explicitly override source-repository existing-install detection")
+	for _, want := range []string{
+		`if opt.recovery {`,
+		`if opt.acceptExisting {`,
+		`s.existing = false`,
+	} {
+		if !strings.Contains(body, want) {
+			t.Fatalf("recovery fresh operation contract missing %q", want)
+		}
 	}
 
 	if !strings.Contains(body, `s.existing = false`) {
@@ -142,12 +149,55 @@ func TestRecoveryAndAcceptExistingSelectReinstallMode(t *testing.T) {
 		t.Fatal("legacy fresh-install mutual exclusion remains")
 	}
 
-	if !strings.Contains(body, `if opt.recovery && !opt.acceptExisting`) {
-		t.Fatal("recovery fresh/reinstall operation split is missing")
+	for _, want := range []string{
+		`if opt.recovery {`,
+		`if opt.acceptExisting {`,
+		`installedRoot = "/mnt"`,
+		`detectRecoveryInstalledRoot(ctx, installedRoot)`,
+		`recoverytarget.PrepareBoot(`,
+		`installedRoot,`,
+		`baremetalinstall.Install(`,
+		`Repo:     root,`,
+		`Hostname: s.user.Hostname,`,
+	} {
+		if !strings.Contains(body, want) {
+			t.Fatalf("recovery fresh/reinstall operation contract missing %q", want)
+		}
 	}
 
 	if !strings.Contains(body, `detectExistingInstalledSystem(ctx, root)`) {
-		t.Fatal("recovery --accept-existing path no longer performs installed-system detection")
+		t.Fatal("normal installed-system detection was removed")
+	}
+
+	recoveryInstall := strings.Index(
+		body,
+		`if opt.recovery && opt.acceptExisting {`,
+	)
+	if recoveryInstall < 0 {
+		t.Fatal("recovery reinstall deployment branch is missing")
+	}
+
+	recoveryPrepare := strings.Index(
+		body[recoveryInstall:],
+		`recoverytarget.PrepareBoot(`,
+	)
+	recoveryDeploy := strings.Index(
+		body[recoveryInstall:],
+		`baremetalinstall.Install(`,
+	)
+	normalDeploy := strings.Index(
+		body[recoveryInstall:],
+		`deploy.Target(`,
+	)
+
+	if recoveryPrepare < 0 || recoveryDeploy < 0 || normalDeploy < 0 {
+		t.Fatal("recovery and normal deployment boundaries are incomplete")
+	}
+
+	if !(recoveryPrepare < recoveryDeploy && recoveryDeploy < normalDeploy) {
+		t.Fatal(
+			"recovery reinstall must prepare /mnt and use baremetalinstall before the normal deploy path",
+		)
 	}
 }
 
@@ -201,7 +251,8 @@ func TestRecoveryFlagSeparatesEnvironmentFromOperation(t *testing.T) {
 
 	for _, want := range []string{
 		`"recovery"`,
-		`if opt.recovery && !opt.acceptExisting`,
+		`if opt.recovery {`,
+		`if opt.acceptExisting {`,
 		`Recovery environment validated; live-host rebuild skipped.`,
 		`Recovery installer source is embedded; local Git protection skipped.`,
 	} {
@@ -217,5 +268,217 @@ func TestRecoveryFlagSeparatesEnvironmentFromOperation(t *testing.T) {
 		if strings.Contains(body, forbidden) {
 			t.Fatalf("legacy fresh-install flag contract remains: %q", forbidden)
 		}
+	}
+}
+
+func TestRecoveryHardwareRebindRematerializesAfterHardwareReconciliation(t *testing.T) {
+	appSource, err := os.ReadFile("app.go")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	body := string(appSource)
+
+	reconcile := strings.Index(
+		body,
+		"reconcileHardwareConfiguration(",
+	)
+	if reconcile < 0 {
+		t.Fatal("hardware reconciliation call is missing")
+	}
+
+	afterReconcile := body[reconcile:]
+
+	rebindGateRel := strings.Index(
+		afterReconcile,
+		"if needsDeviceRebind {",
+	)
+	if rebindGateRel < 0 {
+		t.Fatal("post-reconciliation device rebind gate is missing")
+	}
+	rebindGate := reconcile + rebindGateRel
+
+	rebindMaterializeRel := strings.Index(
+		body[rebindGate:],
+		"materializeDeviceProfileCapsule(",
+	)
+	if rebindMaterializeRel < 0 {
+		t.Fatal("device rebind does not rematerialize the recovery capsule")
+	}
+	rebindMaterialize := rebindGate + rebindMaterializeRel
+
+	rebindReasonRel := strings.Index(
+		body[rebindMaterialize:],
+		`"hardware-rebind"`,
+	)
+	if rebindReasonRel < 0 {
+		t.Fatal("hardware-rebind generation reason is missing")
+	}
+	rebindReason := rebindMaterialize + rebindReasonRel
+
+	if !(reconcile < rebindGate &&
+		rebindGate < rebindMaterialize &&
+		rebindMaterialize < rebindReason) {
+		t.Fatal(
+			"recovery capsule rebind must occur after hardware reconciliation and behind the rebind gate",
+		)
+	}
+}
+
+func TestRecoverySameMachineUsesVerifiedCachedODDCSource(t *testing.T) {
+	data, err := os.ReadFile("app.go")
+	if err != nil {
+		t.Fatal(err)
+	}
+	body := string(data)
+
+	verify := strings.Index(body, "deviceprofilecache.Verify(capsulePath)")
+	cached := strings.Index(body, "filepath.Join(capsulePath, \"oddc\")")
+	persist := strings.Index(body, "persistDeviceIdentity(&s.user, hardware, resolvedDevice)")
+
+	if verify < 0 || cached < 0 || persist < 0 {
+		t.Fatal("cached recovery ODDC source flow is incomplete")
+	}
+	if !(verify < cached && cached < persist) {
+		t.Fatal("same-machine recovery must verify and resolve cached ODDC before persisting device identity")
+	}
+
+	if !strings.Contains(body[verify:persist], "if !needsDeviceRebind {") {
+		t.Fatal("cached ODDC source is not gated to the same-machine recovery path")
+	}
+}
+
+func TestRecoveryHardwareRebindCommitsCapsuleAfterInstall(t *testing.T) {
+	data, err := os.ReadFile("app.go")
+	if err != nil {
+		t.Fatal(err)
+	}
+	body := string(data)
+
+	install := strings.Index(body, "baremetalinstall.Install(")
+	reason := strings.Index(body, "\"hardware-rebind\"")
+
+	if install < 0 || reason < 0 {
+		t.Fatal("recovery rebind transaction is incomplete")
+	}
+	if install >= reason {
+		t.Fatal("hardware-rebind capsule must be committed only after successful target install")
+	}
+}
+
+func TestRecoveryMaintenanceBootUsesInstalledRoot(t *testing.T) {
+	body, err := os.ReadFile("app.go")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	text := string(body)
+
+	required := []string{
+		`filepath.EvalSymlinks(`,
+		`nix/var/nix/profiles/system`,
+		`sw/bin/gjallar-recovery-maintenance-next`,
+		`maintenanceNext,`,
+		`installedRoot,`,
+	}
+
+	for _, needle := range required {
+		if !strings.Contains(text, needle) {
+			t.Fatalf("maintenance boot handoff is missing %q", needle)
+		}
+	}
+
+	if strings.Contains(text, `"gjallar-recovery-maintenance-next",`) {
+		t.Fatal("maintenance helper must not be resolved from the live environment PATH")
+	}
+}
+
+func TestRecoveryHardwareRebindCannotSkipInstall(t *testing.T) {
+	data, err := os.ReadFile("app.go")
+	if err != nil {
+		t.Fatal(err)
+	}
+	body := string(data)
+
+	want := "if (profileDrift || needsDeviceRebind) && !runRebuild {"
+	if !strings.Contains(body, want) {
+		t.Fatal("device profile reconciliation can still skip target installation")
+	}
+}
+
+func TestDeviceProfileDriftCannotSkipInstall(t *testing.T) {
+	data, err := os.ReadFile("app.go")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	body := string(data)
+
+	want := "if (profileDrift || needsDeviceRebind) && !runRebuild {"
+	if !strings.Contains(body, want) {
+		t.Fatal("device profile drift can still skip activation")
+	}
+
+	if !strings.Contains(
+		body,
+		"device profile reconciliation requires installing the regenerated system",
+	) {
+		t.Fatal("generic device profile reconciliation refusal is missing")
+	}
+}
+
+func TestForceRedeployPreservesExistingInstallState(t *testing.T) {
+	appSource, err := os.ReadFile("app.go")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	body := string(appSource)
+
+	for _, want := range []string{
+		`f.BoolVar(&opt.forceRedeploy, "force-redeploy"`,
+		`forceRedeploy := opt.forceRedeploy || s.user.ForceRedeploy`,
+		`opt.forceRedeploy = forceRedeploy`,
+		`if opt.forceRedeploy {`,
+		`if s.existing && !opt.forceRedeploy {`,
+		`Force redeployment requested; running prerequisite bootstrap despite existing-install detection.`,
+		`--force-redeploy cannot be combined with --no-rebuild`,
+	} {
+		if !strings.Contains(body, want) {
+			t.Fatalf("force-redeploy lifecycle boundary missing %q", want)
+		}
+	}
+
+	start := strings.Index(body, "func prepareHost(")
+	if start < 0 {
+		t.Fatal("prepareHost is missing")
+	}
+
+	prepareHost := body[start:]
+	if next := strings.Index(prepareHost[1:], "\nfunc "); next >= 0 {
+		prepareHost = prepareHost[:next+1]
+	}
+
+	if strings.Contains(prepareHost, "s.existing = false") {
+		t.Fatal("force redeployment must not erase existing-install state")
+	}
+
+	if strings.Contains(body, "forceBootstrap") ||
+		strings.Contains(body, "force-bootstrap") {
+		t.Fatal("obsolete force-bootstrap lifecycle remains")
+	}
+}
+
+func TestForceRedeployIsNonDestructive(t *testing.T) {
+	appSource, err := os.ReadFile("app.go")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	body := string(appSource)
+
+	want := "Force clean redeployment selected; preserving disk layout, credentials, encryption keys, and user data."
+	if !strings.Contains(body, want) {
+		t.Fatal("force redeployment preservation boundary is missing")
 	}
 }

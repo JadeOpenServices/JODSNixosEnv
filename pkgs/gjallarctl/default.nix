@@ -16,12 +16,14 @@ buildGoModule {
     fileset = lib.fileset.unions [
       ../../go.mod
       ../../cmd
+      ../../pkg
       ../../internal/ai
       ../../internal/hardware
       ../../internal/input
       ../../internal/installercheck
       ../../internal/installer
       ../../internal/preset
+      ../../oddc
     ];
   };
 
