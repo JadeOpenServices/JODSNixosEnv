@@ -6,7 +6,7 @@
 }:
 {
   imports = [
-    ./hardware-configuration.nix
+    ../../system/hardware/generated.nix
     ../../system/hardware/sound.nix
     ../../system/hardware/bluetooth.nix
     ../../system/hardware/graphics

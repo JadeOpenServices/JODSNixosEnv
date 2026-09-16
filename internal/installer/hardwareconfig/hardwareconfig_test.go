@@ -74,12 +74,7 @@ func nixModule() []byte {
 
 func TestValidateTarget(t *testing.T) {
 	root := t.TempDir()
-	valid := filepath.Join(
-		root,
-		"profiles",
-		"laptop",
-		"hardware-configuration.nix",
-	)
+	valid := Target(root)
 
 	if got, err := ValidateTarget(root, valid); err != nil || got != valid {
 		t.Fatalf("got %q, %v", got, err)
@@ -98,12 +93,7 @@ func TestValidateTarget(t *testing.T) {
 
 func TestGenerateTargetUsesMountedMnt(t *testing.T) {
 	root := t.TempDir()
-	target := filepath.Join(
-		root,
-		"profiles",
-		"laptop",
-		"hardware-configuration.nix",
-	)
+	target := Target(root)
 
 	r := &fakeRunner{
 		outputs: map[string][]byte{
@@ -156,12 +146,7 @@ func TestGenerateTargetUsesMountedMnt(t *testing.T) {
 
 func TestGenerateCurrentMachinePreservesExistingBehavior(t *testing.T) {
 	root := t.TempDir()
-	target := filepath.Join(
-		root,
-		"profiles",
-		"laptop",
-		"hardware-configuration.nix",
-	)
+	target := Target(root)
 
 	r := &fakeRunner{
 		outputs: map[string][]byte{},
@@ -201,12 +186,7 @@ func TestGenerateCurrentMachinePreservesExistingBehavior(t *testing.T) {
 
 func TestGenerateTargetRequiresMountedMnt(t *testing.T) {
 	root := t.TempDir()
-	target := filepath.Join(
-		root,
-		"profiles",
-		"laptop",
-		"hardware-configuration.nix",
-	)
+	target := Target(root)
 
 	r := &fakeRunner{
 		outputs: map[string][]byte{},
@@ -242,14 +222,9 @@ func TestGenerateTargetRequiresMountedMnt(t *testing.T) {
 	}
 }
 
-func TestGenerateTargetBacksUpExistingProfileFile(t *testing.T) {
+func TestGenerateTargetBacksUpExistingHardwareState(t *testing.T) {
 	root := t.TempDir()
-	target := filepath.Join(
-		root,
-		"profiles",
-		"laptop",
-		"hardware-configuration.nix",
-	)
+	target := Target(root)
 
 	if err := os.MkdirAll(filepath.Dir(target), 0755); err != nil {
 		t.Fatal(err)
@@ -313,12 +288,7 @@ func TestGenerateTargetBacksUpExistingProfileFile(t *testing.T) {
 
 func TestInvalidGeneratedContentNeverReplacesExistingFile(t *testing.T) {
 	root := t.TempDir()
-	target := filepath.Join(
-		root,
-		"profiles",
-		"laptop",
-		"hardware-configuration.nix",
-	)
+	target := Target(root)
 
 	if err := os.MkdirAll(filepath.Dir(target), 0755); err != nil {
 		t.Fatal(err)
@@ -361,7 +331,7 @@ func TestInvalidGeneratedContentNeverReplacesExistingFile(t *testing.T) {
 	}
 	if !bytes.Equal(current, original) {
 		t.Fatalf(
-			"existing profile file was overwritten:\n%s",
+			"existing hardware state was overwritten:\n%s",
 			current,
 		)
 	}
@@ -376,12 +346,7 @@ func TestFreshTargetGenerationDoesNotMutateFlake(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	target := filepath.Join(
-		root,
-		"profiles",
-		"laptop",
-		"hardware-configuration.nix",
-	)
+	target := Target(root)
 
 	r := &fakeRunner{
 		outputs: map[string][]byte{

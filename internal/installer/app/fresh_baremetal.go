@@ -192,12 +192,7 @@ func runFreshBareMetal(
 		)
 	}
 
-	hardwarePath := filepath.Join(
-		repo,
-		"profiles",
-		hostname,
-		"hardware-configuration.nix",
-	)
+	hardwarePath := hardwareconfig.Target(repo)
 
 	fmt.Fprintln(out, "STAGE: generating target hardware configuration")
 

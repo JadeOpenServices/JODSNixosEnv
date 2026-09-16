@@ -15,11 +15,7 @@ func TestTrackedPathRejectsGeneratedUntrackedHardwareConfig(t *testing.T) {
 		t.Fatalf("git init: %v: %s", err, out)
 	}
 
-	relative := filepath.Join(
-		"profiles",
-		"laptop",
-		"hardware-configuration.nix",
-	)
+	relative := filepath.Join("system", "hardware", "generated.nix")
 	path := filepath.Join(root, relative)
 
 	if err := os.MkdirAll(filepath.Dir(path), 0755); err != nil {

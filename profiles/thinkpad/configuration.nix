@@ -6,7 +6,7 @@
 {
   imports = [
     ../../system/base.nix
-    ./hardware-configuration.nix
+    ../../system/hardware/generated.nix
 
     ../../system/hardware/thinkpad/boot.nix
     ../../system/security/laptop/firewall.nix

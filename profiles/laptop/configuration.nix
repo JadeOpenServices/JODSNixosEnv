@@ -6,7 +6,7 @@
 {
   imports = [
     ../../system/base.nix
-    ./hardware-configuration.nix
+    ../../system/hardware/generated.nix
 
     ../../system/hardware/desktop/mouse.nix
     ../../system/security/laptop/firewall.nix

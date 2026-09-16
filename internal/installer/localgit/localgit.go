@@ -13,7 +13,14 @@ import (
 var machineLocalPaths = []string{
 	"user.config.json",
 	"settings.nix",
-	"profiles/*/hardware-configuration.nix",
+	"system/hardware/generated.nix",
+}
+
+var machineLocalPatterns = []string{
+	".user.config.json-*",
+	".settings.nix-*",
+	"system/hardware/.generated.nix-*",
+	"system/hardware/generated.nix.bak.*",
 }
 
 func trackedPath(ctx context.Context, root, relative string) bool {
@@ -29,11 +36,8 @@ func trackedPath(ctx context.Context, root, relative string) bool {
 }
 
 func excludePatterns() []string {
-	patterns := []string{
-		"profiles/*/hardware-configuration.nix.bak.*",
-	}
-
-	patterns = append(patterns, machineLocalPaths...)
+	patterns := append([]string{}, machineLocalPaths...)
+	patterns = append(patterns, machineLocalPatterns...)
 
 	return append(
 		patterns,
@@ -54,6 +58,7 @@ func Protect(ctx context.Context, repo, hardware string) ([]string, error) {
 	if _, err := os.Stat(filepath.Join(root, ".git")); err != nil {
 		return nil, fmt.Errorf("Git metadata not found: %w", err)
 	}
+
 	gitDirBytes, err := git(ctx, root, "rev-parse", "--git-dir")
 	if err != nil {
 		return nil, err
@@ -62,14 +67,21 @@ func Protect(ctx context.Context, repo, hardware string) ([]string, error) {
 	if !filepath.IsAbs(gitDir) {
 		gitDir = filepath.Join(root, gitDir)
 	}
+
 	if err := updateExclude(filepath.Join(gitDir, "info", "exclude")); err != nil {
 		return nil, err
 	}
-	var protected []string
+
+	protected := []string{}
+
 	for _, pattern := range machineLocalPaths {
 		matches, err := filepath.Glob(filepath.Join(root, pattern))
 		if err != nil {
-			return protected, fmt.Errorf("expand machine-local pattern %q: %w", pattern, err)
+			return protected, fmt.Errorf(
+				"expand machine-local pattern %q: %w",
+				pattern,
+				err,
+			)
 		}
 
 		for _, path := range matches {
@@ -78,57 +90,35 @@ func Protect(ctx context.Context, repo, hardware string) ([]string, error) {
 				return protected, err
 			}
 
-			tracked, _ := git(
-				ctx,
-				root,
-				"ls-files",
-				"--error-unmatch",
-				"--",
-				relative,
-			)
-
-			if len(tracked) == 0 {
-				continue
-			}
-
-			if _, err := git(
-				ctx,
-				root,
-				"update-index",
-				"--skip-worktree",
-				"--",
-				relative,
-			); err != nil {
-				return protected, err
+			if trackedPath(ctx, root, relative) {
+				return protected, fmt.Errorf(
+					"machine-local state must never be tracked by Git: %s",
+					relative,
+				)
 			}
 
 			protected = append(protected, relative)
 		}
 	}
+
 	if hardware != "" {
 		relative, err := containedRelative(root, hardware)
 		if err != nil {
 			return protected, err
 		}
-		if _, err := os.Stat(filepath.Join(root, relative)); err == nil && trackedPath(ctx, root, relative) {
-			if _, err := git(ctx, root, "update-index", "--skip-worktree", "--", relative); err != nil {
-				return protected, err
+
+		if _, err := os.Stat(filepath.Join(root, relative)); err == nil {
+			if trackedPath(ctx, root, relative) {
+				return protected, fmt.Errorf(
+					"machine-local hardware state must never be tracked by Git: %s",
+					relative,
+				)
 			}
-			protected = append(protected, relative)
-		}
-	}
-	matches, _ := filepath.Glob(filepath.Join(root, "profiles", "*", "details.nix"))
-	for _, path := range matches {
-		relative, err := filepath.Rel(root, path)
-		if err != nil {
+		} else if !os.IsNotExist(err) {
 			return protected, err
 		}
-		if out, _ := git(ctx, root, "ls-files", "--error-unmatch", "--", relative); len(out) == 0 {
-			if _, err := git(ctx, root, "add", "--", relative); err != nil {
-				return protected, err
-			}
-		}
 	}
+
 	return protected, nil
 }
 

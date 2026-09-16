@@ -13,3 +13,11 @@ settings.nix.tmp*
 
 # Machine-local infrastructure mappings (IP hostname, /etc/hosts syntax).
 local/jods-hosts
+# Machine-local generated state. Never commit.
+user.config.json
+settings.nix
+.user.config.json-*
+.settings.nix-*
+system/hardware/generated.nix
+system/hardware/.generated.nix-*
+system/hardware/generated.nix.bak.*

@@ -700,7 +700,7 @@ func Run(ctx context.Context, args []string, in io.Reader, out, errOut io.Writer
 		return fail(errOut, err)
 	}
 	fmt.Fprintln(out, "Wrote", settingsPath)
-	hardwarePath := filepath.Join(root, "profiles", s.user.Profile, "hardware-configuration.nix")
+	hardwarePath := hardwareconfig.Target(root)
 	hardwareGenerator := hardwareconfig.Generate
 	if opt.recovery && opt.acceptExisting {
 		hardwareGenerator = hardwareconfig.GenerateTarget
