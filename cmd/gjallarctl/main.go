@@ -961,8 +961,7 @@ func runRender(args []string, stdout, stderr io.Writer) int {
 	f.BoolVar(&s.EnableListenbrainz, "enable-listenbrainz", false, "")
 	f.StringVar(&s.LastfmUsername, "lastfm-username", "", "")
 	f.StringVar(&s.ListenbrainzUsername, "listenbrainz-username", "", "")
-	f.StringVar(&s.DeviceProfile, "device-profile", "", "")
-	f.Var((*stringList)(&s.DeviceLayers), "device-layer", "repeatable resolved oddc device layer")
+	f.StringVar(&s.ODDCModel, "oddc-model", "", "")
 	f.StringVar(&s.DeviceSysVendor, "device-sys-vendor", "", "")
 	f.StringVar(&s.DeviceProductName, "device-product-name", "", "")
 	f.StringVar(&s.DeviceProductVersion, "device-product-version", "", "")
@@ -1519,7 +1518,7 @@ func runODDCValidateDeviceResolved(
 				mode, finalizeErr := oddcvalidation.FinalizeValidation(
 					context.Background(),
 					root,
-					device.Resolved.Device.ID,
+					device.Resolved.StableDeviceID(),
 					validation,
 					authority,
 				)

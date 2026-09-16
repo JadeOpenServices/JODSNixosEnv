@@ -12,16 +12,18 @@ func Resolve(
 	source oddc.DeviceSource,
 	hardware discovery.Hardware,
 ) (oddc.Resolved, error) {
-	resolved, err := source.Resolve(discovery.ODDCIdentity(hardware))
+	resolved, err := source.Resolve(
+		discovery.ODDCIdentity(hardware),
+	)
 	if err != nil {
-		if errors.Is(err, oddc.ErrNoMatch) && hardware.FormFactor != "laptop" {
+		if errors.Is(err, oddc.ErrNoMatch) {
 			return oddc.Resolved{
 				Source: source.Metadata(),
 			}, nil
 		}
 
 		return oddc.Resolved{}, fmt.Errorf(
-			"resolve oddc device profile: %w",
+			"resolve canonical ODDC model: %w",
 			err,
 		)
 	}

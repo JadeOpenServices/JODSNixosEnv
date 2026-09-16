@@ -19,23 +19,45 @@ func ValidationMetadata(
 	}
 
 	if strings.TrimSpace(nixOSRelease) == "" {
-		return oddc.Validation{}, fmt.Errorf("validated NixOS release is empty")
+		return oddc.Validation{},
+			fmt.Errorf(
+				"validated NixOS release is empty",
+			)
 	}
+
 	if strings.TrimSpace(device.Revision) == "" {
-		return oddc.Validation{}, fmt.Errorf("validated GjallarOS revision is empty")
+		return oddc.Validation{},
+			fmt.Errorf(
+				"validated GjallarOS revision is empty",
+			)
 	}
-	if strings.TrimSpace(device.Resolved.Device.ID) == "" {
-		return oddc.Validation{}, fmt.Errorf("validated ODDC device ID is empty")
+
+	deviceID := device.Resolved.StableDeviceID()
+	if strings.TrimSpace(deviceID) == "" {
+		return oddc.Validation{},
+			fmt.Errorf(
+				"validated ODDC device ID is empty",
+			)
 	}
-	if strings.TrimSpace(device.Resolved.Source.Revision) == "" {
-		return oddc.Validation{}, fmt.Errorf("validated ODDC revision is empty")
+
+	if strings.TrimSpace(
+		device.Resolved.Source.Revision,
+	) == "" {
+		return oddc.Validation{},
+			fmt.Errorf(
+				"validated ODDC revision is empty",
+			)
 	}
 
 	return oddc.Validation{
-		LastValidatedNixOS:             nixOSRelease,
+		LastValidatedNixOS: nixOSRelease,
+
 		LastValidatedGjallarOSRevision: device.Revision,
-		LastValidatedDeviceID:          device.Resolved.Device.ID,
-		LastValidatedODDCRevision:      device.Resolved.Source.Revision,
-		LastValidatedAt:                now.UTC().Format(time.RFC3339),
+
+		LastValidatedDeviceID: deviceID,
+
+		LastValidatedODDCRevision: device.Resolved.Source.Revision,
+
+		LastValidatedAt: now.UTC().Format(time.RFC3339),
 	}, nil
 }

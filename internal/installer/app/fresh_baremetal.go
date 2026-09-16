@@ -163,7 +163,7 @@ func runFreshBareMetal(
 		"STAGE: materializing machine-local device profile into target",
 	)
 
-	if err := materializeDeviceProfileCapsule(
+	if err := materializeODDCCapsule(
 		repo,
 		filepath.Join(
 			rootResult.MountPoint,

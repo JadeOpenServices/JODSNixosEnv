@@ -14,7 +14,7 @@ import (
 	"github.com/bakanura/gjallarOS/internal/installer/oddc"
 )
 
-const Schema = 1
+const Schema = 2
 
 type Identity struct {
 	FormFactor     string `json:"formFactor,omitempty"`
@@ -44,8 +44,7 @@ type FileIntegrity struct {
 
 type Manifest struct {
 	Schema           int             `json:"schema"`
-	DeviceID         string          `json:"deviceId"`
-	Inheritance      []string        `json:"inheritance"`
+	ModelID          string          `json:"modelId,omitempty"`
 	Files            []FileIntegrity `json:"files"`
 	GenerationReason string          `json:"generationReason"`
 }
@@ -96,57 +95,37 @@ func Materialize(input MaterializeInput) (Capsule, error) {
 	}
 
 	oddcRoot := filepath.Join(stage, "oddc")
-	devicesRoot := filepath.Join(oddcRoot, "devices")
-	if err := os.MkdirAll(devicesRoot, 0700); err != nil {
+	if err := os.MkdirAll(oddcRoot, 0700); err != nil {
 		return Capsule{}, fmt.Errorf(
-			"create cached oddc device directory: %w",
+			"create cached canonical ODDC directory: %w",
 			err,
 		)
 	}
 
-	materialized, err := input.Source.Materialize(
-		input.Resolved,
-		devicesRoot,
+	materializedFiles, err := cachePortableODDCSource(
+		input.Source.Root,
+		oddcRoot,
 	)
 	if err != nil {
-		return Capsule{}, fmt.Errorf(
-			"materialize resolved oddc device modules: %w",
-			err,
-		)
+		return Capsule{}, err
 	}
 
-	materializedFiles := append(
-		[]string(nil),
-		materialized.Files...,
-	)
-
-	for _, layer := range input.Resolved.Inheritance {
-		sourceManifest := filepath.Join(
-			input.Source.Root,
-			"devices",
-			filepath.FromSlash(layer.ID),
-			"device.json",
-		)
-		targetManifest := filepath.Join(
-			devicesRoot,
-			filepath.FromSlash(layer.ID),
-			"device.json",
+	if strings.TrimSpace(input.Resolved.ModelID) != "" {
+		resolvedSnapshot := filepath.Join(
+			oddcRoot,
+			"resolved.json",
 		)
 
-		if err := copyRegularFile(
-			sourceManifest,
-			targetManifest,
+		if err := writeJSON(
+			resolvedSnapshot,
+			input.Resolved.Canonical,
 		); err != nil {
-			return Capsule{}, fmt.Errorf(
-				"cache oddc manifest %q: %w",
-				layer.ID,
-				err,
-			)
+			return Capsule{}, err
 		}
 
 		materializedFiles = append(
 			materializedFiles,
-			targetManifest,
+			resolvedSnapshot,
 		)
 	}
 
@@ -171,11 +150,6 @@ func Materialize(input MaterializeInput) (Capsule, error) {
 	sort.Slice(files, func(i, j int) bool {
 		return files[i].Path < files[j].Path
 	})
-
-	inheritance := make([]string, 0, len(input.Resolved.Inheritance))
-	for _, layer := range input.Resolved.Inheritance {
-		inheritance = append(inheritance, layer.ID)
-	}
 
 	identity := Identity{
 		FormFactor:     input.Identity.FormFactor,
@@ -207,8 +181,7 @@ func Materialize(input MaterializeInput) (Capsule, error) {
 
 	manifest := Manifest{
 		Schema:           Schema,
-		DeviceID:         input.Resolved.Device.ID,
-		Inheritance:      inheritance,
+		ModelID:          input.Resolved.ModelID,
 		Files:            files,
 		GenerationReason: input.GenerationReason,
 	}
@@ -295,10 +268,22 @@ func Load(root string) (Capsule, error) {
 			capsule.Source.Schema,
 		)
 	}
+
 	if capsule.Manifest.Schema != Schema {
 		return Capsule{}, fmt.Errorf(
 			"unsupported device-profile manifest schema %d",
 			capsule.Manifest.Schema,
+		)
+	}
+
+	if strings.TrimSpace(capsule.Manifest.ModelID) != "" &&
+		!strings.HasPrefix(
+			strings.TrimSpace(capsule.Manifest.ModelID),
+			"model/",
+		) {
+		return Capsule{}, fmt.Errorf(
+			"canonical recovery capsule has invalid model id %q",
+			capsule.Manifest.ModelID,
 		)
 	}
 
@@ -328,7 +313,7 @@ func Verify(root string) (Capsule, error) {
 			)
 		}
 
-		if !strings.HasPrefix(expected.Path, "oddc/devices/") {
+		if !allowedODDCCapsulePath(expected.Path) {
 			return Capsule{}, fmt.Errorf(
 				"device-profile manifest contains non-ODDC path %q",
 				expected.Path,
@@ -368,24 +353,45 @@ func Verify(root string) (Capsule, error) {
 		}
 	}
 
-	for _, layer := range capsule.Manifest.Inheritance {
-		manifestPath := filepath.ToSlash(filepath.Join(
-			"oddc",
-			"devices",
-			filepath.FromSlash(layer),
-			"device.json",
-		))
-		if !expectedFiles[manifestPath] {
-			return Capsule{}, fmt.Errorf(
-				"device-profile capsule is missing manifest for inheritance layer %q",
-				layer,
-			)
+	hasModel := strings.TrimSpace(
+		capsule.Manifest.ModelID,
+	) != ""
+
+	hasResolved :=
+		expectedFiles["oddc/resolved.json"]
+
+	if hasModel && !hasResolved {
+		return Capsule{}, fmt.Errorf(
+			"canonical recovery capsule with model id is missing resolved.json",
+		)
+	}
+
+	if !hasModel && hasResolved {
+		return Capsule{}, fmt.Errorf(
+			"canonical recovery capsule without model id unexpectedly contains resolved.json",
+		)
+	}
+
+	hasEntity := false
+	for path := range expectedFiles {
+		if strings.HasPrefix(
+			path,
+			"oddc/catalog/entities/",
+		) {
+			hasEntity = true
+			break
 		}
 	}
 
-	devicesRoot := filepath.Join(root, "oddc", "devices")
+	if hasModel && !hasEntity {
+		return Capsule{}, fmt.Errorf(
+			"canonical recovery capsule contains no entity registry",
+		)
+	}
+
+	oddcRoot := filepath.Join(root, "oddc")
 	err = filepath.WalkDir(
-		devicesRoot,
+		oddcRoot,
 		func(path string, entry os.DirEntry, walkErr error) error {
 			if walkErr != nil {
 				return walkErr
@@ -421,7 +427,12 @@ func NeedsRebind(
 	current oddc.Identity,
 	resolved oddc.Resolved,
 ) bool {
-	if normalize(cached.Manifest.DeviceID) != normalize(resolved.Device.ID) {
+	if resolved.ModelID != "" {
+		if normalize(cached.Manifest.ModelID) !=
+			normalize(resolved.ModelID) {
+			return true
+		}
+	} else if normalize(cached.Manifest.ModelID) != "" {
 		return true
 	}
 

@@ -16,7 +16,7 @@
     ../../system/hardware/input.nix
     ../../system/hardware/work/boot.nix
     ../../system/recovery
-    ../../oddc/devices/laptop/common/battery.nix
+    ../../system/hardware/laptop/battery.nix
     ../../system/security/laptop/firewall.nix
     ../../system/virtualization
     ../../themes/lib/common.nix

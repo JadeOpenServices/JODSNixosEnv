@@ -280,12 +280,12 @@ func Run(ctx context.Context, args []string, in io.Reader, out, errOut io.Writer
 	s.penTablet = hardware.PenTablet
 	s.orientationSensor = hardware.OrientationSensor
 
-	resolvedDevice, err := resolveDeviceProfile(root, sourceRevision, hardware)
+	resolvedDevice, err := resolveODDCModel(root, sourceRevision, hardware)
 	if err != nil {
 		return fail(errOut, err)
 	}
 
-	profileDrift := deviceProfileDrifted(s.user, resolvedDevice)
+	modelDrift := oddcModelDrifted(s.user, resolvedDevice)
 	needsDeviceRebind := false
 	if opt.recovery && opt.acceptExisting {
 		capsulePath := filepath.Join(
@@ -304,7 +304,7 @@ func Run(ctx context.Context, args []string, in io.Reader, out, errOut io.Writer
 			)
 		}
 
-		needsDeviceRebind = profileDrift ||
+		needsDeviceRebind = modelDrift ||
 			deviceprofilecache.NeedsRebind(
 				capsule,
 				discovery.ODDCIdentity(hardware),
@@ -312,7 +312,7 @@ func Run(ctx context.Context, args []string, in io.Reader, out, errOut io.Writer
 			)
 
 		if !needsDeviceRebind {
-			resolvedDevice, err = resolveDeviceProfileFromSource(
+			resolvedDevice, err = resolveODDCModelFromSource(
 				oddc.EmbeddedSource{
 					Root:       filepath.Join(capsulePath, "oddc"),
 					Repository: capsule.Source.ODDCRepository,
@@ -338,8 +338,7 @@ func Run(ctx context.Context, args []string, in io.Reader, out, errOut io.Writer
 
 	persistDeviceIdentity(&s.user, hardware, resolvedDevice)
 
-	fmt.Fprintf(out, "Device profile resolved: %s\n", s.user.DeviceProfile)
-	fmt.Fprintf(out, "Device profile layers: %s\n", strings.Join(s.user.DeviceLayers, " -> "))
+	fmt.Fprintf(out, "ODDC canonical model: %s\n", s.user.ODDCModel)
 
 	if needsDeviceRebind {
 		if s.user.UnattendedInstall || s.user.EndpointManagedDevice {
@@ -515,7 +514,7 @@ func Run(ctx context.Context, args []string, in io.Reader, out, errOut io.Writer
 
 	if err := validateSecureBootFirmwareSupport(
 		s.user.SecureBootEnable,
-		s.user.DeviceProfile,
+		s.user.ODDCModel,
 		s.secureBootFirmware,
 	); err != nil {
 		if mayOfferSecureBootFallback(
@@ -864,11 +863,11 @@ func Run(ctx context.Context, args []string, in io.Reader, out, errOut io.Writer
 			return fail(errOut, err)
 		}
 	}
-	if (profileDrift || needsDeviceRebind) && !runRebuild {
+	if (modelDrift || needsDeviceRebind) && !runRebuild {
 		return fail(
 			errOut,
 			errors.New(
-				"device profile reconciliation requires installing the regenerated system; rebuild cannot be skipped",
+				"ODDC model reconciliation requires installing the regenerated system; rebuild cannot be skipped",
 			),
 		)
 	}
@@ -931,16 +930,16 @@ func Run(ctx context.Context, args []string, in io.Reader, out, errOut io.Writer
 					return fail(errOut, err)
 				}
 
-				if err := persistReconciledDeviceProfile(
+				if err := persistReconciledODDCModel(
 					presetPath,
 					s.user,
-					profileDrift,
+					modelDrift,
 				); err != nil {
 					return fail(errOut, err)
 				}
 
 				if needsDeviceRebind {
-					if err := materializeDeviceProfileCapsule(
+					if err := materializeODDCCapsule(
 						root,
 						filepath.Join(
 							installedRoot,
@@ -987,10 +986,10 @@ func Run(ctx context.Context, args []string, in io.Reader, out, errOut io.Writer
 					return fail(errOut, err)
 				}
 
-				if err := persistReconciledDeviceProfile(
+				if err := persistReconciledODDCModel(
 					presetPath,
 					s.user,
-					profileDrift,
+					modelDrift,
 				); err != nil {
 					return fail(errOut, err)
 				}
@@ -1215,7 +1214,7 @@ func Run(ctx context.Context, args []string, in io.Reader, out, errOut io.Writer
 		}
 
 		firmwarePolicy, err := secureboot.SnapshotFirmwarePolicy(
-			s.user.DeviceProfile,
+			s.user.ODDCModel,
 			s.secureBootFirmware,
 		)
 		if err != nil {
@@ -2319,7 +2318,7 @@ func detectAndRenderState(ctx context.Context, root string, s *state) error {
 	}
 	s.passthroughIDs = append([]string(nil), g.PassthroughIDs...)
 	passthrough := u.NemuGPUPassthrough && len(g.PassthroughIDs) > 0
-	s.render = nixrender.Settings{System: u.System, Profile: u.Profile, Hostname: u.Hostname, Username: u.Username, Timezone: u.Timezone, Locale: u.Locale, KeyboardLayout: u.KeyboardLayout, KeyboardVariant: u.KeyboardVariant, WeatherCity: u.WeatherCity, WeatherCountry: u.WeatherCountry, TouchpadWorkspaceSwipe: u.TouchpadWorkspaceSwipe, TouchscreenEnable: s.touchscreen, PenTabletEnable: s.penTablet, OrientationSensorEnable: s.orientationSensor, ClamshellEnable: u.ClamshellEnable, USBGuardEnable: u.USBGuardEnable, Name: u.Name, Email: u.Email, GitHubUsername: u.GitHubUsername, DotfilesDir: u.DotfilesDir, WorkUserEnable: u.WorkUserEnable, WorkUsername: u.WorkUsername, DockerEnable: u.DockerEnable, DebugFunctions: u.DebugFunctions, Shell: u.Shell, Editors: u.Editors, Browsers: u.Browsers, PreferredEditor: u.PreferredEditor, PreferredBrowser: u.PreferredBrowser, PlaneEnable: u.PlaneEnable, PlaneHost: u.PlaneHost, DrawioEnable: u.DrawioEnable, DrawioSelfHosted: u.DrawioSelfHosted, DrawioHost: u.DrawioHost, BackgroundNormal: u.BackgroundNormal, BackgroundWork: u.BackgroundWork, BackgroundGaming: u.BackgroundGaming, EnableScrobbling: u.EnableScrobbling, EnableLastfm: u.EnableLastfm, EnableListenbrainz: u.EnableListenbrainz, LastfmUsername: u.LastfmUsername, ListenbrainzUsername: u.ListenbrainzUsername, DeviceProfile: u.DeviceProfile, DeviceLayers: u.DeviceLayers, DeviceSysVendor: u.DeviceSysVendor, DeviceProductName: u.DeviceProductName, DeviceProductVersion: u.DeviceProductVersion, DeviceBoardVendor: u.DeviceBoardVendor, DeviceBoardName: u.DeviceBoardName, DeviceBoardVersion: u.DeviceBoardVersion, GraphicsVendor: g.Vendor, GraphicsDeviceID: g.DeviceID, GraphicsDriverBranch: g.DriverBranch, GraphicsType: g.Type, GraphicsCompute: g.Compute, GraphicsBusID: g.BusID, GraphicsIntegratedBusID: g.IntegratedBusID, WiFiDriver: wifi, AIEnable: u.AIEnable, AIModel: ai.Model, AIAccelerationProfile: ai.AccelerationProfile, AIAgentMode: u.AIAgentMode, AIContextTokens: ai.ContextTokens, AIVRAMMB: ai.VRAMMB, NemuEnable: u.NemuEnable, NemuGPUPassthrough: passthrough, LUKSTPM2Enable: u.LUKSTPM2Enable, RecoveryEnable: u.RecoveryEnable, RecoveryPartitionEnable: u.RecoveryPartitionEnable, JODSPrebootLockEnable: u.JODSPrebootLockEnable, SecureBootEnable: u.SecureBootEnable, EndpointManagedDevice: u.EndpointManagedDevice, JODSEndpoint: u.JODSEndpoint, JODSPolicySigningPublicKey: u.JODSPolicySigningKey, JODSRecoveryCommandSigningPublicKey: u.JODSRecoverySigningKey, JODSEnrollmentMode: u.JODSEnrollmentMode, JODSAllowInsecureTLS: u.JODSAllowInsecureTLS, JODSDeviceClass: u.JODSDeviceClass, JODSDesktopProfile: u.JODSDesktopProfile, JODSFingerprintEnrollmentAllowed: u.JODSFingerprintEnroll, WMs: []string{"hyprland"}, Theme: u.Theme}
+	s.render = nixrender.Settings{System: u.System, Profile: u.Profile, Hostname: u.Hostname, Username: u.Username, Timezone: u.Timezone, Locale: u.Locale, KeyboardLayout: u.KeyboardLayout, KeyboardVariant: u.KeyboardVariant, WeatherCity: u.WeatherCity, WeatherCountry: u.WeatherCountry, TouchpadWorkspaceSwipe: u.TouchpadWorkspaceSwipe, TouchscreenEnable: s.touchscreen, PenTabletEnable: s.penTablet, OrientationSensorEnable: s.orientationSensor, ClamshellEnable: u.ClamshellEnable, USBGuardEnable: u.USBGuardEnable, Name: u.Name, Email: u.Email, GitHubUsername: u.GitHubUsername, DotfilesDir: u.DotfilesDir, WorkUserEnable: u.WorkUserEnable, WorkUsername: u.WorkUsername, DockerEnable: u.DockerEnable, DebugFunctions: u.DebugFunctions, Shell: u.Shell, Editors: u.Editors, Browsers: u.Browsers, PreferredEditor: u.PreferredEditor, PreferredBrowser: u.PreferredBrowser, PlaneEnable: u.PlaneEnable, PlaneHost: u.PlaneHost, DrawioEnable: u.DrawioEnable, DrawioSelfHosted: u.DrawioSelfHosted, DrawioHost: u.DrawioHost, BackgroundNormal: u.BackgroundNormal, BackgroundWork: u.BackgroundWork, BackgroundGaming: u.BackgroundGaming, EnableScrobbling: u.EnableScrobbling, EnableLastfm: u.EnableLastfm, EnableListenbrainz: u.EnableListenbrainz, LastfmUsername: u.LastfmUsername, ListenbrainzUsername: u.ListenbrainzUsername, ODDCModel: u.ODDCModel, DeviceSysVendor: u.DeviceSysVendor, DeviceProductName: u.DeviceProductName, DeviceProductVersion: u.DeviceProductVersion, DeviceBoardVendor: u.DeviceBoardVendor, DeviceBoardName: u.DeviceBoardName, DeviceBoardVersion: u.DeviceBoardVersion, GraphicsVendor: g.Vendor, GraphicsDeviceID: g.DeviceID, GraphicsDriverBranch: g.DriverBranch, GraphicsType: g.Type, GraphicsCompute: g.Compute, GraphicsBusID: g.BusID, GraphicsIntegratedBusID: g.IntegratedBusID, WiFiDriver: wifi, AIEnable: u.AIEnable, AIModel: ai.Model, AIAccelerationProfile: ai.AccelerationProfile, AIAgentMode: u.AIAgentMode, AIContextTokens: ai.ContextTokens, AIVRAMMB: ai.VRAMMB, NemuEnable: u.NemuEnable, NemuGPUPassthrough: passthrough, LUKSTPM2Enable: u.LUKSTPM2Enable, RecoveryEnable: u.RecoveryEnable, RecoveryPartitionEnable: u.RecoveryPartitionEnable, JODSPrebootLockEnable: u.JODSPrebootLockEnable, SecureBootEnable: u.SecureBootEnable, EndpointManagedDevice: u.EndpointManagedDevice, JODSEndpoint: u.JODSEndpoint, JODSPolicySigningPublicKey: u.JODSPolicySigningKey, JODSRecoveryCommandSigningPublicKey: u.JODSRecoverySigningKey, JODSEnrollmentMode: u.JODSEnrollmentMode, JODSAllowInsecureTLS: u.JODSAllowInsecureTLS, JODSDeviceClass: u.JODSDeviceClass, JODSDesktopProfile: u.JODSDesktopProfile, JODSFingerprintEnrollmentAllowed: u.JODSFingerprintEnroll, WMs: []string{"hyprland"}, Theme: u.Theme}
 	if passthrough {
 		s.render.NemuGPUIDs = g.PassthroughIDs
 	}

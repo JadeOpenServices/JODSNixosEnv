@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"strings"
 
 	"github.com/bakanura/gjallarOS/internal/installer/oddc"
 )
@@ -16,8 +17,8 @@ const FirmwarePolicyPath = "/var/lib/gjallarOS/secure-boot/firmware-policy.json"
 
 type FirmwarePolicySnapshot struct {
 	Schema                  int      `json:"schema"`
-	DeviceProfile           string   `json:"deviceProfile"`
-	SourceLayer             string   `json:"sourceLayer"`
+	ModelID                 string   `json:"modelId,omitempty"`
+	SourceEntity            string   `json:"sourceEntity,omitempty"`
 	FirmwareName            string   `json:"firmwareName"`
 	SetupModeStrategy       string   `json:"setupModeStrategy"`
 	EnrollmentBackend       string   `json:"enrollmentBackend"`
@@ -30,7 +31,7 @@ type FirmwarePolicySnapshot struct {
 }
 
 func SnapshotFirmwarePolicy(
-	deviceProfile string,
+	modelID string,
 	effective oddc.EffectiveSecureBootFirmwarePolicy,
 ) (FirmwarePolicySnapshot, error) {
 	if !effective.Policy.Supported {
@@ -43,22 +44,22 @@ func SnapshotFirmwarePolicy(
 		return FirmwarePolicySnapshot{}, err
 	}
 
-	if deviceProfile == "" {
+	if !strings.HasPrefix(strings.TrimSpace(modelID), "model/") {
 		return FirmwarePolicySnapshot{}, fmt.Errorf(
-			"cannot snapshot Secure Boot firmware policy without detected device profile",
+			"cannot snapshot Secure Boot firmware policy without canonical model id",
 		)
 	}
 
-	if effective.SourceLayer == "" {
+	if strings.TrimSpace(effective.SourceEntity) == "" {
 		return FirmwarePolicySnapshot{}, fmt.Errorf(
-			"cannot snapshot Secure Boot firmware policy without source layer",
+			"cannot snapshot Secure Boot firmware policy without source entity",
 		)
 	}
 
 	return FirmwarePolicySnapshot{
-		Schema:                  1,
-		DeviceProfile:           deviceProfile,
-		SourceLayer:             effective.SourceLayer,
+		Schema:                  2,
+		ModelID:                 modelID,
+		SourceEntity:            effective.SourceEntity,
 		FirmwareName:            effective.Policy.FirmwareName,
 		SetupModeStrategy:       effective.Policy.SetupModeStrategy,
 		EnrollmentBackend:       effective.Policy.EnrollmentBackend,
@@ -165,17 +166,32 @@ func FirmwareInstructions(path string) ([]string, error) {
 	return instructions, nil
 }
 
-func ValidateFirmwarePolicySnapshot(snapshot FirmwarePolicySnapshot) error {
-	if snapshot.Schema != 1 {
+func ValidateFirmwarePolicySnapshot(
+	snapshot FirmwarePolicySnapshot,
+) error {
+	if snapshot.Schema != 2 {
 		return fmt.Errorf(
 			"unsupported Secure Boot firmware policy snapshot schema %d",
 			snapshot.Schema,
 		)
 	}
 
-	if snapshot.DeviceProfile == "" || snapshot.SourceLayer == "" {
+	if !strings.HasPrefix(
+		strings.TrimSpace(snapshot.ModelID),
+		"model/",
+	) {
 		return fmt.Errorf(
-			"Secure Boot firmware policy snapshot lacks detected device identity",
+			"Secure Boot firmware policy snapshot lacks canonical model identity",
+		)
+	}
+
+	if strings.TrimSpace(snapshot.SourceEntity) == "" ||
+		strings.HasPrefix(
+			strings.TrimSpace(snapshot.SourceEntity),
+			"laptop/",
+		) {
+		return fmt.Errorf(
+			"Secure Boot firmware policy snapshot lacks canonical source entity",
 		)
 	}
 

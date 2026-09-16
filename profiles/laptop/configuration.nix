@@ -4,11 +4,6 @@
   settings,
   ...
 }:
-let
-  deviceLayerModules = map (layer: ../../oddc/devices + "/${layer}/default.nix") (
-    settings.deviceLayers or [ ]
-  );
-in
 {
   imports = [
     ./hardware-configuration.nix
@@ -29,9 +24,18 @@ in
     ../../system/users/work.nix
     ../../system/users/privilege.nix
     ../../system/apps/ollama.nix
+
+    ../../system/hardware/laptop/battery.nix
+    ../../system/hardware/laptop/boot.nix
+    ../../oddc/nixos/modules/default.nix
   ]
-  ++ deviceLayerModules
   ++ (map (wm: ../../system/wm/${wm}) settings.wms);
+
+  oddc.device =
+    let
+      model = settings.oddcModel or "";
+    in
+    if model == "" then null else model;
 
   boot.kernelPackages = pkgs.linuxPackages_latest;
 

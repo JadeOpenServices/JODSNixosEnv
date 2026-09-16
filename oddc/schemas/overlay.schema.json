@@ -1,26 +1,25 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://openjade.de/oddc/schemas/overlay.schema.json",
-  "title": "ODDC override",
+  "title": "ODDC resolved-model override",
   "type": "object",
   "required": [
-    "schemaVersion",
+    "apiVersion",
     "id",
     "kind",
-    "targetDevice",
-    "blocks"
+    "targetModel",
+    "overrides"
   ],
   "properties": {
     "$schema": {
       "type": "string"
     },
-    "schemaVersion": {
-      "const": "2.0.0"
+    "apiVersion": {
+      "const": "oddc.openjade.de/v2"
     },
     "id": {
       "type": "string",
-      "minLength": 1,
-      "pattern": "^[a-z0-9]+(?:[/-][a-z0-9]+)*$"
+      "minLength": 1
     },
     "kind": {
       "enum": [
@@ -28,21 +27,15 @@
         "host"
       ]
     },
-    "targetDevice": {
+    "targetModel": {
       "type": "string",
-      "minLength": 1,
-      "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$"
+      "pattern": "^model/"
     },
-    "blocks": {
-      "$ref": "#/$defs/overrideObject"
+    "overrides": {
+      "$ref": "#/$defs/object"
     }
   },
   "$defs": {
-    "key": {
-      "type": "string",
-      "minLength": 1,
-      "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]*$"
-    },
     "scalar": {
       "type": [
         "string",
@@ -52,23 +45,20 @@
         "null"
       ]
     },
-    "overrideNode": {
+    "node": {
       "oneOf": [
         {
           "$ref": "#/$defs/scalar"
         },
         {
-          "$ref": "#/$defs/overrideObject"
+          "$ref": "#/$defs/object"
         }
       ]
     },
-    "overrideObject": {
+    "object": {
       "type": "object",
-      "propertyNames": {
-        "$ref": "#/$defs/key"
-      },
       "additionalProperties": {
-        "$ref": "#/$defs/overrideNode"
+        "$ref": "#/$defs/node"
       }
     }
   },

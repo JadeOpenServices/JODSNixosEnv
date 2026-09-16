@@ -16,7 +16,7 @@ func secureBootPolicyResult(resolved oddc.Resolved) Result {
 		}
 	}
 
-	if effective.SourceLayer == "" {
+	if effective.SourceEntity == "" {
 		return Result{
 			Gate:    GateSecureBootPolicy,
 			Details: "no validated Secure Boot firmware policy is defined for the resolved device profile",
@@ -40,7 +40,7 @@ func secureBootPolicyResult(resolved oddc.Resolved) Result {
 	}
 
 	snapshot, err := secureboot.SnapshotFirmwarePolicy(
-		resolved.Device.ID,
+		resolved.StableDeviceID(),
 		effective,
 	)
 	if err != nil {

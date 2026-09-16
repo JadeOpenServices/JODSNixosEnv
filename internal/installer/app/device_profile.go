@@ -9,35 +9,47 @@ import (
 	"github.com/bakanura/gjallarOS/internal/installer/oddc"
 )
 
-func resolveDeviceProfile(
+func resolveODDCModel(
 	repo string,
 	revision string,
 	hardware discovery.Hardware,
 ) (oddc.Resolved, error) {
-	source := deviceprofile.CurrentEmbeddedSource(repo, revision)
+	source := deviceprofile.CurrentEmbeddedSource(
+		repo,
+		revision,
+	)
 
-	return resolveDeviceProfileFromSource(source, hardware)
+	return resolveODDCModelFromSource(
+		source,
+		hardware,
+	)
 }
 
-func resolveDeviceProfileFromSource(
+func resolveODDCModelFromSource(
 	source oddc.DeviceSource,
 	hardware discovery.Hardware,
 ) (oddc.Resolved, error) {
-	return deviceprofile.Resolve(source, hardware)
+	return deviceprofile.Resolve(
+		source,
+		hardware,
+	)
 }
 
-func persistReconciledDeviceProfile(
+func persistReconciledODDCModel(
 	presetPath string,
 	user config.User,
-	profileDrift bool,
+	modelDrift bool,
 ) error {
-	if !profileDrift {
+	if !modelDrift {
 		return nil
 	}
 
-	if err := config.WriteAtomic(presetPath, user); err != nil {
+	if err := config.WriteAtomic(
+		presetPath,
+		user,
+	); err != nil {
 		return fmt.Errorf(
-			"persist reconciled device profile: %w",
+			"persist reconciled ODDC model: %w",
 			err,
 		)
 	}
@@ -50,11 +62,8 @@ func persistDeviceIdentity(
 	hardware discovery.Hardware,
 	resolved oddc.Resolved,
 ) {
-	user.DeviceProfile = resolved.Device.ID
-	user.DeviceLayers = make([]string, 0, len(resolved.Inheritance))
-	for _, layer := range resolved.Inheritance {
-		user.DeviceLayers = append(user.DeviceLayers, layer.ID)
-	}
+	user.ODDCModel = resolved.ModelID
+
 	user.DeviceSysVendor = hardware.SysVendor
 	user.DeviceProductName = hardware.ProductName
 	user.DeviceProductVersion = hardware.ProductVersion
@@ -65,7 +74,7 @@ func persistDeviceIdentity(
 
 func validateSecureBootFirmwareSupport(
 	enabled bool,
-	deviceProfile string,
+	modelID string,
 	effective oddc.EffectiveSecureBootFirmwarePolicy,
 ) error {
 	if !enabled {
@@ -76,40 +85,27 @@ func validateSecureBootFirmwareSupport(
 		return nil
 	}
 
-	profile := deviceProfile
-	if profile == "" {
-		profile = "unresolved device"
+	model := modelID
+	if model == "" {
+		model = "unmatched hardware"
 	}
 
 	reason := effective.Policy.UnsupportedReason
 	if reason == "" {
-		reason = "no trusted Secure Boot firmware policy is available"
+		reason =
+			"no trusted Secure Boot firmware policy is available"
 	}
 
 	return fmt.Errorf(
-		"Secure Boot ownership transfer is unsupported for detected device profile %q: %s",
-		profile,
+		"Secure Boot ownership transfer is unsupported for ODDC model %q: %s",
+		model,
 		reason,
 	)
 }
 
-func deviceProfileDrifted(
+func oddcModelDrifted(
 	user config.User,
 	resolved oddc.Resolved,
 ) bool {
-	if user.DeviceProfile != resolved.Device.ID {
-		return true
-	}
-
-	if len(user.DeviceLayers) != len(resolved.Inheritance) {
-		return true
-	}
-
-	for i, layer := range resolved.Inheritance {
-		if user.DeviceLayers[i] != layer.ID {
-			return true
-		}
-	}
-
-	return false
+	return user.ODDCModel != resolved.ModelID
 }

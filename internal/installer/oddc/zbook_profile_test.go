@@ -1,85 +1,63 @@
 package oddc
 
-import (
-	"path/filepath"
-	"testing"
-)
+import "testing"
 
-func TestEmbeddedRepositoryResolvesHPZBookX2G4(t *testing.T) {
-	root, err := filepath.Abs(filepath.Join("..", "..", "..", "oddc"))
+func TestEmbeddedRepositoryResolvesHPZBookX2G4(
+	t *testing.T,
+) {
+	resolved, err := repositoryODDCSource(t).Resolve(
+		Identity{
+			FormFactor:  "laptop",
+			SysVendor:   "HP",
+			ProductName: "HP ZBook x2 G4",
+			BoardName:   "824C",
+		},
+	)
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	resolved, err := (EmbeddedSource{
-		Root:       root,
-		Repository: "embedded:oddc",
-	}).Resolve(Identity{
-		FormFactor:  "laptop",
-		SysVendor:   "HP",
-		ProductName: "HP ZBook x2 G4",
-		BoardVendor: "HP",
-		BoardName:   "824C",
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
+	const want = "model/hp/zbook-x2-g4"
 
-	if resolved.Device.ID != "laptop/hp/zbook-x2-g4" {
-		t.Fatalf("resolved device=%q", resolved.Device.ID)
-	}
-
-	want := []string{
-		"laptop/common",
-		"laptop/hp",
-		"laptop/hp/zbook-x2-g4",
-	}
-
-	if len(resolved.Inheritance) != len(want) {
+	if resolved.ModelID != want {
 		t.Fatalf(
-			"inheritance=%v want=%v",
-			resolved.Inheritance,
+			"ModelID=%q want=%q",
+			resolved.ModelID,
 			want,
 		)
 	}
-
-	for i, id := range want {
-		if resolved.Inheritance[i].ID != id {
-			t.Fatalf(
-				"inheritance[%d]=%q want=%q",
-				i,
-				resolved.Inheritance[i].ID,
-				id,
-			)
-		}
-	}
 }
 
-func TestEmbeddedRepositoryZBookMatchSurvivesFirmwareRevisionChanges(t *testing.T) {
-	root, err := filepath.Abs(filepath.Join("..", "..", "..", "oddc"))
-	if err != nil {
-		t.Fatal(err)
-	}
+func TestEmbeddedRepositoryZBookMatchSurvivesFirmwareRevisionChanges(
+	t *testing.T,
+) {
+	source := repositoryODDCSource(t)
 
-	resolved, err := (EmbeddedSource{
-		Root: root,
-	}).Resolve(Identity{
-		FormFactor:     "laptop",
-		SysVendor:      "HP",
-		ProductName:    "HP ZBook x2 G4",
-		ProductVersion: "different-sku-revision",
-		BoardVendor:    "HP",
-		BoardName:      "824C",
-		BoardVersion:   "different-firmware-revision",
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	if resolved.Device.ID != "laptop/hp/zbook-x2-g4" {
-		t.Fatalf(
-			"firmware revision changed resolution to %q",
-			resolved.Device.ID,
+	for _, revision := range []string{
+		"",
+		"78.21",
+		"99.99-test",
+	} {
+		resolved, err := source.Resolve(
+			Identity{
+				FormFactor:     "laptop",
+				SysVendor:      "HP",
+				ProductName:    "HP ZBook x2 G4",
+				ProductVersion: revision,
+				BoardName:      "824C",
+				BoardVersion:   revision,
+			},
 		)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		if resolved.ModelID != "model/hp/zbook-x2-g4" {
+			t.Fatalf(
+				"revision %q resolved ModelID=%q",
+				revision,
+				resolved.ModelID,
+			)
+		}
 	}
 }

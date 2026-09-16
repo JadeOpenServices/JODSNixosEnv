@@ -20,22 +20,28 @@ func enforceDeviceValidation(
 	nixOSRelease string,
 	gjallarOSRevision string,
 ) error {
-	if resolved.Device.ID == "" {
+	modelID := resolved.ModelID
+	if modelID == "" {
 		return nil
 	}
 
 	target := oddc.ValidationTarget{
 		NixOSRelease:      nixOSRelease,
 		GjallarOSRevision: gjallarOSRevision,
-		DeviceID:          resolved.Device.ID,
+		DeviceID:          modelID,
 		ODDCRevision:      resolved.Source.Revision,
 	}
 
-	if resolved.Device.Validation.Matches(target) {
-		return nil
+	for _, validation := range resolved.Validations {
+		if validation.Matches(target) {
+			return nil
+		}
 	}
 
-	localMatch, err := localValidationMatches(ctx, target)
+	localMatch, err := localValidationMatches(
+		ctx,
+		target,
+	)
 	if err != nil {
 		return err
 	}
@@ -43,14 +49,14 @@ func enforceDeviceValidation(
 		return nil
 	}
 
-	if user.AllowUnvalidatedDeviceProfile {
+	if user.AllowUnvalidatedODDCModel {
 		return nil
 	}
 
 	if user.UnattendedInstall {
 		return fmt.Errorf(
-			"ODDC device profile %q is not validated for NixOS %q, GjallarOS %q, and ODDC revision %q; unattended installation requires allowUnvalidatedDeviceProfile=true",
-			resolved.Device.ID,
+			"ODDC model %q is not validated for NixOS %q, GjallarOS %q, and ODDC revision %q; unattended installation requires allowUnvalidatedODDCModel=true",
+			modelID,
 			nixOSRelease,
 			gjallarOSRevision,
 			resolved.Source.Revision,
@@ -60,8 +66,8 @@ func enforceDeviceValidation(
 	approved, err := ui.Confirm(
 		ctx,
 		fmt.Sprintf(
-			"WARNING: Device profile %q has not completed the full real-device validation gate for NixOS %s and the current GjallarOS/ODDC revisions. Continuing may cause hardware, graphics, tablet/sensor, or Secure Boot problems. Continue with this unvalidated device profile?",
-			resolved.Device.ID,
+			"WARNING: ODDC model %q has not completed the full real-device validation gate for NixOS %s and the current GjallarOS/ODDC revisions. Continuing may cause hardware, graphics, tablet/sensor, or Secure Boot problems. Continue with this unvalidated device?",
+			modelID,
 			nixOSRelease,
 		),
 		false,
@@ -69,10 +75,11 @@ func enforceDeviceValidation(
 	if err != nil {
 		return err
 	}
+
 	if !approved {
 		return fmt.Errorf(
-			"installation cancelled because ODDC device profile %q is unvalidated for the current release",
-			resolved.Device.ID,
+			"installation cancelled because ODDC model %q is unvalidated for the current release",
+			modelID,
 		)
 	}
 
