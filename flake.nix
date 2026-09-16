@@ -133,7 +133,7 @@
 
       basePkgs = mkPkgs system;
 
-      settings = import (./. + "/settings.nix") {
+      settings = import (./. + "/generated/state.nix") {
         pkgs = basePkgs;
         inherit inputs;
       };

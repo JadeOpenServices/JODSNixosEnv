@@ -920,7 +920,7 @@ func runRender(args []string, stdout, stderr io.Writer) int {
 	f := flag.NewFlagSet("gjallarctl installer render", flag.ContinueOnError)
 	f.SetOutput(stderr)
 	var s nixrender.Settings
-	output := f.String("output", "settings.nix", "output path")
+	output := f.String("output", "generated/state.nix", "output path")
 	f.StringVar(&s.System, "system", "", "system")
 	f.StringVar(&s.Profile, "profile", "", "profile")
 	f.StringVar(&s.Hostname, "hostname", "", "hostname")
@@ -2183,7 +2183,7 @@ func syncProjectToolSettings(settingsPath string, user config.User) error {
 		return fmt.Errorf("stat %s: %w", settingsPath, err)
 	}
 
-	tmp, err := os.CreateTemp(filepath.Dir(settingsPath), ".settings-project-tools-*")
+	tmp, err := os.CreateTemp(filepath.Dir(settingsPath), ".state-project-tools-*")
 	if err != nil {
 		return fmt.Errorf("create temporary settings file: %w", err)
 	}
@@ -2315,7 +2315,7 @@ func runRebuild(args []string, stdout, stderr io.Writer) int {
 		return 1
 	}
 
-	settingsPath := filepath.Join(repo, "settings.nix")
+	settingsPath := filepath.Join(repo, "generated", "state.nix")
 	if err := syncProjectToolSettings(settingsPath, projectTools); err != nil {
 		fmt.Fprintf(stderr, "[GjallarOS] Error: sync project-tool settings: %v\n", err)
 		return 1

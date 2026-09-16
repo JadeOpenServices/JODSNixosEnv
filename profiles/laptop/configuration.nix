@@ -6,7 +6,7 @@
 {
   imports = [
     ../../system/base.nix
-    ../../system/hardware/generated.nix
+    ../../generated/hardware.nix
 
     ../../system/hardware/desktop/mouse.nix
     ../../system/security/laptop/firewall.nix

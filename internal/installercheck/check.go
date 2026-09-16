@@ -163,7 +163,7 @@ func checkNativeGraphics(ctx context.Context, r *Report, root string) {
 	}
 	r.Findings = append(r.Findings, Finding{OK, fmt.Sprintf("native graphics detection: %s (%s), %s", live.Vendor, live.Type, live.BusID)})
 
-	generated, err := readGraphicsSettings(filepath.Join(root, "settings.nix"))
+	generated, err := readGraphicsSettings(filepath.Join(root, "generated", "state.nix"))
 	if err != nil {
 		r.Findings = append(r.Findings, Finding{Warn, fmt.Sprintf("generated graphics settings unavailable: %v", err)})
 		return

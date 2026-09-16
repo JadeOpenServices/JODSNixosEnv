@@ -12,15 +12,8 @@ import (
 
 var machineLocalPaths = []string{
 	"user.config.json",
-	"settings.nix",
-	"system/hardware/generated.nix",
-}
-
-var machineLocalPatterns = []string{
-	".user.config.json-*",
-	".settings.nix-*",
-	"system/hardware/.generated.nix-*",
-	"system/hardware/generated.nix.bak.*",
+	"generated/state.nix",
+	"generated/hardware.nix",
 }
 
 func trackedPath(ctx context.Context, root, relative string) bool {
@@ -36,14 +29,13 @@ func trackedPath(ctx context.Context, root, relative string) bool {
 }
 
 func excludePatterns() []string {
-	patterns := append([]string{}, machineLocalPaths...)
-	patterns = append(patterns, machineLocalPatterns...)
-
-	return append(
-		patterns,
+	return []string{
+		"user.config.json",
+		".user.config.json-*",
+		"generated/",
 		".vm/",
 		"non-nix/wallpapers/user-*",
-	)
+	}
 }
 
 func Protect(ctx context.Context, repo, hardware string) ([]string, error) {
@@ -141,33 +133,70 @@ func updateExclude(path string) error {
 	if err := os.MkdirAll(filepath.Dir(path), 0755); err != nil {
 		return fmt.Errorf("create Git info directory: %w", err)
 	}
-	existing := map[string]bool{}
+
 	contents, err := os.ReadFile(path)
 	if err != nil && !os.IsNotExist(err) {
 		return fmt.Errorf("read Git exclude: %w", err)
 	}
+
+	const begin = "# BEGIN GjallarOS machine-local state"
+	const end = "# END GjallarOS machine-local state"
+
+	legacy := map[string]bool{
+		"profiles/*/hardware-configuration.nix.bak.*": true,
+		"profiles/*/hardware-configuration.nix":       true,
+		"settings.nix":                                true,
+		".settings.nix-*":                             true,
+		"system/hardware/generated.nix":               true,
+		"system/hardware/.generated.nix-*":            true,
+		"system/hardware/generated.nix.bak.*":         true,
+		"user.config.json":                            true,
+		".user.config.json-*":                         true,
+		"generated/":                                  true,
+	}
+
+	var preserved []string
+	inManagedBlock := false
+
 	scanner := bufio.NewScanner(strings.NewReader(string(contents)))
 	for scanner.Scan() {
-		existing[scanner.Text()] = true
+		line := scanner.Text()
+
+		if line == begin {
+			inManagedBlock = true
+			continue
+		}
+		if line == end {
+			inManagedBlock = false
+			continue
+		}
+		if inManagedBlock || legacy[line] {
+			continue
+		}
+
+		preserved = append(preserved, line)
 	}
 	if err := scanner.Err(); err != nil {
 		return err
 	}
-	updated := append([]byte(nil), contents...)
-	if len(updated) > 0 && updated[len(updated)-1] != '\n' {
-		updated = append(updated, '\n')
+
+	for len(preserved) > 0 && preserved[len(preserved)-1] == "" {
+		preserved = preserved[:len(preserved)-1]
 	}
-	for _, pattern := range excludePatterns() {
-		if !existing[pattern] {
-			updated = append(updated, []byte(pattern+"\n")...)
-		}
-	}
+
+	preserved = append(preserved, "", begin)
+	preserved = append(preserved, excludePatterns()...)
+	preserved = append(preserved, end, "")
+
+	updated := []byte(strings.Join(preserved, "\n"))
+
 	tmp, err := os.CreateTemp(filepath.Dir(path), ".exclude-*")
 	if err != nil {
 		return fmt.Errorf("create Git exclude: %w", err)
 	}
 	name := tmp.Name()
 	defer os.Remove(name)
+
 	if err := tmp.Chmod(0644); err != nil {
 		tmp.Close()
 		return err
@@ -186,6 +215,7 @@ func updateExclude(path string) error {
 	if err := os.Rename(name, path); err != nil {
 		return fmt.Errorf("replace Git exclude: %w", err)
 	}
+
 	return nil
 }
 

@@ -13,7 +13,7 @@ import (
 
 const (
 	freshTargetRoot = "/mnt"
-	relativeTarget  = "system/hardware/generated.nix"
+	relativeTarget  = "generated/hardware.nix"
 )
 
 func Target(repo string) string {

@@ -242,7 +242,7 @@ type configSnapshot struct {
 
 func snapshotInstallerConfig(repo string) ([]configSnapshot, error) {
 	paths := []string{
-		filepath.Join(repo, "settings.nix"),
+		filepath.Join(repo, "generated", "state.nix"),
 		filepath.Join(repo, "user.config.json"),
 	}
 
@@ -283,8 +283,10 @@ func verifyInstallerConfig(
 		expected[snapshot.Path] = snapshot
 	}
 
-	for _, name := range []string{"settings.nix", "user.config.json"} {
-		path := filepath.Join(repo, name)
+	for _, path := range []string{
+		filepath.Join(repo, "generated", "state.nix"),
+		filepath.Join(repo, "user.config.json"),
+	} {
 		prior := expected[path]
 
 		data, err := os.ReadFile(path)

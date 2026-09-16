@@ -30,7 +30,7 @@ func Strings(values []string) string {
 	return "[ " + strings.Join(quoted, " ") + " ]"
 }
 
-// Settings contains only values written to settings.nix. Values are rendered
+// Settings contains only values written to generated/state.nix. Values are rendered
 // as literals; none are evaluated as Nix source.
 type Settings struct {
 	System, Profile, Hostname, Username, Timezone, Locale                string
@@ -179,7 +179,10 @@ func Render(s Settings) []byte {
 // WriteAtomic writes through a sibling temporary file then renames it.
 func WriteAtomic(path string, s Settings) error {
 	dir := filepath.Dir(path)
-	tmp, err := os.CreateTemp(dir, ".settings.nix-*")
+	if err := os.MkdirAll(dir, 0755); err != nil {
+		return fmt.Errorf("create generated state directory: %w", err)
+	}
+	tmp, err := os.CreateTemp(dir, ".state.nix-*")
 	if err != nil {
 		return fmt.Errorf("create temporary settings: %w", err)
 	}

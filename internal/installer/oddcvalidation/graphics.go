@@ -23,7 +23,7 @@ const graphicsSettingsExpr = `
 let
   flake = builtins.getFlake ("path:" + toString ./.);
   pkgs = flake.inputs.nixpkgs.legacyPackages.${builtins.currentSystem};
-  settings = import ./settings.nix {
+  settings = import ./generated/state.nix {
     inherit pkgs;
     inputs = flake.inputs;
   };

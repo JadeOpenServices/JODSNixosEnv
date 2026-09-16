@@ -72,8 +72,11 @@ func testRepo(t *testing.T) string {
 		t.Fatal(err)
 	}
 
+	if err := os.MkdirAll(filepath.Join(root, "generated"), 0755); err != nil {
+		t.Fatal(err)
+	}
 	if err := os.WriteFile(
-		filepath.Join(root, "settings.nix"),
+		filepath.Join(root, "generated", "state.nix"),
 		[]byte("{ hostname = \"gjallarOS\"; }\n"),
 		0644,
 	); err != nil {
@@ -257,7 +260,7 @@ func TestInstallerConfigRemainsUnchanged(t *testing.T) {
 	repo := testRepo(t)
 
 	settingsBefore, err := os.ReadFile(
-		filepath.Join(repo, "settings.nix"),
+		filepath.Join(repo, "generated", "state.nix"),
 	)
 	if err != nil {
 		t.Fatal(err)
@@ -285,7 +288,7 @@ func TestInstallerConfigRemainsUnchanged(t *testing.T) {
 	}
 
 	settingsAfter, err := os.ReadFile(
-		filepath.Join(repo, "settings.nix"),
+		filepath.Join(repo, "generated", "state.nix"),
 	)
 	if err != nil {
 		t.Fatal(err)
@@ -312,8 +315,11 @@ func TestConfigMutationDuringInstallFailsClosed(t *testing.T) {
 	r := mountedRunner()
 
 	r.onRun = func() {
+		if err := os.MkdirAll(filepath.Join(repo, "generated"), 0755); err != nil {
+			t.Fatal(err)
+		}
 		if err := os.WriteFile(
-			filepath.Join(repo, "settings.nix"),
+			filepath.Join(repo, "generated", "state.nix"),
 			[]byte("MUTATED\n"),
 			0644,
 		); err != nil {

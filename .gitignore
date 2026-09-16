@@ -13,11 +13,9 @@ settings.nix.tmp*
 
 # Machine-local infrastructure mappings (IP hostname, /etc/hosts syntax).
 local/jods-hosts
-# Machine-local generated state. Never commit.
+
+# BEGIN GjallarOS machine-local state
 user.config.json
-settings.nix
 .user.config.json-*
-.settings.nix-*
-system/hardware/generated.nix
-system/hardware/.generated.nix-*
-system/hardware/generated.nix.bak.*
+generated/
+# END GjallarOS machine-local state
