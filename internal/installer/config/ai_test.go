@@ -3,7 +3,7 @@ package config
 import "testing"
 
 func validAIUser() User {
-	return User{System: "x86_64-linux", Profile: "laptop", Hostname: "host", Username: "user", Theme: "nord", Shell: "zsh", Editors: []string{"vim"}, Browsers: []string{"firefox"}, AIEnable: true, AIAgentMode: "workspace"}
+	return User{Profile: "laptop", Hostname: "host", Username: "user", Theme: "nord", Shell: "zsh", Editors: []string{"vim"}, Browsers: []string{"firefox"}, AIEnable: true, AIAgentMode: "workspace"}
 }
 
 func TestAIConfigurationBranches(t *testing.T) {

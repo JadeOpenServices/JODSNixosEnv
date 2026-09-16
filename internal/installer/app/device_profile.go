@@ -3,7 +3,6 @@ package app
 import (
 	"fmt"
 
-	"github.com/bakanura/gjallarOS/internal/installer/config"
 	"github.com/bakanura/gjallarOS/internal/installer/deviceprofile"
 	"github.com/bakanura/gjallarOS/internal/installer/discovery"
 	"github.com/bakanura/gjallarOS/internal/installer/oddc"
@@ -35,43 +34,6 @@ func resolveODDCModelFromSource(
 	)
 }
 
-func persistReconciledODDCModel(
-	presetPath string,
-	user config.User,
-	modelDrift bool,
-) error {
-	if !modelDrift {
-		return nil
-	}
-
-	if err := config.WriteAtomic(
-		presetPath,
-		user,
-	); err != nil {
-		return fmt.Errorf(
-			"persist reconciled ODDC model: %w",
-			err,
-		)
-	}
-
-	return nil
-}
-
-func persistDeviceIdentity(
-	user *config.User,
-	hardware discovery.Hardware,
-	resolved oddc.Resolved,
-) {
-	user.ODDCModel = resolved.ModelID
-
-	user.DeviceSysVendor = hardware.SysVendor
-	user.DeviceProductName = hardware.ProductName
-	user.DeviceProductVersion = hardware.ProductVersion
-	user.DeviceBoardVendor = hardware.BoardVendor
-	user.DeviceBoardName = hardware.BoardName
-	user.DeviceBoardVersion = hardware.BoardVersion
-}
-
 func validateSecureBootFirmwareSupport(
 	enabled bool,
 	modelID string,
@@ -101,11 +63,4 @@ func validateSecureBootFirmwareSupport(
 		model,
 		reason,
 	)
-}
-
-func oddcModelDrifted(
-	user config.User,
-	resolved oddc.Resolved,
-) bool {
-	return user.ODDCModel != resolved.ModelID
 }

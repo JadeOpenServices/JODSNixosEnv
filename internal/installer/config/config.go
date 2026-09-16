@@ -14,7 +14,6 @@ import (
 )
 
 type User struct {
-	System                    string   `json:"system"`
 	Profile                   string   `json:"profile"`
 	Hostname                  string   `json:"hostname"`
 	Username                  string   `json:"username"`
@@ -59,13 +58,6 @@ type User struct {
 	EnableListenbrainz        bool     `json:"enableListenbrainz"`
 	LastfmUsername            string   `json:"lastfmUsername"`
 	ListenbrainzUsername      string   `json:"listenbrainzUsername"`
-	ODDCModel                 string   `json:"oddcModel"`
-	DeviceSysVendor           string   `json:"deviceSysVendor"`
-	DeviceProductName         string   `json:"deviceProductName"`
-	DeviceProductVersion      string   `json:"deviceProductVersion"`
-	DeviceBoardVendor         string   `json:"deviceBoardVendor"`
-	DeviceBoardName           string   `json:"deviceBoardName"`
-	DeviceBoardVersion        string   `json:"deviceBoardVersion"`
 	NemuEnable                bool     `json:"nemuEnable"`
 	NemuGPUPassthrough        bool     `json:"nemuGpuPassthrough"`
 	LUKSTPM2Enable            bool     `json:"luksTpm2Enable"`
@@ -165,9 +157,6 @@ func Validate(user User) error {
 		if user.WorkUsername != "" && !usernamePattern.MatchString(user.WorkUsername) {
 			return fmt.Errorf("invalid work username: %q", user.WorkUsername)
 		}
-	}
-	if user.System != "x86_64-linux" && user.System != "aarch64-linux" {
-		return fmt.Errorf("unsupported system: %q", user.System)
 	}
 	if user.Profile == "" || user.Hostname == "" || user.Theme == "" || user.Shell == "" {
 		return fmt.Errorf("profile, hostname, shell, and theme are required")

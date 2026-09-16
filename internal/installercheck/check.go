@@ -92,7 +92,7 @@ const (
 )
 
 var presetSchema = map[string]presetValueType{
-	"system": presetString, "profile": presetString, "hostname": presetString, "username": presetString,
+	"profile": presetString, "hostname": presetString, "username": presetString,
 	"timezone": presetString, "locale": presetString, "keyboardLayout": presetString, "keyboardVariant": presetString,
 	"touchpadWorkspaceSwipe": presetBool, "clamshellEnable": presetBool, "usbguardEnable": presetBool,
 	"allowUnvalidatedODDCModel": presetBool,

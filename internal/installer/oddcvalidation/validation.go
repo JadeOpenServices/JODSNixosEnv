@@ -11,8 +11,6 @@ const (
 	GateFlakeCheck           Gate = "flake-check"
 	GateDeviceEvaluation     Gate = "device-evaluation"
 	GateRealMachineRebuild   Gate = "real-machine-rebuild"
-	GateHardwareIdentity     Gate = "hardware-identity"
-	GateProfilePropagation   Gate = "profile-propagation"
 	GateRuntimeGraphics      Gate = "runtime-graphics"
 	GateRuntimeSensorsTablet Gate = "runtime-sensors-tablet"
 	GateSecureBootPolicy     Gate = "secure-boot-policy"
@@ -25,8 +23,6 @@ var RequiredGates = []Gate{
 	GateFlakeCheck,
 	GateDeviceEvaluation,
 	GateRealMachineRebuild,
-	GateHardwareIdentity,
-	GateProfilePropagation,
 	GateRuntimeGraphics,
 	GateRuntimeSensorsTablet,
 	GateSecureBootPolicy,

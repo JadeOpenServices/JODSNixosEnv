@@ -11,7 +11,6 @@ func TestWriteAtomicPersistsUserConfigMode0600(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "user.config.json")
 
 	want := User{
-		System:            "x86_64-linux",
 		Profile:           "laptop",
 		Hostname:          "gjallarOS",
 		Username:          "testuser",

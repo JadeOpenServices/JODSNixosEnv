@@ -2,7 +2,6 @@ package oddcvalidation
 
 import (
 	"fmt"
-	"path/filepath"
 
 	"github.com/bakanura/gjallarOS/internal/installer/config"
 	"github.com/bakanura/gjallarOS/internal/installer/deviceprofile"
@@ -12,7 +11,7 @@ import (
 )
 
 type DeviceContext struct {
-	User     config.User
+	Hostname string
 	Hardware discovery.Hardware
 	Resolved oddc.Resolved
 	Revision string
@@ -37,7 +36,7 @@ func loadDeviceContext(
 	resolveRevision RevisionResolver,
 	detectHardware HardwareDetector,
 ) (DeviceContext, error) {
-	user, err := loadConfig(filepath.Join(repo, "user.config.json"))
+	user, err := loadConfig(repo + "/user.config.json")
 	if err != nil {
 		return DeviceContext{}, fmt.Errorf(
 			"load device validation configuration: %w",
@@ -66,16 +65,9 @@ func loadDeviceContext(
 	}
 
 	return DeviceContext{
-		User:     user,
+		Hostname: user.Hostname,
 		Hardware: hardware,
 		Resolved: resolved,
 		Revision: revision,
 	}, nil
-}
-
-func (d DeviceContext) ValidationResults() []Result {
-	return []Result{
-		hardwareIdentityResult(d.User, d.Hardware),
-		profilePropagationResult(d.User, d.Resolved),
-	}
 }

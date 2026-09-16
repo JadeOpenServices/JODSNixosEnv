@@ -36,7 +36,7 @@ func TestCheckRejectsInvalidUserConfig(t *testing.T) {
 }
 
 func TestCheckAcceptsInstallerDefaults(t *testing.T) {
-	root := testRepository(t, `{"system":"x86_64-linux"}`)
+	root := testRepository(t, `{"profile":"laptop"}`)
 	report := Check(context.Background(), root)
 	if report.Failed() {
 		t.Fatalf("valid minimal config should not fail: %#v", report.Findings)
@@ -44,7 +44,7 @@ func TestCheckAcceptsInstallerDefaults(t *testing.T) {
 }
 
 func TestCheckRejectsWrongPresetFieldType(t *testing.T) {
-	root := testRepository(t, `{"system":false}`)
+	root := testRepository(t, `{"profile":false}`)
 	report := Check(context.Background(), root)
 	if !report.Failed() {
 		t.Fatal("wrong preset field type must fail")
@@ -58,7 +58,7 @@ func testRepository(t *testing.T, config string) string {
 		"flake.nix":                       "{}",
 		"user.config.json":                config,
 		"scripts/installation/install.sh": "#!/usr/bin/env bash\n",
-		"scripts/installation/user_PresetJSON/default.user.config.json": `{"system":"x86_64-linux","profile":"laptop"}`,
+		"scripts/installation/user_PresetJSON/default.user.config.json": `{"profile":"laptop"}`,
 		"cmd/gjallar-installer/main.go":                                 "package main\n",
 		"internal/installer/app/app.go":                                 "package app\n",
 		"system/apps/ollama.nix":                                        "{}\n",
