@@ -118,18 +118,27 @@
         else
           throw "GjallarOS source provenance is unavailable";
 
-      basePkgs = nixpkgs.legacyPackages.${system};
+      overlays = [
+        inputs.nur.overlays.default
+      ]
+      ++ import ./pkgs/lib/overlays.nix;
+
+      mkPkgs =
+        targetSystem:
+        import nixpkgs {
+          system = targetSystem;
+          inherit overlays;
+          config.allowUnfree = true;
+        };
+
+      basePkgs = mkPkgs system;
 
       settings = import (./. + "/settings.nix") {
         pkgs = basePkgs;
         inherit inputs;
       };
 
-      pkgs = import nixpkgs {
-        inherit system;
-        overlays = [
-        ];
-      };
+      pkgs = basePkgs;
     in
     {
       nixosModules = import ./oddc/nixos/registry.nix;
@@ -251,7 +260,7 @@
 
       homeConfigurations = {
         ${settings.username} = home-manager.lib.homeManagerConfiguration {
-          pkgs = nixpkgs.legacyPackages.${settings.system};
+          pkgs = mkPkgs settings.system;
 
           modules = [
             (./. + "/profiles/${settings.profile}/home.nix")
@@ -270,7 +279,7 @@
       }
       // nixpkgs.lib.optionalAttrs settings.workUserEnable {
         ${settings.workUsername} = home-manager.lib.homeManagerConfiguration {
-          pkgs = nixpkgs.legacyPackages.${settings.system};
+          pkgs = mkPkgs settings.system;
 
           modules = [
             ./profiles/work-user/home.nix
