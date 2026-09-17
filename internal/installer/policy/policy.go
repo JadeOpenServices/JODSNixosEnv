@@ -7,28 +7,28 @@ type Features struct {
 	AIEnable               bool
 	AutoReboot             bool
 	DebugFunctions         bool
-	DockerEnable           bool
+	ContainersEnable       bool
 	ClamshellEnable        bool
 	USBGuardEnable         bool
 	NemuEnable             bool
-	NemuGPUPassthrough     bool
 	RecoveryEnable         bool
 	JODSPrebootLockEnable  bool
 	SecureBootEnable       bool
 	EndpointManagedDevice  bool
 	TouchpadWorkspaceSwipe bool
-	WorkUserEnable         bool
+	PrintingEnable         bool
+	NetworkPrintingEnable  bool
 }
 
 func FromUser(user config.User) Features {
 	return Features{
 		AIEnable: user.AIEnable, AutoReboot: user.AutoReboot,
-		DebugFunctions: user.DebugFunctions, DockerEnable: user.DockerEnable,
-		ClamshellEnable: user.ClamshellEnable, USBGuardEnable: user.USBGuardEnable,
-		NemuEnable: user.NemuEnable, NemuGPUPassthrough: user.NemuGPUPassthrough,
+		DebugFunctions: user.DebugFunctions, ContainersEnable: user.ContainersEnable,
+		ClamshellEnable: user.ClamshellEnable, USBGuardEnable: user.USBGuardEnable, PrintingEnable: user.PrintingEnable, NetworkPrintingEnable: user.NetworkPrintingEnable,
+		NemuEnable:     user.NemuEnable,
 		RecoveryEnable: user.RecoveryEnable, JODSPrebootLockEnable: user.JODSPrebootLockEnable,
 		SecureBootEnable:       user.SecureBootEnable,
 		EndpointManagedDevice:  user.EndpointManagedDevice,
-		TouchpadWorkspaceSwipe: user.TouchpadWorkspaceSwipe, WorkUserEnable: user.WorkUserEnable,
+		TouchpadWorkspaceSwipe: user.TouchpadWorkspaceSwipe,
 	}
 }

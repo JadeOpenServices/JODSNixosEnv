@@ -23,7 +23,8 @@ System-wide application services and application backends.
 
 Reusable hardware support and hardware policy.
 
-Machine-generated hardware state belongs in the selected profile instead.
+Machine-generated hardware state belongs in `generated/hardware.nix`.
+Canonical device-specific facts and exceptional policy belong in ODDC.
 
 ### management
 
@@ -81,4 +82,6 @@ If a feature changes NixOS itself, system services, boot behavior, security,
 hardware policy or machine-wide functionality, it normally belongs somewhere
 under `system/`.
 
-Profiles select these modules; profiles should not reimplement them.
+Generic composition imports these modules directly. Device-specific behavior
+should enter through resolved ODDC capabilities or policy rather than through
+parallel machine-specific module trees.

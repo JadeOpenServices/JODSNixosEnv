@@ -14,9 +14,9 @@ func TestStringEscapesNixInterpolation(t *testing.T) {
 }
 
 func TestRenderEscapesAllUserStrings(t *testing.T) {
-	s := Settings{System: "x86_64-linux", Profile: `${builtins.abort "bad"}`, Editors: []string{`a${b}`}}
+	s := Settings{System: "x86_64-linux", Hostname: `${builtins.abort "bad"}`, Editors: []string{`a${b}`}}
 	got := string(Render(s))
-	if !strings.Contains(got, `profile = "\${builtins.abort \"bad\"}";`) || !strings.Contains(got, `editors = [ "a\${b}" ];`) {
+	if !strings.Contains(got, `hostname = "\${builtins.abort \"bad\"}";`) || !strings.Contains(got, `editors = [ "a\${b}" ];`) {
 		t.Fatalf("unsafe or missing escaped output:\n%s", got)
 	}
 }

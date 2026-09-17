@@ -137,8 +137,6 @@ in
     enable = true;
     enable32Bit = true;
   };
-  hardware.enableRedistributableFirmware = true;
-  hardware.wirelessRegulatoryDatabase = true;
 
   boot.initrd.kernelModules = lib.concatLists [
     (lib.optional (vendor == "amd") "amdgpu")

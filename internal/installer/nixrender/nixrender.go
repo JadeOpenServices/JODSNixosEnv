@@ -1,5 +1,5 @@
 // Package nixrender emits the small Nix literal subset used by installer
-// generated settings. It deliberately has no evaluation capability.
+// generated machine state. It deliberately has no evaluation capability.
 package nixrender
 
 import (
@@ -12,7 +12,7 @@ import (
 
 // String returns a Nix double-quoted string literal. In addition to ordinary
 // quoting it escapes interpolation markers, so a value from user.config.json
-// can never become executable Nix during settings rendering.
+// can never become executable Nix during generated-state rendering.
 func String(value string) string {
 	value = strings.ReplaceAll(value, "\\", "\\\\")
 	value = strings.ReplaceAll(value, "\"", "\\\"")
@@ -33,48 +33,45 @@ func Strings(values []string) string {
 // Settings contains only values written to generated/state.nix. Values are rendered
 // as literals; none are evaluated as Nix source.
 type Settings struct {
-	System, Profile, Hostname, Username, Timezone, Locale                string
-	KeyboardLayout, KeyboardVariant                                      string
-	WeatherCity, WeatherCountry                                          string
-	TouchpadWorkspaceSwipe, TouchscreenEnable                            bool
-	PenTabletEnable, OrientationSensorEnable                             bool
-	ClamshellEnable, USBGuardEnable                                      bool
-	Name, Email, GitHubUsername, DotfilesDir                             string
-	WorkUserEnable                                                       bool
-	WorkUsername, WorkUserPasswordFile, RootPasswordFile                 string
-	DockerEnable, DebugFunctions                                         bool
-	Shell                                                                string
-	Editors, Browsers                                                    []string
-	PreferredEditor, PreferredBrowser                                    string
-	PlaneHost, DrawioHost                                                string
-	PlaneEnable, DrawioEnable, DrawioSelfHosted                          bool
-	BackgroundNormal, BackgroundWork, BackgroundGaming                   string
-	EnableScrobbling, EnableLastfm, EnableListenbrainz                   bool
-	LastfmUsername, ListenbrainzUsername                                 string
-	ODDCModel                                                            string
-	DeviceSysVendor, DeviceProductName, DeviceProductVersion             string
-	DeviceBoardVendor, DeviceBoardName, DeviceBoardVersion               string
-	GraphicsVendor, GraphicsDeviceID, GraphicsDriverBranch, GraphicsType string
-	GraphicsCompute                                                      bool
-	GraphicsBusID, GraphicsIntegratedBusID, WiFiDriver                   string
-	AIEnable                                                             bool
-	AIModel, AIAccelerationProfile                                       string
-	AIAgentMode                                                          string
-	AIContextTokens, AIVRAMMB                                            int
-	NemuEnable, NemuGPUPassthrough                                       bool
-	NemuGPUIDs                                                           []string
-	LUKSTPM2Enable                                                       bool
-	RecoveryEnable, RecoveryPartitionEnable, JODSPrebootLockEnable       bool
-	SecureBootEnable                                                     bool
-	EndpointManagedDevice                                                bool
-	JODSEndpoint, JODSPolicySigningPublicKey                             string
-	JODSRecoveryCommandSigningPublicKey                                  string
-	JODSEnrollmentMode                                                   string
-	JODSAllowInsecureTLS                                                 bool
-	JODSDeviceClass, JODSDesktopProfile                                  string
-	JODSFingerprintEnrollmentAllowed                                     bool
-	WMs                                                                  []string
-	Theme                                                                string
+	System                                                                 string
+	Hostname, Username, Timezone, Locale                                   string
+	KeyboardLayout, KeyboardVariant                                        string
+	WeatherCity, WeatherCountry                                            string
+	TouchpadWorkspaceSwipe, TouchscreenEnable                              bool
+	PenTabletEnable, OrientationSensorEnable                               bool
+	ClamshellEnable, USBGuardEnable, PrintingEnable, NetworkPrintingEnable bool
+	Name, Email, GitHubUsername, DotfilesDir                               string
+	RootPasswordFile                                                       string
+	ContainersEnable, DebugFunctions                                       bool
+	Shell                                                                  string
+	Editors, Browsers                                                      []string
+	PreferredEditor, PreferredBrowser                                      string
+	PlaneHost, DrawioHost                                                  string
+	PlaneEnable, DrawioEnable, DrawioSelfHosted                            bool
+	BackgroundNormal                                                       string
+	ODDCModel                                                              string
+	DeviceSysVendor, DeviceProductName, DeviceProductVersion               string
+	DeviceBoardVendor, DeviceBoardName, DeviceBoardVersion                 string
+	GraphicsVendor, GraphicsDeviceID, GraphicsDriverBranch, GraphicsType   string
+	GraphicsCompute                                                        bool
+	GraphicsBusID, GraphicsIntegratedBusID, WiFiDriver                     string
+	AIEnable                                                               bool
+	AIModel, AIAccelerationProfile                                         string
+	AIAgentMode                                                            string
+	AIContextTokens, AIVRAMMB                                              int
+	NemuEnable                                                             bool
+	LUKSTPM2Enable                                                         bool
+	RecoveryEnable, RecoveryPartitionEnable, JODSPrebootLockEnable         bool
+	SecureBootEnable                                                       bool
+	EndpointManagedDevice                                                  bool
+	JODSEndpoint, JODSPolicySigningPublicKey                               string
+	JODSRecoveryCommandSigningPublicKey                                    string
+	JODSEnrollmentMode                                                     string
+	JODSAllowInsecureTLS                                                   bool
+	JODSDeviceClass, JODSDesktopProfile                                    string
+	JODSFingerprintEnrollmentAllowed                                       bool
+	WMs                                                                    []string
+	Theme                                                                  string
 }
 
 func Render(s Settings) []byte {
@@ -87,7 +84,6 @@ func Render(s Settings) []byte {
 	integer := func(k string, v int) { fmt.Fprintf(&b, "    %s = %d;\n", k, v) }
 	list := func(k string, v []string) { fmt.Fprintf(&b, "    %s = %s;\n", k, Strings(v)) }
 	str("system", s.System)
-	str("profile", s.Profile)
 	str("hostname", s.Hostname)
 	str("username", s.Username)
 	str("timezone", s.Timezone)
@@ -102,15 +98,14 @@ func Render(s Settings) []byte {
 	boolean("orientationSensorEnable", s.OrientationSensorEnable)
 	boolean("clamshellEnable", s.ClamshellEnable)
 	boolean("usbguardEnable", s.USBGuardEnable)
+	boolean("printingEnable", s.PrintingEnable)
+	boolean("networkPrintingEnable", s.NetworkPrintingEnable)
 	str("name", s.Name)
 	str("email", s.Email)
 	str("githubUsername", s.GitHubUsername)
 	str("dotfilesDir", s.DotfilesDir)
-	boolean("workUserEnable", s.WorkUserEnable)
-	str("workUsername", s.WorkUsername)
-	str("workUserPasswordFile", s.WorkUserPasswordFile)
 	str("rootPasswordFile", s.RootPasswordFile)
-	boolean("dockerEnable", s.DockerEnable)
+	boolean("containersEnable", s.ContainersEnable)
 	boolean("debugFunctions", s.DebugFunctions)
 	str("shell", s.Shell)
 	list("editors", s.Editors)
@@ -123,13 +118,6 @@ func Render(s Settings) []byte {
 	boolean("drawioSelfHosted", s.DrawioSelfHosted)
 	str("drawioHost", s.DrawioHost)
 	str("backgroundNormal", s.BackgroundNormal)
-	str("backgroundWork", s.BackgroundWork)
-	str("backgroundGaming", s.BackgroundGaming)
-	boolean("enableScrobbling", s.EnableScrobbling)
-	boolean("enableLastfm", s.EnableLastfm)
-	boolean("enableListenbrainz", s.EnableListenbrainz)
-	str("lastfmUsername", s.LastfmUsername)
-	str("listenbrainzUsername", s.ListenbrainzUsername)
 	str("oddcModel", s.ODDCModel)
 	str("deviceSysVendor", s.DeviceSysVendor)
 	str("deviceProductName", s.DeviceProductName)
@@ -152,8 +140,6 @@ func Render(s Settings) []byte {
 	integer("aiContextTokens", s.AIContextTokens)
 	integer("aiVramMB", s.AIVRAMMB)
 	boolean("nemuEnable", s.NemuEnable)
-	boolean("nemuGpuPassthrough", s.NemuGPUPassthrough)
-	list("nemuGpuIds", s.NemuGPUIDs)
 	boolean("luksTpm2Enable", s.LUKSTPM2Enable)
 	boolean("recoveryEnable", s.RecoveryEnable)
 	boolean("recoveryPartitionEnable", s.RecoveryPartitionEnable)
@@ -170,7 +156,6 @@ func Render(s Settings) []byte {
 	boolean("jodsFingerprintEnrollmentAllowed", s.JODSFingerprintEnrollmentAllowed)
 	list("wms", s.WMs)
 	str("theme", s.Theme)
-	fmt.Fprintln(&b, "    profileDetails = import (./. + \"/profiles/${profile}/details.nix\") {};")
 	fmt.Fprintln(&b, "    themeDetails = import (./. + \"/themes/${theme}.nix\") {inherit pkgs;};")
 	fmt.Fprintln(&b, "}")
 	return b.Bytes()

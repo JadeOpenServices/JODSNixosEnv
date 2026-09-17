@@ -94,7 +94,7 @@ const (
 var presetSchema = map[string]presetValueType{
 	"profile": presetString, "hostname": presetString, "username": presetString,
 	"timezone": presetString, "locale": presetString, "keyboardLayout": presetString, "keyboardVariant": presetString,
-	"touchpadWorkspaceSwipe": presetBool, "clamshellEnable": presetBool, "usbguardEnable": presetBool,
+	"touchpadWorkspaceSwipe": presetBool, "clamshellEnable": presetBool, "usbguardEnable": presetBool, "printingEnable": presetBool, "networkPrintingEnable": presetBool,
 	"allowUnvalidatedODDCModel": presetBool,
 	"unattendedInstall":         presetBool,
 	"name":                      presetString, "email": presetString, "githubUsername": presetString, "dotfilesDir": presetString,
@@ -102,17 +102,14 @@ var presetSchema = map[string]presetValueType{
 	"preferredEditor": presetString, "preferredBrowser": presetString, "theme": presetString,
 	"weatherCity": presetString, "weatherCountry": presetString,
 	"planeEnable": presetBool, "planeHost": presetString, "drawioEnable": presetBool, "drawioSelfHosted": presetBool, "drawioHost": presetString,
-	"backgroundNormal": presetString, "backgroundWork": presetString, "backgroundGaming": presetString,
-	"workUserEnable": presetBool, "workUsername": presetString, "workUserPasswordFile": presetString,
-	"dockerEnable": presetBool, "debugFunctions": presetBool, "aiEnable": presetBool,
+	"backgroundNormal": presetString,
+	"containersEnable": presetBool, "debugFunctions": presetBool, "aiEnable": presetBool,
 	"overrideAiSelection": presetBool, "overrideModelWith": presetString, "aiAgentMode": presetString,
 	"jodsFingerprintEnrollmentAllowed": presetBool,
-	"enableScrobbling":                 presetBool, "enableLastfm": presetBool, "enableListenbrainz": presetBool,
-	"lastfmUsername": presetString, "listenbrainzUsername": presetString,
-	"oddcModel":       presetString,
-	"deviceSysVendor": presetString, "deviceProductName": presetString, "deviceProductVersion": presetString,
+	"oddcModel":                        presetString,
+	"deviceSysVendor":                  presetString, "deviceProductName": presetString, "deviceProductVersion": presetString,
 	"deviceBoardVendor": presetString, "deviceBoardName": presetString, "deviceBoardVersion": presetString,
-	"nemuEnable": presetBool, "nemuGpuPassthrough": presetBool, "luksTpm2Enable": presetBool,
+	"nemuEnable": presetBool, "luksTpm2Enable": presetBool,
 	"recoveryEnable":          presetBool,
 	"recoveryPartitionEnable": presetBool, "jodsPrebootLockEnable": presetBool,
 	"secureBootEnable": presetBool, "secureBootPrompt": presetBool, "endpointManagedDevice": presetBool,
@@ -177,7 +174,7 @@ func checkNativeGraphics(ctx context.Context, r *Report, root string) {
 		"graphicsIntegratedBusId": live.IntegratedBusID,
 	} {
 		if generated[key] != actual {
-			r.Findings = append(r.Findings, Finding{Warn, fmt.Sprintf("generated %s is %q; live detection is %q; rerun the installer to regenerate settings.nix", key, generated[key], actual)})
+			r.Findings = append(r.Findings, Finding{Warn, fmt.Sprintf("generated %s is %q; live detection is %q; rerun the installer to regenerate generated/state.nix", key, generated[key], actual)})
 			return
 		}
 	}

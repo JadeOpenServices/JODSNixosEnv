@@ -1,5 +1,10 @@
 { ... }:
 {
+  # Generic firmware availability belongs to the firmware layer rather than
+  # individual networking or device modules.
+  hardware.enableRedistributableFirmware = true;
+  hardware.wirelessRegulatoryDatabase = true;
+
   # Firmware updates are available through fwupdmgr and the graphical tools.
   services.fwupd.enable = true;
 

@@ -14,18 +14,12 @@ func TestParseHybridNvidiaAndAMD(t *testing.T) {
 	if result.BusID != "PCI:5:0:0" || result.IntegratedBusID != "PCI:193:0:0" {
 		t.Fatalf("unexpected bus IDs: %#v", result)
 	}
-	if len(result.PassthroughIDs) != 2 || result.PassthroughIDs[0] != "1002:15bf" {
-		t.Fatalf("unexpected passthrough IDs: %#v", result.PassthroughIDs)
-	}
 }
 
 func TestParseIntelOnly(t *testing.T) {
 	result := Parse(`0000:00:02.0 VGA compatible controller [0300]: Intel Corporation Meteor Lake-P [Intel Arc Graphics] [8086:7d55] (rev 08)`)
 	if result.Vendor != "intel" || result.Type != "integrated" || result.Compute || result.BusID != "PCI:0:2:0" {
 		t.Fatalf("unexpected Intel result: %#v", result)
-	}
-	if len(result.PassthroughIDs) != 0 {
-		t.Fatalf("Intel must not be selected for passthrough: %#v", result.PassthroughIDs)
 	}
 }
 
@@ -85,8 +79,5 @@ func TestParseFramework13AMD(t *testing.T) {
 	}
 	if result.IntegratedBusID != "PCI:193:0:0" {
 		t.Fatalf("IntegratedBusID = %q, want PCI:193:0:0", result.IntegratedBusID)
-	}
-	if len(result.PassthroughIDs) != 1 || result.PassthroughIDs[0] != "1002:15bf" {
-		t.Fatalf("unexpected passthrough IDs: %#v", result.PassthroughIDs)
 	}
 }

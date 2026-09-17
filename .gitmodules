@@ -1,0 +1,3 @@
+[submodule "pkgs/monique"]
+	path = pkgs/monique
+	url = https://github.com/bakanura/monique.git

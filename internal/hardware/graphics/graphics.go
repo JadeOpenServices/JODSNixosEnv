@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"os/exec"
 	"regexp"
-	"sort"
 	"strconv"
 	"strings"
 )
@@ -27,7 +26,6 @@ type Result struct {
 	Compute         bool
 	BusID           string
 	IntegratedBusID string
-	PassthroughIDs  []string
 }
 
 var graphicsLine = regexp.MustCompile(`^([[:xdigit:]]{4}:[[:xdigit:]]{2}:[[:xdigit:]]{2}\.[[:digit:]]) .*?(?:VGA compatible controller|3D controller|Display controller).*?\[([[:xdigit:]]{4}):([[:xdigit:]]{4})\]`)
@@ -98,17 +96,6 @@ func Parse(output string) Result {
 		result.IntegratedBusID = xorgBusID(integrated.BDF)
 	}
 
-	ids := make(map[string]struct{})
-	for _, controller := range controllers {
-		if strings.Contains(strings.ToLower(controller.Text), "intel") {
-			continue
-		}
-		ids[strings.ToLower(controller.VendorID+":"+controller.DeviceID)] = struct{}{}
-	}
-	for id := range ids {
-		result.PassthroughIDs = append(result.PassthroughIDs, id)
-	}
-	sort.Strings(result.PassthroughIDs)
 	return result
 }
 

@@ -15,12 +15,11 @@ in
     plugins =
       with pkgs.tmuxPlugins;
       [
-        vim-tmux-navigator
         {
           plugin = resurrect;
           extraConfig = ''
             set -g @resurrect-capture-pane-contents 'on'
-            set -g @resurrect-processes '"~nvim->nvim" lazygit'
+            set -g @resurrect-processes 'lazygit'
           '';
         }
       ]

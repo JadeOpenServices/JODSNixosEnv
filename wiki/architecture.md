@@ -11,20 +11,21 @@ going into every individual implementation file.
 
 ## Configuration flow
 
-    installer input
+    user.config.json / installer prompts
         |
         v
     gjallar-installer
         |
-        v
-    settings.nix
+        +--> generated/state.nix
+        +--> generated/hardware.nix
+        +--> generated/install-state.nix
         |
         v
     flake.nix
         |
-        +--> profile
-        +--> system modules
+        +--> generic system modules
         +--> Home Manager / user modules
+        +--> ODDC-resolved hardware policy
         +--> packages
         +--> themes
         |
@@ -46,15 +47,17 @@ Main paths:
     cmd/gjallar-installer/
     internal/installer/
 
-### Profiles
+### ODDC
 
-Profiles connect a machine class to the reusable system and user modules.
+ODDC is the canonical device identity, hardware composition, capability,
+validated quirk, and exceptional hardware-policy authority.
 
-See [Profiles](profiles.md).
+Generic GjallarOS modules consume resolved ODDC data without selecting a
+machine-specific system profile.
 
 Main path:
 
-    profiles/
+    oddc/
 
 ### System
 
@@ -89,8 +92,9 @@ Main paths:
 
 ### Hardware
 
-Hardware policy is reusable configuration under `system/hardware/`, while each
-profile also has machine-generated hardware configuration.
+Generic hardware behavior lives under `system/hardware/`. Canonical device
+identity and exceptional device policy live in ODDC. Machine-local generated
+hardware facts live in `generated/hardware.nix`.
 
 See [Hardware](hardware.md).
 
@@ -112,23 +116,30 @@ Main paths:
 
 `flake.nix` ties the repository together.
 
-It loads generated settings, selects the configured profile, imports NixOS and
-Home Manager configuration, exposes repository packages and uses the configured
-release policy.
+It loads generated machine-local state, imports the generic NixOS and Home
+Manager composition, exposes repository packages, integrates resolved ODDC
+policy, and uses the configured release policy.
 
-### settings.nix
+### Generated machine state
 
-`settings.nix` is generated installer output.
-
-It is the main configuration interface consumed by the Nix modules.
+The installer keeps derived machine-local state separate from reusable
+repository configuration.
 
 The normal flow is:
 
     user.config.json / prompts
         -> typed installer configuration
-        -> normalization and detection
-        -> settings.nix
-        -> Nix modules
+        -> normalization
+        -> generated/state.nix
+        -> generic Nix modules
+
+Hardware discovery is written separately to:
+
+    generated/hardware.nix
+
+Historical NixOS and Home Manager compatibility baselines live in:
+
+    generated/install-state.nix
 
 ### user.config.json
 
@@ -147,8 +158,9 @@ The default installer preset lives at:
     installer command           -> cmd/
     system configuration        -> system/
     user application/config     -> user/
-    machine profile             -> profiles/
-    reusable hardware policy    -> system/hardware/
+    generic hardware behavior  -> system/hardware/
+    device identity/policy       -> oddc/
+    machine-local hardware       -> generated/hardware.nix
     package or wrapper          -> pkgs/
     theme                       -> themes/
     recovery                    -> system/recovery/ or scripts/recovery/

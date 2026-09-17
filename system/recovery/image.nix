@@ -20,12 +20,11 @@ let
   generatedInstallerPreset = pkgs.writeText "gjallar-installer-fallback.json" (
     builtins.toJSON {
       # IMPORTANT:
-      # This object is config.User input, NOT rendered settings.nix output.
+      # This object is config.User input, NOT rendered generated/state.nix output.
       # Do not add derived fields such as aiModel, graphicsVendor,
       # aiContextTokens, wifiDriver, etc. Those are rediscovered/rendered
       # later by the installer.
       system = getSetting "system" pkgs.stdenv.hostPlatform.system;
-      profile = getSetting "profile" "laptop";
       hostname = getSetting "hostname" "gjallarOS";
       username = getSetting "username" "user";
 
@@ -44,10 +43,7 @@ let
 
       dotfilesDir = "";
 
-      workUserEnable = getSetting "workUserEnable" false;
-      workUsername = getSetting "workUsername" "";
-
-      dockerEnable = getSetting "dockerEnable" false;
+      containersEnable = getSetting "containersEnable" false;
       debugFunctions = getSetting "debugFunctions" false;
 
       shell = getSetting "shell" "zsh";
@@ -64,12 +60,7 @@ let
 
       theme = getSetting "theme" "noctalia";
       backgroundNormal = getSetting "backgroundNormal" "";
-      backgroundWork = getSetting "backgroundWork" "";
-      backgroundGaming = getSetting "backgroundGaming" "";
 
-      enableScrobbling = getSetting "enableScrobbling" false;
-      enableLastfm = getSetting "enableLastfm" false;
-      enableListenbrainz = getSetting "enableListenbrainz" false;
 
       aiEnable = getSetting "aiEnable" false;
       aiAgentMode = getSetting "aiAgentMode" "workspace";
@@ -77,7 +68,6 @@ let
       overrideModelWith = "";
 
       nemuEnable = getSetting "nemuEnable" false;
-      nemuGpuPassthrough = getSetting "nemuGpuPassthrough" false;
 
       luksTpm2Enable = getSetting "luksTpm2Enable" false;
 

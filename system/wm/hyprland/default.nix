@@ -9,6 +9,7 @@
 let
   shell = settings.themeDetails.shell or "noctalia";
   gjallarctl = pkgs.callPackage ../../../pkgs/gjallarctl { };
+  moniquePackage = pkgs.callPackage ../../../pkgs/monique/nix/package.nix { };
   hyprlandSession = pkgs.writeShellScriptBin "gjallar-hyprland-session" ''
         state_dir="''${XDG_STATE_HOME:-$HOME/.local/state}/hyprland"
         noctalia_state_dir="''${XDG_STATE_HOME:-$HOME/.local/state}/noctalia"
@@ -17,7 +18,7 @@ let
         mkdir -p "$noctalia_state_dir" "$hypr_config_dir"
 
         # Hyprland treats a missing source target as a configuration error. These
-        # fallbacks are only created when absent; Noctalia/nwg-displays retain full
+        # fallbacks are only created when absent; Noctalia/Monique retain full
         # ownership once they write their generated files.
         if [ ! -e "$noctalia_state_dir/hyprland-colors.conf" ]; then
           cat >"$noctalia_state_dir/hyprland-colors.conf" <<'EOF'
@@ -84,12 +85,32 @@ in
         };
       };
 
+  systemd.user.services.moniqued = {
+    description = "Monique monitor profile daemon";
+    after = [ "graphical-session.target" ];
+    partOf = [ "graphical-session.target" ];
+    wantedBy = [ "graphical-session.target" ];
+
+    serviceConfig = {
+      Type = "simple";
+      ExecStart = "${moniquePackage}/bin/moniqued";
+      Restart = "on-failure";
+      RestartSec = 5;
+    };
+  };
+
   imports = [
     ../common/wayland.nix
   ]
   ++ lib.optional (shell == "noctalia") ../shells/noctalia.nix;
 
   programs = {
+    monique = {
+      enable = true;
+      package = moniquePackage;
+      enablePolkit = false;
+    };
+
     hyprland = {
       enable = true;
       xwayland.enable = true;

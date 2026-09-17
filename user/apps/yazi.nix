@@ -1,4 +1,4 @@
-{ inputs, config, pkgs, lib, settings, ... }:
+{ inputs, config, pkgs, lib, settings, gjallarRun, ... }:
 let
   editor = lib.getExe pkgs.${settings.preferredEditor};
   colors = config.lib.stylix.colors;
@@ -102,6 +102,19 @@ let
       error_fg = "{{colors.error.default.hex}}",
     })
   '';
+  gjallarFileManager = pkgs.writeShellApplication {
+    name = "gjallar-file-manager";
+
+    text = ''
+      target="''${1:-$HOME}"
+
+      exec ${gjallarRun}/bin/gjallar-run \
+        ${lib.getExe pkgs.ghostty} \
+        -e ${lib.getExe config.programs.yazi.package} \
+        "$target"
+    '';
+  };
+
 in
 {
   programs.yazi = {
@@ -139,12 +152,31 @@ in
     plugins.sduf = builtins.toPath inputs.yazi-disk-space.outPath;
   };
 
+  _module.args.gjallarFileManager = gjallarFileManager;
+
   stylix.targets.yazi.enable = false;
 
   home.packages = with pkgs; [
     glib ffmpeg poppler-utils exiftool zoxide
-    file fd ripgrep fzf chafa wl-clipboard
+    file fd ripgrep fzf chafa wl-clipboard gjallarFileManager
   ];
+
+  # Session-wide file-manager route. GUI file chooser dialogs remain
+  # portal-owned; opening a directory uses this GjallarOS application route.
+  xdg.desktopEntries.gjallar-yazi = {
+    name = "Yazi File Manager";
+    genericName = "File Manager";
+    comment = "Browse files with Yazi in Ghostty";
+    exec = "${lib.getExe gjallarFileManager} %f";
+    terminal = false;
+    mimeType = [ "inode/directory" ];
+  };
+
+  xdg.mimeApps = {
+    enable = true;
+    associations.added."inode/directory" = [ "gjallar-yazi.desktop" ];
+    defaultApplications."inode/directory" = [ "gjallar-yazi.desktop" ];
+  };
 
   xdg.configFile."noctalia/templates/yazi.toml".text = theme;
   xdg.configFile."noctalia/templates/yazi-init.lua".text = init;

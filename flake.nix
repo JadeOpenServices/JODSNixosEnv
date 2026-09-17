@@ -42,8 +42,6 @@
       inputs.nixpkgs.follows = "nixpkgs";
     };
 
-    nixvim.url = "github:nix-community/nixvim";
-
     hyprland-plugins = {
       url = "github:hyprwm/hyprland-plugins";
       inputs.hyprland.follows = "hyprland";
@@ -61,11 +59,6 @@
 
     zen-browser = {
       url = "github:0xc000022070/zen-browser-flake";
-      inputs.nixpkgs.follows = "nixpkgs";
-    };
-
-    winapps = {
-      url = "github:winapps-org/winapps";
       inputs.nixpkgs.follows = "nixpkgs";
     };
 
@@ -138,6 +131,8 @@
         inherit inputs;
       };
 
+      installState = import (./. + "/generated/install-state.nix");
+
       pkgs = basePkgs;
     in
     {
@@ -159,6 +154,10 @@
         m620-legacy-nvidia-policy = import ./tests/nix/m620-policy.nix {
           inherit nixpkgs system;
           graphicsModule = ./system/hardware/graphics;
+        };
+
+        framework-battery-policy = import ./tests/nix/battery-policy.nix {
+          inherit pkgs;
         };
       };
 
@@ -202,6 +201,7 @@
             inputs.stylix.nixosModules.stylix
             inputs.sops-nix.nixosModules.sops
             inputs.home-manager.nixosModules.home-manager
+            ./pkgs/monique/nix/nixos-module.nix
             inputs.lanzaboote.nixosModules.lanzaboote
 
             {
@@ -214,22 +214,18 @@
               home-manager.backupFileExtension = "hm-bak";
 
               home-manager.extraSpecialArgs = {
-                inherit inputs settings;
+                inherit inputs settings installState;
               };
 
               home-manager.sharedModules = [
                 inputs.plasma-manager.homeModules.plasma-manager
-                inputs.nixvim.homeModules.nixvim
                 inputs.sops-nix.homeManagerModules.sops
                 inputs.zen-browser.homeModules.twilight
                 inputs.noctalia.homeModules.default
               ];
 
               home-manager.users = {
-                ${settings.username} = import (./. + "/profiles/${settings.profile}/home.nix");
-              }
-              // nixpkgs.lib.optionalAttrs settings.workUserEnable {
-                ${settings.workUsername} = import ./profiles/work-user/home.nix;
+                ${settings.username} = import ./user/default.nix;
               };
 
               systemd.services.display-manager.after = [
@@ -245,7 +241,7 @@
               ];
             }
 
-            (./. + "/profiles/${settings.profile}/configuration.nix")
+            ./system/default.nix
           ]
           ++ nixpkgs.lib.optionals (settings.endpointManagedDevice or false) [
             ./system/management/jods
@@ -253,7 +249,12 @@
           ];
 
           specialArgs = {
-            inherit inputs settings sourceRevision;
+            inherit
+              inputs
+              settings
+              sourceRevision
+              installState
+              ;
           };
         };
       };
@@ -263,36 +264,16 @@
           pkgs = mkPkgs settings.system;
 
           modules = [
-            (./. + "/profiles/${settings.profile}/home.nix")
+            ./user/default.nix
             inputs.plasma-manager.homeModules.plasma-manager
             inputs.stylix.homeModules.stylix
-            inputs.nixvim.homeModules.nixvim
             inputs.sops-nix.homeManagerModules.sops
             inputs.zen-browser.homeModules.twilight
             inputs.noctalia.homeModules.default
           ];
 
           extraSpecialArgs = {
-            inherit inputs settings;
-          };
-        };
-      }
-      // nixpkgs.lib.optionalAttrs settings.workUserEnable {
-        ${settings.workUsername} = home-manager.lib.homeManagerConfiguration {
-          pkgs = mkPkgs settings.system;
-
-          modules = [
-            ./profiles/work-user/home.nix
-            inputs.plasma-manager.homeModules.plasma-manager
-            inputs.stylix.homeModules.stylix
-            inputs.nixvim.homeModules.nixvim
-            inputs.sops-nix.homeModules.sops
-            inputs.zen-browser.homeModules.twilight
-            inputs.noctalia.homeModules.default
-          ];
-
-          extraSpecialArgs = {
-            inherit inputs settings;
+            inherit inputs settings installState;
           };
         };
       };

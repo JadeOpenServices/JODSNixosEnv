@@ -103,7 +103,7 @@ func reconcileHardwareConfiguration(
 	case hardwareSkip:
 		if !exists {
 			return result, fmt.Errorf(
-				"--skip-hardware was requested but selected profile has no hardware configuration at %s; refusing to continue to flake validation",
+				"--skip-hardware was requested but generated hardware configuration is missing at %s; refusing to continue to flake validation",
 				target,
 			)
 		}

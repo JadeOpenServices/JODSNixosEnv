@@ -11,7 +11,6 @@ func TestWriteAtomicPersistsUserConfigMode0600(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "user.config.json")
 
 	want := User{
-		Profile:           "laptop",
 		Hostname:          "gjallarOS",
 		Username:          "testuser",
 		WeatherCity:       "Frankfurt am Main",
@@ -50,8 +49,7 @@ func TestWriteAtomicPersistsUserConfigMode0600(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if got.Profile != want.Profile ||
-		got.Hostname != want.Hostname ||
+	if got.Hostname != want.Hostname ||
 		got.Username != want.Username ||
 		got.WeatherCity != want.WeatherCity ||
 		got.WeatherCountry != want.WeatherCountry ||

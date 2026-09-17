@@ -57,7 +57,7 @@ func TestFreshBareMetalSecretIsNotPlainPromptInput(t *testing.T) {
 	}
 	if !strings.Contains(
 		text,
-		"workpassword.ReadConfirmedPassword(",
+		"credential.ReadConfirmedPassword(",
 	) {
 		t.Fatal("confirmed no-echo secret reader is not used")
 	}

@@ -1,5 +1,5 @@
 // Package config defines the typed contract between installer input,
-// discovery, and the generated settings.nix file.
+// discovery, and generated/state.nix.
 package config
 
 import (
@@ -14,7 +14,6 @@ import (
 )
 
 type User struct {
-	Profile                   string   `json:"profile"`
 	Hostname                  string   `json:"hostname"`
 	Username                  string   `json:"username"`
 	Timezone                  string   `json:"timezone"`
@@ -26,6 +25,8 @@ type User struct {
 	TouchpadWorkspaceSwipe    bool     `json:"touchpadWorkspaceSwipe"`
 	ClamshellEnable           bool     `json:"clamshellEnable"`
 	USBGuardEnable            bool     `json:"usbguardEnable"`
+	PrintingEnable            bool     `json:"printingEnable"`
+	NetworkPrintingEnable     bool     `json:"networkPrintingEnable"`
 	Name                      string   `json:"name"`
 	Email                     string   `json:"email"`
 	GitHubUsername            string   `json:"githubUsername"`
@@ -42,24 +43,13 @@ type User struct {
 	DrawioHost                string   `json:"drawioHost"`
 	Theme                     string   `json:"theme"`
 	BackgroundNormal          string   `json:"backgroundNormal"`
-	BackgroundWork            string   `json:"backgroundWork"`
-	BackgroundGaming          string   `json:"backgroundGaming"`
-	WorkUserEnable            bool     `json:"workUserEnable"`
-	WorkUsername              string   `json:"workUsername"`
-	WorkUserPasswordFile      string   `json:"workUserPasswordFile"`
-	DockerEnable              bool     `json:"dockerEnable"`
+	ContainersEnable          bool     `json:"containersEnable"`
 	DebugFunctions            bool     `json:"debugFunctions"`
 	AIEnable                  bool     `json:"aiEnable"`
 	OverrideAISelection       bool     `json:"overrideAiSelection"`
 	OverrideModelWith         string   `json:"overrideModelWith"`
 	AIAgentMode               string   `json:"aiAgentMode"`
-	EnableScrobbling          bool     `json:"enableScrobbling"`
-	EnableLastfm              bool     `json:"enableLastfm"`
-	EnableListenbrainz        bool     `json:"enableListenbrainz"`
-	LastfmUsername            string   `json:"lastfmUsername"`
-	ListenbrainzUsername      string   `json:"listenbrainzUsername"`
 	NemuEnable                bool     `json:"nemuEnable"`
-	NemuGPUPassthrough        bool     `json:"nemuGpuPassthrough"`
 	LUKSTPM2Enable            bool     `json:"luksTpm2Enable"`
 	RecoveryEnable            bool     `json:"recoveryEnable"`
 	RecoveryPartitionEnable   bool     `json:"recoveryPartitionEnable"`
@@ -153,13 +143,8 @@ func Validate(user User) error {
 	if !usernamePattern.MatchString(user.Username) {
 		return fmt.Errorf("invalid username: %q", user.Username)
 	}
-	if user.WorkUserEnable {
-		if user.WorkUsername != "" && !usernamePattern.MatchString(user.WorkUsername) {
-			return fmt.Errorf("invalid work username: %q", user.WorkUsername)
-		}
-	}
-	if user.Profile == "" || user.Hostname == "" || user.Theme == "" || user.Shell == "" {
-		return fmt.Errorf("profile, hostname, shell, and theme are required")
+	if user.Hostname == "" || user.Theme == "" || user.Shell == "" {
+		return fmt.Errorf("hostname, shell, and theme are required")
 	}
 	if len(user.Editors) == 0 || len(user.Browsers) == 0 {
 		return fmt.Errorf("at least one editor and browser are required")

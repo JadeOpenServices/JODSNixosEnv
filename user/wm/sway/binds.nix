@@ -54,7 +54,7 @@ let
     "${mod}+Shift+r" = "reload";
 
     # Application shortcuts.
-    "${mod}+Return" = "exec ${pkgs.kitty}/bin/kitty";
+    "${mod}+Return" = "exec ${lib.getExe pkgs.ghostty}";
 
     # Launcher and screenshot.
     "${mod}+Shift+a" = exec binds.launcher;

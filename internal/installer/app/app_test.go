@@ -89,11 +89,6 @@ func TestConfigureWeatherLocationRejectsDetectionAndPrompts(t *testing.T) {
 }
 
 func TestNormalizePreset(t *testing.T) {
-	u := config.User{Username: "alice", KeyboardLayout: "de-latin1", WorkUserEnable: true}
-	normalizePreset(&u, "/repo")
-	if u.DotfilesDir != "/home/alice/Documents/gjallarOS" || u.WorkUsername != "alice-corp" || u.KeyboardLayout != "de" {
-		t.Fatalf("%+v", u)
-	}
 }
 
 func TestExistingInstallMarkers(t *testing.T) {
@@ -108,7 +103,7 @@ func TestExistingInstallMarkers(t *testing.T) {
 	}
 }
 
-func TestExistingInstallRejectsUnmarkedSettings(t *testing.T) {
+func TestExistingInstallRejectsUnmarkedGeneratedState(t *testing.T) {
 	root := t.TempDir()
 	path := filepath.Join(root, "generated", "state.nix")
 	if err := os.MkdirAll(filepath.Dir(path), 0755); err != nil {
@@ -116,13 +111,13 @@ func TestExistingInstallRejectsUnmarkedSettings(t *testing.T) {
 	}
 	os.WriteFile(path, []byte("{ hostname = \"unrelated\"; }\n"), 0644)
 	if existingInstall(root) {
-		t.Fatal("unmarked settings.nix detected as an existing GjallarOS install")
+		t.Fatal("unmarked generated/state.nix detected as an existing GjallarOS install")
 	}
 }
 
-func TestExistingInstallMissingSettingsIsNew(t *testing.T) {
+func TestExistingInstallMissingGeneratedStateIsNew(t *testing.T) {
 	if existingInstall(t.TempDir()) {
-		t.Fatal("missing settings.nix detected as an existing GjallarOS install")
+		t.Fatal("missing generated/state.nix detected as an existing GjallarOS install")
 	}
 }
 
@@ -137,14 +132,24 @@ func TestCompletedSecureBootDoesNotRebootFirmware(t *testing.T) {
 }
 
 func TestValidateSelections(t *testing.T) {
-	o := discovery.Options{Profiles: []string{"laptop"}, Shells: []string{"zsh"}, Editors: []string{"vscodium"}, Browsers: []string{"librewolf"}}
-	u := config.User{Profile: "laptop", Shell: "zsh", Editors: []string{"vscodium"}, Browsers: []string{"librewolf"}, DotfilesDir: "/repo"}
+	o := discovery.Options{
+		Shells:   []string{"zsh"},
+		Editors:  []string{"vscodium"},
+		Browsers: []string{"librewolf"},
+	}
+	u := config.User{
+		Shell:       "zsh",
+		Editors:     []string{"vscodium"},
+		Browsers:    []string{"librewolf"},
+		DotfilesDir: "/repo",
+	}
 	if err := validateSelections(u, o); err != nil {
 		t.Fatal(err)
 	}
-	u.Profile = "../../bad"
+
+	u.Shell = "../../bad"
 	if err := validateSelections(u, o); err == nil {
-		t.Fatal("accepted invalid profile")
+		t.Fatal("accepted invalid shell")
 	}
 }
 

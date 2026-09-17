@@ -55,7 +55,6 @@ type options struct {
 type state struct {
 	user                         config.User
 	render                       nixrender.Settings
-	passthroughIDs               []string
 	preset, existing             bool
 	control                      string
 	touchscreen                  bool
@@ -392,23 +391,9 @@ func Run(ctx context.Context, args []string, in io.Reader, out, errOut io.Writer
 	fmt.Fprintf(out, "Touchscreen detected: %t\n", hardware.Touchscreen)
 	fmt.Fprintf(out, "Pen/tablet detected: %t\n", hardware.PenTablet)
 
-	choices, err := discovery.Discover(root, s.preset, hardware)
+	choices, err := discovery.Discover(root)
 	if err != nil {
 		return fail(errOut, err)
-	}
-	if s.preset && s.user.Profile == "auto" {
-		s.user.Profile = machineProfileForHardware(hardware)
-		if s.user.Profile == "" {
-			if s.user.UnattendedInstall {
-				return fail(errOut, errors.New("machine profile could not be detected; set profile to desktop or laptop in user.config.json"))
-			}
-			s.user.Profile, err = ui.Choice(ctx, "Machine profile could not be detected", "desktop", []string{"desktop", "laptop"})
-			if err != nil {
-				return fail(errOut, err)
-			}
-		} else {
-			fmt.Fprintf(out, "Machine profile detected: %s\n", s.user.Profile)
-		}
 	}
 	if s.preset {
 		normalizePreset(&s.user, root)
@@ -612,20 +597,10 @@ func Run(ctx context.Context, args []string, in io.Reader, out, errOut io.Writer
 	); err != nil {
 		return fail(errOut, err)
 	}
-	if !s.preset && s.user.NemuEnable && len(s.passthroughIDs) > 0 {
-		enabled, err := ui.Confirm(ctx, "Pass the detected dedicated GPU through to Nemu? This removes it from the host.", false)
-		if err != nil {
-			return fail(errOut, err)
-		}
-		s.render.NemuGPUPassthrough = enabled
-		if enabled {
-			s.render.NemuGPUIDs = append([]string(nil), s.passthroughIDs...)
-		}
-	}
 	if err := configureSecrets(ctx, root, &s, errOut); err != nil {
 		return fail(errOut, err)
 	}
-	fmt.Fprintf(out, "\nSelected: profile=%s hostname=%s user=%s shell=%s\n", s.user.Profile, s.user.Hostname, s.user.Username, s.user.Shell)
+	fmt.Fprintf(out, "\nSelected: hostname=%s user=%s shell=%s\n", s.user.Hostname, s.user.Username, s.user.Shell)
 	write := s.user.WriteConfig
 	if !s.preset {
 		write, err = ui.Confirm(ctx, "Write configuration to "+filepath.Join(root, "generated", "state.nix")+"?", false)
@@ -664,7 +639,7 @@ func Run(ctx context.Context, args []string, in io.Reader, out, errOut io.Writer
 		// Root recovery is intentionally local even on JODS-managed endpoints.
 		// Management must never remove wheel/Polkit administration before a
 		// verified local recovery credential exists.
-		path, err := controlOutput(ctx, s.control, errOut, "installer", "work-password", "--username", "root", "--apply")
+		path, err := controlOutput(ctx, s.control, errOut, "installer", "local-password", "--username", "root", "--apply")
 		if err != nil {
 			return fail(errOut, err)
 		}
@@ -673,27 +648,6 @@ func Run(ctx context.Context, args []string, in io.Reader, out, errOut io.Writer
 			s.render.RootPasswordFile = lines[len(lines)-1]
 		}
 		fmt.Fprint(out, path)
-	}
-	if s.render.WorkUserEnable {
-		if s.render.EndpointManagedDevice {
-			if s.user.WorkUserPasswordFile == "" {
-				return fail(errOut, errors.New("managed work account requires workUserPasswordFile provisioned by JODS"))
-			}
-			s.render.WorkUserPasswordFile = s.user.WorkUserPasswordFile
-		} else if workPasswordPath := filepath.Join("/var/lib/gjallarOS/passwords", s.render.WorkUsername+".hash"); s.existing && privilegedFileExists(ctx, workPasswordPath) {
-			s.render.WorkUserPasswordFile = workPasswordPath
-			fmt.Fprintln(out, "Existing work-account password hash retained.")
-		} else {
-			path, err := controlOutput(ctx, s.control, errOut, "installer", "work-password", "--username", s.render.WorkUsername, "--apply")
-			if err != nil {
-				return fail(errOut, err)
-			}
-			lines := strings.Fields(strings.TrimSpace(path))
-			if len(lines) > 0 {
-				s.render.WorkUserPasswordFile = lines[len(lines)-1]
-			}
-			fmt.Fprint(out, path)
-		}
 	}
 	settingsPath := filepath.Join(root, "generated", "state.nix")
 	if err := nixrender.WriteAtomic(settingsPath, s.render); err != nil {
@@ -1068,7 +1022,6 @@ func Run(ctx context.Context, args []string, in io.Reader, out, errOut io.Writer
 					s.user.RecoveryPartitionEnable,
 				[]string{
 					s.render.RootPasswordFile,
-					s.render.WorkUserPasswordFile,
 				},
 				out,
 			)
@@ -1540,17 +1493,6 @@ func prepareHost(
 	return 0
 }
 
-func machineProfileForHardware(hardware discovery.Hardware) string {
-	switch hardware.FormFactor {
-	case "desktop":
-		return "desktop"
-	case "laptop":
-		return "laptop"
-	default:
-		return ""
-	}
-}
-
 func detectedNixSystem() (string, error) {
 	switch runtime.GOARCH {
 	case "amd64":
@@ -1576,13 +1518,6 @@ func containsValue(values []string, want string) bool {
 
 func collectInteractive(ctx context.Context, ui prompt.UI, root string, hardware discovery.Hardware, o discovery.Options, u *config.User) error {
 	var err error
-	profileDefault := machineProfileForHardware(hardware)
-	if profileDefault == "" || !containsValue(o.Profiles, profileDefault) {
-		profileDefault = first(o.Profiles)
-	}
-	if u.Profile, err = ui.Choice(ctx, "Profile", profileDefault, o.Profiles); err != nil {
-		return err
-	}
 	host, _ := os.Hostname()
 	if host == "" || host == "nixos" {
 		host = "gjallarOS"
@@ -1647,12 +1582,8 @@ func collectInteractive(ctx context.Context, ui prompt.UI, root string, hardware
 		}
 		u.JODSDesktopProfile = strings.ToLower(strings.TrimSpace(u.JODSDesktopProfile))
 	}
-	u.WorkUserEnable, err = ui.Confirm(ctx, "Create a separate work account?", false)
 	if err != nil {
 		return err
-	}
-	if u.WorkUserEnable {
-		u.WorkUsername = u.Username + "-corp"
 	}
 	u.Timezone, err = ui.Value(ctx, "Timezone (IANA name)", "Europe/Berlin")
 	if err != nil {
@@ -1727,7 +1658,18 @@ func collectInteractive(ctx context.Context, ui prompt.UI, root string, hardware
 	if u.Theme == "" {
 		u.Theme = first(o.Themes)
 	}
-	u.DockerEnable, err = ui.Confirm(ctx, "Enable Docker daemon? Docker access is root-equivalent.", false)
+	u.PrintingEnable, err = ui.Confirm(ctx, "Enable printing and scanning support?", false)
+	if err != nil {
+		return err
+	}
+	u.NetworkPrintingEnable = false
+	if u.PrintingEnable {
+		u.NetworkPrintingEnable, err = ui.Confirm(ctx, "Enable network printer discovery?", false)
+		if err != nil {
+			return err
+		}
+	}
+	u.ContainersEnable, err = ui.Confirm(ctx, "Enable rootless container tooling with Docker-compatible commands?", false)
 	if err != nil {
 		return err
 	}
@@ -1825,9 +1767,6 @@ func normalizePreset(u *config.User, root string) {
 		u.DotfilesDir = filepath.Join("/home", u.Username, "Documents", "gjallarOS")
 	}
 	u.DotfilesDir = strings.ReplaceAll(u.DotfilesDir, "usernamehere", u.Username)
-	if u.WorkUserEnable {
-		u.WorkUsername = u.Username + "-corp"
-	}
 	if normalized, err := xkb.Normalize(u.KeyboardLayout); err == nil {
 		u.KeyboardLayout, u.KeyboardVariant = normalized.Name, normalized.Variant
 	}
@@ -2283,7 +2222,7 @@ func detectAndRenderState(
 	for _, item := range []struct {
 		role  string
 		value *string
-	}{{"normal", &u.BackgroundNormal}, {"work", &u.BackgroundWork}, {"gaming", &u.BackgroundGaming}} {
+	}{{"normal", &u.BackgroundNormal}} {
 		resolved, err := background.Resolve(ctx, root, u.DotfilesDir, item.role, *item.value)
 		if err != nil {
 			return err
@@ -2313,16 +2252,87 @@ func detectAndRenderState(
 			return err
 		}
 	}
-	s.passthroughIDs = append([]string(nil), g.PassthroughIDs...)
-	passthrough := u.NemuGPUPassthrough && len(g.PassthroughIDs) > 0
 	system, err := detectedNixSystem()
 	if err != nil {
 		return err
 	}
-	s.render = nixrender.Settings{System: system, Profile: u.Profile, Hostname: u.Hostname, Username: u.Username, Timezone: u.Timezone, Locale: u.Locale, KeyboardLayout: u.KeyboardLayout, KeyboardVariant: u.KeyboardVariant, WeatherCity: u.WeatherCity, WeatherCountry: u.WeatherCountry, TouchpadWorkspaceSwipe: u.TouchpadWorkspaceSwipe, TouchscreenEnable: s.touchscreen, PenTabletEnable: s.penTablet, OrientationSensorEnable: s.orientationSensor, ClamshellEnable: u.ClamshellEnable, USBGuardEnable: u.USBGuardEnable, Name: u.Name, Email: u.Email, GitHubUsername: u.GitHubUsername, DotfilesDir: u.DotfilesDir, WorkUserEnable: u.WorkUserEnable, WorkUsername: u.WorkUsername, DockerEnable: u.DockerEnable, DebugFunctions: u.DebugFunctions, Shell: u.Shell, Editors: u.Editors, Browsers: u.Browsers, PreferredEditor: u.PreferredEditor, PreferredBrowser: u.PreferredBrowser, PlaneEnable: u.PlaneEnable, PlaneHost: u.PlaneHost, DrawioEnable: u.DrawioEnable, DrawioSelfHosted: u.DrawioSelfHosted, DrawioHost: u.DrawioHost, BackgroundNormal: u.BackgroundNormal, BackgroundWork: u.BackgroundWork, BackgroundGaming: u.BackgroundGaming, EnableScrobbling: u.EnableScrobbling, EnableLastfm: u.EnableLastfm, EnableListenbrainz: u.EnableListenbrainz, LastfmUsername: u.LastfmUsername, ListenbrainzUsername: u.ListenbrainzUsername, ODDCModel: resolvedDevice.ModelID, DeviceSysVendor: hardware.SysVendor, DeviceProductName: hardware.ProductName, DeviceProductVersion: hardware.ProductVersion, DeviceBoardVendor: hardware.BoardVendor, DeviceBoardName: hardware.BoardName, DeviceBoardVersion: hardware.BoardVersion, GraphicsVendor: g.Vendor, GraphicsDeviceID: g.DeviceID, GraphicsDriverBranch: g.DriverBranch, GraphicsType: g.Type, GraphicsCompute: g.Compute, GraphicsBusID: g.BusID, GraphicsIntegratedBusID: g.IntegratedBusID, WiFiDriver: wifi, AIEnable: u.AIEnable, AIModel: ai.Model, AIAccelerationProfile: ai.AccelerationProfile, AIAgentMode: u.AIAgentMode, AIContextTokens: ai.ContextTokens, AIVRAMMB: ai.VRAMMB, NemuEnable: u.NemuEnable, NemuGPUPassthrough: passthrough, LUKSTPM2Enable: u.LUKSTPM2Enable, RecoveryEnable: u.RecoveryEnable, RecoveryPartitionEnable: u.RecoveryPartitionEnable, JODSPrebootLockEnable: u.JODSPrebootLockEnable, SecureBootEnable: u.SecureBootEnable, EndpointManagedDevice: u.EndpointManagedDevice, JODSEndpoint: u.JODSEndpoint, JODSPolicySigningPublicKey: u.JODSPolicySigningKey, JODSRecoveryCommandSigningPublicKey: u.JODSRecoverySigningKey, JODSEnrollmentMode: u.JODSEnrollmentMode, JODSAllowInsecureTLS: u.JODSAllowInsecureTLS, JODSDeviceClass: u.JODSDeviceClass, JODSDesktopProfile: u.JODSDesktopProfile, JODSFingerprintEnrollmentAllowed: u.JODSFingerprintEnroll, WMs: []string{"hyprland"}, Theme: u.Theme}
-	if passthrough {
-		s.render.NemuGPUIDs = g.PassthroughIDs
+
+	s.render = nixrender.Settings{
+		System:                              system,
+		Hostname:                            u.Hostname,
+		Username:                            u.Username,
+		Timezone:                            u.Timezone,
+		Locale:                              u.Locale,
+		KeyboardLayout:                      u.KeyboardLayout,
+		KeyboardVariant:                     u.KeyboardVariant,
+		WeatherCity:                         u.WeatherCity,
+		WeatherCountry:                      u.WeatherCountry,
+		TouchpadWorkspaceSwipe:              u.TouchpadWorkspaceSwipe,
+		TouchscreenEnable:                   s.touchscreen,
+		PenTabletEnable:                     s.penTablet,
+		OrientationSensorEnable:             s.orientationSensor,
+		ClamshellEnable:                     u.ClamshellEnable,
+		USBGuardEnable:                      u.USBGuardEnable,
+		PrintingEnable:                      u.PrintingEnable,
+		NetworkPrintingEnable:               u.NetworkPrintingEnable,
+		Name:                                u.Name,
+		Email:                               u.Email,
+		GitHubUsername:                      u.GitHubUsername,
+		DotfilesDir:                         u.DotfilesDir,
+		RootPasswordFile:                    s.render.RootPasswordFile,
+		ContainersEnable:                    u.ContainersEnable,
+		DebugFunctions:                      u.DebugFunctions,
+		Shell:                               u.Shell,
+		Editors:                             u.Editors,
+		Browsers:                            u.Browsers,
+		PreferredEditor:                     u.PreferredEditor,
+		PreferredBrowser:                    u.PreferredBrowser,
+		PlaneEnable:                         u.PlaneEnable,
+		PlaneHost:                           u.PlaneHost,
+		DrawioEnable:                        u.DrawioEnable,
+		DrawioSelfHosted:                    u.DrawioSelfHosted,
+		DrawioHost:                          u.DrawioHost,
+		BackgroundNormal:                    u.BackgroundNormal,
+		ODDCModel:                           resolvedDevice.ModelID,
+		DeviceSysVendor:                     hardware.SysVendor,
+		DeviceProductName:                   hardware.ProductName,
+		DeviceProductVersion:                hardware.ProductVersion,
+		DeviceBoardVendor:                   hardware.BoardVendor,
+		DeviceBoardName:                     hardware.BoardName,
+		DeviceBoardVersion:                  hardware.BoardVersion,
+		GraphicsVendor:                      g.Vendor,
+		GraphicsDeviceID:                    g.DeviceID,
+		GraphicsDriverBranch:                g.DriverBranch,
+		GraphicsType:                        g.Type,
+		GraphicsCompute:                     g.Compute,
+		GraphicsBusID:                       g.BusID,
+		GraphicsIntegratedBusID:             g.IntegratedBusID,
+		WiFiDriver:                          wifi,
+		AIEnable:                            u.AIEnable,
+		AIModel:                             ai.Model,
+		AIAccelerationProfile:               ai.AccelerationProfile,
+		AIAgentMode:                         u.AIAgentMode,
+		AIContextTokens:                     ai.ContextTokens,
+		AIVRAMMB:                            ai.VRAMMB,
+		NemuEnable:                          u.NemuEnable,
+		LUKSTPM2Enable:                      u.LUKSTPM2Enable,
+		RecoveryEnable:                      u.RecoveryEnable,
+		RecoveryPartitionEnable:             u.RecoveryPartitionEnable,
+		JODSPrebootLockEnable:               u.JODSPrebootLockEnable,
+		SecureBootEnable:                    u.SecureBootEnable,
+		EndpointManagedDevice:               u.EndpointManagedDevice,
+		JODSEndpoint:                        u.JODSEndpoint,
+		JODSPolicySigningPublicKey:          u.JODSPolicySigningKey,
+		JODSRecoveryCommandSigningPublicKey: u.JODSRecoverySigningKey,
+		JODSEnrollmentMode:                  u.JODSEnrollmentMode,
+		JODSAllowInsecureTLS:                u.JODSAllowInsecureTLS,
+		JODSDeviceClass:                     u.JODSDeviceClass,
+		JODSDesktopProfile:                  u.JODSDesktopProfile,
+		JODSFingerprintEnrollmentAllowed:    u.JODSFingerprintEnroll,
+		WMs:                                 []string{"hyprland"},
+		Theme:                               u.Theme,
 	}
+
 	return nil
 }
 
@@ -2400,7 +2410,7 @@ func validateSelections(u config.User, o discovery.Options) error {
 	for _, check := range []struct {
 		name, value string
 		allowed     []string
-	}{{"profile", u.Profile, o.Profiles}, {"shell", u.Shell, o.Shells}} {
+	}{{"shell", u.Shell, o.Shells}} {
 		if !contains(check.allowed, check.value) {
 			return fmt.Errorf("unsupported %s: %q", check.name, check.value)
 		}

@@ -35,7 +35,6 @@ let
     ${pkgs.wl-clipboard}/bin/wl-copy --primary --clear >/dev/null 2>&1 || true
   '';
   themeDetails = settings.themeDetails;
-  profileDetails = settings.profileDetails;
   shellDetails = hyprlandShellDetails;
   wallpaperDetails =
     if builtins.isAttrs themeDetails.wallpaper then
@@ -43,9 +42,7 @@ let
     else
       { center = themeDetails.wallpaper; };
   startupWallpaper =
-    if config.home.username == settings.workUsername && settings.backgroundWork != "" then
-      settings.backgroundWork
-    else if settings.backgroundNormal != "" then
+    if settings.backgroundNormal != "" then
       settings.backgroundNormal
     else
       wallpaperDetails.center;
@@ -80,7 +77,10 @@ let
   '';
   virtualKeyboard = pkgs.writeShellApplication {
     name = "gjallar-virtual-keyboard";
-    runtimeInputs = [ pkgs.procps pkgs.wvkbd ];
+    runtimeInputs = [
+      pkgs.procps
+      pkgs.wvkbd
+    ];
     text = ''
       set -euo pipefail
       if pgrep -x wvkbd-mobintl >/dev/null; then
@@ -96,8 +96,15 @@ let
 in
 {
   home.packages =
-    (with pkgs; [ awww swaybg wayvnc ])
-    ++ lib.optionals (settings.touchscreenEnable or false) [ virtualKeyboard pkgs.wvkbd ];
+    (with pkgs; [
+      awww
+      swaybg
+      wayvnc
+    ])
+    ++ lib.optionals (settings.touchscreenEnable or false) [
+      virtualKeyboard
+      pkgs.wvkbd
+    ];
 
   wayland.windowManager.hyprland.settings = {
     bind =
@@ -105,14 +112,14 @@ in
         "SUPER, C, exec, ${lib.getExe config.programs.noctalia.package} msg status >/dev/null 2>&1 && ${lib.getExe config.programs.noctalia.package} msg panel-toggle control-center >/dev/null 2>&1 || true"
       ]
       ++ lib.optionals (settings.touchscreenEnable or false) [
-      "SUPER, K, exec, ${lib.getExe virtualKeyboard}"
-    
-      "CTRL, V, exec, ${gjallarPasteOnce} ctrl-v"
-      "CTRL SHIFT, V, exec, ${gjallarPasteOnce} ctrl-shift-v"
-      "SHIFT, INSERT, exec, ${gjallarPasteOnce} shift-insert"
-];
+        "SUPER, K, exec, ${lib.getExe virtualKeyboard}"
 
-    monitor = profileDetails.hyprlandMonitors ++ [
+        "CTRL, V, exec, ${gjallarPasteOnce} ctrl-v"
+        "CTRL SHIFT, V, exec, ${gjallarPasteOnce} ctrl-shift-v"
+        "SHIFT, INSERT, exec, ${gjallarPasteOnce} shift-insert"
+      ];
+
+    monitor = [
       ",preferred,auto,1"
     ];
 
@@ -121,8 +128,8 @@ in
         "${sessionStart}"
       ]
       ++ lib.optionals (settings.touchscreenEnable or false) [
-      "${pkgs.wvkbd}/bin/wvkbd-mobintl --hidden -H 320 -L 240"
-    ];
+        "${pkgs.wvkbd}/bin/wvkbd-mobintl --hidden -H 320 -L 240"
+      ];
 
     general = {
       gaps_in = 8;
@@ -141,7 +148,7 @@ in
 
       blur = {
         enabled = true;
-        special = true;
+        special = false;
         brightness = 1.0;
         contrast = 1.0;
         noise = 0.02;
@@ -199,11 +206,6 @@ in
       tablet = lib.mkIf (settings.penTabletEnable or false) {
         relative_input = false;
       };
-    };
-
-    device = {
-      name = "logitech-usb-receiver-mouse";
-      sensitivity = -1.0;
     };
 
     # Hyprland 0.55 removed gestures.workspace_swipe. The replacement is the

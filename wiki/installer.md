@@ -73,7 +73,7 @@ At a high level it:
 5. collects interactive choices
 6. normalizes configuration
 7. generates machine-specific state
-8. renders `settings.nix`
+8. renders `generated/state.nix`
 9. validates the resulting configuration
 10. deploys the configured NixOS generation
 11. handles later installer lifecycle stages
@@ -95,7 +95,9 @@ modules.
 Discovery inspects the current machine and provides hardware/environment facts
 to the installer.
 
-Detected information can affect profile selection and generated configuration.
+Detected information contributes machine facts and generated configuration.
+Canonical device identity and exceptional hardware policy are resolved through
+ODDC.
 
 ## Rendering
 
@@ -103,20 +105,20 @@ Detected information can affect profile selection and generated configuration.
 
 Rendering converts typed installer values into safe Nix values.
 
-The main generated repository configuration is:
+The main generated machine-local configuration is:
 
-    settings.nix
+    generated/state.nix
 
 ## Hardware configuration
 
     internal/installer/hardwareconfig/
 
 Hardware configuration generation uses NixOS hardware discovery and stores the
-machine result in the selected profile.
+machine-local result separately from reusable repository configuration.
 
-Typical target:
+Canonical target:
 
-    profiles/<profile>/hardware-configuration.nix
+    generated/hardware.nix
 
 ## Deployment
 

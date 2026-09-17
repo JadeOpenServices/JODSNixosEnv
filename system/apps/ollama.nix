@@ -344,7 +344,7 @@ let
       set-option \
       -as \
       terminal-features \
-      ',xterm-kitty:clipboard' \
+      ',xterm-ghostty:clipboard' \
       >/dev/null 2>&1 || true
 
     exec ${pkgs.tmux}/bin/tmux \
@@ -869,7 +869,7 @@ let
     - Home Manager modules
     - application modules
     - package overlays
-    - `settings.nix`
+    - `generated/state.nix`
     - installer configuration/schema
     - preset JSON
     - Nix rendering
@@ -894,9 +894,9 @@ let
 
     Prefer modifying the canonical source rather than generated output.
 
-    ## Generated settings
+    ## Generated machine state
 
-    `settings.nix` and related configuration may be generated.
+    `generated/state.nix` and related machine-local configuration may be generated.
 
     Before changing generated state, determine its durable source.
 
@@ -911,7 +911,7 @@ let
     - installer UI
     - config parsing
     - Nix renderer
-    - generated settings
+    - generated machine state
     - validation
     - tests
     - documentation

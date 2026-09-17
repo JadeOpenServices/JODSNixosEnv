@@ -24,7 +24,7 @@ type Hardware struct {
 	PenTablet         bool
 	OrientationSensor bool
 }
-type Options struct{ Profiles, Shells, Editors, Browsers, Themes []string }
+type Options struct{ Shells, Editors, Browsers, Themes []string }
 
 func DetectHardware(sysRoot string) Hardware {
 	h := Hardware{
@@ -137,24 +137,7 @@ func readInput(device string, parts ...string) string {
 
 // Linux exposes input capability bitsets as hexadecimal, most-significant
 // word first. Reading from the right keeps this independent of word size.
-func Discover(repo string, preset bool, hardware Hardware) (Options, error) {
-	profiles, err := directories(filepath.Join(repo, "profiles"))
-	if err != nil {
-		return Options{}, err
-	}
-	if !preset {
-		filtered := profiles[:0]
-		for _, v := range profiles {
-			if hardware.FormFactor == "desktop" {
-				if v == "desktop" {
-					filtered = append(filtered, v)
-				}
-			} else if v != "desktop" && v != "work" && v != "work-user" {
-				filtered = append(filtered, v)
-			}
-		}
-		profiles = filtered
-	}
+func Discover(repo string) (Options, error) {
 	shells, err := nixFiles(filepath.Join(repo, "user", "shells"))
 	if err != nil {
 		return Options{}, err
@@ -171,7 +154,12 @@ func Discover(repo string, preset bool, hardware Hardware) (Options, error) {
 	if err != nil {
 		return Options{}, err
 	}
-	return Options{profiles, shells, editors, browsers, themes}, nil
+	return Options{
+		Shells:   shells,
+		Editors:  editors,
+		Browsers: browsers,
+		Themes:   themes,
+	}, nil
 }
 
 func directories(path string) ([]string, error) {

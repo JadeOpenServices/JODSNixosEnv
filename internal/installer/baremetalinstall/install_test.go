@@ -301,7 +301,7 @@ func TestInstallerConfigRemainsUnchanged(t *testing.T) {
 	}
 
 	if !bytes.Equal(settingsBefore, settingsAfter) {
-		t.Fatal("settings.nix changed during installation")
+		t.Fatal("generated/state.nix changed during installation")
 	}
 	if !bytes.Equal(userBefore, userAfter) {
 		t.Fatal("user.config.json changed during installation")

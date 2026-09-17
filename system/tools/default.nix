@@ -39,10 +39,6 @@ let
     report_unit display-manager.service
     report_unit "home-manager-$(${systemdEscape} -- "${settings.username}").service"
     report_home "/home/${settings.username}"
-    ${lib.optionalString settings.workUserEnable ''
-      report_unit "home-manager-$(${systemdEscape} -- "${settings.workUsername}").service"
-      report_home "/home/${settings.workUsername}"
-    ''}
     ${pkgs.networkmanager}/bin/nmcli general status || true
     ${pkgs.networkmanager}/bin/nmcli device status || true
     ${pkgs.systemd}/bin/journalctl -b -p warning..alert --no-pager || true
@@ -118,7 +114,7 @@ let
           ${coreutils}/bin/sleep 0.1
         done
         log "hyprland-ipc-ready=$hyprland_ready"
-        for command in fuzzel kitty noctalia; do
+        for command in fuzzel ghostty noctalia; do
           path="$(${pkgs.findutils}/bin/find "$HOME/.nix-profile/bin" "/etc/profiles/per-user/$USER/bin" -maxdepth 1 -name "$command" \( -type l -o -type f \) -print -quit 2>/dev/null || true)"
           if [ -n "$path" ]; then log "command=$command path=$path"; else log "command=$command missing from user profiles"; fi
         done
@@ -134,7 +130,7 @@ let
         ${lib.getExe config.programs.noctalia.package} config validate || true
         ${lib.getExe config.programs.noctalia.package} msg status >/dev/null 2>&1 || true
         ${pkgs.systemd}/bin/journalctl --user -b --no-pager -u gjallar-hyprland-session-diagnostics.service || true
-        ${pkgs.procps}/bin/pgrep -f -a -u "$USER" 'Hyprland|noctalia|fuzzel|kitty|swaybg|waybar' || true
+        ${pkgs.procps}/bin/pgrep -f -a -u "$USER" 'Hyprland|noctalia|fuzzel|ghostty|swaybg|waybar' || true
         log 'end'
       '';
     in

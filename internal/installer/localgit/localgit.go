@@ -14,6 +14,7 @@ var machineLocalPaths = []string{
 	"user.config.json",
 	"generated/state.nix",
 	"generated/hardware.nix",
+	"generated/install-state.nix",
 }
 
 func trackedPath(ctx context.Context, root, relative string) bool {
@@ -143,16 +144,14 @@ func updateExclude(path string) error {
 	const end = "# END GjallarOS machine-local state"
 
 	legacy := map[string]bool{
-		"profiles/*/hardware-configuration.nix.bak.*": true,
-		"profiles/*/hardware-configuration.nix":       true,
-		"settings.nix":                                true,
-		".settings.nix-*":                             true,
-		"system/hardware/generated.nix":               true,
-		"system/hardware/.generated.nix-*":            true,
-		"system/hardware/generated.nix.bak.*":         true,
-		"user.config.json":                            true,
-		".user.config.json-*":                         true,
-		"generated/":                                  true,
+		"settings.nix":                        true,
+		".settings.nix-*":                     true,
+		"system/hardware/generated.nix":       true,
+		"system/hardware/.generated.nix-*":    true,
+		"system/hardware/generated.nix.bak.*": true,
+		"user.config.json":                    true,
+		".user.config.json-*":                 true,
+		"generated/":                          true,
 	}
 
 	var preserved []string
