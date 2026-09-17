@@ -74,6 +74,8 @@ func run(args []string, stdout, stderr io.Writer) int {
 		return runInstaller(args[1:], stdout, stderr)
 	case "check":
 		return runCheck(args[1:], stdout, stderr)
+	case "preflight":
+		return runPreflight(args[1:], stdout, stderr)
 	case "oddc":
 		return runODDC(args[1:], stdout, stderr)
 	case "device-probe":
@@ -1853,6 +1855,40 @@ func runFan(args []string, stdout, stderr io.Writer) int {
 	}
 }
 
+func runPreflight(args []string, stdout, stderr io.Writer) int {
+	flags := flag.NewFlagSet("gjallarctl preflight", flag.ContinueOnError)
+	flags.SetOutput(stderr)
+	repo := flags.String("repo", ".", "GjallarOS repository root")
+	if err := flags.Parse(args); err != nil {
+		return 2
+	}
+	if flags.NArg() != 0 {
+		fmt.Fprintln(stderr, "ERROR: preflight accepts no positional arguments")
+		return 2
+	}
+
+	root, err := installercheck.ResolveRepository(*repo)
+	if err != nil {
+		fmt.Fprintf(stderr, "ERROR: %v\n", err)
+		return 2
+	}
+
+	return reportPreflight(root, stdout, stderr)
+}
+
+func reportPreflight(root string, stdout, stderr io.Writer) int {
+	report := installercheck.Preflight(root)
+	fmt.Fprintln(stdout, "[GjallarOS] Fast preflight")
+	for _, finding := range report.Findings {
+		fmt.Fprintf(stdout, "%s: %s\n", finding.Level, finding.Message)
+	}
+	if report.Failed() {
+		fmt.Fprintln(stderr, "FAIL: GjallarOS preflight failed")
+		return 1
+	}
+	return 0
+}
+
 func runCheck(args []string, stdout, stderr io.Writer) int {
 	flags := flag.NewFlagSet("gjallarctl check", flag.ContinueOnError)
 	flags.SetOutput(stderr)
@@ -1891,6 +1927,7 @@ func runCheck(args []string, stdout, stderr io.Writer) int {
 
 func printUsage(out io.Writer) {
 	fmt.Fprintln(out, "Usage: gjallarctl check [--repo PATH] [--timeout DURATION]")
+	fmt.Fprintln(out, "       gjallarctl preflight [--repo PATH]")
 	fmt.Fprintln(out, "       gjallarctl oddc validate-device [--repo PATH]")
 	fmt.Fprintln(out, "       gjallarctl rebuild --repo PATH --host HOST [-d|--debug] [-n|--no-cleanup] [NIXOS-REBUILD-ARGS...]")
 	fmt.Fprintln(out, "       gjallarctl device-probe refresh [--output PATH]")
@@ -1900,126 +1937,6 @@ func printUsage(out io.Writer) {
 	fmt.Fprintln(out, "       gjallarctl preset {validate|get|list|bool} --config PATH [--key NAME]")
 	fmt.Fprintln(out)
 	fmt.Fprintln(out, "Safe GjallarOS maintenance commands. Rebuild invokes sudo explicitly.")
-}
-
-func syncProjectToolSettings(settingsPath string, user config.User) error {
-	keys := []string{
-		"planeEnable",
-		"planeHost",
-		"drawioEnable",
-		"drawioSelfHosted",
-		"drawioHost",
-	}
-
-	rendered := strings.Split(string(nixrender.Render(nixrender.Settings{
-		PlaneEnable:      user.PlaneEnable,
-		PlaneHost:        user.PlaneHost,
-		DrawioEnable:     user.DrawioEnable,
-		DrawioSelfHosted: user.DrawioSelfHosted,
-		DrawioHost:       user.DrawioHost,
-	})), "\n")
-
-	desired := make(map[string]string, len(keys))
-	for _, line := range rendered {
-		trimmed := strings.TrimSpace(line)
-		for _, key := range keys {
-			if strings.HasPrefix(trimmed, key+" = ") {
-				desired[key] = line
-			}
-		}
-	}
-
-	if len(desired) != len(keys) {
-		return fmt.Errorf("render project-tool settings: expected %d fields, got %d", len(keys), len(desired))
-	}
-
-	data, err := os.ReadFile(settingsPath)
-	if err != nil {
-		return fmt.Errorf("read %s: %w", settingsPath, err)
-	}
-
-	lines := strings.Split(string(data), "\n")
-	seen := make(map[string]bool, len(keys))
-	result := make([]string, 0, len(lines)+len(keys))
-	insertedMissing := false
-
-	for _, line := range lines {
-		trimmed := strings.TrimSpace(line)
-		replaced := false
-
-		for _, key := range keys {
-			if strings.HasPrefix(trimmed, key+" = ") {
-				result = append(result, desired[key])
-				seen[key] = true
-				replaced = true
-				break
-			}
-		}
-
-		if replaced {
-			continue
-		}
-
-		if !insertedMissing && strings.HasPrefix(trimmed, "backgroundNormal = ") {
-			for _, key := range keys {
-				if !seen[key] {
-					result = append(result, desired[key])
-					seen[key] = true
-				}
-			}
-			insertedMissing = true
-		}
-
-		result = append(result, line)
-	}
-
-	for _, key := range keys {
-		if !seen[key] {
-			return fmt.Errorf("sync project-tool setting %s: insertion anchor not found", key)
-		}
-	}
-
-	updated := strings.Join(result, "\n")
-	if updated == string(data) {
-		return nil
-	}
-
-	info, err := os.Stat(settingsPath)
-	if err != nil {
-		return fmt.Errorf("stat %s: %w", settingsPath, err)
-	}
-
-	tmp, err := os.CreateTemp(filepath.Dir(settingsPath), ".state-project-tools-*")
-	if err != nil {
-		return fmt.Errorf("create temporary settings file: %w", err)
-	}
-	tmpName := tmp.Name()
-	defer os.Remove(tmpName)
-
-	if err := tmp.Chmod(info.Mode().Perm()); err != nil {
-		tmp.Close()
-		return fmt.Errorf("preserve settings permissions: %w", err)
-	}
-
-	if _, err := tmp.WriteString(updated); err != nil {
-		tmp.Close()
-		return fmt.Errorf("write temporary settings file: %w", err)
-	}
-
-	if err := tmp.Sync(); err != nil {
-		tmp.Close()
-		return fmt.Errorf("sync temporary settings file: %w", err)
-	}
-
-	if err := tmp.Close(); err != nil {
-		return fmt.Errorf("close temporary settings file: %w", err)
-	}
-
-	if err := os.Rename(tmpName, settingsPath); err != nil {
-		return fmt.Errorf("replace %s: %w", settingsPath, err)
-	}
-
-	return nil
 }
 
 func runRebuild(args []string, stdout, stderr io.Writer) int {
@@ -2074,64 +1991,30 @@ func runRebuild(args []string, stdout, stderr io.Writer) int {
 		return 1
 	}
 
-	// Managed JODS endpoints deliberately remove the desktop user from
-	// wheel. Rebuilds on those systems therefore cross the explicit root
-	// authentication boundary instead of attempting sudo.
+	// Rebuild consumes the same typed user intent as the installer and only
+	// refreshes direct user-owned generated-state assignments. Hardware, AI
+	// discovery and installer-owned facts remain untouched.
 	configPath := filepath.Join(repo, "user.config.json")
-	document, err := preset.Load(configPath)
+	userConfig, err := config.Load(configPath)
 	if err != nil {
 		fmt.Fprintf(stderr, "[GjallarOS] Error: load user configuration: %v\n", err)
 		return 1
 	}
 
-	projectTools := config.User{}
-
-	projectTools.PlaneEnable, err = document.Bool("planeEnable")
-	if err != nil {
-		fmt.Fprintf(stderr, "[GjallarOS] Error: read planeEnable: %v\n", err)
-		return 1
-	}
-
-	projectTools.PlaneHost, err = document.String("planeHost")
-	if err != nil {
-		fmt.Fprintf(stderr, "[GjallarOS] Error: read planeHost: %v\n", err)
-		return 1
-	}
-
-	projectTools.DrawioEnable, err = document.Bool("drawioEnable")
-	if err != nil {
-		fmt.Fprintf(stderr, "[GjallarOS] Error: read drawioEnable: %v\n", err)
-		return 1
-	}
-
-	projectTools.DrawioSelfHosted, err = document.Bool("drawioSelfHosted")
-	if err != nil {
-		fmt.Fprintf(stderr, "[GjallarOS] Error: read drawioSelfHosted: %v\n", err)
-		return 1
-	}
-
-	projectTools.DrawioHost, err = document.String("drawioHost")
-	if err != nil {
-		fmt.Fprintf(stderr, "[GjallarOS] Error: read drawioHost: %v\n", err)
-		return 1
-	}
-
-	if err := config.NormalizeProjectTools(&projectTools); err != nil {
-		fmt.Fprintf(stderr, "[GjallarOS] Error: normalize project-tool settings: %v\n", err)
-		return 1
-	}
-
 	settingsPath := filepath.Join(repo, "generated", "state.nix")
-	if err := syncProjectToolSettings(settingsPath, projectTools); err != nil {
-		fmt.Fprintf(stderr, "[GjallarOS] Error: sync project-tool settings: %v\n", err)
+	if err := nixrender.SyncUserIntent(settingsPath, userConfig); err != nil {
+		fmt.Fprintf(stderr, "[GjallarOS] Error: sync routed user intent: %v\n", err)
 		return 1
 	}
 
-	managedDevice, err := document.Bool("endpointManagedDevice")
-	if err != nil {
-		fmt.Fprintf(stderr, "[GjallarOS] Error: read endpointManagedDevice: %v\n", err)
-		return 1
+	if status := reportPreflight(repo, stdout, stderr); status != 0 {
+		return status
 	}
+
+	// Managed JODS endpoints deliberately remove the desktop user from
+	// wheel. Rebuilds on those systems therefore cross the explicit root
+	// authentication boundary instead of attempting sudo.
+	managedDevice := userConfig.EndpointManagedDevice
 
 	if managedDevice && os.Geteuid() != 0 {
 		executable, err := os.Executable()
@@ -2392,7 +2275,7 @@ func runHelpme(args []string, stdout, stderr io.Writer) int {
 	if len(args) > 1 || len(args) == 1 && args[0] != "--text" {
 		return 2
 	}
-	text := "GjallarOS tools\n\n  rebuild            Apply the current NixOS configuration.\n  update             Update flake inputs.\n  cleanup            Remove old generations and collect garbage.\n  thermal-status     Show temperatures and power state.\n  thermal-test       Pause/resume processes for troubleshooting.\n  check-installer    Check installer configuration.\n"
+	text := "GjallarOS tools\n\n  rebuild            Apply the current NixOS configuration.\n  update             Update flake inputs.\n  cleanup            Remove old generations and collect garbage.\n  thermal-status     Show temperatures and power state.\n  thermal-test       Pause/resume processes for troubleshooting.\n  check-installer    Check installer configuration.\n  gjallar-preflight  Run fast repository wiring checks.\n"
 	if len(args) == 1 || os.Getenv("DISPLAY")+os.Getenv("WAYLAND_DISPLAY") == "" {
 		fmt.Fprint(stdout, text)
 		return 0
@@ -2409,7 +2292,8 @@ func runHelpme(args []string, stdout, stderr io.Writer) int {
 		"cleanup", "Remove old generations and collect garbage.",
 		"thermal-status", "Show temperatures and power state.",
 		"thermal-test", "Pause/resume processes for troubleshooting.",
-		"check-installer", "Check installer configuration.")
+		"check-installer", "Check installer configuration.",
+		"gjallar-preflight", "Run fast repository wiring checks.")
 }
 
 func runRebuildQuiet(stdout, stderr io.Writer, host string, messages []string, started time.Time, commandArgs []string) int {

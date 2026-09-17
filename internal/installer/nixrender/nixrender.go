@@ -8,6 +8,8 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+
+	"github.com/bakanura/gjallarOS/internal/installer/config"
 )
 
 // String returns a Nix double-quoted string literal. In addition to ordinary
@@ -72,6 +74,217 @@ type Settings struct {
 	JODSFingerprintEnrollmentAllowed                                       bool
 	WMs                                                                    []string
 	Theme                                                                  string
+}
+
+// FromUser maps direct user intent into generated-state fields. Hardware,
+// discovery, installer-owned credentials and other derived facts are filled by
+// the installer after this mapping. Keeping this map here gives rebuild and
+// installation one owner for the user -> generated/state.nix contract.
+func FromUser(user config.User) Settings {
+	return Settings{
+		Hostname:                            user.Hostname,
+		Username:                            user.Username,
+		Timezone:                            user.Timezone,
+		Locale:                              user.Locale,
+		KeyboardLayout:                      user.KeyboardLayout,
+		KeyboardVariant:                     user.KeyboardVariant,
+		WeatherCity:                         user.WeatherCity,
+		WeatherCountry:                      user.WeatherCountry,
+		TouchpadWorkspaceSwipe:              user.TouchpadWorkspaceSwipe,
+		ClamshellEnable:                     user.ClamshellEnable,
+		USBGuardEnable:                      user.USBGuardEnable,
+		PrintingEnable:                      user.PrintingEnable,
+		NetworkPrintingEnable:               user.NetworkPrintingEnable,
+		Name:                                user.Name,
+		Email:                               user.Email,
+		GitHubUsername:                      user.GitHubUsername,
+		DotfilesDir:                         user.DotfilesDir,
+		ContainersEnable:                    user.ContainersEnable,
+		DebugFunctions:                      user.DebugFunctions,
+		Shell:                               user.Shell,
+		Editors:                             user.Editors,
+		Browsers:                            user.Browsers,
+		PreferredEditor:                     user.PreferredEditor,
+		PreferredBrowser:                    user.PreferredBrowser,
+		PlaneEnable:                         user.PlaneEnable,
+		PlaneHost:                           user.PlaneHost,
+		DrawioEnable:                        user.DrawioEnable,
+		DrawioSelfHosted:                    user.DrawioSelfHosted,
+		DrawioHost:                          user.DrawioHost,
+		BackgroundNormal:                    user.BackgroundNormal,
+		AIEnable:                            user.AIEnable,
+		AIAgentMode:                         user.AIAgentMode,
+		NemuEnable:                          user.NemuEnable,
+		LUKSTPM2Enable:                      user.LUKSTPM2Enable,
+		RecoveryEnable:                      user.RecoveryEnable,
+		RecoveryPartitionEnable:             user.RecoveryPartitionEnable,
+		JODSPrebootLockEnable:               user.JODSPrebootLockEnable,
+		SecureBootEnable:                    user.SecureBootEnable,
+		EndpointManagedDevice:               user.EndpointManagedDevice,
+		JODSEndpoint:                        user.JODSEndpoint,
+		JODSPolicySigningPublicKey:          user.JODSPolicySigningKey,
+		JODSRecoveryCommandSigningPublicKey: user.JODSRecoverySigningKey,
+		JODSEnrollmentMode:                  user.JODSEnrollmentMode,
+		JODSAllowInsecureTLS:                user.JODSAllowInsecureTLS,
+		JODSDeviceClass:                     user.JODSDeviceClass,
+		JODSDesktopProfile:                  user.JODSDesktopProfile,
+		JODSFingerprintEnrollmentAllowed:    user.JODSFingerprintEnroll,
+		Theme:                               user.Theme,
+	}
+}
+
+var userIntentKeys = []string{
+	"hostname",
+	"username",
+	"timezone",
+	"locale",
+	"keyboardLayout",
+	"keyboardVariant",
+	"weatherCity",
+	"weatherCountry",
+	"touchpadWorkspaceSwipe",
+	"clamshellEnable",
+	"usbguardEnable",
+	"printingEnable",
+	"networkPrintingEnable",
+	"name",
+	"email",
+	"githubUsername",
+	"dotfilesDir",
+	"containersEnable",
+	"debugFunctions",
+	"shell",
+	"editors",
+	"browsers",
+	"preferredEditor",
+	"preferredBrowser",
+	"planeEnable",
+	"planeHost",
+	"drawioEnable",
+	"drawioSelfHosted",
+	"drawioHost",
+	"backgroundNormal",
+	"aiEnable",
+	"aiAgentMode",
+	"nemuEnable",
+	"luksTpm2Enable",
+	"recoveryEnable",
+	"recoveryPartitionEnable",
+	"jodsPrebootLockEnable",
+	"secureBootEnable",
+	"endpointManagedDevice",
+	"jodsEndpoint",
+	"jodsPolicySigningPublicKey",
+	"jodsRecoveryCommandSigningPublicKey",
+	"jodsEnrollmentMode",
+	"jodsAllowInsecureTls",
+	"jodsDeviceClass",
+	"jodsDesktopProfile",
+	"jodsFingerprintEnrollmentAllowed",
+	"theme",
+}
+
+// SyncUserIntent updates only direct user-owned assignments in an existing
+// generated state file. Derived hardware/AI facts and installer-owned values
+// remain byte-for-byte untouched.
+func SyncUserIntent(path string, user config.User) error {
+	rendered := strings.Split(string(Render(FromUser(user))), "\n")
+	desired := make(map[string]string, len(userIntentKeys))
+	for _, line := range rendered {
+		trimmed := strings.TrimSpace(line)
+		for _, key := range userIntentKeys {
+			if strings.HasPrefix(trimmed, key+" = ") {
+				desired[key] = line
+				break
+			}
+		}
+	}
+	if len(desired) != len(userIntentKeys) {
+		return fmt.Errorf("render user intent: expected %d fields, got %d", len(userIntentKeys), len(desired))
+	}
+
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return fmt.Errorf("read %s: %w", path, err)
+	}
+
+	lines := strings.Split(string(data), "\n")
+	seen := make(map[string]bool, len(userIntentKeys))
+	result := make([]string, 0, len(lines)+len(userIntentKeys))
+	insertedMissing := false
+
+	for _, line := range lines {
+		trimmed := strings.TrimSpace(line)
+
+		if !insertedMissing && strings.HasPrefix(trimmed, "themeDetails = ") {
+			for _, key := range userIntentKeys {
+				if !seen[key] {
+					result = append(result, desired[key])
+					seen[key] = true
+				}
+			}
+			insertedMissing = true
+		}
+
+		replaced := false
+		for _, key := range userIntentKeys {
+			if !strings.HasPrefix(trimmed, key+" = ") {
+				continue
+			}
+			if seen[key] {
+				return fmt.Errorf("sync user intent %s: duplicate generated assignment", key)
+			}
+			result = append(result, desired[key])
+			seen[key] = true
+			replaced = true
+			break
+		}
+		if !replaced {
+			result = append(result, line)
+		}
+	}
+
+	for _, key := range userIntentKeys {
+		if !seen[key] {
+			return fmt.Errorf("sync user intent %s: themeDetails insertion anchor not found", key)
+		}
+	}
+
+	updated := strings.Join(result, "\n")
+	if updated == string(data) {
+		return nil
+	}
+
+	info, err := os.Stat(path)
+	if err != nil {
+		return fmt.Errorf("stat %s: %w", path, err)
+	}
+	tmp, err := os.CreateTemp(filepath.Dir(path), ".state-user-intent-*")
+	if err != nil {
+		return fmt.Errorf("create temporary generated state: %w", err)
+	}
+	tmpName := tmp.Name()
+	defer os.Remove(tmpName)
+
+	if err := tmp.Chmod(info.Mode().Perm()); err != nil {
+		tmp.Close()
+		return fmt.Errorf("preserve generated state permissions: %w", err)
+	}
+	if _, err := tmp.WriteString(updated); err != nil {
+		tmp.Close()
+		return fmt.Errorf("write temporary generated state: %w", err)
+	}
+	if err := tmp.Sync(); err != nil {
+		tmp.Close()
+		return fmt.Errorf("sync temporary generated state: %w", err)
+	}
+	if err := tmp.Close(); err != nil {
+		return fmt.Errorf("close temporary generated state: %w", err)
+	}
+	if err := os.Rename(tmpName, path); err != nil {
+		return fmt.Errorf("replace %s: %w", path, err)
+	}
+	return nil
 }
 
 func Render(s Settings) []byte {
@@ -156,7 +369,7 @@ func Render(s Settings) []byte {
 	boolean("jodsFingerprintEnrollmentAllowed", s.JODSFingerprintEnrollmentAllowed)
 	list("wms", s.WMs)
 	str("theme", s.Theme)
-	fmt.Fprintln(&b, "    themeDetails = import (./. + \"/themes/${theme}.nix\") {inherit pkgs;};")
+	fmt.Fprintln(&b, "    themeDetails = import (./. + \"/../themes/${theme}.nix\") {inherit pkgs;};")
 	fmt.Fprintln(&b, "}")
 	return b.Bytes()
 }

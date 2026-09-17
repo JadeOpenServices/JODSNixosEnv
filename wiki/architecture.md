@@ -32,6 +32,30 @@ going into every individual implementation file.
         v
     NixOS generation
 
+## Ownership and routing
+
+GjallarOS keeps hardware facts, human intent and operating-system policy
+separate. ODDC owns canonical device identity, capabilities and validated
+device-specific facts. `user.config.json` owns direct machine-local user
+intent. Generic NixOS and Home Manager modules own reusable operating-system
+policy.
+
+State follows one routed path instead of being rediscovered by each consumer:
+
+    hardware facts -> ODDC / generated hardware state
+    user intent    -> typed installer config -> generated/state.nix
+    OS policy      -> one generic module owner -> consumers
+
+`rebuild` refreshes direct user-owned generated-state assignments through the
+same typed renderer used by installation. Hardware, AI discovery and other
+derived facts remain installer-owned. `gjallar-preflight` performs cheap static
+wiring checks before Nix evaluation.
+
+Application resource management follows the same model. `gjallar-run` uses
+app2unit workload identities for desktop, JODS, AI and explicit background
+work. Identity and policy remain separate; only normal desktop scopes receive
+Hyprland focus-based CPU-weight changes.
+
 ## Main repository blocks
 
 ### Installer

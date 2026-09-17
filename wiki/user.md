@@ -30,23 +30,19 @@ User-visible browser configuration.
 
 Editor configuration such as VSCodium and Neovim.
 
-### gaming
+### services
 
-    user/gaming/
+    user/services/
 
-User-side gaming configuration.
+Per-user background owners such as storage maintenance and application
+resource QoS. `resource-qos.nix` owns the app2unit launch boundary and workload
+family policy.
 
 ### shells
 
     user/shells/
 
 Shells, prompts and shell tooling.
-
-### virtualization
-
-    user/virtualization/
-
-User-facing virtualization tools.
 
 ### wm
 

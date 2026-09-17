@@ -55,13 +55,23 @@ func testRepository(t *testing.T, config string) string {
 	t.Helper()
 	root := t.TempDir()
 	files := map[string]string{
-		"flake.nix":                       "{}",
+		"flake.nix": `
+  inputs = {
+    nixpkgs.url = "github:NixOS/nixpkgs";
+  };
+  outputs = { self, nixpkgs }: { test = nixpkgs; };
+`,
 		"user.config.json":                config,
 		"scripts/installation/install.sh": "#!/usr/bin/env bash\n",
 		"scripts/installation/user_PresetJSON/default.user.config.json": `{"profile":"laptop"}`,
 		"cmd/gjallar-installer/main.go":                                 "package main\n",
 		"internal/installer/app/app.go":                                 "package app\n",
+		"generated/state.nix":                                           "{}\n",
+		"generated/hardware.nix":                                        "{}\n",
+		"generated/install-state.nix":                                   "{}\n",
+		"system/default.nix":                                            "{}\n",
 		"system/apps/ollama.nix":                                        "{}\n",
+		"user/default.nix":                                              "{}\n",
 		"system/tools/commands/default.nix":                             "# check-installer\n",
 	}
 	for relative, contents := range files {
@@ -74,4 +84,48 @@ func testRepository(t *testing.T, config string) string {
 		}
 	}
 	return root
+}
+
+func TestPreflightWarnsAboutUnusedFlakeInput(t *testing.T) {
+	root := testRepository(t, `{"profile":"laptop"}`)
+	flake := `
+  inputs = {
+    nixpkgs.url = "github:NixOS/nixpkgs";
+    dead-input.url = "github:example/dead";
+  };
+  outputs = { self, nixpkgs, ... }@inputs: { test = inputs.nixpkgs; };
+`
+	if err := os.WriteFile(filepath.Join(root, "flake.nix"), []byte(flake), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	report := Preflight(root)
+	if !hasFinding(report, Warn, "unused flake input: dead-input") {
+		t.Fatalf("missing dead-input warning: %#v", report.Findings)
+	}
+}
+
+func TestPreflightWarnsAboutUnwiredModule(t *testing.T) {
+	root := testRepository(t, `{"profile":"laptop"}`)
+	path := filepath.Join(root, "system", "compat", "orphan.nix")
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(path, []byte("{}\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	report := Preflight(root)
+	if !hasFinding(report, Warn, "likely unwired Nix module: system/compat/orphan.nix") {
+		t.Fatalf("missing orphan warning: %#v", report.Findings)
+	}
+}
+
+func hasFinding(report Report, level Level, message string) bool {
+	for _, finding := range report.Findings {
+		if finding.Level == level && finding.Message == message {
+			return true
+		}
+	}
+	return false
 }

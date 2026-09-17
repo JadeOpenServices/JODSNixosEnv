@@ -28,13 +28,13 @@ need() {
 resolve_iso() {
     local out iso
 
-    say "BUILD: gjallar-recovery-iso"
+    say "BUILD: gjallar-installer-lab-iso"
     out="$(
         cd "$repo"
         nix build \
             --no-link \
             --print-out-paths \
-            '.#gjallar-recovery-vm-iso'
+            '.#gjallar-installer-lab-iso'
     )"
 
     iso="$(
@@ -42,7 +42,7 @@ resolve_iso() {
     )"
 
     [[ -n "$iso" && -f "$iso" ]] ||
-        fail "built recovery output contains no ISO"
+        fail "built installer-lab output contains no ISO"
 
     printf '%s\n' "$iso"
 }
@@ -168,7 +168,7 @@ run_install() {
     )
 
     say
-    say "=== VM INSTALL MODE ==="
+    say "=== GJALLAR INSTALLER LAB ==="
     say "Virtual target disk inside guest: /dev/vda"
     say "Physical host disks: NOT attached"
     say "Installer repository inside guest: /run/gjallarOS/repo"

@@ -2257,81 +2257,33 @@ func detectAndRenderState(
 		return err
 	}
 
-	s.render = nixrender.Settings{
-		System:                              system,
-		Hostname:                            u.Hostname,
-		Username:                            u.Username,
-		Timezone:                            u.Timezone,
-		Locale:                              u.Locale,
-		KeyboardLayout:                      u.KeyboardLayout,
-		KeyboardVariant:                     u.KeyboardVariant,
-		WeatherCity:                         u.WeatherCity,
-		WeatherCountry:                      u.WeatherCountry,
-		TouchpadWorkspaceSwipe:              u.TouchpadWorkspaceSwipe,
-		TouchscreenEnable:                   s.touchscreen,
-		PenTabletEnable:                     s.penTablet,
-		OrientationSensorEnable:             s.orientationSensor,
-		ClamshellEnable:                     u.ClamshellEnable,
-		USBGuardEnable:                      u.USBGuardEnable,
-		PrintingEnable:                      u.PrintingEnable,
-		NetworkPrintingEnable:               u.NetworkPrintingEnable,
-		Name:                                u.Name,
-		Email:                               u.Email,
-		GitHubUsername:                      u.GitHubUsername,
-		DotfilesDir:                         u.DotfilesDir,
-		RootPasswordFile:                    s.render.RootPasswordFile,
-		ContainersEnable:                    u.ContainersEnable,
-		DebugFunctions:                      u.DebugFunctions,
-		Shell:                               u.Shell,
-		Editors:                             u.Editors,
-		Browsers:                            u.Browsers,
-		PreferredEditor:                     u.PreferredEditor,
-		PreferredBrowser:                    u.PreferredBrowser,
-		PlaneEnable:                         u.PlaneEnable,
-		PlaneHost:                           u.PlaneHost,
-		DrawioEnable:                        u.DrawioEnable,
-		DrawioSelfHosted:                    u.DrawioSelfHosted,
-		DrawioHost:                          u.DrawioHost,
-		BackgroundNormal:                    u.BackgroundNormal,
-		ODDCModel:                           resolvedDevice.ModelID,
-		DeviceSysVendor:                     hardware.SysVendor,
-		DeviceProductName:                   hardware.ProductName,
-		DeviceProductVersion:                hardware.ProductVersion,
-		DeviceBoardVendor:                   hardware.BoardVendor,
-		DeviceBoardName:                     hardware.BoardName,
-		DeviceBoardVersion:                  hardware.BoardVersion,
-		GraphicsVendor:                      g.Vendor,
-		GraphicsDeviceID:                    g.DeviceID,
-		GraphicsDriverBranch:                g.DriverBranch,
-		GraphicsType:                        g.Type,
-		GraphicsCompute:                     g.Compute,
-		GraphicsBusID:                       g.BusID,
-		GraphicsIntegratedBusID:             g.IntegratedBusID,
-		WiFiDriver:                          wifi,
-		AIEnable:                            u.AIEnable,
-		AIModel:                             ai.Model,
-		AIAccelerationProfile:               ai.AccelerationProfile,
-		AIAgentMode:                         u.AIAgentMode,
-		AIContextTokens:                     ai.ContextTokens,
-		AIVRAMMB:                            ai.VRAMMB,
-		NemuEnable:                          u.NemuEnable,
-		LUKSTPM2Enable:                      u.LUKSTPM2Enable,
-		RecoveryEnable:                      u.RecoveryEnable,
-		RecoveryPartitionEnable:             u.RecoveryPartitionEnable,
-		JODSPrebootLockEnable:               u.JODSPrebootLockEnable,
-		SecureBootEnable:                    u.SecureBootEnable,
-		EndpointManagedDevice:               u.EndpointManagedDevice,
-		JODSEndpoint:                        u.JODSEndpoint,
-		JODSPolicySigningPublicKey:          u.JODSPolicySigningKey,
-		JODSRecoveryCommandSigningPublicKey: u.JODSRecoverySigningKey,
-		JODSEnrollmentMode:                  u.JODSEnrollmentMode,
-		JODSAllowInsecureTLS:                u.JODSAllowInsecureTLS,
-		JODSDeviceClass:                     u.JODSDeviceClass,
-		JODSDesktopProfile:                  u.JODSDesktopProfile,
-		JODSFingerprintEnrollmentAllowed:    u.JODSFingerprintEnroll,
-		WMs:                                 []string{"hyprland"},
-		Theme:                               u.Theme,
-	}
+	rootPasswordFile := s.render.RootPasswordFile
+	s.render = nixrender.FromUser(u)
+	s.render.System = system
+	s.render.TouchscreenEnable = s.touchscreen
+	s.render.PenTabletEnable = s.penTablet
+	s.render.OrientationSensorEnable = s.orientationSensor
+	s.render.RootPasswordFile = rootPasswordFile
+	s.render.ODDCModel = resolvedDevice.ModelID
+	s.render.DeviceSysVendor = hardware.SysVendor
+	s.render.DeviceProductName = hardware.ProductName
+	s.render.DeviceProductVersion = hardware.ProductVersion
+	s.render.DeviceBoardVendor = hardware.BoardVendor
+	s.render.DeviceBoardName = hardware.BoardName
+	s.render.DeviceBoardVersion = hardware.BoardVersion
+	s.render.GraphicsVendor = g.Vendor
+	s.render.GraphicsDeviceID = g.DeviceID
+	s.render.GraphicsDriverBranch = g.DriverBranch
+	s.render.GraphicsType = g.Type
+	s.render.GraphicsCompute = g.Compute
+	s.render.GraphicsBusID = g.BusID
+	s.render.GraphicsIntegratedBusID = g.IntegratedBusID
+	s.render.WiFiDriver = wifi
+	s.render.AIModel = ai.Model
+	s.render.AIAccelerationProfile = ai.AccelerationProfile
+	s.render.AIContextTokens = ai.ContextTokens
+	s.render.AIVRAMMB = ai.VRAMMB
+	s.render.WMs = []string{"hyprland"}
 
 	return nil
 }

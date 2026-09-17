@@ -1,6 +1,17 @@
 # Maintenance
 
-Validate before applying:
+Run the fast repository preflight before expensive Nix work:
+
+```bash
+gjallar-preflight
+```
+
+`rebuild` runs the same preflight automatically. It validates routed machine
+state, required owners, flake-input wiring and likely orphan modules before
+`nixos-rebuild` starts. Warnings identify cleanup candidates without blocking
+the rebuild; failed structural checks stop before privilege escalation.
+
+For a full Nix-level dry run:
 
 ```bash
 nix build .#nixosConfigurations.gjallarOS.config.system.build.toplevel --dry-run

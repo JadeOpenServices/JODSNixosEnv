@@ -37,11 +37,6 @@
       submodules = true;
     };
 
-    aagl = {
-      url = "github:ezKEa/aagl-gtk-on-nix";
-      inputs.nixpkgs.follows = "nixpkgs";
-    };
-
     hyprland-plugins = {
       url = "github:hyprwm/hyprland-plugins";
       inputs.hyprland.follows = "hyprland";
@@ -62,11 +57,6 @@
       inputs.nixpkgs.follows = "nixpkgs";
     };
 
-    opencode = {
-      url = "github:anomalyco/opencode";
-      inputs.nixpkgs.follows = "nixpkgs";
-    };
-
     noctalia-greeter = {
       url = "github:noctalia-dev/noctalia-greeter";
       inputs.nixpkgs.follows = "nixpkgs";
@@ -74,11 +64,6 @@
 
     noctalia = {
       url = "github:noctalia-dev/noctalia";
-      inputs.nixpkgs.follows = "nixpkgs";
-    };
-
-    late = {
-      url = "github:mpiorowski/late-sh";
       inputs.nixpkgs.follows = "nixpkgs";
     };
 
@@ -146,8 +131,8 @@
           };
         });
         "gjallar-recovery-iso" = self.nixosConfigurations.gjallar-recovery.config.system.build.isoImage;
-        "gjallar-recovery-vm-iso" =
-          self.nixosConfigurations.gjallar-recovery-vm.config.system.build.isoImage;
+        "gjallar-installer-lab-iso" =
+          self.nixosConfigurations.gjallar-installer-lab.config.system.build.isoImage;
       };
 
       checks.${system} = {
@@ -180,11 +165,11 @@
           };
         };
 
-        gjallar-recovery-vm = nixpkgs.lib.nixosSystem {
+        gjallar-installer-lab = nixpkgs.lib.nixosSystem {
           inherit system;
           modules = [
             ./system/recovery/image.nix
-            ./system/recovery/vm-image.nix
+            ./system/recovery/installer-lab.nix
           ];
           specialArgs = {
             releaseVersion = releasePolicy.release;
