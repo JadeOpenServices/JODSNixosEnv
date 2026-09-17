@@ -64,8 +64,8 @@ let
               --button='Allow once:0' --button='Always allow:2' --button='Keep blocked:1'
             choice="$?"
             case "$choice" in
-              0) ${pkgs.usbguard}/bin/usbguard allow-device "$id" || true ;;
-              2) ${pkgs.usbguard}/bin/usbguard allow-device --permanent "$id" || true ;;
+              0) printf '%s\n' "USB authorization is owned by gjallar-usbtrust; privileged broker not wired yet." >&2 ;;
+              2) printf '%s\n' "Permanent USB trust is owned by gjallar-usbtrust; privileged broker not wired yet." >&2 ;;
             esac
           done < <(${pkgs.usbguard}/bin/usbguard list-devices --blocked 2>/dev/null || true)
           for id in "''${!prompted[@]}"; do

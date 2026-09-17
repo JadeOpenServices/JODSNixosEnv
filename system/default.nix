@@ -23,6 +23,7 @@
     ./security/keyring.nix
   ./maintenance/storage.nix
     ./services/printing.nix
+    ./services/removable-media.nix
     ./services/tailscale.nix
 
     ../oddc/nixos/modules/default.nix

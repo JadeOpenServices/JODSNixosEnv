@@ -13,6 +13,7 @@
     ./shells/${settings.shell}.nix
     ./services/storage-maintenance.nix
     ./services/resource-qos.nix
+    ./services/removable-media.nix
     ./apps
   ]
   ++ (map (wm: ./wm/${wm}) settings.wms)

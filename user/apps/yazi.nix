@@ -149,7 +149,18 @@ in
         { mime = "application/yaml"; use = "edit"; }
       ];
     };
-    plugins.sduf = builtins.toPath inputs.yazi-disk-space.outPath;
+    plugins = {
+      sduf = builtins.toPath inputs.yazi-disk-space.outPath;
+      mount = pkgs.yaziPlugins.mount;
+    };
+
+    keymap.mgr.prepend_keymap = [
+      {
+        on = [ "M" ];
+        run = "plugin mount";
+        desc = "Mount, unmount or eject removable media";
+      }
+    ];
   };
 
   _module.args.gjallarFileManager = gjallarFileManager;
