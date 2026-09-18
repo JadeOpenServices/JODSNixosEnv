@@ -28,8 +28,22 @@ buildGoModule {
   };
 
   vendorHash = null;
+
+  # This package owns the established GjallarOS command suite.
+  # Privileged feature daemons such as gjallar-usbtrustd are
+  # packaged independently by their owning subsystem.
+  subPackages = [
+    "cmd/gjallarctl"
+    "cmd/gjallar-installer"
+    "cmd/gjallar-recovery-maintenance"
+    "cmd/oddcctl"
+  ];
+
   env.CGO_ENABLED = "0";
-  ldflags = [ "-s" "-w" ];
+  ldflags = [
+    "-s"
+    "-w"
+  ];
 
   meta = {
     description = "Safe GjallarOS maintenance and validation tool";
