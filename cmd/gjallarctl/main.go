@@ -1892,6 +1892,64 @@ func reportPreflight(root string, stdout, stderr io.Writer) int {
 	return 0
 }
 
+func reportRebuildPreflight(
+	root string,
+	stdout,
+	stderr io.Writer,
+) int {
+	report := installercheck.Preflight(root)
+
+	return reportRebuildPreflightResult(
+		report.Findings,
+		report.Failed(),
+		stdout,
+		stderr,
+	)
+}
+
+func reportRebuildPreflightResult(
+	findings []installercheck.Finding,
+	failed bool,
+	stdout,
+	stderr io.Writer,
+) int {
+	if failed {
+		for _, finding := range findings {
+			if finding.Level == "PASS" {
+				continue
+			}
+
+			fmt.Fprintf(
+				stdout,
+				"%s: %s\n",
+				finding.Level,
+				finding.Message,
+			)
+		}
+
+		fmt.Fprintln(
+			stderr,
+			"FAIL: GjallarOS preflight failed",
+		)
+
+		return 1
+	}
+
+	fmt.Fprintln(stdout, "[GjallarOS] Preflight ✓")
+
+	for _, finding := range findings {
+		if finding.Level == installercheck.Warn {
+			fmt.Fprintf(
+				stdout,
+				"WARN: %s\n",
+				finding.Message,
+			)
+		}
+	}
+
+	return 0
+}
+
 func runCheck(args []string, stdout, stderr io.Writer) int {
 	flags := flag.NewFlagSet("gjallarctl check", flag.ContinueOnError)
 	flags.SetOutput(stderr)
@@ -1932,7 +1990,7 @@ func printUsage(out io.Writer) {
 	fmt.Fprintln(out, "Usage: gjallarctl check [--repo PATH] [--timeout DURATION]")
 	fmt.Fprintln(out, "       gjallarctl preflight [--repo PATH]")
 	fmt.Fprintln(out, "       gjallarctl oddc validate-device [--repo PATH]")
-	fmt.Fprintln(out, "       gjallarctl rebuild --repo PATH --host HOST [-d|--debug] [-n|--no-cleanup] [NIXOS-REBUILD-ARGS...]")
+	fmt.Fprintln(out, "       gjallarctl rebuild [--repo PATH] [--host HOST] [-d|--debug] [-n|--no-cleanup] [NIXOS-REBUILD-ARGS...]")
 	fmt.Fprintln(out, "       gjallarctl device-probe refresh [--output PATH]")
 	fmt.Fprintln(out, "       gjallarctl fan {status|list|reconcile}")
 	fmt.Fprintln(out, "       gjallarctl ai profile [--config PATH]")
@@ -1943,7 +2001,7 @@ func printUsage(out io.Writer) {
 }
 
 func runRebuild(args []string, stdout, stderr io.Writer) int {
-	repo, host := "", ""
+	repo, host := ".", ""
 	debug, cleanup := false, true
 	var rebuildArgs []string
 	for i := 0; i < len(args); i++ {
@@ -1970,27 +2028,19 @@ func runRebuild(args []string, stdout, stderr io.Writer) int {
 			rebuildArgs = append(rebuildArgs, args[i])
 		}
 	}
-	if repo == "" || host == "" {
-		fmt.Fprintln(stderr, "ERROR: rebuild requires --repo and --host")
+	resolvedRepo, err := installercheck.ResolveRepository(repo)
+	if err != nil {
+		fmt.Fprintf(stderr, "ERROR: resolve GjallarOS repository: %v\n", err)
 		return 2
 	}
+	repo = resolvedRepo
 
-	_, err := repojson.CanonicalizeChangedTracked(
+	_, err = repojson.CanonicalizeChangedTracked(
 		context.Background(),
 		repo,
 	)
 	if err != nil {
 		fmt.Fprintf(stderr, "ERROR: canonicalize changed JSON: %v\n", err)
-		return 1
-	}
-
-	messagesPath := filepath.Join(repo, "system/tools/commands/rebuild-messages.json")
-	if _, err := os.Stat(messagesPath); errors.Is(err, os.ErrNotExist) {
-		messagesPath = filepath.Join(repo, "system/tools/commands/rebuild-messages.json")
-	}
-	messages, err := loadRebuildMessages(messagesPath, host)
-	if err != nil {
-		fmt.Fprintf(stderr, "[GjallarOS] Error: %v\n", err)
 		return 1
 	}
 
@@ -2004,13 +2054,38 @@ func runRebuild(args []string, stdout, stderr io.Writer) int {
 		return 1
 	}
 
+	if host == "" {
+		host = strings.TrimSpace(userConfig.Hostname)
+		if host == "" {
+			fmt.Fprintln(
+				stderr,
+				"[GjallarOS] Error: user configuration has no hostname",
+			)
+			return 1
+		}
+	}
+
+	messagesPath := filepath.Join(
+		repo,
+		"system/tools/commands/rebuild-messages.json",
+	)
+	messages, err := loadRebuildMessages(messagesPath, host)
+	if err != nil {
+		fmt.Fprintf(stderr, "[GjallarOS] Error: %v\n", err)
+		return 1
+	}
+
 	settingsPath := filepath.Join(repo, "generated", "state.nix")
 	if err := nixrender.SyncUserIntent(settingsPath, userConfig); err != nil {
 		fmt.Fprintf(stderr, "[GjallarOS] Error: sync routed user intent: %v\n", err)
 		return 1
 	}
 
-	if status := reportPreflight(repo, stdout, stderr); status != 0 {
+	if status := reportRebuildPreflight(
+		repo,
+		stdout,
+		stderr,
+	); status != 0 {
 		return status
 	}
 
