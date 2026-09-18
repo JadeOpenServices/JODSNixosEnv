@@ -6,6 +6,7 @@
     ./fingerprint.nix
     ./fastfetch
     ./git.nix
+    ./keepassxc.nix
     ./ghostty.nix
     ./opencode.nix
     ./plane.nix
