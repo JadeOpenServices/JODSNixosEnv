@@ -41,6 +41,9 @@ type User struct {
 	DrawioEnable              bool     `json:"drawioEnable"`
 	DrawioSelfHosted          bool     `json:"drawioSelfHosted"`
 	DrawioHost                string   `json:"drawioHost"`
+	NextcloudEnable           bool     `json:"nextcloudEnable"`
+	NextcloudHost             string   `json:"nextcloudHost"`
+	NextcloudLocalRoot        string   `json:"nextcloudLocalRoot"`
 	Theme                     string   `json:"theme"`
 	BackgroundNormal          string   `json:"backgroundNormal"`
 	ContainersEnable          bool     `json:"containersEnable"`
@@ -201,6 +204,36 @@ func NormalizeExternalServiceEndpoint(raw string) (string, error) {
 }
 
 func NormalizeProjectTools(user *User) error {
+	if user.NextcloudEnable {
+		normalized, err := NormalizeExternalServiceEndpoint(
+			user.NextcloudHost,
+		)
+		if err != nil {
+			return fmt.Errorf("nextcloudHost: %w", err)
+		}
+
+		if !strings.HasPrefix(normalized, "https://") {
+			return fmt.Errorf(
+				"nextcloudHost: HTTPS is required",
+			)
+		}
+
+		user.NextcloudHost = normalized
+		user.NextcloudLocalRoot = strings.TrimSpace(
+			user.NextcloudLocalRoot,
+		)
+
+		if user.NextcloudLocalRoot == "" ||
+			!strings.HasPrefix(user.NextcloudLocalRoot, "/") {
+			return fmt.Errorf(
+				"nextcloudLocalRoot: absolute path required",
+			)
+		}
+	} else {
+		user.NextcloudHost = ""
+		user.NextcloudLocalRoot = ""
+	}
+
 	if user.PlaneEnable {
 		normalized, err := NormalizeExternalServiceEndpoint(user.PlaneHost)
 		if err != nil {

@@ -48,8 +48,8 @@ type Settings struct {
 	Shell                                                                  string
 	Editors, Browsers                                                      []string
 	PreferredEditor, PreferredBrowser                                      string
-	PlaneHost, DrawioHost                                                  string
-	PlaneEnable, DrawioEnable, DrawioSelfHosted                            bool
+	PlaneHost, DrawioHost, NextcloudHost, NextcloudLocalRoot               string
+	PlaneEnable, DrawioEnable, DrawioSelfHosted, NextcloudEnable           bool
 	BackgroundNormal                                                       string
 	ODDCModel                                                              string
 	DeviceSysVendor, DeviceProductName, DeviceProductVersion               string
@@ -111,6 +111,9 @@ func FromUser(user config.User) Settings {
 		DrawioEnable:                        user.DrawioEnable,
 		DrawioSelfHosted:                    user.DrawioSelfHosted,
 		DrawioHost:                          user.DrawioHost,
+		NextcloudEnable:                     user.NextcloudEnable,
+		NextcloudHost:                       user.NextcloudHost,
+		NextcloudLocalRoot:                  user.NextcloudLocalRoot,
 		BackgroundNormal:                    user.BackgroundNormal,
 		AIEnable:                            user.AIEnable,
 		AIAgentMode:                         user.AIAgentMode,
@@ -163,6 +166,9 @@ var userIntentKeys = []string{
 	"drawioEnable",
 	"drawioSelfHosted",
 	"drawioHost",
+	"nextcloudEnable",
+	"nextcloudHost",
+	"nextcloudLocalRoot",
 	"backgroundNormal",
 	"aiEnable",
 	"aiAgentMode",
@@ -330,6 +336,9 @@ func Render(s Settings) []byte {
 	boolean("drawioEnable", s.DrawioEnable)
 	boolean("drawioSelfHosted", s.DrawioSelfHosted)
 	str("drawioHost", s.DrawioHost)
+	boolean("nextcloudEnable", s.NextcloudEnable)
+	str("nextcloudHost", s.NextcloudHost)
+	str("nextcloudLocalRoot", s.NextcloudLocalRoot)
 	str("backgroundNormal", s.BackgroundNormal)
 	str("oddcModel", s.ODDCModel)
 	str("deviceSysVendor", s.DeviceSysVendor)

@@ -1759,6 +1759,39 @@ func collectProjectTools(ctx context.Context, ui prompt.UI, u *config.User) erro
 		}
 	}
 
+	u.NextcloudEnable, err = ui.Confirm(
+		ctx,
+		"Enable Nextcloud integration?",
+		false,
+	)
+	if err != nil {
+		return err
+	}
+
+	if u.NextcloudEnable {
+		u.NextcloudHost, err = ui.Value(
+			ctx,
+			"Nextcloud server",
+			"",
+		)
+		if err != nil {
+			return err
+		}
+
+		u.NextcloudLocalRoot, err = ui.Value(
+			ctx,
+			"Nextcloud local sync root",
+			filepath.Join(
+				"/home",
+				u.Username,
+				"Nextcloud",
+			),
+		)
+		if err != nil {
+			return err
+		}
+	}
+
 	return config.NormalizeProjectTools(u)
 }
 

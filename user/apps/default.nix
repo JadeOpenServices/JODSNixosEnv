@@ -7,6 +7,7 @@
     ./fastfetch
     ./git.nix
     ./keepassxc.nix
+    ./nextcloud.nix
     ./ghostty.nix
     ./opencode.nix
     ./plane.nix

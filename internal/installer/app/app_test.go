@@ -179,16 +179,19 @@ func TestCollectProjectToolsDefaultsDisabled(t *testing.T) {
 
 	err := collectProjectTools(
 		context.Background(),
-		prompt.New(strings.NewReader("\n\n"), &output),
+		prompt.New(strings.NewReader("\n\n\n"), &output),
 		&u,
 	)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if u.PlaneEnable || u.DrawioEnable {
+	if u.PlaneEnable || u.DrawioEnable || u.NextcloudEnable {
 		t.Fatalf("project tools should default disabled: %+v", u)
 	}
-	if u.PlaneHost != "" || u.DrawioHost != "" {
+	if u.PlaneHost != "" ||
+		u.DrawioHost != "" ||
+		u.NextcloudHost != "" ||
+		u.NextcloudLocalRoot != "" {
 		t.Fatalf("disabled project tools unexpectedly received hosts: %+v", u)
 	}
 }
@@ -203,20 +206,20 @@ func TestCollectProjectToolsSupportsIndependentSelection(t *testing.T) {
 	}{
 		{
 			name:        "plane only",
-			input:       "yes\nhttps://plane.example.test\nno\n",
+			input:       "yes\nhttps://plane.example.test\nno\nno\n",
 			planeEnable: true,
 			planeHost:   "https://plane.example.test",
 		},
 		{
 			name:             "drawio only",
-			input:            "no\nyes\nyes\nhttps://drawio.example.test\n",
+			input:            "no\nyes\nyes\nhttps://drawio.example.test\nno\n",
 			drawioEnable:     true,
 			drawioSelfHosted: true,
 			drawioHost:       "https://drawio.example.test",
 		},
 		{
 			name:             "both",
-			input:            "yes\nplane.internal:3000\nyes\nyes\ndrawio.internal:8080\n",
+			input:            "yes\nplane.internal:3000\nyes\nyes\ndrawio.internal:8080\nno\n",
 			planeEnable:      true,
 			drawioEnable:     true,
 			drawioSelfHosted: true,
@@ -254,6 +257,46 @@ func TestCollectProjectToolsSupportsIndependentSelection(t *testing.T) {
 				)
 			}
 		})
+	}
+}
+
+func TestCollectProjectToolsSupportsNextcloud(t *testing.T) {
+	var output bytes.Buffer
+
+	u := config.User{
+		Username: "test",
+	}
+
+	err := collectProjectTools(
+		context.Background(),
+		prompt.New(
+			strings.NewReader(
+				"no\nno\nyes\nhttps://cloud.example.test\n\n",
+			),
+			&output,
+		),
+		&u,
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if !u.NextcloudEnable {
+		t.Fatal("Nextcloud was not enabled")
+	}
+
+	if u.NextcloudHost != "https://cloud.example.test" {
+		t.Fatalf(
+			"NextcloudHost = %q",
+			u.NextcloudHost,
+		)
+	}
+
+	if u.NextcloudLocalRoot != "/home/test/Nextcloud" {
+		t.Fatalf(
+			"NextcloudLocalRoot = %q",
+			u.NextcloudLocalRoot,
+		)
 	}
 }
 
