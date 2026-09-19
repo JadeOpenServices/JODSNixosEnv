@@ -23,15 +23,18 @@ let
 config="''${XDG_CONFIG_HOME:-$HOME/.config}/Nextcloud/nextcloud.cfg"
 local_root="$HOME/Nextcloud"
 
-mkdir -p "$local_root"
+# Only a normal GUI launch may seed first-run wizard defaults.
+# CLI operations such as --version must remain side-effect free.
+if [ "$#" -eq 0 ]; then
+  mkdir -p "$local_root"
 
-# Wizard preconfiguration only. Credentials remain entirely client-owned.
-if [ ! -f "$config" ] ||
-   ! grep -Eq '^[0-9]+\\url=' "$config"
-then
-  ${lib.getExe client} \
-    --overrideserverurl ${lib.escapeShellArg host} \
-    --overridelocaldir "$local_root"
+  if [ ! -f "$config" ] ||
+     ! grep -Eq '^[0-9]+\\url=' "$config"
+  then
+    ${lib.getExe client} \
+      --overrideserverurl ${lib.escapeShellArg host} \
+      --overridelocaldir "$local_root"
+  fi
 fi
 
 exec ${lib.getExe client} "$@"
