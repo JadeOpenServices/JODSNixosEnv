@@ -43,7 +43,6 @@ type User struct {
 	DrawioHost                string   `json:"drawioHost"`
 	NextcloudEnable           bool     `json:"nextcloudEnable"`
 	NextcloudHost             string   `json:"nextcloudHost"`
-	NextcloudLocalRoot        string   `json:"nextcloudLocalRoot"`
 	Theme                     string   `json:"theme"`
 	BackgroundNormal          string   `json:"backgroundNormal"`
 	ContainersEnable          bool     `json:"containersEnable"`
@@ -219,19 +218,8 @@ func NormalizeProjectTools(user *User) error {
 		}
 
 		user.NextcloudHost = normalized
-		user.NextcloudLocalRoot = strings.TrimSpace(
-			user.NextcloudLocalRoot,
-		)
-
-		if user.NextcloudLocalRoot == "" ||
-			!strings.HasPrefix(user.NextcloudLocalRoot, "/") {
-			return fmt.Errorf(
-				"nextcloudLocalRoot: absolute path required",
-			)
-		}
 	} else {
 		user.NextcloudHost = ""
-		user.NextcloudLocalRoot = ""
 	}
 
 	if user.PlaneEnable {

@@ -48,7 +48,7 @@ type Settings struct {
 	Shell                                                                  string
 	Editors, Browsers                                                      []string
 	PreferredEditor, PreferredBrowser                                      string
-	PlaneHost, DrawioHost, NextcloudHost, NextcloudLocalRoot               string
+	PlaneHost, DrawioHost, NextcloudHost                                   string
 	PlaneEnable, DrawioEnable, DrawioSelfHosted, NextcloudEnable           bool
 	BackgroundNormal                                                       string
 	ODDCModel                                                              string
@@ -113,7 +113,6 @@ func FromUser(user config.User) Settings {
 		DrawioHost:                          user.DrawioHost,
 		NextcloudEnable:                     user.NextcloudEnable,
 		NextcloudHost:                       user.NextcloudHost,
-		NextcloudLocalRoot:                  user.NextcloudLocalRoot,
 		BackgroundNormal:                    user.BackgroundNormal,
 		AIEnable:                            user.AIEnable,
 		AIAgentMode:                         user.AIAgentMode,
@@ -168,7 +167,6 @@ var userIntentKeys = []string{
 	"drawioHost",
 	"nextcloudEnable",
 	"nextcloudHost",
-	"nextcloudLocalRoot",
 	"backgroundNormal",
 	"aiEnable",
 	"aiAgentMode",
@@ -338,7 +336,6 @@ func Render(s Settings) []byte {
 	str("drawioHost", s.DrawioHost)
 	boolean("nextcloudEnable", s.NextcloudEnable)
 	str("nextcloudHost", s.NextcloudHost)
-	str("nextcloudLocalRoot", s.NextcloudLocalRoot)
 	str("backgroundNormal", s.BackgroundNormal)
 	str("oddcModel", s.ODDCModel)
 	str("deviceSysVendor", s.DeviceSysVendor)

@@ -1778,18 +1778,6 @@ func collectProjectTools(ctx context.Context, ui prompt.UI, u *config.User) erro
 			return err
 		}
 
-		u.NextcloudLocalRoot, err = ui.Value(
-			ctx,
-			"Nextcloud local sync root",
-			filepath.Join(
-				"/home",
-				u.Username,
-				"Nextcloud",
-			),
-		)
-		if err != nil {
-			return err
-		}
 	}
 
 	return config.NormalizeProjectTools(u)

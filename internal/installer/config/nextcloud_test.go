@@ -1,15 +1,11 @@
 package config
 
-import (
-	"strings"
-	"testing"
-)
+import "testing"
 
-func TestNormalizeProjectToolsNextcloud(t *testing.T) {
+func TestNormalizeProjectToolsNormalizesNextcloud(t *testing.T) {
 	user := User{
-		NextcloudEnable:    true,
-		NextcloudHost:      "https://cloud.example.test///",
-		NextcloudLocalRoot: "/home/test/Nextcloud",
+		NextcloudEnable: true,
+		NextcloudHost:   "https://cloud.example.test///",
 	}
 
 	if err := NormalizeProjectTools(&user); err != nil {
@@ -22,72 +18,32 @@ func TestNormalizeProjectToolsNextcloud(t *testing.T) {
 			user.NextcloudHost,
 		)
 	}
+}
 
-	if user.NextcloudLocalRoot != "/home/test/Nextcloud" {
-		t.Fatalf(
-			"NextcloudLocalRoot = %q",
-			user.NextcloudLocalRoot,
-		)
+func TestNormalizeProjectToolsRequiresNextcloudHTTPS(t *testing.T) {
+	user := User{
+		NextcloudEnable: true,
+		NextcloudHost:   "http://cloud.example.test",
+	}
+
+	if err := NormalizeProjectTools(&user); err == nil {
+		t.Fatal("expected HTTP Nextcloud endpoint rejection")
 	}
 }
 
-func TestNormalizeProjectToolsNextcloudRequiresHTTPS(
-	t *testing.T,
-) {
+func TestNormalizeProjectToolsClearsDisabledNextcloud(t *testing.T) {
 	user := User{
-		NextcloudEnable:    true,
-		NextcloudHost:      "http://cloud.example.test",
-		NextcloudLocalRoot: "/home/test/Nextcloud",
-	}
-
-	err := NormalizeProjectTools(&user)
-	if err == nil ||
-		!strings.Contains(err.Error(), "HTTPS is required") {
-		t.Fatalf(
-			"error = %v, want HTTPS requirement",
-			err,
-		)
-	}
-}
-
-func TestNormalizeProjectToolsNextcloudRequiresAbsoluteLocalRoot(
-	t *testing.T,
-) {
-	user := User{
-		NextcloudEnable:    true,
-		NextcloudHost:      "https://cloud.example.test",
-		NextcloudLocalRoot: "Nextcloud",
-	}
-
-	err := NormalizeProjectTools(&user)
-	if err == nil ||
-		!strings.Contains(err.Error(), "absolute path required") {
-		t.Fatalf(
-			"error = %v, want absolute-path requirement",
-			err,
-		)
-	}
-}
-
-func TestNormalizeProjectToolsDisabledNextcloudClearsState(
-	t *testing.T,
-) {
-	user := User{
-		NextcloudEnable:    false,
-		NextcloudHost:      "https://stale.example.test",
-		NextcloudLocalRoot: "/stale",
+		NextcloudHost: "https://stale.example.test",
 	}
 
 	if err := NormalizeProjectTools(&user); err != nil {
 		t.Fatal(err)
 	}
 
-	if user.NextcloudHost != "" ||
-		user.NextcloudLocalRoot != "" {
+	if user.NextcloudHost != "" {
 		t.Fatalf(
-			"disabled Nextcloud retained state: host=%q root=%q",
+			"disabled Nextcloud retained host %q",
 			user.NextcloudHost,
-			user.NextcloudLocalRoot,
 		)
 	}
 }

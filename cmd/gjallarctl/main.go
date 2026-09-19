@@ -879,7 +879,6 @@ func runRender(args []string, stdout, stderr io.Writer) int {
 	f.StringVar(&s.DrawioHost, "drawio-host", "", "")
 	f.BoolVar(&s.NextcloudEnable, "nextcloud-enable", false, "")
 	f.StringVar(&s.NextcloudHost, "nextcloud-host", "", "")
-	f.StringVar(&s.NextcloudLocalRoot, "nextcloud-local-root", "", "")
 	f.StringVar(&s.BackgroundNormal, "background-normal", "", "")
 	f.StringVar(&s.ODDCModel, "oddc-model", "", "")
 	f.StringVar(&s.DeviceSysVendor, "device-sys-vendor", "", "")

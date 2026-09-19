@@ -190,8 +190,7 @@ func TestCollectProjectToolsDefaultsDisabled(t *testing.T) {
 	}
 	if u.PlaneHost != "" ||
 		u.DrawioHost != "" ||
-		u.NextcloudHost != "" ||
-		u.NextcloudLocalRoot != "" {
+		u.NextcloudHost != "" {
 		t.Fatalf("disabled project tools unexpectedly received hosts: %+v", u)
 	}
 }
@@ -271,7 +270,7 @@ func TestCollectProjectToolsSupportsNextcloud(t *testing.T) {
 		context.Background(),
 		prompt.New(
 			strings.NewReader(
-				"no\nno\nyes\nhttps://cloud.example.test\n\n",
+				"no\nno\nyes\nhttps://cloud.example.test\n",
 			),
 			&output,
 		),
@@ -289,13 +288,6 @@ func TestCollectProjectToolsSupportsNextcloud(t *testing.T) {
 		t.Fatalf(
 			"NextcloudHost = %q",
 			u.NextcloudHost,
-		)
-	}
-
-	if u.NextcloudLocalRoot != "/home/test/Nextcloud" {
-		t.Fatalf(
-			"NextcloudLocalRoot = %q",
-			u.NextcloudLocalRoot,
 		)
 	}
 }

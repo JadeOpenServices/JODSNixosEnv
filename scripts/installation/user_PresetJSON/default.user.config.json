@@ -16,7 +16,6 @@
   "drawioSelfHosted": false,
   "nextcloudEnable": false,
   "nextcloudHost": "",
-  "nextcloudLocalRoot": "",
   "editors": [
     "vscodium"
   ],

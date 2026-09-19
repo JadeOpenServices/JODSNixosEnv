@@ -7,52 +7,113 @@
 let
   enable = settings.nextcloudEnable or false;
   host = settings.nextcloudHost or "";
-  localRoot = settings.nextcloudLocalRoot or "";
 
-  setup = pkgs.writeShellScriptBin "gjallar-nextcloud-setup" ''
-    exec ${lib.getExe pkgs.nextcloud-client} \
-      --overrideserverurl ${lib.escapeShellArg host} \
-      --overridelocaldir ${lib.escapeShellArg localRoot}
+  client = pkgs.nextcloud-client;
+
+  managedClient = pkgs.symlinkJoin {
+    name = "gjallar-nextcloud-client";
+    paths = [ client ];
+
+    postBuild = ''
+      rm -f "$out/bin/nextcloud"
+
+      cat > "$out/bin/nextcloud" <<'SCRIPT'
+#!${pkgs.runtimeShell}
+
+config="''${XDG_CONFIG_HOME:-$HOME/.config}/Nextcloud/nextcloud.cfg"
+local_root="$HOME/Nextcloud"
+
+mkdir -p "$local_root"
+
+# Wizard preconfiguration only. Credentials remain entirely client-owned.
+if [ ! -f "$config" ] ||
+   ! grep -Eq '^[0-9]+\\url=' "$config"
+then
+  ${lib.getExe client} \
+    --overrideserverurl ${lib.escapeShellArg host} \
+    --overridelocaldir "$local_root"
+fi
+
+exec ${lib.getExe client} "$@"
+SCRIPT
+
+      chmod +x "$out/bin/nextcloud"
+
+      # GjallarOS systemd owns background startup.
+      rm -f "$out"/etc/xdg/autostart/*nextcloud*.desktop
+
+      desktop="$out/share/applications/com.nextcloud.desktopclient.nextcloud.desktop"
+
+      if [ -L "$desktop" ]; then
+        source="$(readlink -f "$desktop")"
+        rm "$desktop"
+        cp "$source" "$desktop"
+        chmod u+w "$desktop"
+      fi
+
+      if [ -f "$desktop" ]; then
+        sed -i \
+          "0,/^Exec=/{s|^Exec=.*|Exec=$out/bin/nextcloud|}" \
+          "$desktop"
+      fi
+    '';
+  };
+
+  syncRunner = pkgs.writeShellScript "gjallar-nextcloud-sync" ''
+    config="''${XDG_CONFIG_HOME:-$HOME/.config}/Nextcloud/nextcloud.cfg"
+
+    # No account yet. Normal GUI startup owns enrollment.
+    if [ ! -f "$config" ] ||
+       ! grep -Eq '^[0-9]+\\url=' "$config"
+    then
+      echo "Nextcloud account setup is incomplete; background sync not started."
+      exit 0
+    fi
+
+    # Never permit GjallarOS background startup to run an eager/full mirror.
+    if grep -Eq \
+      '^[0-9]+\\Folders(WithPlaceholders)?\\[0-9]+\\virtualFilesMode=off$' \
+      "$config"
+    then
+      echo "Nextcloud background sync refused: virtual files are disabled." >&2
+      exit 0
+    fi
+
+    if ! grep -Eq \
+      '^[0-9]+\\Folders(WithPlaceholders)?\\[0-9]+\\virtualFilesMode=.+$' \
+      "$config"
+    then
+      echo "Nextcloud background sync refused: no virtual-files folder is configured." >&2
+      exit 0
+    fi
+
+    exec ${lib.getExe client} --background
   '';
 in
 {
-  # Nextcloud owns remote/local synchronization and mutable account state.
-  #
-  # Credentials, app passwords and account tokens remain exclusively in the
-  # client's credential store and must never enter Nix, generated state or Git.
   home.packages = lib.optionals enable [
-    pkgs.nextcloud-client
-    setup
+    managedClient
   ];
 
-  # Friendly first-run entry point using only non-secret installer intent.
-  xdg.desktopEntries = lib.mkIf enable {
-    nextcloud-setup = {
-      name = "Nextcloud Setup";
-      genericName = "Cloud synchronization setup";
-      comment = "Connect this GjallarOS user to Nextcloud";
-      exec = "${setup}/bin/gjallar-nextcloud-setup";
-      icon = "Nextcloud";
-      terminal = false;
-      categories = [
-        "Network"
-        "FileTransfer"
-      ];
-    };
-  };
+  # Keep the cloud location visible even before account enrollment.
+  home.activation.gjallarNextcloudRoot = lib.mkIf enable (
+    lib.hm.dag.entryAfter [ "writeBoundary" ] ''
+      ${pkgs.coreutils}/bin/mkdir -p "$HOME/Nextcloud"
+    ''
+  );
 
-  # Authentication remains interactive. Background synchronization begins
-  # only after the Nextcloud client has created its account configuration.
+  # Nextcloud owns credentials, accounts and mutable sync state.
+  # GjallarOS owns the generic local location and requires virtual files for
+  # unattended/background synchronization.
   systemd.user.services.nextcloud-sync = lib.mkIf enable {
     Unit = {
-      Description = "Nextcloud desktop synchronization";
+      Description = "Nextcloud virtual-file synchronization";
       After = [ "graphical-session.target" ];
-      ConditionPathExists = "%h/.config/Nextcloud/nextcloud.cfg";
     };
 
     Service = {
       Type = "simple";
-      ExecStart = "${pkgs.nextcloud-client}/bin/nextcloud --background";
+      ExecStart = syncRunner;
 
       Restart = "on-failure";
       RestartSec = "5s";
@@ -67,4 +128,62 @@ in
       "graphical-session.target"
     ];
   };
+
+  # Yazi integration: Nextcloud becomes a first-class location.
+  programs.yazi.keymap.mgr.prepend_keymap = lib.mkAfter [
+    {
+      on = [
+        "g"
+        "n"
+      ];
+      run = "cd ~/Nextcloud";
+      desc = "Go to Nextcloud";
+    }
+  ];
+
+  programs.yazi.theme.icon.prepend_dirs = lib.mkBefore [
+    {
+      name = "Nextcloud";
+      text = "";
+    }
+  ];
+
+  programs.yazi.theme.icon.prepend_exts = lib.mkBefore [
+    {
+      name = "nextcloud";
+      text = "󰇚";
+    }
+  ];
+
+  # Linux suffix-VFS placeholders are explicitly opened through XDG.
+  # The Nextcloud MIME handler performs hydration, then opens the real file.
+  programs.yazi.settings.opener."nextcloud-hydrate" = [
+    {
+      run = "${pkgs.xdg-utils}/bin/xdg-open %s1";
+      orphan = true;
+      desc = "Download and open from Nextcloud";
+    }
+  ];
+
+  programs.yazi.settings.open.prepend_rules = lib.mkBefore [
+    {
+      url = "*.nextcloud";
+      use = "nextcloud-hydrate";
+    }
+  ];
+
+  # Do not waste preview/preload workers on online-only placeholders.
+  programs.yazi.settings.plugin.prepend_previewers = lib.mkBefore [
+    {
+      url = "*.nextcloud";
+      run = "noop";
+    }
+  ];
+
+  programs.yazi.settings.plugin.prepend_preloaders = lib.mkBefore [
+    {
+      url = "*.nextcloud";
+      run = "noop";
+    }
+  ];
 }
