@@ -28,38 +28,15 @@ local_root="$HOME/Nextcloud"
 if [ "$#" -eq 0 ]; then
   mkdir -p "$local_root"
 
-  if [ ! -f "$config" ] ||
-     ! grep -Eq '^[0-9]+\\url=' "$config"
-  then
+  if [ ! -f "$config" ]; then
+    # Only preselect the generic local cloud root.
+    #
+    # Do not force overrideServerUrl here. On Linux, the forced-server wizard
+    # path derives VFS availability from isVfsEnabled in nextcloud.cfg instead
+    # of directly using the runtime VFS backend. The normal wizard can detect
+    # the installed suffix VFS plugin itself.
     ${lib.getExe client} \
-      --overrideserverurl ${lib.escapeShellArg host} \
       --overridelocaldir "$local_root"
-
-    if [ ! -f "$config" ]; then
-      echo "Nextcloud did not create its wizard configuration." >&2
-      exit 1
-    fi
-
-    # overrideServerUrl makes the wizard read this capability flag.
-    # Keep browser authentication, but require the wizard to expose and
-    # default to the available Linux virtual-files backend.
-    if grep -q '^isVfsEnabled=' "$config"; then
-      sed -i \
-        's/^isVfsEnabled=.*/isVfsEnabled=true/' \
-        "$config"
-    elif grep -q '^\[General\]$' "$config"; then
-      sed -i \
-        '/^\[General\]$/a isVfsEnabled=true' \
-        "$config"
-    else
-      tmp="$(mktemp)"
-      {
-        printf '[General]\n'
-        printf 'isVfsEnabled=true\n'
-        cat "$config"
-      } > "$tmp"
-      mv "$tmp" "$config"
-    fi
   fi
 fi
 
