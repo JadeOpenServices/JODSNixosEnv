@@ -34,6 +34,32 @@ if [ "$#" -eq 0 ]; then
     ${lib.getExe client} \
       --overrideserverurl ${lib.escapeShellArg host} \
       --overridelocaldir "$local_root"
+
+    if [ ! -f "$config" ]; then
+      echo "Nextcloud did not create its wizard configuration." >&2
+      exit 1
+    fi
+
+    # overrideServerUrl makes the wizard read this capability flag.
+    # Keep browser authentication, but require the wizard to expose and
+    # default to the available Linux virtual-files backend.
+    if grep -q '^isVfsEnabled=' "$config"; then
+      sed -i \
+        's/^isVfsEnabled=.*/isVfsEnabled=true/' \
+        "$config"
+    elif grep -q '^\[General\]$' "$config"; then
+      sed -i \
+        '/^\[General\]$/a isVfsEnabled=true' \
+        "$config"
+    else
+      tmp="$(mktemp)"
+      {
+        printf '[General]\n'
+        printf 'isVfsEnabled=true\n'
+        cat "$config"
+      } > "$tmp"
+      mv "$tmp" "$config"
+    fi
   fi
 fi
 
@@ -118,8 +144,10 @@ in
       Type = "simple";
       ExecStart = syncRunner;
 
-      Restart = "on-failure";
-      RestartSec = "5s";
+      # Nextcloud is a stateful, single-instance GUI client.
+      # Do not immediately respawn it after an abnormal exit: that can race
+      # Qt shared-memory teardown and turn one failure into a restart loop.
+      Restart = "no";
 
       NoNewPrivileges = true;
       PrivateTmp = true;
