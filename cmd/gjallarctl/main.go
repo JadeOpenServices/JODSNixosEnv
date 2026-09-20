@@ -2000,7 +2000,7 @@ func printUsage(out io.Writer) {
 }
 
 func runRebuild(args []string, stdout, stderr io.Writer) int {
-	repo, host := ".", ""
+	repo, host := "", ""
 	debug, cleanup := false, true
 	var rebuildArgs []string
 	for i := 0; i < len(args); i++ {
@@ -2027,7 +2027,7 @@ func runRebuild(args []string, stdout, stderr io.Writer) int {
 			rebuildArgs = append(rebuildArgs, args[i])
 		}
 	}
-	resolvedRepo, err := installercheck.ResolveRepository(repo)
+	resolvedRepo, err := installercheck.DiscoverRepository(repo)
 	if err != nil {
 		fmt.Fprintf(stderr, "ERROR: resolve GjallarOS repository: %v\n", err)
 		return 2
@@ -2107,8 +2107,20 @@ func runRebuild(args []string, stdout, stderr io.Writer) int {
 			"GJALLAR_REBUILD_CALLER_HOME=" + home,
 			executable,
 			"rebuild",
+			"--repo",
+			repo,
+			"--host",
+			host,
 		}
-		rootArgs = append(rootArgs, args...)
+
+		if debug {
+			rootArgs = append(rootArgs, "--debug")
+		}
+		if !cleanup {
+			rootArgs = append(rootArgs, "--no-cleanup")
+		}
+
+		rootArgs = append(rootArgs, rebuildArgs...)
 
 		fmt.Fprintln(
 			stdout,
@@ -2168,6 +2180,16 @@ func runRebuild(args []string, stdout, stderr io.Writer) int {
 	} else {
 		status = runRebuildQuiet(stdout, stderr, host, messages, started, commandArgs)
 	}
+	if status == 0 {
+		if err := installercheck.RememberRepository(repo); err != nil {
+			fmt.Fprintf(
+				stderr,
+				"WARN: remember GjallarOS repository: %v\n",
+				err,
+			)
+		}
+	}
+
 	if status == 0 && cleanup {
 		status = runCleanupOld(nil, stdout, stderr)
 	}

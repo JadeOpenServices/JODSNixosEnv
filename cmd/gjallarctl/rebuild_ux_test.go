@@ -9,6 +9,7 @@ import (
 )
 
 func TestRebuildDoesNotRequireExplicitRepoAndHost(t *testing.T) {
+	t.Setenv("GJALLAROS_REPO", "")
 	t.Chdir(t.TempDir())
 
 	var stdout bytes.Buffer
