@@ -8,7 +8,11 @@ let
   enable = settings.nextcloudEnable or false;
   host = settings.nextcloudHost or "";
 
-  client = pkgs.nextcloud-client;
+  client = pkgs.nextcloud-client.overrideAttrs (old: {
+    cmakeFlags = (old.cmakeFlags or [ ]) ++ [
+      "-DENFORCE_VIRTUAL_FILES_SYNC_FOLDER=ON"
+    ];
+  });
 
   managedClient = pkgs.symlinkJoin {
     name = "gjallar-nextcloud-client";
