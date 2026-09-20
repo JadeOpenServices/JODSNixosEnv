@@ -20,26 +20,6 @@ let
       cat > "$out/bin/nextcloud" <<'SCRIPT'
 #!${pkgs.runtimeShell}
 
-config="''${XDG_CONFIG_HOME:-$HOME/.config}/Nextcloud/nextcloud.cfg"
-local_root="$HOME/Nextcloud"
-
-# Only a normal GUI launch may seed first-run wizard defaults.
-# CLI operations such as --version must remain side-effect free.
-if [ "$#" -eq 0 ]; then
-  mkdir -p "$local_root"
-
-  if [ ! -f "$config" ]; then
-    # Only preselect the generic local cloud root.
-    #
-    # Do not force overrideServerUrl here. On Linux, the forced-server wizard
-    # path derives VFS availability from isVfsEnabled in nextcloud.cfg instead
-    # of directly using the runtime VFS backend. The normal wizard can detect
-    # the installed suffix VFS plugin itself.
-    ${lib.getExe client} \
-      --overridelocaldir "$local_root"
-  fi
-fi
-
 exec ${lib.getExe client} "$@"
 SCRIPT
 
