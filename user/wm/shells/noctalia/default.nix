@@ -18,14 +18,8 @@ let
         right = themeDetails.wallpaper;
       };
   avatarPath = if themeDetails ? avatar then themeDetails.avatar else wallpaperDetails.center;
-  isWorkUser = config.home.username == settings.workUsername;
   selectedBackground =
-    if isWorkUser && settings.backgroundWork != "" then
-      settings.backgroundWork
-    else if !isWorkUser && settings.backgroundNormal != "" then
-      settings.backgroundNormal
-    else
-      wallpaperDetails.center;
+    if settings.backgroundNormal != "" then settings.backgroundNormal else wallpaperDetails.center;
   palette = {
     dark = {
       mPrimary = "#${config.lib.stylix.colors.base0D}";
@@ -52,7 +46,6 @@ let
         cursor = "#${config.lib.stylix.colors.base05}";
         cursorText = "#${config.lib.stylix.colors.base00}";
 
-        # Visible themed selection block.
         selectionBg = "#${config.lib.stylix.colors.base0D}";
         selectionFg = "#${config.lib.stylix.colors.base00}";
 
@@ -86,9 +79,15 @@ in
   programs.noctalia = {
     enable = true;
     systemd.enable = false;
-    package = inputs.noctalia.packages.${pkgs.stdenv.hostPlatform.system}.default;
+    package = pkgs.callPackage ../../../../pkgs/noctalia {
+      noctalia = inputs.noctalia.packages.${pkgs.stdenv.hostPlatform.system}.default;
+    };
 
-    settings = lib.recursiveUpdate (import ./settings.nix) {
+    settings =
+      let
+        base = import ./settings.nix;
+      in
+      lib.recursiveUpdate base {
 
       theme = {
         mode = "dark";
@@ -107,9 +106,10 @@ in
           input_path = "$XDG_CONFIG_HOME/noctalia/templates/yazi-init.lua";
           output_path = "$XDG_CONFIG_HOME/yazi/init.lua";
         };
-        templates.user.kitty = {
-          input_path = "$XDG_CONFIG_HOME/noctalia/templates/kitty.conf";
-          output_path = "$XDG_CONFIG_HOME/kitty/noctalia.conf";
+        templates.user.ghostty = {
+          input_path = "$XDG_CONFIG_HOME/noctalia/templates/ghostty.conf";
+          output_path = "$XDG_CONFIG_HOME/ghostty/themes/noctalia";
+          post_hook = "${pkgs.systemd}/bin/systemctl reload --user app-com.mitchellh.ghostty.service >/dev/null 2>&1 || true";
         };
         templates.user.gjallar_plymouth = {
           input_path = "$XDG_CONFIG_HOME/noctalia/templates/stylix-override.json";
@@ -120,7 +120,6 @@ in
         ui_scale = 1.4;
       };
       shell = {
-        # Privacy: Noctalia must not persist clipboard contents.
         clipboard_enabled = false;
         corner_radius_scale = 2.0;
         font_family = themeDetails.font;
@@ -131,7 +130,7 @@ in
           privilege_command = "/run/wrappers/bin/pkexec";
         };
         screenshot = {
-          directory = "~/Media/Pictures/Screenshots";
+          directory = "${config.home.homeDirectory}/Pictures/Screenshots";
         };
         panel = {
           clipboard_placement = "attached";
@@ -160,7 +159,9 @@ in
           width = 120;
         };
         tray = {
-          drawer = true;
+          drawer = false;
+          menu_on_left_click = [ "nextcloud" ];
+          leading_separator = true;
         };
         cpu_usage = {
           type = "sysmon";
@@ -185,10 +186,8 @@ in
           scale = 1.0;
 
           actions = {
-            # Fast profile switching directly from the bar.
             left = "power-cycle";
 
-            # Explicit profile selection / full power settings.
             right = "panel-toggle control-center power";
           };
 
@@ -218,6 +217,14 @@ in
           interactive = false;
         };
 
+        divider_apps = {
+          type = "text";
+          text = "│";
+          scale = 0.72;
+          font_scale = 0.9;
+          interactive = false;
+        };
+
         divider_media = {
           type = "text";
           text = "│";
@@ -228,9 +235,7 @@ in
 
         workspaces = {
 
-          # Native workspace-aware application indicators.
 
-          # Occupied workspaces show their application icons instead of dots.
 
           type = "taskbar";
 
@@ -238,25 +243,20 @@ in
 
           workspace_group_content = "icons";
 
-          # Keep the bar compact: the icons themselves represent occupied
 
-          # workspaces, without the numbered workspace badge.
 
           show_workspace_label = false;
 
           workspace_group_capsule = false;
 
-          # Collapse multiple windows from the same application.
 
           group_single_icon_per_app = true;
 
-          # Show all persistent workspaces rather than only the current one.
 
           only_active_workspace = false;
 
           hide_empty_workspaces = false;
 
-          # Slightly larger, readable icons without making the 40px bar huge.
 
           icon_scale = 1.20;
 
@@ -272,13 +272,9 @@ in
 
         active_window = {
 
-          # Use Noctalia's supported taskbar title rendering instead of the
-
-          # active_window widget, whose title width is not configurable in v5.
 
           type = "taskbar";
 
-          # Behave like an active-workspace application title strip.
 
           only_active_workspace = true;
 
@@ -286,19 +282,15 @@ in
 
           group_by_workspace = false;
 
-          # Show the application icon and its window title.
 
           show_window_title = true;
 
-          # Enough room for normal application names/titles without allowing
 
-          # pathological browser/document titles to invade the centre widgets.
 
-          window_title_max_width = 360;
+          window_title_max_width = 200;
 
           taskbar_max_width = 430;
 
-          # Slightly larger, readable app icon.
 
           icon_scale = 1.18;
 
@@ -322,11 +314,10 @@ in
         };
 
         media = {
+          hide_when_no_media = true;
           type = "media";
 
-          # Keep the far-right media widget compact.
           art_size = 16;
-          hide_when_no_media = false;
 
           scale = 0.98;
         };
@@ -376,24 +367,19 @@ in
           keyboard_layout = false;
         };
       };
-      # gjallarOS Noctalia bar services BEGIN
       weather.enabled = true;
 
       system.monitor = {
         enabled = true;
 
-        # CPU usage + Tctl temperature.
         cpu_poll_seconds = 2.0;
 
-        # GPU usage/temperature/VRAM. Noctalia only actively probes
-        # GPU data while a GPU sysmon stat is actually displayed.
         gpu_poll_seconds = 5.0;
 
         memory_poll_seconds = 2.0;
         network_poll_seconds = 3.0;
         disk_poll_seconds = 10.0;
       };
-      # gjallarOS Noctalia bar services END
 
       bar.default = {
         capsule_thickness = 0.78;
@@ -405,23 +391,18 @@ in
         margin_ends = 20;
         margin_opposite_edge = 0;
 
-        # Remove the old outer content padding.
         padding = 14;
 
-        # Top corners touch the physical screen corners.
         radius = 12;
         radius_top_left = 20;
         radius_top_right = 20;
 
-        # Smooth inner wave.
         radius_bottom_left = 12;
         radius_bottom_right = 12;
         concave_edge_corners = true;
         background_opacity = 0.94;
         shadow = false;
 
-        # Catppuccin-like card/capsule feel, but colors still come from
-        # Noctalia's current palette/theme.
         start = [
           "active_window"
           "divider_left"
@@ -439,13 +420,13 @@ in
           "divider_center_right"
 
           "network"
-          "tray"
           "keyboard_layout"
           "notifications"
           "clipboard"
           "volume"
           "power_profile"
           "battery"
+          "tray"
         ];
         end = [
           "weather"
@@ -456,18 +437,11 @@ in
         ];
       };
       wallpaper = {
-        # Keep the picker on the user's real wallpaper library. The configured
-        # XDG pictures directory is ~/Media/Pictures, but downloaded/user
-        # wallpapers are intentionally kept in ~/Pictures.
         directory = "${config.home.homeDirectory}/Pictures";
-        # Include image folders added below ~/Pictures as well as images in its
-        # root.  The picker still allows normal folder navigation.
         automation.recursive = true;
         per_monitor_directories = false;
         fill_mode = "crop";
         transition_on_startup = false;
-        # This is only the initial image.  The picker persists later choices
-        # in Noctalia's state file without narrowing the browse directory.
         default.path = selectedBackground;
       };
     };
@@ -476,7 +450,6 @@ in
   xdg.configFile."noctalia/palettes/stylix.json".text = builtins.toJSON palette;
 
   xdg.configFile."noctalia/templates/hyprland.conf".text = ''
-    # Generated by Noctalia and reloaded by the template post-hook.
     $primary = rgb({{colors.primary.default.hex_stripped}})
     $surface = rgb({{colors.surface.default.hex_stripped}})
     $secondary = rgb({{colors.secondary.default.hex_stripped}})
@@ -495,42 +468,31 @@ in
     }
   '';
 
-  xdg.configFile."noctalia/templates/kitty.conf".text = ''
-    # Generated by Noctalia. Loaded by Kitty at window startup.
-    foreground {{colors.on_surface.default.hex}}
-    background {{colors.surface.default.hex}}
-    cursor {{colors.primary.default.hex}}
-    cursor_text_color {{colors.on_primary.default.hex}}
-    # Windows-style visible selection block using the active Noctalia accent.
-    selection_foreground {{colors.on_primary.default.hex}}
-    selection_background {{colors.primary.default.hex}}
-    active_border_color {{colors.primary.default.hex}}
-    inactive_border_color {{colors.outline.default.hex}}
-    active_tab_foreground {{colors.on_primary.default.hex}}
-    active_tab_background {{colors.primary.default.hex}}
-    inactive_tab_foreground {{colors.on_surface.default.hex}}
-    inactive_tab_background {{colors.surface_container_lowest.default.hex}}
-    color0 {{colors.surface.default.hex}}
-    color1 {{colors.error.default.hex}}
-    color2 {{colors.secondary.default.hex}}
-    color3 {{colors.tertiary.default.hex}}
-    color4 {{colors.primary.default.hex}}
-    color5 {{colors.tertiary.default.hex}}
-    color6 {{colors.secondary.default.hex}}
-    color7 {{colors.on_surface.default.hex}}
-    color8 {{colors.outline.default.hex}}
-    color9 {{colors.error.default.hex}}
-    color10 {{colors.secondary.default.hex}}
-    color11 {{colors.tertiary.default.hex}}
-    color12 {{colors.primary.default.hex}}
-    color13 {{colors.tertiary.default.hex}}
-    color14 {{colors.secondary.default.hex}}
-    color15 {{colors.on_surface.default.hex}}
+  xdg.configFile."noctalia/templates/ghostty.conf".text = ''
+    background = {{colors.surface.default.hex}}
+    foreground = {{colors.on_surface.default.hex}}
+    cursor-color = {{colors.primary.default.hex}}
+    cursor-text = {{colors.on_primary.default.hex}}
+    selection-background = {{colors.primary.default.hex}}
+    selection-foreground = {{colors.on_primary.default.hex}}
+    palette = 0={{colors.surface.default.hex}}
+    palette = 1={{colors.error.default.hex}}
+    palette = 2={{colors.secondary.default.hex}}
+    palette = 3={{colors.tertiary.default.hex}}
+    palette = 4={{colors.primary.default.hex}}
+    palette = 5={{colors.tertiary.default.hex}}
+    palette = 6={{colors.secondary.default.hex}}
+    palette = 7={{colors.on_surface.default.hex}}
+    palette = 8={{colors.outline.default.hex}}
+    palette = 9={{colors.error.default.hex}}
+    palette = 10={{colors.secondary.default.hex}}
+    palette = 11={{colors.tertiary.default.hex}}
+    palette = 12={{colors.primary.default.hex}}
+    palette = 13={{colors.tertiary.default.hex}}
+    palette = 14={{colors.secondary.default.hex}}
+    palette = 15={{colors.on_surface.default.hex}}
   '';
 
-  # Plymouth lives in the initrd, so it cannot consume Noctalia's runtime
-  # palette directly.  This bridge snapshots the active palette; `rebuild`
-  # passes it into Stylix while producing the next boot generation.
   xdg.configFile."noctalia/templates/stylix-override.json".text = ''
     {
       "base00": "{{colors.surface.default.hex_stripped}}",
@@ -552,9 +514,6 @@ in
     }
   '';
 
-  # The Noctalia daemon replaces this fallback as soon as it starts.  Creating
-  # it during Home Manager activation means Hyprland's `source` is valid even
-  # on the first login.
   home.activation.gjallarNoctaliaHyprlandFallback = lib.hm.dag.entryAfter [ "writeBoundary" ] ''
         theme_file="$HOME/.local/state/noctalia/hyprland-colors.conf"
         if [ ! -e "$theme_file" ]; then

@@ -27,11 +27,6 @@ const (
 	StatusAlreadyPresent        = "already-present"
 	StatusResizeRequired        = "resize-required"
 	StatusUnsupportedFilesystem = "unsupported-filesystem"
-
-	// Compatibility alias for callers written against GJAL-31.
-	// GJAL-65 can satisfy this condition live for supported Btrfs layouts,
-	// so the state is no longer inherently "offline".
-	StatusOfflineResizeRequired = StatusResizeRequired
 )
 
 var diskGUIDPattern = regexp.MustCompile(

@@ -11,7 +11,6 @@
     base00 = "05000f";
   };
 
-  # Override stylix theme of btop.
   btopTheme = "gruvbox_dark_v2";
 
   opacity = 1.0;

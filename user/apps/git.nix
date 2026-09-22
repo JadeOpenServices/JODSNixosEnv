@@ -1,6 +1,7 @@
 {
   config,
   pkgs,
+  lib,
   settings,
   ...
 }:
@@ -14,7 +15,7 @@
           insteadOf = "https://github.com/tarantool";
         };
       };
-      core.editor = "nvim";
+      core.editor = lib.getExe pkgs.${settings.preferredEditor};
       user = {
         name = settings.name;
         email = settings.email;

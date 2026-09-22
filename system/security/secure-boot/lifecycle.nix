@@ -8,8 +8,8 @@
   ...
 }:
 {
-  systemd.services.gjallar-secure-boot-enroll = lib.mkIf settings.secureBootEnable {
-    description = "Apply trusted GjallarOS Secure Boot firmware policy";
+  systemd.services.secure-boot-enrollment = lib.mkIf settings.secureBootEnable {
+    description = "Apply trusted Secure Boot firmware policy";
     wantedBy = [ "multi-user.target" ];
     after = [ "local-fs.target" ];
     unitConfig.ConditionPathExists = "/var/lib/gjallarOS/secure-boot-enrollment-armed";
@@ -40,8 +40,8 @@
     '';
   };
 
-  systemd.services.gjallar-secure-boot-finalize = lib.mkIf settings.secureBootEnable {
-    description = "Verify final GjallarOS Secure Boot activation";
+  systemd.services.secure-boot-verification = lib.mkIf settings.secureBootEnable {
+    description = "Verify final Secure Boot activation";
     wantedBy = [ "multi-user.target" ];
     after = [
       "local-fs.target"
@@ -108,19 +108,19 @@
     '';
   };
 
-  systemd.services.gjallar-installer-post-secure-boot = lib.mkIf settings.secureBootEnable {
-    description = "Finish GjallarOS installer after Secure Boot provisioning";
+  systemd.services.installer-post-secure-boot = lib.mkIf settings.secureBootEnable {
+    description = "Finish installer after Secure Boot provisioning";
 
     wantedBy = [ "multi-user.target" ];
 
     after = [
       "local-fs.target"
       "systemd-remount-fs.service"
-      "gjallar-secure-boot-finalize.service"
+      "secure-boot-verification.service"
     ]
-    ++ lib.optional settings.luksTpm2Enable "gjallar-tpm2-enroll.service";
+    ++ lib.optional settings.luksTpm2Enable "measured-boot-tpm2-enrollment.service";
 
-    requires = lib.optional settings.luksTpm2Enable "gjallar-tpm2-enroll.service";
+    requires = lib.optional settings.luksTpm2Enable "measured-boot-tpm2-enrollment.service";
 
     unitConfig.ConditionPathExists = "/var/lib/gjallarOS/installer-resume-after-secure-boot";
 
@@ -162,7 +162,6 @@
 
                         printf '%s\n' "$message"
 
-                        # Always make progress visible on logged-in terminals.
                         printf '\n[GjallarOS Installer]\n%s\n\n' "$message" |
                           wall 2>/dev/null || true
                       }
@@ -173,14 +172,6 @@
                         gtk_log=/var/lib/gjallarOS/installer-gtk.log
                         launched=0
 
-                        # Do not attempt to manufacture a Wayland session from the root
-                        # service. The logged-in user's systemd manager already owns the
-                        # authoritative graphical environment (WAYLAND_DISPLAY, DISPLAY,
-                        # XDG_CURRENT_DESKTOP, etc.).
-                        #
-                        # Spawn Zenity as a transient USER unit. This also moves the dialog
-                        # out of this root oneshot service's cgroup, so systemd does not kill
-                        # the popup when the installer finisher exits.
                         for runtime in /run/user/[0-9]*; do
                           [ -d "$runtime" ] || continue
                           [ -S "$runtime/bus" ] || continue
@@ -194,7 +185,7 @@
 
                           [ -n "$user" ] || continue
 
-                          unit="gjallar-installer-notice-$(date +%s%N)"
+                          unit="installer-notice-$(date +%s%N)"
 
                           if [ "$timeout_seconds" -gt 0 ]; then
                             if runuser -u "$user" -- \
@@ -255,7 +246,6 @@
                             fi
                           fi
 
-                          # One physical graphical desktop is enough.
                           break
                         done
 
@@ -266,8 +256,6 @@
                             >> "$gtk_log"
                         fi
 
-                        # GUI notification failure must never invalidate an otherwise
-                        # successful installation transaction.
                         return 0
                       }
 
@@ -281,9 +269,6 @@
 
               The continuation marker was kept so the operation can be resumed safely."
 
-                        # This is an incomplete installer transaction, not a failed NixOS
-                        # activation. Keep the resume marker and report success so
-                        # switch-to-configuration does not mislabel the rebuild as failed.
                         exit 0
                       }
 
@@ -303,7 +288,6 @@
       After completing those firmware steps, boot GjallarOS again."
                       fi
 
-                      # The Secure Boot finalizer must have completed first.
                       if [ -e "$sb_final" ]; then
                         pause_visible \
                           "GjallarOS keys are enrolled. Enable Secure Boot in firmware, save, then boot GjallarOS for final verification. Do not clear or replace PK, KEK, DB or DBX."
@@ -331,8 +315,6 @@
                       gjallar-verify-secure-boot-ownership enrolled ||
                         pause_visible "GjallarOS PK/KEK/db ownership verification failed."
 
-                      # Basic installed-system sanity. Do not declare completion unless the
-                      # active system and booted-system links exist and are readable.
                       [ -e /run/current-system ] ||
                         pause_visible "/run/current-system is missing."
 
@@ -341,7 +323,6 @@
 
                       write_status "Final GjallarOS installer checks passed."
 
-                      # Commit completion before deleting the continuation marker.
                       install -m 0600 /dev/null "$complete"
                       rm -f -- "$resume"
 

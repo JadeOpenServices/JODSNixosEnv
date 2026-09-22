@@ -139,8 +139,8 @@ lib.mkMerge [
 
       boot.loader.timeout = lib.mkForce 5;
 
-      boot.initrd.systemd.services.gjallar-recovery-maintenance = {
-        description = "Provision GjallarOS recovery storage before mounting the installed root";
+      boot.initrd.systemd.services.recovery-storage-setup = {
+        description = "Provision recovery storage before mounting the installed root";
 
         before = [
           "sysroot.mount"

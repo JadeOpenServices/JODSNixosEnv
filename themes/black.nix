@@ -4,7 +4,6 @@
   wallpaper = ../non-nix/wallpapers/black.png;
   override = null;
 
-  # Override stylix theme of btop.
   btopTheme = "nord";
 
   opacity = 1.0;

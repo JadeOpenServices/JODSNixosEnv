@@ -4,11 +4,11 @@ let
   checkInstaller = pkgs.writeShellScriptBin "check-installer" ''
     exec ${gjallarctl}/bin/gjallarctl check --repo ${lib.escapeShellArg settings.dotfilesDir} "$@"
   '';
+  preflight = pkgs.writeShellScriptBin "gjallar-preflight" ''
+    exec ${gjallarctl}/bin/gjallarctl preflight --repo ${lib.escapeShellArg settings.dotfilesDir} "$@"
+  '';
   rebuild = pkgs.writeShellScriptBin "rebuild" ''
-    exec ${gjallarctl}/bin/gjallarctl rebuild \
-      --repo ${lib.escapeShellArg settings.dotfilesDir} \
-      --host ${lib.escapeShellArg settings.hostname} \
-      "$@"
+    exec ${gjallarctl}/bin/gjallarctl rebuild "$@"
   '';
   goCommand = name: command: pkgs.writeShellScriptBin name ''
     exec ${gjallarctl}/bin/gjallarctl ${command} "$@"
@@ -29,6 +29,7 @@ in
     (goCommand "thermal-test" "thermal-test")
     gjallarctl
     checkInstaller
+    preflight
     pkgs.yad
   ];
 }

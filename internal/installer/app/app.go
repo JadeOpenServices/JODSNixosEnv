@@ -16,7 +16,6 @@ import (
 
 	"github.com/bakanura/gjallarOS/internal/ai/profile"
 	"github.com/bakanura/gjallarOS/internal/hardware/graphics"
-	"github.com/bakanura/gjallarOS/internal/hardware/network"
 	"github.com/bakanura/gjallarOS/internal/input/xkb"
 	"github.com/bakanura/gjallarOS/internal/installer/background"
 	"github.com/bakanura/gjallarOS/internal/installer/baremetalinstall"
@@ -53,20 +52,18 @@ type options struct {
 	recoverySigningPublicKey                                 string
 }
 type state struct {
-	user                         config.User
-	render                       nixrender.Settings
-	passthroughIDs               []string
-	preset, existing             bool
-	control                      string
-	touchscreen                  bool
-	penTablet                    bool
-	orientationSensor            bool
-	graphicsDriverBranchOverride string
-	recoveryDisk                 string
-	recoveryPartition            string
-	recoverySigningKey           string
-	recoverySigningPublicKey     string
-	secureBootFirmware           oddc.EffectiveSecureBootFirmwarePolicy
+	user                     config.User
+	render                   nixrender.Settings
+	preset, existing         bool
+	control                  string
+	touchscreen              bool
+	penTablet                bool
+	orientationSensor        bool
+	recoveryDisk             string
+	recoveryPartition        string
+	recoverySigningKey       string
+	recoverySigningPublicKey string
+	secureBootFirmware       oddc.EffectiveSecureBootFirmwarePolicy
 }
 
 const (
@@ -285,7 +282,6 @@ func Run(ctx context.Context, args []string, in io.Reader, out, errOut io.Writer
 		return fail(errOut, err)
 	}
 
-	modelDrift := oddcModelDrifted(s.user, resolvedDevice)
 	needsDeviceRebind := false
 	if opt.recovery && opt.acceptExisting {
 		capsulePath := filepath.Join(
@@ -304,12 +300,11 @@ func Run(ctx context.Context, args []string, in io.Reader, out, errOut io.Writer
 			)
 		}
 
-		needsDeviceRebind = modelDrift ||
-			deviceprofilecache.NeedsRebind(
-				capsule,
-				discovery.ODDCIdentity(hardware),
-				resolvedDevice,
-			)
+		needsDeviceRebind = deviceprofilecache.NeedsRebind(
+			capsule,
+			discovery.ODDCIdentity(hardware),
+			resolvedDevice,
+		)
 
 		if !needsDeviceRebind {
 			resolvedDevice, err = resolveODDCModelFromSource(
@@ -330,15 +325,11 @@ func Run(ctx context.Context, args []string, in io.Reader, out, errOut io.Writer
 		}
 	}
 
-	effectiveGraphics, err := oddc.ResolveGraphicsPolicy(resolvedDevice)
-	if err != nil {
+	if _, err := oddc.ResolveGraphicsPolicy(resolvedDevice); err != nil {
 		return fail(errOut, err)
 	}
-	s.graphicsDriverBranchOverride = effectiveGraphics.Policy.DriverBranch
 
-	persistDeviceIdentity(&s.user, hardware, resolvedDevice)
-
-	fmt.Fprintf(out, "ODDC canonical model: %s\n", s.user.ODDCModel)
+	fmt.Fprintf(out, "ODDC canonical model: %s\n", resolvedDevice.ModelID)
 
 	if needsDeviceRebind {
 		if s.user.UnattendedInstall || s.user.EndpointManagedDevice {
@@ -396,23 +387,9 @@ func Run(ctx context.Context, args []string, in io.Reader, out, errOut io.Writer
 	fmt.Fprintf(out, "Touchscreen detected: %t\n", hardware.Touchscreen)
 	fmt.Fprintf(out, "Pen/tablet detected: %t\n", hardware.PenTablet)
 
-	choices, err := discovery.Discover(root, s.preset, hardware)
+	choices, err := discovery.Discover(root)
 	if err != nil {
 		return fail(errOut, err)
-	}
-	if s.preset && s.user.Profile == "auto" {
-		s.user.Profile = machineProfileForHardware(hardware)
-		if s.user.Profile == "" {
-			if s.user.UnattendedInstall {
-				return fail(errOut, errors.New("machine profile could not be detected; set profile to desktop or laptop in user.config.json"))
-			}
-			s.user.Profile, err = ui.Choice(ctx, "Machine profile could not be detected", "desktop", []string{"desktop", "laptop"})
-			if err != nil {
-				return fail(errOut, err)
-			}
-		} else {
-			fmt.Fprintf(out, "Machine profile detected: %s\n", s.user.Profile)
-		}
 	}
 	if s.preset {
 		normalizePreset(&s.user, root)
@@ -514,7 +491,7 @@ func Run(ctx context.Context, args []string, in io.Reader, out, errOut io.Writer
 
 	if err := validateSecureBootFirmwareSupport(
 		s.user.SecureBootEnable,
-		s.user.ODDCModel,
+		resolvedDevice.ModelID,
 		s.secureBootFirmware,
 	); err != nil {
 		if mayOfferSecureBootFallback(
@@ -607,26 +584,22 @@ func Run(ctx context.Context, args []string, in io.Reader, out, errOut io.Writer
 	if err := config.Validate(s.user); err != nil {
 		return fail(errOut, err)
 	}
-	if err := detectAndRenderState(ctx, root, &s); err != nil {
+	if err := detectAndRenderState(
+		ctx,
+		root,
+		&s,
+		hardware,
+		resolvedDevice,
+	); err != nil {
 		return fail(errOut, err)
-	}
-	if !s.preset && s.user.NemuEnable && len(s.passthroughIDs) > 0 {
-		enabled, err := ui.Confirm(ctx, "Pass the detected dedicated GPU through to Nemu? This removes it from the host.", false)
-		if err != nil {
-			return fail(errOut, err)
-		}
-		s.render.NemuGPUPassthrough = enabled
-		if enabled {
-			s.render.NemuGPUIDs = append([]string(nil), s.passthroughIDs...)
-		}
 	}
 	if err := configureSecrets(ctx, root, &s, errOut); err != nil {
 		return fail(errOut, err)
 	}
-	fmt.Fprintf(out, "\nSelected: profile=%s hostname=%s user=%s shell=%s\n", s.user.Profile, s.user.Hostname, s.user.Username, s.user.Shell)
+	fmt.Fprintf(out, "\nSelected: hostname=%s user=%s shell=%s\n", s.user.Hostname, s.user.Username, s.user.Shell)
 	write := s.user.WriteConfig
 	if !s.preset {
-		write, err = ui.Confirm(ctx, "Write configuration to "+filepath.Join(root, "settings.nix")+"?", false)
+		write, err = ui.Confirm(ctx, "Write configuration to "+filepath.Join(root, "generated", "state.nix")+"?", false)
 		if err != nil {
 			return fail(errOut, err)
 		}
@@ -662,7 +635,7 @@ func Run(ctx context.Context, args []string, in io.Reader, out, errOut io.Writer
 		// Root recovery is intentionally local even on JODS-managed endpoints.
 		// Management must never remove wheel/Polkit administration before a
 		// verified local recovery credential exists.
-		path, err := controlOutput(ctx, s.control, errOut, "installer", "work-password", "--username", "root", "--apply")
+		path, err := controlOutput(ctx, s.control, errOut, "installer", "local-password", "--username", "root", "--apply")
 		if err != nil {
 			return fail(errOut, err)
 		}
@@ -672,33 +645,12 @@ func Run(ctx context.Context, args []string, in io.Reader, out, errOut io.Writer
 		}
 		fmt.Fprint(out, path)
 	}
-	if s.render.WorkUserEnable {
-		if s.render.EndpointManagedDevice {
-			if s.user.WorkUserPasswordFile == "" {
-				return fail(errOut, errors.New("managed work account requires workUserPasswordFile provisioned by JODS"))
-			}
-			s.render.WorkUserPasswordFile = s.user.WorkUserPasswordFile
-		} else if workPasswordPath := filepath.Join("/var/lib/gjallarOS/passwords", s.render.WorkUsername+".hash"); s.existing && privilegedFileExists(ctx, workPasswordPath) {
-			s.render.WorkUserPasswordFile = workPasswordPath
-			fmt.Fprintln(out, "Existing work-account password hash retained.")
-		} else {
-			path, err := controlOutput(ctx, s.control, errOut, "installer", "work-password", "--username", s.render.WorkUsername, "--apply")
-			if err != nil {
-				return fail(errOut, err)
-			}
-			lines := strings.Fields(strings.TrimSpace(path))
-			if len(lines) > 0 {
-				s.render.WorkUserPasswordFile = lines[len(lines)-1]
-			}
-			fmt.Fprint(out, path)
-		}
-	}
-	settingsPath := filepath.Join(root, "settings.nix")
+	settingsPath := filepath.Join(root, "generated", "state.nix")
 	if err := nixrender.WriteAtomic(settingsPath, s.render); err != nil {
 		return fail(errOut, err)
 	}
 	fmt.Fprintln(out, "Wrote", settingsPath)
-	hardwarePath := filepath.Join(root, "profiles", s.user.Profile, "hardware-configuration.nix")
+	hardwarePath := hardwareconfig.Target(root)
 	hardwareGenerator := hardwareconfig.Generate
 	if opt.recovery && opt.acceptExisting {
 		hardwareGenerator = hardwareconfig.GenerateTarget
@@ -863,11 +815,11 @@ func Run(ctx context.Context, args []string, in io.Reader, out, errOut io.Writer
 			return fail(errOut, err)
 		}
 	}
-	if (modelDrift || needsDeviceRebind) && !runRebuild {
+	if needsDeviceRebind && !runRebuild {
 		return fail(
 			errOut,
 			errors.New(
-				"ODDC model reconciliation requires installing the regenerated system; rebuild cannot be skipped",
+				"Recovery device rebind requires installing the regenerated system; rebuild cannot be skipped",
 			),
 		)
 	}
@@ -930,14 +882,6 @@ func Run(ctx context.Context, args []string, in io.Reader, out, errOut io.Writer
 					return fail(errOut, err)
 				}
 
-				if err := persistReconciledODDCModel(
-					presetPath,
-					s.user,
-					modelDrift,
-				); err != nil {
-					return fail(errOut, err)
-				}
-
 				if needsDeviceRebind {
 					if err := materializeODDCCapsule(
 						root,
@@ -983,14 +927,6 @@ func Run(ctx context.Context, args []string, in io.Reader, out, errOut io.Writer
 				)
 
 				if err := deploy.Apply(ctx, target); err != nil {
-					return fail(errOut, err)
-				}
-
-				if err := persistReconciledODDCModel(
-					presetPath,
-					s.user,
-					modelDrift,
-				); err != nil {
 					return fail(errOut, err)
 				}
 			}
@@ -1049,55 +985,6 @@ func Run(ctx context.Context, args []string, in io.Reader, out, errOut io.Writer
 				errors.New("refusing destructive fresh-disk provisioning; GjallarOS installation must preserve the existing system layout"),
 			)
 
-			targetDisk, err := selectFreshTargetDisk(
-				ctx,
-				ui,
-				out,
-				opt.targetDisk,
-			)
-			if err != nil {
-				return fail(errOut, err)
-			}
-
-			if s.recoveryDisk != "" || s.recoveryPartition != "" {
-				return fail(
-					errOut,
-					errors.New(
-						"canonical fresh installation owns recovery storage on --target-disk; "+
-							"do not combine it with --recovery-disk or --recovery-partition",
-					),
-				)
-			}
-
-			fresh, err := runFreshBareMetal(
-				ctx,
-				ui,
-				root,
-				targetDisk,
-				s.user.Hostname,
-				hardware,
-				resolvedDevice,
-				opt.recovery,
-				s.user.RecoveryEnable &&
-					s.user.RecoveryPartitionEnable,
-				[]string{
-					s.render.RootPasswordFile,
-					s.render.WorkUserPasswordFile,
-				},
-				out,
-			)
-			if err != nil {
-				return fail(errOut, err)
-			}
-
-			if fresh.RecoveryPartition != "" {
-				s.recoveryPartition = fresh.RecoveryPartition
-				fmt.Fprintf(
-					out,
-					"Canonical recovery storage prepared at %s; recovery identity/release provisioning is handled by the appropriate local or JODS trust flow.\n",
-					fresh.RecoveryPartition,
-				)
-			}
 		}
 	}
 
@@ -1214,7 +1101,7 @@ func Run(ctx context.Context, args []string, in io.Reader, out, errOut io.Writer
 		}
 
 		firmwarePolicy, err := secureboot.SnapshotFirmwarePolicy(
-			s.user.ODDCModel,
+			resolvedDevice.ModelID,
 			s.secureBootFirmware,
 		)
 		if err != nil {
@@ -1554,14 +1441,17 @@ func prepareHost(
 	return 0
 }
 
-func machineProfileForHardware(hardware discovery.Hardware) string {
-	switch hardware.FormFactor {
-	case "desktop":
-		return "desktop"
-	case "laptop":
-		return "laptop"
+func detectedNixSystem() (string, error) {
+	switch runtime.GOARCH {
+	case "amd64":
+		return "x86_64-linux", nil
+	case "arm64":
+		return "aarch64-linux", nil
 	default:
-		return ""
+		return "", fmt.Errorf(
+			"unsupported machine architecture %q",
+			runtime.GOARCH,
+		)
 	}
 }
 
@@ -1575,23 +1465,7 @@ func containsValue(values []string, want string) bool {
 }
 
 func collectInteractive(ctx context.Context, ui prompt.UI, root string, hardware discovery.Hardware, o discovery.Options, u *config.User) error {
-	arch := runtime.GOARCH
-	if arch == "amd64" {
-		arch = "x86_64"
-	} else if arch == "arm64" {
-		arch = "aarch64"
-	}
 	var err error
-	if u.System, err = ui.Choice(ctx, "System architecture", arch+"-linux", []string{"x86_64-linux", "aarch64-linux"}); err != nil {
-		return err
-	}
-	profileDefault := machineProfileForHardware(hardware)
-	if profileDefault == "" || !containsValue(o.Profiles, profileDefault) {
-		profileDefault = first(o.Profiles)
-	}
-	if u.Profile, err = ui.Choice(ctx, "Profile", profileDefault, o.Profiles); err != nil {
-		return err
-	}
 	host, _ := os.Hostname()
 	if host == "" || host == "nixos" {
 		host = "gjallarOS"
@@ -1656,12 +1530,8 @@ func collectInteractive(ctx context.Context, ui prompt.UI, root string, hardware
 		}
 		u.JODSDesktopProfile = strings.ToLower(strings.TrimSpace(u.JODSDesktopProfile))
 	}
-	u.WorkUserEnable, err = ui.Confirm(ctx, "Create a separate work account?", false)
 	if err != nil {
 		return err
-	}
-	if u.WorkUserEnable {
-		u.WorkUsername = u.Username + "-corp"
 	}
 	u.Timezone, err = ui.Value(ctx, "Timezone (IANA name)", "Europe/Berlin")
 	if err != nil {
@@ -1688,7 +1558,7 @@ func collectInteractive(ctx context.Context, ui prompt.UI, root string, hardware
 	if err != nil {
 		return err
 	}
-	u.USBGuardEnable, err = ui.Confirm(ctx, "Enable USBGuard? New devices will be blocked until permitted.", false)
+	u.USBGuardEnable, err = ui.Confirm(ctx, "Enable USB trust review in audit mode? Blocking requires separate activation after device enrollment.", false)
 	if err != nil {
 		return err
 	}
@@ -1736,7 +1606,18 @@ func collectInteractive(ctx context.Context, ui prompt.UI, root string, hardware
 	if u.Theme == "" {
 		u.Theme = first(o.Themes)
 	}
-	u.DockerEnable, err = ui.Confirm(ctx, "Enable Docker daemon? Docker access is root-equivalent.", false)
+	u.PrintingEnable, err = ui.Confirm(ctx, "Enable printing and scanning support?", false)
+	if err != nil {
+		return err
+	}
+	u.NetworkPrintingEnable = false
+	if u.PrintingEnable {
+		u.NetworkPrintingEnable, err = ui.Confirm(ctx, "Enable network printer discovery?", false)
+		if err != nil {
+			return err
+		}
+	}
+	u.ContainersEnable, err = ui.Confirm(ctx, "Enable rootless container tooling with Docker-compatible commands?", false)
 	if err != nil {
 		return err
 	}
@@ -1826,6 +1707,27 @@ func collectProjectTools(ctx context.Context, ui prompt.UI, u *config.User) erro
 		}
 	}
 
+	u.NextcloudEnable, err = ui.Confirm(
+		ctx,
+		"Enable Nextcloud integration?",
+		false,
+	)
+	if err != nil {
+		return err
+	}
+
+	if u.NextcloudEnable {
+		u.NextcloudHost, err = ui.Value(
+			ctx,
+			"Nextcloud server",
+			"",
+		)
+		if err != nil {
+			return err
+		}
+
+	}
+
 	return config.NormalizeProjectTools(u)
 }
 
@@ -1834,9 +1736,6 @@ func normalizePreset(u *config.User, root string) {
 		u.DotfilesDir = filepath.Join("/home", u.Username, "Documents", "gjallarOS")
 	}
 	u.DotfilesDir = strings.ReplaceAll(u.DotfilesDir, "usernamehere", u.Username)
-	if u.WorkUserEnable {
-		u.WorkUsername = u.Username + "-corp"
-	}
 	if normalized, err := xkb.Normalize(u.KeyboardLayout); err == nil {
 		u.KeyboardLayout, u.KeyboardVariant = normalized.Name, normalized.Variant
 	}
@@ -2278,7 +2177,13 @@ func provisionRecoveryPartition(ctx context.Context, root string, s state) error
 	return nil
 }
 
-func detectAndRenderState(ctx context.Context, root string, s *state) error {
+func detectAndRenderState(
+	ctx context.Context,
+	root string,
+	s *state,
+	hardware discovery.Hardware,
+	resolvedDevice oddc.Resolved,
+) error {
 	u := s.user
 	if u.AIAgentMode == "" {
 		u.AIAgentMode = "workspace"
@@ -2286,7 +2191,7 @@ func detectAndRenderState(ctx context.Context, root string, s *state) error {
 	for _, item := range []struct {
 		role  string
 		value *string
-	}{{"normal", &u.BackgroundNormal}, {"work", &u.BackgroundWork}, {"gaming", &u.BackgroundGaming}} {
+	}{{"normal", &u.BackgroundNormal}} {
 		resolved, err := background.Resolve(ctx, root, u.DotfilesDir, item.role, *item.value)
 		if err != nil {
 			return err
@@ -2294,13 +2199,6 @@ func detectAndRenderState(ctx context.Context, root string, s *state) error {
 		*item.value = resolved
 	}
 	g, err := graphics.Detect(ctx)
-	if err != nil {
-		return err
-	}
-	if g.Vendor == "nvidia" && strings.TrimSpace(s.graphicsDriverBranchOverride) != "" {
-		g.DriverBranch = s.graphicsDriverBranchOverride
-	}
-	wifi, err := network.DetectWiFiDriver(ctx)
 	if err != nil {
 		return err
 	}
@@ -2316,12 +2214,27 @@ func detectAndRenderState(ctx context.Context, root string, s *state) error {
 			return err
 		}
 	}
-	s.passthroughIDs = append([]string(nil), g.PassthroughIDs...)
-	passthrough := u.NemuGPUPassthrough && len(g.PassthroughIDs) > 0
-	s.render = nixrender.Settings{System: u.System, Profile: u.Profile, Hostname: u.Hostname, Username: u.Username, Timezone: u.Timezone, Locale: u.Locale, KeyboardLayout: u.KeyboardLayout, KeyboardVariant: u.KeyboardVariant, WeatherCity: u.WeatherCity, WeatherCountry: u.WeatherCountry, TouchpadWorkspaceSwipe: u.TouchpadWorkspaceSwipe, TouchscreenEnable: s.touchscreen, PenTabletEnable: s.penTablet, OrientationSensorEnable: s.orientationSensor, ClamshellEnable: u.ClamshellEnable, USBGuardEnable: u.USBGuardEnable, Name: u.Name, Email: u.Email, GitHubUsername: u.GitHubUsername, DotfilesDir: u.DotfilesDir, WorkUserEnable: u.WorkUserEnable, WorkUsername: u.WorkUsername, DockerEnable: u.DockerEnable, DebugFunctions: u.DebugFunctions, Shell: u.Shell, Editors: u.Editors, Browsers: u.Browsers, PreferredEditor: u.PreferredEditor, PreferredBrowser: u.PreferredBrowser, PlaneEnable: u.PlaneEnable, PlaneHost: u.PlaneHost, DrawioEnable: u.DrawioEnable, DrawioSelfHosted: u.DrawioSelfHosted, DrawioHost: u.DrawioHost, BackgroundNormal: u.BackgroundNormal, BackgroundWork: u.BackgroundWork, BackgroundGaming: u.BackgroundGaming, EnableScrobbling: u.EnableScrobbling, EnableLastfm: u.EnableLastfm, EnableListenbrainz: u.EnableListenbrainz, LastfmUsername: u.LastfmUsername, ListenbrainzUsername: u.ListenbrainzUsername, ODDCModel: u.ODDCModel, DeviceSysVendor: u.DeviceSysVendor, DeviceProductName: u.DeviceProductName, DeviceProductVersion: u.DeviceProductVersion, DeviceBoardVendor: u.DeviceBoardVendor, DeviceBoardName: u.DeviceBoardName, DeviceBoardVersion: u.DeviceBoardVersion, GraphicsVendor: g.Vendor, GraphicsDeviceID: g.DeviceID, GraphicsDriverBranch: g.DriverBranch, GraphicsType: g.Type, GraphicsCompute: g.Compute, GraphicsBusID: g.BusID, GraphicsIntegratedBusID: g.IntegratedBusID, WiFiDriver: wifi, AIEnable: u.AIEnable, AIModel: ai.Model, AIAccelerationProfile: ai.AccelerationProfile, AIAgentMode: u.AIAgentMode, AIContextTokens: ai.ContextTokens, AIVRAMMB: ai.VRAMMB, NemuEnable: u.NemuEnable, NemuGPUPassthrough: passthrough, LUKSTPM2Enable: u.LUKSTPM2Enable, RecoveryEnable: u.RecoveryEnable, RecoveryPartitionEnable: u.RecoveryPartitionEnable, JODSPrebootLockEnable: u.JODSPrebootLockEnable, SecureBootEnable: u.SecureBootEnable, EndpointManagedDevice: u.EndpointManagedDevice, JODSEndpoint: u.JODSEndpoint, JODSPolicySigningPublicKey: u.JODSPolicySigningKey, JODSRecoveryCommandSigningPublicKey: u.JODSRecoverySigningKey, JODSEnrollmentMode: u.JODSEnrollmentMode, JODSAllowInsecureTLS: u.JODSAllowInsecureTLS, JODSDeviceClass: u.JODSDeviceClass, JODSDesktopProfile: u.JODSDesktopProfile, JODSFingerprintEnrollmentAllowed: u.JODSFingerprintEnroll, WMs: []string{"hyprland"}, Theme: u.Theme}
-	if passthrough {
-		s.render.NemuGPUIDs = g.PassthroughIDs
+	system, err := detectedNixSystem()
+	if err != nil {
+		return err
 	}
+
+	rootPasswordFile := s.render.RootPasswordFile
+	s.render = nixrender.FromUser(u)
+	s.render.System = system
+	s.render.TouchscreenEnable = s.touchscreen
+	s.render.PenTabletEnable = s.penTablet
+	s.render.OrientationSensorEnable = s.orientationSensor
+	s.render.RootPasswordFile = rootPasswordFile
+	s.render.ODDCModel = resolvedDevice.ModelID
+	s.render.GraphicsBusID = g.BusID
+	s.render.GraphicsIntegratedBusID = g.IntegratedBusID
+	s.render.AIModel = ai.Model
+	s.render.AIAccelerationProfile = ai.AccelerationProfile
+	s.render.AIContextTokens = ai.ContextTokens
+	s.render.AIVRAMMB = ai.VRAMMB
+	s.render.WMs = []string{"hyprland"}
+
 	return nil
 }
 
@@ -2378,7 +2291,7 @@ func requireNixOS(path string) error {
 	return errors.New("installer must run on NixOS")
 }
 func existingInstall(root string) bool {
-	data, err := os.ReadFile(filepath.Join(root, "settings.nix"))
+	data, err := os.ReadFile(filepath.Join(root, "generated", "state.nix"))
 	return err == nil && (strings.Contains(string(data), "Generated by gjallarctl") || strings.Contains(string(data), "Generated by scripts/installation/install.sh"))
 }
 func first(values []string) string {
@@ -2399,7 +2312,7 @@ func validateSelections(u config.User, o discovery.Options) error {
 	for _, check := range []struct {
 		name, value string
 		allowed     []string
-	}{{"profile", u.Profile, o.Profiles}, {"shell", u.Shell, o.Shells}} {
+	}{{"shell", u.Shell, o.Shells}} {
 		if !contains(check.allowed, check.value) {
 			return fmt.Errorf("unsupported %s: %q", check.name, check.value)
 		}

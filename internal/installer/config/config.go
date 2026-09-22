@@ -1,5 +1,5 @@
 // Package config defines the typed contract between installer input,
-// discovery, and the generated settings.nix file.
+// discovery, and generated/state.nix.
 package config
 
 import (
@@ -14,8 +14,6 @@ import (
 )
 
 type User struct {
-	System                    string   `json:"system"`
-	Profile                   string   `json:"profile"`
 	Hostname                  string   `json:"hostname"`
 	Username                  string   `json:"username"`
 	Timezone                  string   `json:"timezone"`
@@ -27,6 +25,10 @@ type User struct {
 	TouchpadWorkspaceSwipe    bool     `json:"touchpadWorkspaceSwipe"`
 	ClamshellEnable           bool     `json:"clamshellEnable"`
 	USBGuardEnable            bool     `json:"usbguardEnable"`
+	USBTrustEnforce           bool     `json:"usbTrustEnforce"`
+	USBTrustTPMHandle         string   `json:"usbTrustTpmHandle"`
+	PrintingEnable            bool     `json:"printingEnable"`
+	NetworkPrintingEnable     bool     `json:"networkPrintingEnable"`
 	Name                      string   `json:"name"`
 	Email                     string   `json:"email"`
 	GitHubUsername            string   `json:"githubUsername"`
@@ -41,33 +43,17 @@ type User struct {
 	DrawioEnable              bool     `json:"drawioEnable"`
 	DrawioSelfHosted          bool     `json:"drawioSelfHosted"`
 	DrawioHost                string   `json:"drawioHost"`
+	NextcloudEnable           bool     `json:"nextcloudEnable"`
+	NextcloudHost             string   `json:"nextcloudHost"`
 	Theme                     string   `json:"theme"`
 	BackgroundNormal          string   `json:"backgroundNormal"`
-	BackgroundWork            string   `json:"backgroundWork"`
-	BackgroundGaming          string   `json:"backgroundGaming"`
-	WorkUserEnable            bool     `json:"workUserEnable"`
-	WorkUsername              string   `json:"workUsername"`
-	WorkUserPasswordFile      string   `json:"workUserPasswordFile"`
-	DockerEnable              bool     `json:"dockerEnable"`
+	ContainersEnable          bool     `json:"containersEnable"`
 	DebugFunctions            bool     `json:"debugFunctions"`
 	AIEnable                  bool     `json:"aiEnable"`
 	OverrideAISelection       bool     `json:"overrideAiSelection"`
 	OverrideModelWith         string   `json:"overrideModelWith"`
 	AIAgentMode               string   `json:"aiAgentMode"`
-	EnableScrobbling          bool     `json:"enableScrobbling"`
-	EnableLastfm              bool     `json:"enableLastfm"`
-	EnableListenbrainz        bool     `json:"enableListenbrainz"`
-	LastfmUsername            string   `json:"lastfmUsername"`
-	ListenbrainzUsername      string   `json:"listenbrainzUsername"`
-	ODDCModel                 string   `json:"oddcModel"`
-	DeviceSysVendor           string   `json:"deviceSysVendor"`
-	DeviceProductName         string   `json:"deviceProductName"`
-	DeviceProductVersion      string   `json:"deviceProductVersion"`
-	DeviceBoardVendor         string   `json:"deviceBoardVendor"`
-	DeviceBoardName           string   `json:"deviceBoardName"`
-	DeviceBoardVersion        string   `json:"deviceBoardVersion"`
 	NemuEnable                bool     `json:"nemuEnable"`
-	NemuGPUPassthrough        bool     `json:"nemuGpuPassthrough"`
 	LUKSTPM2Enable            bool     `json:"luksTpm2Enable"`
 	RecoveryEnable            bool     `json:"recoveryEnable"`
 	RecoveryPartitionEnable   bool     `json:"recoveryPartitionEnable"`
@@ -136,6 +122,7 @@ func WriteAtomic(path string, user User) error {
 }
 
 var usernamePattern = regexp.MustCompile(`^[a-z_][a-z0-9_-]*$`)
+var usbTrustTPMHandlePattern = regexp.MustCompile(`^0x810[0-9a-fA-F]{5}$`)
 
 func Load(path string) (User, error) {
 	contents, err := os.ReadFile(path)
@@ -161,19 +148,22 @@ func Validate(user User) error {
 	if !usernamePattern.MatchString(user.Username) {
 		return fmt.Errorf("invalid username: %q", user.Username)
 	}
-	if user.WorkUserEnable {
-		if user.WorkUsername != "" && !usernamePattern.MatchString(user.WorkUsername) {
-			return fmt.Errorf("invalid work username: %q", user.WorkUsername)
-		}
-	}
-	if user.System != "x86_64-linux" && user.System != "aarch64-linux" {
-		return fmt.Errorf("unsupported system: %q", user.System)
-	}
-	if user.Profile == "" || user.Hostname == "" || user.Theme == "" || user.Shell == "" {
-		return fmt.Errorf("profile, hostname, shell, and theme are required")
+	if user.Hostname == "" || user.Theme == "" || user.Shell == "" {
+		return fmt.Errorf("hostname, shell, and theme are required")
 	}
 	if len(user.Editors) == 0 || len(user.Browsers) == 0 {
 		return fmt.Errorf("at least one editor and browser are required")
+	}
+	if user.USBTrustTPMHandle != "" && !usbTrustTPMHandlePattern.MatchString(user.USBTrustTPMHandle) {
+		return fmt.Errorf("invalid usbTrustTpmHandle: %q", user.USBTrustTPMHandle)
+	}
+	if user.USBTrustEnforce {
+		if !user.USBGuardEnable {
+			return fmt.Errorf("usbTrustEnforce requires usbguardEnable")
+		}
+		if user.USBTrustTPMHandle == "" {
+			return fmt.Errorf("usbTrustEnforce requires usbTrustTpmHandle")
+		}
 	}
 	if user.AIEnable {
 		if user.OverrideAISelection && strings.TrimSpace(user.OverrideModelWith) == "" {
@@ -227,6 +217,25 @@ func NormalizeExternalServiceEndpoint(raw string) (string, error) {
 }
 
 func NormalizeProjectTools(user *User) error {
+	if user.NextcloudEnable {
+		normalized, err := NormalizeExternalServiceEndpoint(
+			user.NextcloudHost,
+		)
+		if err != nil {
+			return fmt.Errorf("nextcloudHost: %w", err)
+		}
+
+		if !strings.HasPrefix(normalized, "https://") {
+			return fmt.Errorf(
+				"nextcloudHost: HTTPS is required",
+			)
+		}
+
+		user.NextcloudHost = normalized
+	} else {
+		user.NextcloudHost = ""
+	}
+
 	if user.PlaneEnable {
 		normalized, err := NormalizeExternalServiceEndpoint(user.PlaneHost)
 		if err != nil {

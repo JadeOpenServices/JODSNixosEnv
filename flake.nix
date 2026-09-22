@@ -37,13 +37,6 @@
       submodules = true;
     };
 
-    aagl = {
-      url = "github:ezKEa/aagl-gtk-on-nix";
-      inputs.nixpkgs.follows = "nixpkgs";
-    };
-
-    nixvim.url = "github:nix-community/nixvim";
-
     hyprland-plugins = {
       url = "github:hyprwm/hyprland-plugins";
       inputs.hyprland.follows = "hyprland";
@@ -64,16 +57,6 @@
       inputs.nixpkgs.follows = "nixpkgs";
     };
 
-    winapps = {
-      url = "github:winapps-org/winapps";
-      inputs.nixpkgs.follows = "nixpkgs";
-    };
-
-    opencode = {
-      url = "github:anomalyco/opencode";
-      inputs.nixpkgs.follows = "nixpkgs";
-    };
-
     noctalia-greeter = {
       url = "github:noctalia-dev/noctalia-greeter";
       inputs.nixpkgs.follows = "nixpkgs";
@@ -84,13 +67,6 @@
       inputs.nixpkgs.follows = "nixpkgs";
     };
 
-    late = {
-      url = "github:mpiorowski/late-sh";
-      inputs.nixpkgs.follows = "nixpkgs";
-    };
-
-    # OS-neutral JODS agent protocol with the NixOS executor imported through
-    # system/management/jods. Pinned source; never a developer-machine path.
     jods = {
       url = "git+https://github.com/bakanura/jods.git?rev=3673356b81109bfaf827eea0cc58888f1add8779&shallow=1";
       flake = false;
@@ -118,38 +94,54 @@
         else
           throw "GjallarOS source provenance is unavailable";
 
-      basePkgs = nixpkgs.legacyPackages.${system};
+      overlays = [
+        inputs.nur.overlays.default
+      ]
+      ++ import ./pkgs/lib/overlays.nix;
 
-      settings = import (./. + "/settings.nix") {
+      mkPkgs =
+        targetSystem:
+        import nixpkgs {
+          system = targetSystem;
+          inherit overlays;
+          config.allowUnfree = true;
+        };
+
+      basePkgs = mkPkgs system;
+
+      settings = import (./. + "/generated/state.nix") {
         pkgs = basePkgs;
         inherit inputs;
       };
 
-      pkgs = import nixpkgs {
-        inherit system;
-        overlays = [
-        ];
-      };
+      installState = import (./. + "/generated/install-state.nix");
+
+      pkgs = basePkgs;
     in
     {
       nixosModules = import ./oddc/nixos/registry.nix;
 
       packages.${system} = rec {
         gjallarctl = pkgs.callPackage ./pkgs/gjallarctl { };
+        "gjallar-usbtrustd" = pkgs.callPackage ./pkgs/gjallar-usbtrustd { };
         "gjallar-installer" = gjallarctl.overrideAttrs (old: {
           meta = old.meta // {
             mainProgram = "gjallar-installer";
           };
         });
         "gjallar-recovery-iso" = self.nixosConfigurations.gjallar-recovery.config.system.build.isoImage;
-        "gjallar-recovery-vm-iso" =
-          self.nixosConfigurations.gjallar-recovery-vm.config.system.build.isoImage;
+        "gjallar-installer-lab-iso" =
+          self.nixosConfigurations.gjallar-installer-lab.config.system.build.isoImage;
       };
 
       checks.${system} = {
         m620-legacy-nvidia-policy = import ./tests/nix/m620-policy.nix {
           inherit nixpkgs system;
           graphicsModule = ./system/hardware/graphics;
+        };
+
+        framework-battery-policy = import ./tests/nix/battery-policy.nix {
+          inherit pkgs;
         };
       };
 
@@ -172,11 +164,11 @@
           };
         };
 
-        gjallar-recovery-vm = nixpkgs.lib.nixosSystem {
+        gjallar-installer-lab = nixpkgs.lib.nixosSystem {
           inherit system;
           modules = [
             ./system/recovery/image.nix
-            ./system/recovery/vm-image.nix
+            ./system/recovery/installer-lab.nix
           ];
           specialArgs = {
             releaseVersion = releasePolicy.release;
@@ -193,6 +185,7 @@
             inputs.stylix.nixosModules.stylix
             inputs.sops-nix.nixosModules.sops
             inputs.home-manager.nixosModules.home-manager
+            ./pkgs/monique/nix/nixos-module.nix
             inputs.lanzaboote.nixosModules.lanzaboote
 
             {
@@ -205,22 +198,18 @@
               home-manager.backupFileExtension = "hm-bak";
 
               home-manager.extraSpecialArgs = {
-                inherit inputs settings;
+                inherit inputs settings installState;
               };
 
               home-manager.sharedModules = [
                 inputs.plasma-manager.homeModules.plasma-manager
-                inputs.nixvim.homeModules.nixvim
                 inputs.sops-nix.homeManagerModules.sops
                 inputs.zen-browser.homeModules.twilight
                 inputs.noctalia.homeModules.default
               ];
 
               home-manager.users = {
-                ${settings.username} = import (./. + "/profiles/${settings.profile}/home.nix");
-              }
-              // nixpkgs.lib.optionalAttrs settings.workUserEnable {
-                ${settings.workUsername} = import ./profiles/work-user/home.nix;
+                ${settings.username} = import ./user/default.nix;
               };
 
               systemd.services.display-manager.after = [
@@ -236,7 +225,7 @@
               ];
             }
 
-            (./. + "/profiles/${settings.profile}/configuration.nix")
+            ./system/default.nix
           ]
           ++ nixpkgs.lib.optionals (settings.endpointManagedDevice or false) [
             ./system/management/jods
@@ -244,46 +233,31 @@
           ];
 
           specialArgs = {
-            inherit inputs settings sourceRevision;
+            inherit
+              inputs
+              settings
+              sourceRevision
+              installState
+              ;
           };
         };
       };
 
       homeConfigurations = {
         ${settings.username} = home-manager.lib.homeManagerConfiguration {
-          pkgs = nixpkgs.legacyPackages.${settings.system};
+          pkgs = mkPkgs settings.system;
 
           modules = [
-            (./. + "/profiles/${settings.profile}/home.nix")
+            ./user/default.nix
             inputs.plasma-manager.homeModules.plasma-manager
             inputs.stylix.homeModules.stylix
-            inputs.nixvim.homeModules.nixvim
             inputs.sops-nix.homeManagerModules.sops
             inputs.zen-browser.homeModules.twilight
             inputs.noctalia.homeModules.default
           ];
 
           extraSpecialArgs = {
-            inherit inputs settings;
-          };
-        };
-      }
-      // nixpkgs.lib.optionalAttrs settings.workUserEnable {
-        ${settings.workUsername} = home-manager.lib.homeManagerConfiguration {
-          pkgs = nixpkgs.legacyPackages.${settings.system};
-
-          modules = [
-            ./profiles/work-user/home.nix
-            inputs.plasma-manager.homeModules.plasma-manager
-            inputs.stylix.homeModules.stylix
-            inputs.nixvim.homeModules.nixvim
-            inputs.sops-nix.homeModules.sops
-            inputs.zen-browser.homeModules.twilight
-            inputs.noctalia.homeModules.default
-          ];
-
-          extraSpecialArgs = {
-            inherit inputs settings;
+            inherit inputs settings installState;
           };
         };
       };

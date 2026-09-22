@@ -12,7 +12,11 @@ import (
 	"github.com/bakanura/gjallarOS/internal/installer/prompt"
 )
 
-func validationFixture() oddc.Resolved {
+func validationFixture(t *testing.T) oddc.Resolved {
+	t.Helper()
+	original := localValidationMatches
+	localValidationMatches = func(context.Context, oddc.ValidationTarget) (bool, error) { return false, nil }
+	t.Cleanup(func() { localValidationMatches = original })
 	const modelID = "model/framework/laptop-13-amd-ryzen-7040"
 
 	return oddc.Resolved{
@@ -48,7 +52,7 @@ func TestDeviceValidationGateAcceptsValidatedProfile(t *testing.T) {
 		context.Background(),
 		ui,
 		config.User{},
-		validationFixture(),
+		validationFixture(t),
 		"26.05",
 		"git:gjallar",
 	)
@@ -62,7 +66,7 @@ func TestDeviceValidationGateAcceptsValidatedProfile(t *testing.T) {
 }
 
 func TestDeviceValidationGateRequiresInteractiveConfirmation(t *testing.T) {
-	resolved := validationFixture()
+	resolved := validationFixture(t)
 	resolved.Validations[0].LastValidatedNixOS = "25.11"
 
 	ui, out := validationTestUI("yes\n")
@@ -85,7 +89,7 @@ func TestDeviceValidationGateRequiresInteractiveConfirmation(t *testing.T) {
 }
 
 func TestDeviceValidationGateRejectsUnattendedProfile(t *testing.T) {
-	resolved := validationFixture()
+	resolved := validationFixture(t)
 	resolved.Validations[0].LastValidatedNixOS = "25.11"
 
 	ui, _ := validationTestUI("")
@@ -108,7 +112,7 @@ func TestDeviceValidationGateRejectsUnattendedProfile(t *testing.T) {
 }
 
 func TestDeviceValidationGateAllowsExplicitUnattendedOverride(t *testing.T) {
-	resolved := validationFixture()
+	resolved := validationFixture(t)
 	resolved.Validations[0].LastValidatedNixOS = "25.11"
 
 	ui, _ := validationTestUI("")
@@ -130,7 +134,7 @@ func TestDeviceValidationGateAllowsExplicitUnattendedOverride(t *testing.T) {
 }
 
 func TestDeviceValidationGateRejectsUnvalidatedManagedUnattendedProfile(t *testing.T) {
-	resolved := validationFixture()
+	resolved := validationFixture(t)
 	resolved.Validations[0].LastValidatedNixOS = "25.11"
 
 	ui, _ := validationTestUI("")
@@ -156,7 +160,7 @@ func TestDeviceValidationGateRejectsUnvalidatedManagedUnattendedProfile(t *testi
 }
 
 func TestDeviceValidationGateAllowsExplicitManagedOverride(t *testing.T) {
-	resolved := validationFixture()
+	resolved := validationFixture(t)
 	resolved.Validations[0].LastValidatedNixOS = "25.11"
 
 	ui, _ := validationTestUI("")
@@ -179,7 +183,7 @@ func TestDeviceValidationGateAllowsExplicitManagedOverride(t *testing.T) {
 }
 
 func TestDeviceValidationGateAcceptsMatchingLocalRecord(t *testing.T) {
-	resolved := validationFixture()
+	resolved := validationFixture(t)
 	resolved.Validations[0].LastValidatedNixOS = "25.11"
 
 	original := localValidationMatches

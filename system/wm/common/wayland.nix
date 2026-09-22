@@ -46,7 +46,6 @@
     };
   };
 
-  # The greeter starts its own compositor, so it controls the Plymouth handoff.
   services.greetd.greeterManagesPlymouth = true;
 
   security.polkit.enable = true;

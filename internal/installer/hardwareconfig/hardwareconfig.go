@@ -11,7 +11,14 @@ import (
 	"time"
 )
 
-const freshTargetRoot = "/mnt"
+const (
+	freshTargetRoot = "/mnt"
+	relativeTarget  = "generated/hardware.nix"
+)
+
+func Target(repo string) string {
+	return filepath.Join(repo, filepath.FromSlash(relativeTarget))
+}
 
 type commandRunner interface {
 	Run(context.Context, io.Writer, io.Writer, string, ...string) error
@@ -57,12 +64,12 @@ func ValidateTarget(repo, target string) (string, error) {
 	if rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
 		return "", fmt.Errorf("hardware target is outside repository: %s", target)
 	}
-	parts := strings.Split(filepath.ToSlash(rel), "/")
-	if len(parts) != 3 ||
-		parts[0] != "profiles" ||
-		parts[2] != "hardware-configuration.nix" ||
-		parts[1] == "" {
-		return "", fmt.Errorf("invalid hardware target: %s", target)
+	if filepath.ToSlash(rel) != relativeTarget {
+		return "", fmt.Errorf(
+			"invalid hardware target %s: expected %s",
+			target,
+			relativeTarget,
+		)
 	}
 	return abs, nil
 }
@@ -88,9 +95,9 @@ func Generate(
 // GenerateTarget generates hardware configuration for the prepared fresh
 // installation mounted at /mnt.
 //
-// It deliberately does not alter flake.nix or any unrelated source file. The
-// caller selects the existing profile hardware-configuration.nix target, which
-// is backed up before atomic replacement.
+// It deliberately does not alter flake.nix or any unrelated source file.
+// Generated hardware state has one canonical machine-local target and is
+// backed up before atomic replacement.
 func GenerateTarget(
 	ctx context.Context,
 	repo,
@@ -142,7 +149,7 @@ func generate(
 	}
 
 	if err := os.MkdirAll(filepath.Dir(target), 0755); err != nil {
-		return "", fmt.Errorf("create profile directory: %w", err)
+		return "", fmt.Errorf("create hardware state directory: %w", err)
 	}
 
 	backup := ""
@@ -157,7 +164,7 @@ func generate(
 
 	tmp, err := os.CreateTemp(
 		filepath.Dir(target),
-		".hardware-configuration.nix-*",
+		".generated.nix-*",
 	)
 	if err != nil {
 		return backup, fmt.Errorf(

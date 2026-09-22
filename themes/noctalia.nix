@@ -1,7 +1,5 @@
 { pkgs, ... }:
 {
-  # Noctalia owns the theme. These defaults preserve the previous desktop's
-  # visual character while allowing CCS changes to take over at runtime.
   themeName = "rose-pine";
   avatar = ../non-nix/wallpapers/avatar.png;
   wallpaper = {

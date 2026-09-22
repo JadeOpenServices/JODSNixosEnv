@@ -44,7 +44,6 @@ stdenv.mkDerivation rec {
   src = fetchFromGitHub {
     owner = "nemuTUI";
     repo = "nemu";
-    # rev = "v${version}";
     rev = "b2723f109603a4ca3ca070637d346697231277fa";
     hash = "sha256-MppdlzBP9UiF25oxnJ+kHcp/IKqU8e/A6h9VyMHjNG4=";
   };

@@ -20,7 +20,7 @@ const (
 	ControlPath   = StateDir + "/gjallarctl"
 	ModulePath    = StateDir + "/resume-module.nix"
 	WrapperPath   = StateDir + "/configuration.nix"
-	ServiceName   = "gjallar-installer-resume.service"
+	ServiceName   = "installer-resume.service"
 )
 
 type Transaction struct {
@@ -125,8 +125,8 @@ func Arm(
 	module :=
 		"{ lib, ... }:\n" +
 			"{\n" +
-			"  systemd.services.gjallar-installer-resume = {\n" +
-			"    description = \"Resume GjallarOS installer after staged NixOS release boot\";\n" +
+			"  systemd.services.installer-resume = {\n" +
+			"    description = \"Resume installer after staged NixOS release boot\";\n" +
 			"    wantedBy = [ \"multi-user.target\" ];\n" +
 			"    after = [ \"local-fs.target\" ];\n" +
 			"    unitConfig.ConditionPathExists = \"" + PendingPath + "\";\n" +

@@ -26,7 +26,7 @@ func runtimeInputResult(
 		`let
 		  flake = builtins.getFlake ("path:" + toString ./.);
 		  pkgs = flake.inputs.nixpkgs.legacyPackages.${builtins.currentSystem};
-		  settings = import ./settings.nix { inherit pkgs; inputs = flake.inputs; };
+		  settings = import ./generated/state.nix { inherit pkgs; inputs = flake.inputs; };
 		in {
 		  touchscreen = settings.touchscreenEnable;
 		  penTablet = settings.penTabletEnable;

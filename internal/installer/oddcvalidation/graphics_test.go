@@ -7,7 +7,7 @@ import (
 	"github.com/bakanura/gjallarOS/internal/hardware/graphics"
 )
 
-func TestRuntimeGraphicsGateMatchesGeneratedState(t *testing.T) {
+func TestRuntimeGraphicsGateMatchesODDCAndGeneratedTopology(t *testing.T) {
 	runner := func(
 		ctx context.Context,
 		dir string,

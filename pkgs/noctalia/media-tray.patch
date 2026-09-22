@@ -1,0 +1,172 @@
+diff --git a/src/dbus/mpris/mpris_service.cpp b/src/dbus/mpris/mpris_service.cpp
+index 8419fd8..57b7239 100644
+--- a/src/dbus/mpris/mpris_service.cpp
++++ b/src/dbus/mpris/mpris_service.cpp
+@@ -1822,10 +1822,6 @@ void MprisService::addOrRefreshPlayer(const std::string& busName) {
+
+                   const MprisPlayerInfo info =
+                       readPlayerInfoFromProperties(busName, effectiveRootProps, effectivePlayerProps);
+-                  if (!hasStrongNowPlayingMetadata(info)) {
+-                    removePlayerCacheEntry(busName);
+-                    return;
+-                  }
+                   applyPlayerSnapshot(busName, info, hadPositionSignal, hadFullRefreshFailure);
+                 });
+           } catch (const sdbus::Error& e) {
+diff --git a/src/shell/bar/widgets/tray_widget.cpp b/src/shell/bar/widgets/tray_widget.cpp
+index 568aae8..71c48e3 100644
+--- a/src/shell/bar/widgets/tray_widget.cpp
++++ b/src/shell/bar/widgets/tray_widget.cpp
+@@ -166,7 +166,8 @@ namespace {
+
+ TrayWidget::TrayWidget(ConfigService& config, TrayService* tray, Options options)
+     : m_config(config), m_tray(tray), m_hiddenItems(std::move(options.hiddenItems)),
+-      m_pinnedItems(std::move(options.pinnedItems)), m_hidePassive(options.hidePassive),
++      m_pinnedItems(std::move(options.pinnedItems)), m_menuOnLeftClick(std::move(options.menuOnLeftClick)),
++      m_hidePassive(options.hidePassive), m_leadingSeparator(options.leadingSeparator),
+       m_drawerMode(options.drawerMode), m_itemActivated(std::move(options.itemActivated)),
+       m_barPosition(std::move(options.barPosition)), m_panelGridMode(options.panelGridMode),
+       m_panelGridColumns(std::clamp<std::size_t>(options.panelGridColumns, 1U, 5U)),
+@@ -186,6 +187,7 @@ TrayWidget::TrayWidget(ConfigService& config, TrayService* tray, Options options
+   };
+   normalizeTokens(m_hiddenItems);
+   normalizeTokens(m_pinnedItems);
++  normalizeTokens(m_menuOnLeftClick);
+   buildDesktopIconIndex();
+ }
+
+@@ -459,6 +461,26 @@ void TrayWidget::rebuild(Renderer& renderer) {
+     m_container->removeChild(m_container->children().back().get());
+   }
+
++  bool hasVisibleContent = false;
++  for (const auto& item : m_items) {
++    if ((m_hidePassive && tray::isPassiveStatus(item)) || isHiddenItem(item)) {
++      continue;
++    }
++    hasVisibleContent = true;
++    break;
++  }
++
++  if (!m_panelGridMode && hasVisibleContent && m_leadingSeparator) {
++    m_container->addChild(ui::label({
++        .text = "│",
++        .fontSize = Style::fontSizeCaption * fontScale(),
++        .fontWeight = labelFontWeight(),
++        .fontFamily = labelFontFamily(),
++        .color = widgetForegroundOr(colorSpecFromRole(ColorRole::OnSurface)),
++        .maxLines = 1,
++    }));
++  }
++
+   auto attachHover = [this](InputArea& area, float size) {
+     if (!barCapsuleSpec().hoverHighlight) {
+       return;
+@@ -774,24 +796,32 @@ void TrayWidget::rebuild(Renderer& renderer) {
+     area->setSize(itemSize, itemSize);
+     iconNode->setPosition(std::round((itemSize - iconW) * 0.5F), std::round((itemSize - iconH) * 0.5F));
+     auto itemId = item.id;
++    const bool leftClickOpensMenu = usesMenuOnLeftClick(item);
+     area->setAcceptedButtons(InputArea::buttonMask({BTN_LEFT, BTN_RIGHT}));
+     InputArea* areaPtr = area.get();
+-    area->setOnClick([this, itemId, areaPtr](const InputArea::PointerData& data) {
++    area->setOnClick([this, itemId, areaPtr, leftClickOpensMenu](const InputArea::PointerData& data) {
+       if (m_tray == nullptr) {
+         return;
+       }
+       const auto [x, y] = trayPointerCoords(*areaPtr, data);
+-      if (data.button == BTN_LEFT) {
+-        (void)m_tray->activateItem(itemId, x, y);
+-        if (m_itemActivated) {
+-          m_itemActivated();
+-        }
+-      } else if (data.button == BTN_RIGHT) {
++      const auto openMenu = [this, itemId, x, y]() {
+         if (m_tray->itemUsesDBusMenu(itemId)) {
+           m_tray->requestMenuToggle(itemId, m_contentScale);
+         } else {
+           (void)m_tray->openContextMenu(itemId, x, y);
+         }
++      };
++      if (data.button == BTN_LEFT) {
++        if (leftClickOpensMenu) {
++          openMenu();
++        } else {
++          (void)m_tray->activateItem(itemId, x, y);
++          if (m_itemActivated) {
++            m_itemActivated();
++          }
++        }
++      } else if (data.button == BTN_RIGHT) {
++        openMenu();
+       }
+     });
+     area->addChild(std::move(iconNode));
+@@ -867,6 +897,15 @@ bool TrayWidget::isHiddenItem(const TrayItemInfo& item) const {
+   return false;
+ }
+
++bool TrayWidget::usesMenuOnLeftClick(const TrayItemInfo& item) const {
++  for (const auto& needle : m_menuOnLeftClick) {
++    if (tray::tokenMatchesItem(needle, item)) {
++      return true;
++    }
++  }
++  return false;
++}
++
+ bool TrayWidget::isPinnedItem(const TrayItemInfo& item) const {
+   if (m_pinnedItems.empty()) {
+     return false;
+diff --git a/src/shell/bar/widgets/tray_widget.h b/src/shell/bar/widgets/tray_widget.h
+index 20fd7be..8735cd1 100644
+--- a/src/shell/bar/widgets/tray_widget.h
++++ b/src/shell/bar/widgets/tray_widget.h
+@@ -26,7 +26,9 @@ public:
+   struct Options {
+     std::vector<std::string> hiddenItems;
+     std::vector<std::string> pinnedItems;
++    std::vector<std::string> menuOnLeftClick;
+     bool hidePassive = true;
++    bool leadingSeparator = false;
+     bool drawerMode = false;
+     std::function<void()> itemActivated;
+     std::string barPosition = "top";
+@@ -63,6 +65,7 @@ private:
+   void syncState(Renderer& renderer);
+   void rebuild(Renderer& renderer);
+   [[nodiscard]] std::string iconForItem(const TrayItemInfo& item) const;
++  [[nodiscard]] bool usesMenuOnLeftClick(const TrayItemInfo& item) const;
+   [[nodiscard]] bool isPinnedItem(const TrayItemInfo& item) const;
+   [[nodiscard]] bool isHiddenItem(const TrayItemInfo& item) const;
+   [[nodiscard]] std::string drawerChevronGlyph(bool panelOpen) const;
+@@ -85,7 +88,9 @@ private:
+   std::vector<TrayItemInfo> m_items;
+   std::vector<std::string> m_hiddenItems;
+   std::vector<std::string> m_pinnedItems;
++  std::vector<std::string> m_menuOnLeftClick;
+   bool m_hidePassive = true;
++  bool m_leadingSeparator = false;
+   std::vector<Image*> m_loadedImages;
+   std::vector<Image*> m_colorizedAppIcons;
+   std::unordered_map<std::string, std::size_t> m_initialPixmaps;
+diff --git a/src/shell/bar/widgets/tray_widget_definition.cpp b/src/shell/bar/widgets/tray_widget_definition.cpp
+index 9f64c1f..fd63bc0 100644
+--- a/src/shell/bar/widgets/tray_widget_definition.cpp
++++ b/src/shell/bar/widgets/tray_widget_definition.cpp
+@@ -16,9 +16,15 @@ const noctalia::bar::WidgetDefinition<TrayWidget::Options, TrayWidgetDefinitionC
+               field<&Options::pinnedItems>({
+                   .key = "pinned",
+               }),
++              field<&Options::menuOnLeftClick>({
++                  .key = "menu_on_left_click",
++              }),
+               field<&Options::hidePassive>({
+                   .key = "hide_passive",
+               }),
++              field<&Options::leadingSeparator>({
++                  .key = "leading_separator",
++              }),
+               field<&Options::matchAdjacentSpacing>({
+                   .key = "match_adjacent_spacing",
+               }),

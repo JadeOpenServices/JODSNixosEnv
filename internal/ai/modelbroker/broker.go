@@ -475,7 +475,7 @@ func authorizedPeer(p peerInfo, cfg Config) bool {
 	//
 	// Trust requires BOTH:
 	//   1. the configured desktop UID; and
-	//   2. membership in the controlled gjallar-ai-session@ systemd cgroup.
+	//   2. membership in the controlled ai-session@ systemd cgroup.
 	//
 	// The relay executable itself is intentionally not a trust anchor.
 	if p.PID <= 1 || p.UID != cfg.AllowedUID {

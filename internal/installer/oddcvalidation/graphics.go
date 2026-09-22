@@ -23,15 +23,20 @@ const graphicsSettingsExpr = `
 let
   flake = builtins.getFlake ("path:" + toString ./.);
   pkgs = flake.inputs.nixpkgs.legacyPackages.${builtins.currentSystem};
-  settings = import ./settings.nix {
+  settings = import ./generated/state.nix {
     inherit pkgs;
     inputs = flake.inputs;
   };
+  resolved = flake.nixosConfigurations.${settings.hostname}.config.oddc.resolved;
+  graphics = import ./oddc/nixos/lib/graphics.nix {
+    lib = flake.inputs.nixpkgs.lib;
+  } resolved;
+  selected = if graphics.discreteDriver != "" then graphics.discrete else graphics.integrated;
 in {
-  vendor = settings.graphicsVendor;
-  deviceId = settings.graphicsDeviceId;
-  type = settings.graphicsType;
-  compute = settings.graphicsCompute;
+  vendor = graphics.vendor;
+  deviceId = selected.deviceId or "";
+  type = graphics.type;
+  compute = graphics.compute;
   busId = settings.graphicsBusId;
   integratedBusId = settings.graphicsIntegratedBusId;
 }
@@ -57,7 +62,7 @@ func runtimeGraphicsResult(
 		return Result{
 			Gate:    GateRuntimeGraphics,
 			Passed:  false,
-			Details: fmt.Sprintf("evaluate generated graphics state: %v", err),
+			Details: fmt.Sprintf("evaluate resolved graphics state: %v", err),
 		}
 	}
 
@@ -66,7 +71,7 @@ func runtimeGraphicsResult(
 		return Result{
 			Gate:    GateRuntimeGraphics,
 			Passed:  false,
-			Details: fmt.Sprintf("decode generated graphics state: %v", err),
+			Details: fmt.Sprintf("decode resolved graphics state: %v", err),
 		}
 	}
 
@@ -89,7 +94,7 @@ func runtimeGraphicsResult(
 			Gate:   GateRuntimeGraphics,
 			Passed: false,
 			Details: fmt.Sprintf(
-				"generated=%+v runtime=%+v",
+				"expected=%+v runtime=%+v",
 				expected,
 				current,
 			),

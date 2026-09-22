@@ -10,8 +10,6 @@ import (
 	"flag"
 	"fmt"
 	"github.com/bakanura/gjallarOS/internal/hardware/deviceprobe"
-	"github.com/bakanura/gjallarOS/internal/hardware/deviceprobe/devices/framework/laptop13amd7040"
-	"github.com/bakanura/gjallarOS/internal/hardware/deviceprobe/devices/hp/zbookx2g4"
 	"github.com/bakanura/gjallarOS/internal/installer/repojson"
 	"io"
 	"math/rand/v2"
@@ -36,12 +34,11 @@ import (
 	aipolicy "github.com/bakanura/gjallarOS/internal/ai/policy"
 	"github.com/bakanura/gjallarOS/internal/ai/profile"
 	"github.com/bakanura/gjallarOS/internal/ai/research"
-	"github.com/bakanura/gjallarOS/internal/hardware/graphics"
-	"github.com/bakanura/gjallarOS/internal/hardware/network"
 	"github.com/bakanura/gjallarOS/internal/input/xkb"
 	"github.com/bakanura/gjallarOS/internal/installer/background"
 	"github.com/bakanura/gjallarOS/internal/installer/bootstrap"
 	"github.com/bakanura/gjallarOS/internal/installer/config"
+	"github.com/bakanura/gjallarOS/internal/installer/credential"
 	"github.com/bakanura/gjallarOS/internal/installer/deploy"
 	"github.com/bakanura/gjallarOS/internal/installer/diskcrypto"
 	"github.com/bakanura/gjallarOS/internal/installer/firmware"
@@ -53,7 +50,6 @@ import (
 	"github.com/bakanura/gjallarOS/internal/installer/release"
 	"github.com/bakanura/gjallarOS/internal/installer/secrets"
 	"github.com/bakanura/gjallarOS/internal/installer/secureboot"
-	"github.com/bakanura/gjallarOS/internal/installer/workpassword"
 	"github.com/bakanura/gjallarOS/internal/installercheck"
 	"github.com/bakanura/gjallarOS/internal/preset"
 )
@@ -74,14 +70,16 @@ func run(args []string, stdout, stderr io.Writer) int {
 	}
 
 	switch args[0] {
+	case "usb":
+		return runUSB(args[1:], stdout, stderr)
 	case "installer":
 		return runInstaller(args[1:], stdout, stderr)
 	case "check":
 		return runCheck(args[1:], stdout, stderr)
+	case "preflight":
+		return runPreflight(args[1:], stdout, stderr)
 	case "oddc":
 		return runODDC(args[1:], stdout, stderr)
-	case "detect":
-		return runDetect(args[1:], stdout, stderr)
 	case "device-probe":
 		return runDeviceProbe(args[1:], stdout, stderr)
 	case "fan":
@@ -117,11 +115,8 @@ func run(args []string, stdout, stderr io.Writer) int {
 
 func runInstaller(args []string, stdout, stderr io.Writer) int {
 	if len(args) == 0 {
-		fmt.Fprintln(stderr, "Usage: gjallarctl installer {check-secrets|deploy|firmware|generate-hardware|policy|protect-local|release|render|resolve-background|work-password}")
+		fmt.Fprintln(stderr, "Usage: gjallarctl installer {check-secrets|deploy|firmware|generate-hardware|policy|protect-local|release|resolve-background|local-password}")
 		return 2
-	}
-	if args[0] == "render" {
-		return runRender(args[1:], stdout, stderr)
 	}
 	if args[0] == "protect-local" {
 		return runProtectLocal(args[1:], stdout, stderr)
@@ -141,9 +136,6 @@ func runInstaller(args []string, stdout, stderr io.Writer) int {
 	if args[0] == "check-secrets" {
 		return runCheckSecrets(args[1:], stdout, stderr)
 	}
-	if args[0] == "configure-scrobbling" {
-		return runConfigureScrobbling(args[1:], stdout, stderr)
-	}
 	if args[0] == "firmware" {
 		return runFirmware(args[1:], stdout, stderr)
 	}
@@ -162,8 +154,8 @@ func runInstaller(args []string, stdout, stderr io.Writer) int {
 	if args[0] == "tpm2-write-keyslot-record" {
 		return runTPM2WriteKeyslotRecord(args[1:], stdout, stderr)
 	}
-	if args[0] == "work-password" {
-		return runWorkPassword(args[1:], stdout, stderr)
+	if args[0] == "local-password" {
+		return runLocalPassword(args[1:], stdout, stderr)
 	}
 	if args[0] == "tpm2" {
 		return runTPM2(args[1:], stdout, stderr)
@@ -175,7 +167,7 @@ func runInstaller(args []string, stdout, stderr io.Writer) int {
 		return runBootstrap(args[1:], stdout, stderr)
 	}
 	if args[0] != "policy" {
-		fmt.Fprintln(stderr, "Usage: gjallarctl installer {check-secrets|deploy|firmware|generate-hardware|policy|protect-local|release|render|resolve-background|work-password}")
+		fmt.Fprintln(stderr, "Usage: gjallarctl installer {check-secrets|deploy|firmware|generate-hardware|policy|protect-local|release|resolve-background|local-password}")
 		return 2
 	}
 	flags := flag.NewFlagSet("gjallarctl installer policy", flag.ContinueOnError)
@@ -190,81 +182,18 @@ func runInstaller(args []string, stdout, stderr io.Writer) int {
 		return 1
 	}
 	features := policy.FromUser(user)
-	fmt.Fprintf(stdout, "ai_enable=%t\nauto_reboot=%t\ndebug_functions=%t\ndocker_enable=%t\nclamshell_enable=%t\nusbguard_enable=%t\nnemu_enable=%t\nnemu_gpu_passthrough=%t\ntouchpad_workspace_swipe=%t\nwork_user_enable=%t\n",
-		features.AIEnable, features.AutoReboot, features.DebugFunctions, features.DockerEnable,
-		features.ClamshellEnable, features.USBGuardEnable, features.NemuEnable,
-		features.NemuGPUPassthrough, features.TouchpadWorkspaceSwipe, features.WorkUserEnable)
-	return 0
-}
-
-func runConfigureScrobbling(args []string, stdout, stderr io.Writer) int {
-	f := flag.NewFlagSet("gjallarctl installer configure-scrobbling", flag.ContinueOnError)
-	f.SetOutput(stderr)
-	repo := f.String("repo", "", "repository path")
-	username := f.String("username", "", "Linux username")
-	lastfmEnabled := f.Bool("lastfm", false, "configure Last.fm")
-	listenEnabled := f.Bool("listenbrainz", false, "configure ListenBrainz")
-	lastfmUser := f.String("lastfm-username", "", "Last.fm username")
-	listenUser := f.String("listenbrainz-username", "", "ListenBrainz username")
-	if err := f.Parse(args); err != nil || f.NArg() != 0 {
-		return 2
-	}
-	if !*lastfmEnabled && !*listenEnabled {
-		fmt.Fprintln(stdout, "enable_scrobbling=false")
-		return 0
-	}
-	tty, err := os.OpenFile("/dev/tty", os.O_RDWR, 0)
-	if err != nil {
-		fmt.Fprintf(stderr, "ERROR: scrobbling credentials require a terminal: %v\n", err)
-		return 1
-	}
-	defer tty.Close()
-	reader := bufio.NewReader(tty)
-	readUser := func(label, current string) (string, error) {
-		if current != "" {
-			return current, nil
-		}
-		fmt.Fprintf(tty, "%s username: ", label)
-		value, err := reader.ReadString('\n')
-		return strings.TrimSpace(value), err
-	}
-	var lastfmToken, listenToken string
-	if *lastfmEnabled {
-		*lastfmUser, err = readUser("Last.fm", *lastfmUser)
-		if err == nil {
-			lastfmToken, err = workpassword.ReadSecret(tty, reader, tty, "Last.fm token/password: ")
-		}
-		if err != nil {
-			fmt.Fprintf(stderr, "ERROR: %v\n", err)
-			return 1
-		}
-	}
-	if *listenEnabled {
-		*listenUser, err = readUser("ListenBrainz", *listenUser)
-		if err == nil {
-			listenToken, err = workpassword.ReadSecret(tty, reader, tty, "ListenBrainz token: ")
-		}
-		if err != nil {
-			fmt.Fprintf(stderr, "ERROR: %v\n", err)
-			return 1
-		}
-	}
-	if strings.ContainsAny(*lastfmUser+*listenUser, "\r\n=") {
-		fmt.Fprintln(stderr, "ERROR: invalid scrobbling username")
-		return 2
-	}
-	key, recipient, err := secrets.EnsureAgeKey(context.Background(), *username)
-	if err != nil {
-		fmt.Fprintf(stderr, "ERROR: %v\n", err)
-		return 1
-	}
-	fmt.Fprintf(tty, "Using age key %s. Back it up securely.\n", key)
-	if err := secrets.EncryptScrobbling(context.Background(), *repo, recipient, lastfmToken, listenToken); err != nil {
-		fmt.Fprintf(stderr, "ERROR: %v\n", err)
-		return 1
-	}
-	lastfmToken, listenToken = "", ""
-	fmt.Fprintf(stdout, "enable_scrobbling=true\nenable_lastfm=%t\nenable_listenbrainz=%t\nlastfm_username=%s\nlistenbrainz_username=%s\n", *lastfmEnabled, *listenEnabled, *lastfmUser, *listenUser)
+	fmt.Fprintf(stdout, "ai_enable=%t\nauto_reboot=%t\ndebug_functions=%t\ndocker_enable=%t\nclamshell_enable=%t\nusbguard_enable=%t\nusb_trust_enforce=%t\nusb_trust_tpm_handle=%s\nnemu_enable=%t\ntouchpad_workspace_swipe=%t\n",
+		features.AIEnable,
+		features.AutoReboot,
+		features.DebugFunctions,
+		features.ContainersEnable,
+		features.ClamshellEnable,
+		features.USBGuardEnable,
+		features.USBTrustEnforce,
+		features.USBTrustTPMHandle,
+		features.NemuEnable,
+		features.TouchpadWorkspaceSwipe,
+	)
 	return 0
 }
 
@@ -454,7 +383,7 @@ func runLUKS(args []string, stdout, stderr io.Writer) int {
 		fmt.Fprintln(stdout, "LUKS configuration skipped; existing unlock methods remain unchanged.")
 		return 0
 	}
-	old, err := workpassword.ReadSecret(tty, reader, tty, "Current LUKS key: ")
+	old, err := credential.ReadSecret(tty, reader, tty, "Current LUKS key: ")
 	if err != nil || old == "" {
 		fmt.Fprintln(stdout, "No key supplied; existing configuration unchanged.")
 		return 0
@@ -508,15 +437,15 @@ func runLUKS(args []string, stdout, stderr io.Writer) int {
 	return 0
 }
 
-func runWorkPassword(args []string, stdout, stderr io.Writer) int {
-	f := flag.NewFlagSet("gjallarctl installer work-password", flag.ContinueOnError)
+func runLocalPassword(args []string, stdout, stderr io.Writer) int {
+	f := flag.NewFlagSet("gjallarctl installer local-password", flag.ContinueOnError)
 	f.SetOutput(stderr)
-	username := f.String("username", "", "work-account username")
+	username := f.String("username", "", "local username")
 	apply := f.Bool("apply", false, "prompt and store a missing password hash")
 	if err := f.Parse(args); err != nil || f.NArg() != 0 {
 		return 2
 	}
-	target, err := workpassword.Path(*username)
+	target, err := credential.Path(*username)
 	if err != nil {
 		fmt.Fprintf(stderr, "ERROR: %v\n", err)
 		return 2
@@ -525,30 +454,30 @@ func runWorkPassword(args []string, stdout, stderr io.Writer) int {
 	if !*apply {
 		return 0
 	}
-	if workpassword.Exists(context.Background(), target) {
+	if credential.Exists(context.Background(), target) {
 		fmt.Fprintf(stdout, "Reusing stored password hash for %s.\n", *username)
 		fmt.Fprintln(stdout, target)
 		return 0
 	}
 	tty, err := os.OpenFile("/dev/tty", os.O_RDWR, 0)
 	if err != nil {
-		fmt.Fprintf(stderr, "ERROR: work-account password requires a terminal: %v\n", err)
+		fmt.Fprintf(stderr, "ERROR: local password requires a terminal: %v\n", err)
 		return 1
 	}
 	defer tty.Close()
 	fmt.Fprintf(tty, "Set a password for %s (terminal only).\n", *username)
-	password, err := workpassword.ReadConfirmedPassword(tty, tty, *username)
+	password, err := credential.ReadConfirmedPassword(tty, tty, *username)
 	if err != nil {
 		fmt.Fprintf(stderr, "ERROR: %v\n", err)
 		return 1
 	}
-	hash, err := workpassword.Hash(context.Background(), password)
+	hash, err := credential.Hash(context.Background(), password)
 	password = ""
 	if err != nil {
 		fmt.Fprintf(stderr, "ERROR: %v\n", err)
 		return 1
 	}
-	if err := workpassword.Store(context.Background(), target, hash); err != nil {
+	if err := credential.Store(context.Background(), target, hash); err != nil {
 		fmt.Fprintf(stderr, "ERROR: %v\n", err)
 		return 1
 	}
@@ -911,107 +840,6 @@ func runProtectLocal(args []string, stdout, stderr io.Writer) int {
 	return 0
 }
 
-type stringList []string
-
-func (s *stringList) String() string     { return strings.Join(*s, ",") }
-func (s *stringList) Set(v string) error { *s = append(*s, v); return nil }
-
-func runRender(args []string, stdout, stderr io.Writer) int {
-	f := flag.NewFlagSet("gjallarctl installer render", flag.ContinueOnError)
-	f.SetOutput(stderr)
-	var s nixrender.Settings
-	output := f.String("output", "settings.nix", "output path")
-	f.StringVar(&s.System, "system", "", "system")
-	f.StringVar(&s.Profile, "profile", "", "profile")
-	f.StringVar(&s.Hostname, "hostname", "", "hostname")
-	f.StringVar(&s.Username, "username", "", "username")
-	f.StringVar(&s.Timezone, "timezone", "", "timezone")
-	f.StringVar(&s.Locale, "locale", "", "locale")
-	f.StringVar(&s.KeyboardLayout, "keyboard-layout", "", "keyboard layout")
-	f.StringVar(&s.KeyboardVariant, "keyboard-variant", "", "keyboard variant")
-	f.BoolVar(&s.TouchpadWorkspaceSwipe, "touchpad-workspace-swipe", false, "")
-	f.BoolVar(&s.TouchscreenEnable, "touchscreen-enable", false, "")
-	f.BoolVar(&s.PenTabletEnable, "pen-tablet-enable", false, "")
-	f.BoolVar(&s.ClamshellEnable, "clamshell-enable", false, "")
-	f.BoolVar(&s.USBGuardEnable, "usbguard-enable", false, "")
-	f.StringVar(&s.Name, "name", "", "name")
-	f.StringVar(&s.Email, "email", "", "email")
-	f.StringVar(&s.GitHubUsername, "github-username", "", "GitHub username")
-	f.StringVar(&s.DotfilesDir, "dotfiles-dir", "", "dotfiles directory")
-	f.BoolVar(&s.WorkUserEnable, "work-user-enable", false, "")
-	f.StringVar(&s.WorkUsername, "work-username", "", "")
-	f.StringVar(&s.WorkUserPasswordFile, "work-user-password-file", "", "")
-	f.BoolVar(&s.DockerEnable, "docker-enable", false, "")
-	f.BoolVar(&s.DebugFunctions, "debug-functions", false, "")
-	f.StringVar(&s.Shell, "shell", "", "")
-	f.Var((*stringList)(&s.Editors), "editor", "repeatable editor")
-	f.Var((*stringList)(&s.Browsers), "browser", "repeatable browser")
-	f.StringVar(&s.PreferredEditor, "preferred-editor", "", "")
-	f.StringVar(&s.PreferredBrowser, "preferred-browser", "", "")
-	f.BoolVar(&s.PlaneEnable, "plane-enable", false, "")
-	f.StringVar(&s.PlaneHost, "plane-host", "", "")
-	f.BoolVar(&s.DrawioEnable, "drawio-enable", false, "")
-	f.BoolVar(&s.DrawioSelfHosted, "drawio-self-hosted", false, "")
-	f.StringVar(&s.DrawioHost, "drawio-host", "", "")
-	f.StringVar(&s.BackgroundNormal, "background-normal", "", "")
-	f.StringVar(&s.BackgroundWork, "background-work", "", "")
-	f.StringVar(&s.BackgroundGaming, "background-gaming", "", "")
-	f.BoolVar(&s.EnableScrobbling, "enable-scrobbling", false, "")
-	f.BoolVar(&s.EnableLastfm, "enable-lastfm", false, "")
-	f.BoolVar(&s.EnableListenbrainz, "enable-listenbrainz", false, "")
-	f.StringVar(&s.LastfmUsername, "lastfm-username", "", "")
-	f.StringVar(&s.ListenbrainzUsername, "listenbrainz-username", "", "")
-	f.StringVar(&s.ODDCModel, "oddc-model", "", "")
-	f.StringVar(&s.DeviceSysVendor, "device-sys-vendor", "", "")
-	f.StringVar(&s.DeviceProductName, "device-product-name", "", "")
-	f.StringVar(&s.DeviceProductVersion, "device-product-version", "", "")
-	f.StringVar(&s.DeviceBoardVendor, "device-board-vendor", "", "")
-	f.StringVar(&s.DeviceBoardName, "device-board-name", "", "")
-	f.StringVar(&s.DeviceBoardVersion, "device-board-version", "", "")
-	f.StringVar(&s.GraphicsVendor, "graphics-vendor", "", "")
-	f.StringVar(&s.GraphicsType, "graphics-type", "", "")
-	f.BoolVar(&s.GraphicsCompute, "graphics-compute", false, "")
-	f.StringVar(&s.GraphicsBusID, "graphics-bus-id", "", "")
-	f.StringVar(&s.GraphicsIntegratedBusID, "graphics-integrated-bus-id", "", "")
-	f.StringVar(&s.WiFiDriver, "wifi-driver", "", "")
-	f.BoolVar(&s.AIEnable, "ai-enable", false, "")
-	f.StringVar(&s.AIModel, "ai-model", "", "")
-	f.StringVar(&s.AIAgentMode, "ai-agent-mode", "workspace", "")
-	f.IntVar(&s.AIContextTokens, "ai-context-tokens", 0, "")
-	f.IntVar(&s.AIVRAMMB, "ai-vram-mb", 0, "")
-	f.BoolVar(&s.NemuEnable, "nemu-enable", false, "")
-	f.BoolVar(&s.NemuGPUPassthrough, "nemu-gpu-passthrough", false, "")
-	f.Var((*stringList)(&s.NemuGPUIDs), "nemu-gpu-id", "repeatable GPU ID")
-	f.BoolVar(&s.LUKSTPM2Enable, "luks-tpm2-enable", false, "")
-	f.BoolVar(&s.RecoveryEnable, "recovery-enable", false, "")
-	f.BoolVar(&s.JODSPrebootLockEnable, "jods-preboot-lock-enable", false, "")
-	f.BoolVar(&s.SecureBootEnable, "secure-boot-enable", false, "")
-	f.BoolVar(&s.EndpointManagedDevice, "endpoint-managed-device", false, "")
-	f.StringVar(&s.JODSEndpoint, "jods-endpoint", "", "")
-	f.StringVar(&s.JODSPolicySigningPublicKey, "jods-policy-signing-public-key", "", "")
-	f.StringVar(&s.JODSRecoveryCommandSigningPublicKey, "jods-recovery-command-signing-public-key", "", "")
-	f.StringVar(&s.JODSEnrollmentMode, "jods-enrollment-mode", "", "")
-	f.BoolVar(&s.JODSAllowInsecureTLS, "jods-allow-insecure-tls", false, "")
-	f.StringVar(&s.JODSDeviceClass, "jods-device-class", "", "")
-	f.StringVar(&s.JODSDesktopProfile, "jods-desktop-profile", "", "")
-	f.BoolVar(&s.JODSFingerprintEnrollmentAllowed, "jods-fingerprint-enrollment-allowed", false, "")
-	f.Var((*stringList)(&s.WMs), "wm", "repeatable window manager")
-	f.StringVar(&s.Theme, "theme", "", "")
-	if err := f.Parse(args); err != nil || f.NArg() != 0 {
-		return 2
-	}
-	if *output == "" || !filepath.IsAbs(*output) {
-		fmt.Fprintln(stderr, "ERROR: --output must be an absolute path")
-		return 2
-	}
-	if err := nixrender.WriteAtomic(*output, s); err != nil {
-		fmt.Fprintf(stderr, "ERROR: %v\n", err)
-		return 1
-	}
-	fmt.Fprintf(stdout, "Wrote %s\n", *output)
-	return 0
-}
-
 func runPreset(args []string, stdout, stderr io.Writer) int {
 	if len(args) == 0 || (args[0] != "validate" && args[0] != "get" && args[0] != "list" && args[0] != "bool") {
 		fmt.Fprintln(stderr, "Usage: gjallarctl preset {validate|get|list|bool} --config PATH [--key NAME]")
@@ -1119,7 +947,7 @@ func runAIModelServe(args []string, stdout, stderr io.Writer) int {
 
 	cgroupPrefix := f.String(
 		"cgroup-prefix",
-		"/system.slice/gjallar-ai-session@",
+		"/system.slice/ai-session@",
 		"required system-service cgroup prefix",
 	)
 
@@ -1286,7 +1114,7 @@ func runAIResearchServe(args []string, stdout, stderr io.Writer) int {
 		return 1
 	}
 	defer listener.Close()
-	_ = os.Chmod(*socket, 0666)
+	_ = os.Chmod(*socket, 0600)
 	b := research.Broker{AllowedHosts: []string{"nixos.org", "github.com", "docs.ollama.com", "opencode.ai"}, MaxBytes: *maxBytes, Timeout: 15 * time.Second}
 	server := &http.Server{Handler: research.Handler(b), ReadHeaderTimeout: 5 * time.Second, IdleTimeout: 30 * time.Second}
 	if err := server.Serve(listener); err != nil && err != http.ErrServerClosed {
@@ -1296,43 +1124,9 @@ func runAIResearchServe(args []string, stdout, stderr io.Writer) int {
 	return 0
 }
 
-func runDetect(args []string, stdout, stderr io.Writer) int {
-	if len(args) != 1 || (args[0] != "graphics" && args[0] != "network") {
-		fmt.Fprintln(stderr, "Usage: gjallarctl detect {graphics|network}")
-		return 2
-	}
-	if args[0] == "network" {
-		driver, err := network.DetectWiFiDriver(context.Background())
-		if err != nil {
-			fmt.Fprintf(stderr, "ERROR: network detection failed: %v\n", err)
-			return 1
-		}
-		fmt.Fprintf(stdout, "wifi_driver=%s\n", driver)
-		return 0
-	}
-	result, err := graphics.Detect(context.Background())
-	if err != nil {
-		fmt.Fprintf(stderr, "ERROR: graphics detection failed: %v\n", err)
-		return 1
-	}
-	fmt.Fprintf(stdout, "vendor=%s\ntype=%s\ncompute=%t\nbus=%s\nintegrated_bus=%s\npassthrough_ids=%s\n",
-		result.Vendor, result.Type, result.Compute, result.BusID, result.IntegratedBusID,
-		strings.Join(result.PassthroughIDs, " "))
-	return 0
-}
-
 func runDeviceProbe(args []string, stdout, stderr io.Writer) int {
-	if len(args) == 0 {
-		fmt.Fprintln(stderr, "Usage: gjallarctl device-probe {refresh|diagnose}")
-		return 2
-	}
-
-	if args[0] == "diagnose" {
-		return runDeviceProbeDiagnose(args[1:], stdout, stderr)
-	}
-
-	if args[0] != "refresh" {
-		fmt.Fprintln(stderr, "Usage: gjallarctl device-probe {refresh|diagnose}")
+	if len(args) == 0 || args[0] != "refresh" {
+		fmt.Fprintln(stderr, "Usage: gjallarctl device-probe refresh [--output PATH]")
 		return 2
 	}
 
@@ -1368,77 +1162,6 @@ func runDeviceProbe(args []string, stdout, stderr io.Writer) int {
 	}
 
 	fmt.Fprintf(stdout, "PASS: device probe snapshot written to %s\n", *output)
-	return 0
-}
-
-func runDeviceProbeDiagnose(args []string, stdout, stderr io.Writer) int {
-	if len(args) == 0 {
-		fmt.Fprintln(
-			stderr,
-			"Usage: gjallarctl device-probe diagnose {zbook-x2-g4|framework-13-amd-7040} [--input PATH]",
-		)
-		return 2
-	}
-
-	device := args[0]
-	if device != "zbook-x2-g4" && device != "framework-13-amd-7040" {
-		fmt.Fprintln(
-			stderr,
-			"Usage: gjallarctl device-probe diagnose {zbook-x2-g4|framework-13-amd-7040} [--input PATH]",
-		)
-		return 2
-	}
-
-	flags := flag.NewFlagSet(
-		"gjallarctl device-probe diagnose "+device,
-		flag.ContinueOnError,
-	)
-	flags.SetOutput(stderr)
-
-	input := flags.String(
-		"input",
-		"/run/gjallarOS/device-probe.json",
-		"device probe snapshot path",
-	)
-	if err := flags.Parse(args[1:]); err != nil {
-		return 2
-	}
-	if flags.NArg() != 0 {
-		fmt.Fprintln(stderr, "ERROR: unexpected positional arguments")
-		return 2
-	}
-
-	snapshot, err := deviceprobe.ReadSnapshot(*input)
-	if err != nil {
-		fmt.Fprintf(stderr, "FAIL: snapshot: %v\n", err)
-		return 1
-	}
-
-	failed := false
-
-	switch device {
-	case "zbook-x2-g4":
-		report := zbookx2g4.Evaluate(snapshot)
-		for _, result := range report.Results {
-			fmt.Fprintf(stdout, "%s: %s: %s\n", result.Status, result.Gate, result.Detail)
-			if result.Status == zbookx2g4.StatusFail {
-				failed = true
-			}
-		}
-
-	case "framework-13-amd-7040":
-		report := laptop13amd7040.Evaluate(snapshot)
-		for _, result := range report.Results {
-			fmt.Fprintf(stdout, "%s: %s: %s\n", result.Status, result.Gate, result.Detail)
-			if result.Status == laptop13amd7040.StatusFail {
-				failed = true
-			}
-		}
-	}
-
-	if failed {
-		return 1
-	}
 	return 0
 }
 
@@ -2045,6 +1768,98 @@ func runFan(args []string, stdout, stderr io.Writer) int {
 	}
 }
 
+func runPreflight(args []string, stdout, stderr io.Writer) int {
+	flags := flag.NewFlagSet("gjallarctl preflight", flag.ContinueOnError)
+	flags.SetOutput(stderr)
+	repo := flags.String("repo", ".", "GjallarOS repository root")
+	if err := flags.Parse(args); err != nil {
+		return 2
+	}
+	if flags.NArg() != 0 {
+		fmt.Fprintln(stderr, "ERROR: preflight accepts no positional arguments")
+		return 2
+	}
+
+	root, err := installercheck.ResolveRepository(*repo)
+	if err != nil {
+		fmt.Fprintf(stderr, "ERROR: %v\n", err)
+		return 2
+	}
+
+	return reportPreflight(root, stdout, stderr)
+}
+
+func reportPreflight(root string, stdout, stderr io.Writer) int {
+	report := installercheck.Preflight(root)
+	fmt.Fprintln(stdout, "[GjallarOS] Fast preflight")
+	for _, finding := range report.Findings {
+		fmt.Fprintf(stdout, "%s: %s\n", finding.Level, finding.Message)
+	}
+	if report.Failed() {
+		fmt.Fprintln(stderr, "FAIL: GjallarOS preflight failed")
+		return 1
+	}
+	return 0
+}
+
+func reportRebuildPreflight(
+	root string,
+	stdout,
+	stderr io.Writer,
+) int {
+	report := installercheck.Preflight(root)
+
+	return reportRebuildPreflightResult(
+		report.Findings,
+		report.Failed(),
+		stdout,
+		stderr,
+	)
+}
+
+func reportRebuildPreflightResult(
+	findings []installercheck.Finding,
+	failed bool,
+	stdout,
+	stderr io.Writer,
+) int {
+	if failed {
+		for _, finding := range findings {
+			if finding.Level == "PASS" {
+				continue
+			}
+
+			fmt.Fprintf(
+				stdout,
+				"%s: %s\n",
+				finding.Level,
+				finding.Message,
+			)
+		}
+
+		fmt.Fprintln(
+			stderr,
+			"FAIL: GjallarOS preflight failed",
+		)
+
+		return 1
+	}
+
+	fmt.Fprintln(stdout, "[GjallarOS] Preflight ✓")
+
+	for _, finding := range findings {
+		if finding.Level == installercheck.Warn {
+			fmt.Fprintf(
+				stdout,
+				"WARN: %s\n",
+				finding.Message,
+			)
+		}
+	}
+
+	return 0
+}
+
 func runCheck(args []string, stdout, stderr io.Writer) int {
 	flags := flag.NewFlagSet("gjallarctl check", flag.ContinueOnError)
 	flags.SetOutput(stderr)
@@ -2082,13 +1897,13 @@ func runCheck(args []string, stdout, stderr io.Writer) int {
 }
 
 func printUsage(out io.Writer) {
+	fmt.Fprintln(out, "Usage: gjallarctl usb {status|audit|policy|review|provision-key|allow-once|trust-permanent|keep-blocked|enroll-internal|accept-replacement|forget} [OPTIONS]")
 	fmt.Fprintln(out, "Usage: gjallarctl check [--repo PATH] [--timeout DURATION]")
+	fmt.Fprintln(out, "       gjallarctl preflight [--repo PATH]")
 	fmt.Fprintln(out, "       gjallarctl oddc validate-device [--repo PATH]")
-	fmt.Fprintln(out, "       gjallarctl rebuild --repo PATH --host HOST [-d|--debug] [-n|--no-cleanup] [NIXOS-REBUILD-ARGS...]")
-	fmt.Fprintln(out, "       gjallarctl detect {graphics|network}")
+	fmt.Fprintln(out, "       gjallarctl rebuild [--repo PATH] [--host HOST] [-d|--debug] [-n|--no-cleanup] [NIXOS-REBUILD-ARGS...]")
 	fmt.Fprintln(out, "       gjallarctl device-probe refresh [--output PATH]")
 	fmt.Fprintln(out, "       gjallarctl fan {status|list|reconcile}")
-	fmt.Fprintln(out, "       gjallarctl device-probe diagnose {zbook-x2-g4|framework-13-amd-7040} [--input PATH]")
 	fmt.Fprintln(out, "       gjallarctl ai profile [--config PATH]")
 	fmt.Fprintln(out, "       gjallarctl normalize keyboard --layout VALUE")
 	fmt.Fprintln(out, "       gjallarctl preset {validate|get|list|bool} --config PATH [--key NAME]")
@@ -2096,124 +1911,22 @@ func printUsage(out io.Writer) {
 	fmt.Fprintln(out, "Safe GjallarOS maintenance commands. Rebuild invokes sudo explicitly.")
 }
 
-func syncProjectToolSettings(settingsPath string, user config.User) error {
-	keys := []string{
-		"planeEnable",
-		"planeHost",
-		"drawioEnable",
-		"drawioSelfHosted",
-		"drawioHost",
+func normalizeRebuildUserIntent(user *config.User, repo string) (bool, error) {
+	if user == nil {
+		return false, errors.New("user configuration is nil")
 	}
 
-	rendered := strings.Split(string(nixrender.Render(nixrender.Settings{
-		PlaneEnable:      user.PlaneEnable,
-		PlaneHost:        user.PlaneHost,
-		DrawioEnable:     user.DrawioEnable,
-		DrawioSelfHosted: user.DrawioSelfHosted,
-		DrawioHost:       user.DrawioHost,
-	})), "\n")
-
-	desired := make(map[string]string, len(keys))
-	for _, line := range rendered {
-		trimmed := strings.TrimSpace(line)
-		for _, key := range keys {
-			if strings.HasPrefix(trimmed, key+" = ") {
-				desired[key] = line
-			}
-		}
+	repo = strings.TrimSpace(repo)
+	if repo == "" || !filepath.IsAbs(repo) {
+		return false, fmt.Errorf("repository path must be absolute: %q", repo)
 	}
 
-	if len(desired) != len(keys) {
-		return fmt.Errorf("render project-tool settings: expected %d fields, got %d", len(keys), len(desired))
+	if strings.TrimSpace(user.DotfilesDir) != "" {
+		return false, nil
 	}
 
-	data, err := os.ReadFile(settingsPath)
-	if err != nil {
-		return fmt.Errorf("read %s: %w", settingsPath, err)
-	}
-
-	lines := strings.Split(string(data), "\n")
-	seen := make(map[string]bool, len(keys))
-	result := make([]string, 0, len(lines)+len(keys))
-	insertedMissing := false
-
-	for _, line := range lines {
-		trimmed := strings.TrimSpace(line)
-		replaced := false
-
-		for _, key := range keys {
-			if strings.HasPrefix(trimmed, key+" = ") {
-				result = append(result, desired[key])
-				seen[key] = true
-				replaced = true
-				break
-			}
-		}
-
-		if replaced {
-			continue
-		}
-
-		if !insertedMissing && strings.HasPrefix(trimmed, "backgroundNormal = ") {
-			for _, key := range keys {
-				if !seen[key] {
-					result = append(result, desired[key])
-					seen[key] = true
-				}
-			}
-			insertedMissing = true
-		}
-
-		result = append(result, line)
-	}
-
-	for _, key := range keys {
-		if !seen[key] {
-			return fmt.Errorf("sync project-tool setting %s: insertion anchor not found", key)
-		}
-	}
-
-	updated := strings.Join(result, "\n")
-	if updated == string(data) {
-		return nil
-	}
-
-	info, err := os.Stat(settingsPath)
-	if err != nil {
-		return fmt.Errorf("stat %s: %w", settingsPath, err)
-	}
-
-	tmp, err := os.CreateTemp(filepath.Dir(settingsPath), ".settings-project-tools-*")
-	if err != nil {
-		return fmt.Errorf("create temporary settings file: %w", err)
-	}
-	tmpName := tmp.Name()
-	defer os.Remove(tmpName)
-
-	if err := tmp.Chmod(info.Mode().Perm()); err != nil {
-		tmp.Close()
-		return fmt.Errorf("preserve settings permissions: %w", err)
-	}
-
-	if _, err := tmp.WriteString(updated); err != nil {
-		tmp.Close()
-		return fmt.Errorf("write temporary settings file: %w", err)
-	}
-
-	if err := tmp.Sync(); err != nil {
-		tmp.Close()
-		return fmt.Errorf("sync temporary settings file: %w", err)
-	}
-
-	if err := tmp.Close(); err != nil {
-		return fmt.Errorf("close temporary settings file: %w", err)
-	}
-
-	if err := os.Rename(tmpName, settingsPath); err != nil {
-		return fmt.Errorf("replace %s: %w", settingsPath, err)
-	}
-
-	return nil
+	user.DotfilesDir = filepath.Clean(repo)
+	return true, nil
 }
 
 func runRebuild(args []string, stdout, stderr io.Writer) int {
@@ -2244,12 +1957,14 @@ func runRebuild(args []string, stdout, stderr io.Writer) int {
 			rebuildArgs = append(rebuildArgs, args[i])
 		}
 	}
-	if repo == "" || host == "" {
-		fmt.Fprintln(stderr, "ERROR: rebuild requires --repo and --host")
+	resolvedRepo, err := installercheck.DiscoverRepository(repo)
+	if err != nil {
+		fmt.Fprintf(stderr, "ERROR: resolve GjallarOS repository: %v\n", err)
 		return 2
 	}
+	repo = resolvedRepo
 
-	_, err := repojson.CanonicalizeChangedTracked(
+	_, err = repojson.CanonicalizeChangedTracked(
 		context.Background(),
 		repo,
 	)
@@ -2258,74 +1973,68 @@ func runRebuild(args []string, stdout, stderr io.Writer) int {
 		return 1
 	}
 
-	messagesPath := filepath.Join(repo, "system/tools/commands/rebuild-messages.json")
-	if _, err := os.Stat(messagesPath); errors.Is(err, os.ErrNotExist) {
-		messagesPath = filepath.Join(repo, "system/tools/scripts/rebuild-messages.json")
+	// Rebuild consumes the same typed user intent as the installer and only
+	// refreshes direct user-owned generated-state assignments. Hardware, AI
+	// discovery and installer-owned facts remain untouched.
+	configPath := filepath.Join(repo, "user.config.json")
+	userConfig, err := config.Load(configPath)
+	if err != nil {
+		fmt.Fprintf(stderr, "[GjallarOS] Error: load user configuration: %v\n", err)
+		return 1
 	}
+
+	intentChanged, err := normalizeRebuildUserIntent(&userConfig, repo)
+	if err != nil {
+		fmt.Fprintf(stderr, "[GjallarOS] Error: normalize user configuration: %v\n", err)
+		return 1
+	}
+	if intentChanged {
+		if err := config.WriteAtomic(configPath, userConfig); err != nil {
+			fmt.Fprintf(stderr, "[GjallarOS] Error: persist normalized user configuration: %v\n", err)
+			return 1
+		}
+		fmt.Fprintln(stdout, "[GjallarOS] Migrated missing dotfilesDir to the discovered repository path.")
+	}
+
+	if host == "" {
+		host = strings.TrimSpace(userConfig.Hostname)
+		if host == "" {
+			fmt.Fprintln(
+				stderr,
+				"[GjallarOS] Error: user configuration has no hostname",
+			)
+			return 1
+		}
+	}
+
+	messagesPath := filepath.Join(
+		repo,
+		"system/tools/commands/rebuild-messages.json",
+	)
 	messages, err := loadRebuildMessages(messagesPath, host)
 	if err != nil {
 		fmt.Fprintf(stderr, "[GjallarOS] Error: %v\n", err)
 		return 1
 	}
 
+	settingsPath := filepath.Join(repo, "generated", "state.nix")
+	if err := nixrender.SyncUserIntent(settingsPath, userConfig); err != nil {
+		fmt.Fprintf(stderr, "[GjallarOS] Error: sync routed user intent: %v\n", err)
+		return 1
+	}
+
+	if status := reportRebuildPreflight(
+		repo,
+		stdout,
+		stderr,
+	); status != 0 {
+		return status
+	}
+
 	// Managed JODS endpoints deliberately remove the desktop user from
 	// wheel. Rebuilds on those systems therefore cross the explicit root
 	// authentication boundary instead of attempting sudo.
-	configPath := filepath.Join(repo, "user.config.json")
-	document, err := preset.Load(configPath)
-	if err != nil {
-		fmt.Fprintf(stderr, "[GjallarOS] Error: load user configuration: %v\n", err)
-		return 1
-	}
-
-	projectTools := config.User{}
-
-	projectTools.PlaneEnable, err = document.Bool("planeEnable")
-	if err != nil {
-		fmt.Fprintf(stderr, "[GjallarOS] Error: read planeEnable: %v\n", err)
-		return 1
-	}
-
-	projectTools.PlaneHost, err = document.String("planeHost")
-	if err != nil {
-		fmt.Fprintf(stderr, "[GjallarOS] Error: read planeHost: %v\n", err)
-		return 1
-	}
-
-	projectTools.DrawioEnable, err = document.Bool("drawioEnable")
-	if err != nil {
-		fmt.Fprintf(stderr, "[GjallarOS] Error: read drawioEnable: %v\n", err)
-		return 1
-	}
-
-	projectTools.DrawioSelfHosted, err = document.Bool("drawioSelfHosted")
-	if err != nil {
-		fmt.Fprintf(stderr, "[GjallarOS] Error: read drawioSelfHosted: %v\n", err)
-		return 1
-	}
-
-	projectTools.DrawioHost, err = document.String("drawioHost")
-	if err != nil {
-		fmt.Fprintf(stderr, "[GjallarOS] Error: read drawioHost: %v\n", err)
-		return 1
-	}
-
-	if err := config.NormalizeProjectTools(&projectTools); err != nil {
-		fmt.Fprintf(stderr, "[GjallarOS] Error: normalize project-tool settings: %v\n", err)
-		return 1
-	}
-
-	settingsPath := filepath.Join(repo, "settings.nix")
-	if err := syncProjectToolSettings(settingsPath, projectTools); err != nil {
-		fmt.Fprintf(stderr, "[GjallarOS] Error: sync project-tool settings: %v\n", err)
-		return 1
-	}
-
-	managedDevice, err := document.Bool("endpointManagedDevice")
-	if err != nil {
-		fmt.Fprintf(stderr, "[GjallarOS] Error: read endpointManagedDevice: %v\n", err)
-		return 1
-	}
+	managedDevice := userConfig.EndpointManagedDevice
 
 	if managedDevice && os.Geteuid() != 0 {
 		executable, err := os.Executable()
@@ -2341,8 +2050,20 @@ func runRebuild(args []string, stdout, stderr io.Writer) int {
 			"GJALLAR_REBUILD_CALLER_HOME=" + home,
 			executable,
 			"rebuild",
+			"--repo",
+			repo,
+			"--host",
+			host,
 		}
-		rootArgs = append(rootArgs, args...)
+
+		if debug {
+			rootArgs = append(rootArgs, "--debug")
+		}
+		if !cleanup {
+			rootArgs = append(rootArgs, "--no-cleanup")
+		}
+
+		rootArgs = append(rootArgs, rebuildArgs...)
 
 		fmt.Fprintln(
 			stdout,
@@ -2372,23 +2093,11 @@ func runRebuild(args []string, stdout, stderr io.Writer) int {
 	}
 
 	started := time.Now()
-	commandArgs := []string{"nixos-rebuild", "switch", "--impure", "--flake", "path:" + repo + "#" + host}
 	rebuildHome := os.Getenv("GJALLAR_REBUILD_CALLER_HOME")
 	if rebuildHome == "" {
 		rebuildHome, _ = os.UserHomeDir()
 	}
-
-	if rebuildHome != "" {
-		palette := filepath.Join(rebuildHome, ".local", "state", "noctalia", "stylix-override.json")
-		if info, err := os.Stat(palette); err == nil && info.Mode().IsRegular() {
-			commandArgs = append([]string{"env", "GJALLAR_NOCTALIA_PALETTE=" + palette}, commandArgs...)
-			commandArgs = append(commandArgs, "--impure")
-		}
-	}
-	if debug {
-		commandArgs = append(commandArgs, "--show-trace")
-	}
-	commandArgs = append(commandArgs, rebuildArgs...)
+	commandArgs := rebuildCommandArgs(repo, host, rebuildHome, debug, rebuildArgs)
 
 	var status int
 	if debug {
@@ -2402,8 +2111,23 @@ func runRebuild(args []string, stdout, stderr io.Writer) int {
 	} else {
 		status = runRebuildQuiet(stdout, stderr, host, messages, started, commandArgs)
 	}
+	if status == 0 {
+		if err := installercheck.RememberRepository(repo); err != nil {
+			fmt.Fprintf(
+				stderr,
+				"WARN: remember GjallarOS repository: %v\n",
+				err,
+			)
+		}
+	}
+
 	if status == 0 && cleanup {
-		status = runCleanupOld(nil, stdout, stderr)
+		if cleanupStatus := runCleanupOld(nil, stdout, stderr); cleanupStatus != 0 {
+			fmt.Fprintln(
+				stderr,
+				"WARN: rebuild switched successfully, but old-generation cleanup failed; run cleanup-old-generations later.",
+			)
+		}
 	}
 	elapsed := int(time.Since(started).Round(time.Second) / time.Second)
 	if status == 130 {
@@ -2414,6 +2138,44 @@ func runRebuild(args []string, stdout, stderr io.Writer) int {
 		fmt.Fprintf(stderr, "\n⏱ %02d:%02d  ✗ Rebuild failed.\n", elapsed/60, elapsed%60)
 	}
 	return status
+}
+
+func rebuildCommandArgs(
+	repo, host, rebuildHome string,
+	debug bool,
+	rebuildArgs []string,
+) []string {
+	commandArgs := []string{
+		"nixos-rebuild",
+		"switch",
+		"--flake",
+		"path:" + repo + "#" + host,
+	}
+
+	// Pure evaluation is the default. The only current impure input is the
+	// explicitly discovered Noctalia palette used to snapshot live colors into
+	// build-time Stylix targets. Add --impure exactly once when that input exists.
+	if rebuildHome != "" {
+		palette := filepath.Join(
+			rebuildHome,
+			".local",
+			"state",
+			"noctalia",
+			"stylix-override.json",
+		)
+		if info, err := os.Stat(palette); err == nil && info.Mode().IsRegular() {
+			commandArgs = append(
+				[]string{"env", "GJALLAR_NOCTALIA_PALETTE=" + palette},
+				commandArgs...,
+			)
+			commandArgs = append(commandArgs, "--impure")
+		}
+	}
+
+	if debug {
+		commandArgs = append(commandArgs, "--show-trace")
+	}
+	return append(commandArgs, rebuildArgs...)
 }
 
 func runUpdate(args []string, stdout, stderr io.Writer) int {
@@ -2445,12 +2207,45 @@ func runUpdate(args []string, stdout, stderr io.Writer) int {
 	return 0
 }
 
+const (
+	systemProfilePath          = "/nix/var/nix/profiles/system"
+	rebuildGenerationRetention = 5
+)
+
+func systemGenerationCleanupArgs(keep int) []string {
+	return []string{
+		"nix-env",
+		"--profile",
+		systemProfilePath,
+		"--delete-generations",
+		fmt.Sprintf("+%d", keep),
+	}
+}
+
+func parseCleanupKeep(raw string) (int, error) {
+	keep, err := strconv.Atoi(raw)
+	if err != nil || keep < 1 {
+		return 0, fmt.Errorf("keep count must be a positive integer")
+	}
+	return keep, nil
+}
+
+func trimSystemGenerations(keep int, stdout, stderr io.Writer) int {
+	fmt.Fprintf(stdout, "[cleanup] Keeping the latest %d system generations.\n", keep)
+	return runPrivilegedCommand(
+		context.Background(),
+		stdout,
+		stderr,
+		systemGenerationCleanupArgs(keep)...,
+	)
+}
+
 func runCleanup(args []string, stdout, stderr io.Writer) int {
-	keep := "5"
+	keepRaw := strconv.Itoa(rebuildGenerationRetention)
 	for i := 0; i < len(args); i++ {
 		if (args[i] == "-k" || args[i] == "--keep") && i+1 < len(args) {
 			i++
-			keep = args[i]
+			keepRaw = args[i]
 		} else if args[i] == "-h" || args[i] == "--help" {
 			fmt.Fprintln(stdout, "Usage: cleanup [--keep N]")
 			return 0
@@ -2459,18 +2254,27 @@ func runCleanup(args []string, stdout, stderr io.Writer) int {
 			return 2
 		}
 	}
-	for _, r := range keep {
-		if r < '0' || r > '9' {
-			fmt.Fprintln(stderr, "Keep count must be numeric.")
-			return 2
-		}
+
+	keep, err := parseCleanupKeep(keepRaw)
+	if err != nil {
+		fmt.Fprintf(stderr, "ERROR: %v\n", err)
+		return 2
 	}
-	for _, command := range [][]string{{"sudo", "nix-env", "--profile", "/nix/var/nix/profiles/system", "--delete-generations", "+" + keep}, {"nix", "store", "gc"}, {"sudo", "nix", "store", "gc"}} {
-		if status := runCommand(context.Background(), stdout, stderr, command[0], command[1:]...); status != 0 {
-			return status
-		}
+
+	if status := trimSystemGenerations(keep, stdout, stderr); status != 0 {
+		return status
 	}
-	return 0
+
+	// Explicit cleanup is the place for store GC. Normal rebuilds only trim
+	// rollback history; scheduled system nix.gc owns periodic collection.
+	fmt.Fprintln(stdout, "[cleanup] Collecting unreachable Nix store paths.")
+	return runPrivilegedCommand(
+		context.Background(),
+		stdout,
+		stderr,
+		"nix-store",
+		"--gc",
+	)
 }
 
 func runCleanupOld(args []string, stdout, stderr io.Writer) int {
@@ -2478,52 +2282,11 @@ func runCleanupOld(args []string, stdout, stderr io.Writer) int {
 		fmt.Fprintln(stderr, "Usage: cleanup-old-generations")
 		return 2
 	}
-	var generationCommand *exec.Cmd
-	if os.Geteuid() == 0 {
-		generationCommand = exec.Command(
-			"nix-env",
-			"--profile",
-			"/nix/var/nix/profiles/system",
-			"--list-generations",
-		)
-	} else {
-		generationCommand = exec.Command(
-			"sudo",
-			"nix-env",
-			"--profile",
-			"/nix/var/nix/profiles/system",
-			"--list-generations",
-		)
-	}
 
-	data, err := generationCommand.Output()
-	if err != nil {
-		fmt.Fprintf(stderr, "ERROR: %v\n", err)
-		return 1
-	}
-	var generations []string
-	scanner := bufio.NewScanner(strings.NewReader(string(data)))
-	for scanner.Scan() {
-		fields := strings.Fields(scanner.Text())
-		if len(fields) > 0 {
-			if _, err := strconv.Atoi(fields[0]); err == nil {
-				generations = append(generations, fields[0])
-			}
-		}
-	}
-	if len(generations) <= 5 {
-		fmt.Fprintf(stdout, "[GjallarOS] Nothing to clean (%d generations, keeping 5).\n", len(generations))
-		return 0
-	}
-	remove := generations[:len(generations)-5]
-	fmt.Fprintf(stdout, "[GjallarOS] Removing %d old generations; keeping 5.\n", len(remove))
-	command := []string{"nix-env", "--profile", "/nix/var/nix/profiles/system", "--delete-generations"}
-	command = append(command, remove...)
-	return runPrivilegedCommand(
-		context.Background(),
+	return trimSystemGenerations(
+		rebuildGenerationRetention,
 		stdout,
 		stderr,
-		command...,
 	)
 }
 
@@ -2586,7 +2349,7 @@ func runHelpme(args []string, stdout, stderr io.Writer) int {
 	if len(args) > 1 || len(args) == 1 && args[0] != "--text" {
 		return 2
 	}
-	text := "GjallarOS tools\n\n  rebuild            Apply the current NixOS configuration.\n  update             Update flake inputs.\n  cleanup            Remove old generations and collect garbage.\n  thermal-status     Show temperatures and power state.\n  thermal-test       Pause/resume processes for troubleshooting.\n  check-installer    Check installer configuration.\n"
+	text := "GjallarOS tools\n\n  rebuild            Apply the current NixOS configuration.\n  update             Update flake inputs.\n  cleanup            Remove old generations and collect garbage.\n  thermal-status     Show temperatures and power state.\n  thermal-test       Pause/resume processes for troubleshooting.\n  check-installer    Check installer configuration.\n  gjallar-preflight  Run fast repository wiring checks.\n"
 	if len(args) == 1 || os.Getenv("DISPLAY")+os.Getenv("WAYLAND_DISPLAY") == "" {
 		fmt.Fprint(stdout, text)
 		return 0
@@ -2603,7 +2366,8 @@ func runHelpme(args []string, stdout, stderr io.Writer) int {
 		"cleanup", "Remove old generations and collect garbage.",
 		"thermal-status", "Show temperatures and power state.",
 		"thermal-test", "Pause/resume processes for troubleshooting.",
-		"check-installer", "Check installer configuration.")
+		"check-installer", "Check installer configuration.",
+		"gjallar-preflight", "Run fast repository wiring checks.")
 }
 
 func runRebuildQuiet(stdout, stderr io.Writer, host string, messages []string, started time.Time, commandArgs []string) int {
@@ -2612,8 +2376,13 @@ func runRebuildQuiet(stdout, stderr io.Writer, host string, messages []string, s
 		fmt.Fprintf(stderr, "ERROR: create rebuild log: %v\n", err)
 		return 1
 	}
-	defer os.Remove(log.Name())
-	defer log.Close()
+	keepLog := false
+	defer func() {
+		_ = log.Close()
+		if !keepLog {
+			_ = os.Remove(log.Name())
+		}
+	}()
 
 	terminal, ok := stdout.(*os.File)
 	interactive := ok && isTerminal(terminal)
@@ -2665,12 +2434,82 @@ func runRebuildQuiet(stdout, stderr io.Writer, host string, messages []string, s
 		ui.Wait()
 		fmt.Fprint(stdout, rebuildUILeave)
 	}
+
+	elapsed := time.Since(started)
+	localBuilds := rebuildLocalDerivations(log)
+	if elapsed >= time.Minute {
+		keepLog = true
+		fmt.Fprintf(
+			stdout,
+			"[rebuild] Slow rebuild: %s elapsed; %d local derivation(s) observed.\n",
+			elapsed.Round(time.Second),
+			len(localBuilds),
+		)
+		if len(localBuilds) != 0 {
+			fmt.Fprintf(
+				stdout,
+				"[rebuild] Recent local builds: %s\n",
+				strings.Join(lastStrings(localBuilds, 8), ", "),
+			)
+		}
+		fmt.Fprintf(stdout, "[rebuild] Detailed log retained: %s\n", log.Name())
+	}
 	if status != 0 {
+		keepLog = true
 		if _, err := log.Seek(0, io.SeekStart); err == nil {
 			_, _ = io.Copy(stderr, log)
 		}
+		fmt.Fprintf(stderr, "[rebuild] Detailed log retained: %s\n", log.Name())
 	}
 	return status
+}
+
+func rebuildLocalDerivations(log io.ReadSeeker) []string {
+	if _, err := log.Seek(0, io.SeekStart); err != nil {
+		return nil
+	}
+
+	seen := map[string]struct{}{}
+	var names []string
+	scanner := bufio.NewScanner(log)
+	for scanner.Scan() {
+		line := scanner.Text()
+		marker := "building '"
+		start := strings.Index(line, marker)
+		if start < 0 {
+			continue
+		}
+		value := line[start+len(marker):]
+		end := strings.IndexByte(value, '\'')
+		if end < 0 {
+			continue
+		}
+		path := value[:end]
+		if !strings.HasSuffix(path, ".drv") {
+			continue
+		}
+
+		name := strings.TrimSuffix(filepath.Base(path), ".drv")
+		if dash := strings.IndexByte(name, '-'); dash >= 0 && dash+1 < len(name) {
+			name = name[dash+1:]
+		}
+		if name == "" {
+			continue
+		}
+		if _, ok := seen[name]; ok {
+			continue
+		}
+		seen[name] = struct{}{}
+		names = append(names, name)
+	}
+	return names
+}
+
+func lastStrings(values []string, count int) []string {
+	if count <= 0 || len(values) <= count {
+		return values
+	}
+	return values[len(values)-count:]
 }
 
 func runPrivilegedCommand(

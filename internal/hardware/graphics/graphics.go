@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"os/exec"
 	"regexp"
-	"sort"
 	"strconv"
 	"strings"
 )
@@ -22,12 +21,10 @@ type Controller struct {
 type Result struct {
 	Vendor          string
 	DeviceID        string
-	DriverBranch    string
 	Type            string
 	Compute         bool
 	BusID           string
 	IntegratedBusID string
-	PassthroughIDs  []string
 }
 
 var graphicsLine = regexp.MustCompile(`^([[:xdigit:]]{4}:[[:xdigit:]]{2}:[[:xdigit:]]{2}\.[[:digit:]]) .*?(?:VGA compatible controller|3D controller|Display controller).*?\[([[:xdigit:]]{4}):([[:xdigit:]]{4})\]`)
@@ -84,9 +81,6 @@ func Parse(output string) Result {
 	}
 
 	result.DeviceID = strings.ToLower(selected.DeviceID)
-	if result.Vendor == "nvidia" {
-		result.DriverBranch = nvidiaDriverBranch(selected.Text)
-	}
 	result.BusID = xorgBusID(selected.BDF)
 	integrated := firstIntegrated(controllers)
 	if len(controllers) > 1 {
@@ -98,17 +92,6 @@ func Parse(output string) Result {
 		result.IntegratedBusID = xorgBusID(integrated.BDF)
 	}
 
-	ids := make(map[string]struct{})
-	for _, controller := range controllers {
-		if strings.Contains(strings.ToLower(controller.Text), "intel") {
-			continue
-		}
-		ids[strings.ToLower(controller.VendorID+":"+controller.DeviceID)] = struct{}{}
-	}
-	for id := range ids {
-		result.PassthroughIDs = append(result.PassthroughIDs, id)
-	}
-	sort.Strings(result.PassthroughIDs)
 	return result
 }
 
@@ -151,15 +134,6 @@ func isAMDIntegrated(text string) bool {
 		}
 	}
 	return false
-}
-
-var nvidiaLegacy580Chip = regexp.MustCompile(`\b(?:GM|GP|GV)[0-9]{2,3}[A-Z]*\b`)
-
-func nvidiaDriverBranch(text string) string {
-	if nvidiaLegacy580Chip.MatchString(strings.ToUpper(text)) {
-		return "legacy_580"
-	}
-	return "stable"
 }
 
 func xorgBusID(bdf string) string {

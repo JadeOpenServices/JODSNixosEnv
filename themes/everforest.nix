@@ -4,7 +4,6 @@
   wallpaper = ../non-nix/wallpapers/yolka.jpg;
   override = null;
 
-  # Override stylix theme of btop.
   btopTheme = null;
 
   shell = "noctalia";

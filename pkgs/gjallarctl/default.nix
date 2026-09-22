@@ -9,8 +9,6 @@ buildGoModule {
 
   nativeCheckInputs = [ git ];
 
-  # Only the Go module enters the store.  In particular, user.config.json,
-  # generated settings, and encrypted secrets never become build inputs.
   src = lib.fileset.toSource {
     root = ../../.;
     fileset = lib.fileset.unions [
@@ -23,13 +21,25 @@ buildGoModule {
       ../../internal/installercheck
       ../../internal/installer
       ../../internal/preset
+      ../../internal/usbtrust
       ../../oddc
     ];
   };
 
   vendorHash = null;
+
+  subPackages = [
+    "cmd/gjallarctl"
+    "cmd/gjallar-installer"
+    "cmd/gjallar-recovery-maintenance"
+    "cmd/oddcctl"
+  ];
+
   env.CGO_ENABLED = "0";
-  ldflags = [ "-s" "-w" ];
+  ldflags = [
+    "-s"
+    "-w"
+  ];
 
   meta = {
     description = "Safe GjallarOS maintenance and validation tool";

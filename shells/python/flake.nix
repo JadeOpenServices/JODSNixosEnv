@@ -33,7 +33,6 @@
             ]))
           ];
 
-          # See https://github.com/NixOS/nixpkgs/issues/18995
           hardeningDisable = [ "fortify" ];
         };
       }

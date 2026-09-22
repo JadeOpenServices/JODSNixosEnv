@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/bakanura/gjallarOS/internal/installer/baremetalinstall"
+	"github.com/bakanura/gjallarOS/internal/installer/credential"
 	"github.com/bakanura/gjallarOS/internal/installer/discovery"
 	"github.com/bakanura/gjallarOS/internal/installer/diskplan"
 	"github.com/bakanura/gjallarOS/internal/installer/freshdiskplan"
@@ -21,7 +22,6 @@ import (
 	"github.com/bakanura/gjallarOS/internal/installer/prompt"
 	"github.com/bakanura/gjallarOS/internal/installer/rootprovision"
 	"github.com/bakanura/gjallarOS/internal/installer/targetdisk"
-	"github.com/bakanura/gjallarOS/internal/installer/workpassword"
 )
 
 type freshBareMetalResult struct {
@@ -192,12 +192,7 @@ func runFreshBareMetal(
 		)
 	}
 
-	hardwarePath := filepath.Join(
-		repo,
-		"profiles",
-		hostname,
-		"hardware-configuration.nix",
-	)
+	hardwarePath := hardwareconfig.Target(repo)
 
 	fmt.Fprintln(out, "STAGE: generating target hardware configuration")
 
@@ -391,7 +386,7 @@ func readFreshLUKSPassphrase(out io.Writer) (string, error) {
 	}
 	defer tty.Close()
 
-	passphrase, err := workpassword.ReadConfirmedPassword(
+	passphrase, err := credential.ReadConfirmedPassword(
 		tty,
 		out,
 		"encrypted GjallarOS root",

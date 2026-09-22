@@ -51,14 +51,9 @@ func runDeviceStage(
 			runner,
 			repo,
 			executable,
-			device.User.Hostname,
+			device.Hostname,
 		),
 	}
-
-	results = append(
-		results,
-		device.ValidationResults()...,
-	)
 
 	results = append(
 		results,

@@ -7,7 +7,6 @@
     base05 = "#fffcf0";
   };
 
-  # Override stylix theme of btop.
   btopTheme = "nord";
 
   opacity = 1.0;

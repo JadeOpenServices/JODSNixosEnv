@@ -57,7 +57,7 @@ func TestFreshBareMetalSecretIsNotPlainPromptInput(t *testing.T) {
 	}
 	if !strings.Contains(
 		text,
-		"workpassword.ReadConfirmedPassword(",
+		"credential.ReadConfirmedPassword(",
 	) {
 		t.Fatal("confirmed no-echo secret reader is not used")
 	}
@@ -334,16 +334,16 @@ func TestRecoverySameMachineUsesVerifiedCachedODDCSource(t *testing.T) {
 
 	verify := strings.Index(body, "deviceprofilecache.Verify(capsulePath)")
 	cached := strings.Index(body, "filepath.Join(capsulePath, \"oddc\")")
-	persist := strings.Index(body, "persistDeviceIdentity(&s.user, hardware, resolvedDevice)")
+	policy := strings.Index(body, "oddc.ResolveGraphicsPolicy(resolvedDevice)")
 
-	if verify < 0 || cached < 0 || persist < 0 {
+	if verify < 0 || cached < 0 || policy < 0 {
 		t.Fatal("cached recovery ODDC source flow is incomplete")
 	}
-	if !(verify < cached && cached < persist) {
-		t.Fatal("same-machine recovery must verify and resolve cached ODDC before persisting device identity")
+	if !(verify < cached && cached < policy) {
+		t.Fatal("same-machine recovery must verify and resolve cached ODDC before applying canonical policy")
 	}
 
-	if !strings.Contains(body[verify:persist], "if !needsDeviceRebind {") {
+	if !strings.Contains(body[verify:policy], "if !needsDeviceRebind {") {
 		t.Fatal("cached ODDC source is not gated to the same-machine recovery path")
 	}
 }
@@ -400,30 +400,9 @@ func TestRecoveryHardwareRebindCannotSkipInstall(t *testing.T) {
 	}
 	body := string(data)
 
-	want := "if (modelDrift || needsDeviceRebind) && !runRebuild {"
+	want := "if needsDeviceRebind && !runRebuild {"
 	if !strings.Contains(body, want) {
-		t.Fatal("ODDC model reconciliation can still skip target installation")
-	}
-}
-
-func TestODDCModelDriftCannotSkipInstall(t *testing.T) {
-	data, err := os.ReadFile("app.go")
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	body := string(data)
-
-	want := "if (modelDrift || needsDeviceRebind) && !runRebuild {"
-	if !strings.Contains(body, want) {
-		t.Fatal("device profile drift can still skip activation")
-	}
-
-	if !strings.Contains(
-		body,
-		"ODDC model reconciliation requires installing the regenerated system",
-	) {
-		t.Fatal("generic ODDC model reconciliation refusal is missing")
+		t.Fatal("recovery device rebind can still skip target installation")
 	}
 }
 

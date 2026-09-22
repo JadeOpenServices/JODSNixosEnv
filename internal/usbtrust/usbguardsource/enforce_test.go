@@ -1,0 +1,60 @@
+package usbguardsource
+
+import (
+	"context"
+	"reflect"
+	"testing"
+
+	"github.com/bakanura/gjallarOS/internal/usbtrust"
+)
+
+type enforcementRunner struct {
+	lines string
+	calls [][]string
+}
+
+func (r *enforcementRunner) Output(_ context.Context, _ string, args ...string) ([]byte, error) {
+	r.calls = append(r.calls, append([]string(nil), args...))
+	return []byte(r.lines), nil
+}
+
+func TestEnforcementRevalidatesIdentityAndNeverPersists(t *testing.T) {
+	line := `12: block id 1234:5678 hash "synthetic" parent-hash "parent" via-port "1-2" with-interface 08:06:50`
+	parsed, err := ParseLine(line)
+	if err != nil {
+		t.Fatal(err)
+	}
+	r := &enforcementRunner{lines: line}
+	s := LiveSource{Runner: r, Binary: "usbguard"}
+	plan := []usbtrust.Decision{{ObservedDevice: parsed.Device, Target: usbtrust.TargetAllow}}
+	if err := s.Apply(context.Background(), plan); err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(r.calls, [][]string{{"list-devices"}, {"allow-device", "12"}}) {
+		t.Fatal(r.calls)
+	}
+	r.calls = nil
+	plan[0].Identity.Hash = "old-device"
+	if err := s.Apply(context.Background(), plan); err == nil {
+		t.Fatal("stale identity allowed")
+	}
+	if len(r.calls) != 1 {
+		t.Fatal("stale plan reached mutation", r.calls)
+	}
+}
+
+func TestRevocationsPrecedeAllows(t *testing.T) {
+	r := &enforcementRunner{lines: "12: block id 1234:5678 hash \"a\"\n13: allow id 1234:9999 hash \"b\""}
+	observed, err := ParseLines(r.lines)
+	if err != nil {
+		t.Fatal(err)
+	}
+	s := LiveSource{Runner: r, Binary: "usbguard"}
+	plan := []usbtrust.Decision{{ObservedDevice: observed[0].Device, Target: usbtrust.TargetAllow}, {ObservedDevice: observed[1].Device, Target: usbtrust.TargetBlock}}
+	if err := s.Apply(context.Background(), plan); err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(r.calls, [][]string{{"list-devices"}, {"block-device", "13"}, {"allow-device", "12"}}) {
+		t.Fatal(r.calls)
+	}
+}

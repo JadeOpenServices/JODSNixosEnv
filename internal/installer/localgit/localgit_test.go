@@ -12,8 +12,8 @@ func TestContainedRelativeRejectsEscape(t *testing.T) {
 	if _, err := containedRelative(root, filepath.Join(root, "..", "outside")); err == nil {
 		t.Fatal("expected outside path rejection")
 	}
-	got, err := containedRelative(root, filepath.Join(root, "profiles", "laptop", "hardware-configuration.nix"))
-	if err != nil || got != filepath.Join("profiles", "laptop", "hardware-configuration.nix") {
+	got, err := containedRelative(root, filepath.Join(root, "system", "hardware", "generated.nix"))
+	if err != nil || got != filepath.Join("system", "hardware", "generated.nix") {
 		t.Fatalf("got %q, %v", got, err)
 	}
 }

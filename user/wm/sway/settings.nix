@@ -7,7 +7,7 @@
 {
   wayland.windowManager.sway.config = {
     bars = [ ];
-    output = settings.profileDetails.swayMonitors;
+    output = { };
     workspaceOutputAssign = swayWorkspaces.assignments;
     startup = map (command: {
       inherit command;

@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -19,9 +20,9 @@ import (
 type Level string
 
 const (
-	Error Level = "ERROR"
+	Error Level = "FAIL"
 	Warn  Level = "WARN"
-	OK    Level = "OK"
+	OK    Level = "PASS"
 )
 
 type Finding struct {
@@ -68,7 +69,7 @@ func ResolveRepository(path string) (string, error) {
 	return root, nil
 }
 
-func Check(ctx context.Context, root string) Report {
+func Preflight(root string) Report {
 	r := Report{}
 	preset, presetOK := readJSONObject(&r, filepath.Join(root, "scripts/installation/user_PresetJSON/default.user.config.json"), "default installer preset")
 	user, userOK := readJSONObject(&r, filepath.Join(root, "user.config.json"), "user.config.json")
@@ -78,8 +79,15 @@ func Check(ctx context.Context, root string) Report {
 	}
 
 	checkRequiredFiles(&r, root)
-	checkNativeGraphics(ctx, &r, root)
 	checkRegistration(&r, root)
+	checkFlakeInputWiring(&r, root)
+	checkModuleWiring(&r, root)
+	return r
+}
+
+func Check(ctx context.Context, root string) Report {
+	r := Preflight(root)
+	checkNativeGraphics(ctx, &r, root)
 	return r
 }
 
@@ -92,27 +100,21 @@ const (
 )
 
 var presetSchema = map[string]presetValueType{
-	"system": presetString, "profile": presetString, "hostname": presetString, "username": presetString,
+	"hostname": presetString, "username": presetString,
 	"timezone": presetString, "locale": presetString, "keyboardLayout": presetString, "keyboardVariant": presetString,
-	"touchpadWorkspaceSwipe": presetBool, "clamshellEnable": presetBool, "usbguardEnable": presetBool,
+	"touchpadWorkspaceSwipe": presetBool, "clamshellEnable": presetBool, "usbguardEnable": presetBool, "usbTrustEnforce": presetBool, "usbTrustTpmHandle": presetString, "printingEnable": presetBool, "networkPrintingEnable": presetBool,
 	"allowUnvalidatedODDCModel": presetBool,
 	"unattendedInstall":         presetBool,
 	"name":                      presetString, "email": presetString, "githubUsername": presetString, "dotfilesDir": presetString,
 	"shell": presetString, "editors": presetStringList, "browsers": presetStringList,
 	"preferredEditor": presetString, "preferredBrowser": presetString, "theme": presetString,
 	"weatherCity": presetString, "weatherCountry": presetString,
-	"planeEnable": presetBool, "planeHost": presetString, "drawioEnable": presetBool, "drawioSelfHosted": presetBool, "drawioHost": presetString,
-	"backgroundNormal": presetString, "backgroundWork": presetString, "backgroundGaming": presetString,
-	"workUserEnable": presetBool, "workUsername": presetString, "workUserPasswordFile": presetString,
-	"dockerEnable": presetBool, "debugFunctions": presetBool, "aiEnable": presetBool,
+	"planeEnable": presetBool, "planeHost": presetString, "drawioEnable": presetBool, "drawioSelfHosted": presetBool, "drawioHost": presetString, "nextcloudEnable": presetBool, "nextcloudHost": presetString,
+	"backgroundNormal": presetString,
+	"containersEnable": presetBool, "debugFunctions": presetBool, "aiEnable": presetBool,
 	"overrideAiSelection": presetBool, "overrideModelWith": presetString, "aiAgentMode": presetString,
 	"jodsFingerprintEnrollmentAllowed": presetBool,
-	"enableScrobbling":                 presetBool, "enableLastfm": presetBool, "enableListenbrainz": presetBool,
-	"lastfmUsername": presetString, "listenbrainzUsername": presetString,
-	"oddcModel":       presetString,
-	"deviceSysVendor": presetString, "deviceProductName": presetString, "deviceProductVersion": presetString,
-	"deviceBoardVendor": presetString, "deviceBoardName": presetString, "deviceBoardVersion": presetString,
-	"nemuEnable": presetBool, "nemuGpuPassthrough": presetBool, "luksTpm2Enable": presetBool,
+	"nemuEnable":                       presetBool, "luksTpm2Enable": presetBool,
 	"recoveryEnable":          presetBool,
 	"recoveryPartitionEnable": presetBool, "jodsPrebootLockEnable": presetBool,
 	"secureBootEnable": presetBool, "secureBootPrompt": presetBool, "endpointManagedDevice": presetBool,
@@ -163,28 +165,24 @@ func checkNativeGraphics(ctx context.Context, r *Report, root string) {
 	}
 	r.Findings = append(r.Findings, Finding{OK, fmt.Sprintf("native graphics detection: %s (%s), %s", live.Vendor, live.Type, live.BusID)})
 
-	generated, err := readGraphicsSettings(filepath.Join(root, "settings.nix"))
+	generated, err := readGraphicsSettings(filepath.Join(root, "generated", "state.nix"))
 	if err != nil {
-		r.Findings = append(r.Findings, Finding{Warn, fmt.Sprintf("generated graphics settings unavailable: %v", err)})
+		r.Findings = append(r.Findings, Finding{Warn, fmt.Sprintf("generated graphics topology unavailable: %v", err)})
 		return
 	}
 	for key, actual := range map[string]string{
-		"graphicsVendor":          live.Vendor,
-		"graphicsDeviceId":        live.DeviceID,
-		"graphicsType":            live.Type,
-		"graphicsCompute":         fmt.Sprintf("%t", live.Compute),
 		"graphicsBusId":           live.BusID,
 		"graphicsIntegratedBusId": live.IntegratedBusID,
 	} {
 		if generated[key] != actual {
-			r.Findings = append(r.Findings, Finding{Warn, fmt.Sprintf("generated %s is %q; live detection is %q; rerun the installer to regenerate settings.nix", key, generated[key], actual)})
+			r.Findings = append(r.Findings, Finding{Warn, fmt.Sprintf("generated %s is %q; live detection is %q; rerun the installer to refresh machine topology", key, generated[key], actual)})
 			return
 		}
 	}
-	r.Findings = append(r.Findings, Finding{OK, "generated graphics settings match native detection"})
+	r.Findings = append(r.Findings, Finding{OK, "generated graphics topology matches native detection; portable graphics facts are ODDC-owned"})
 }
 
-var graphicsSetting = regexp.MustCompile(`(?m)^\s*(graphicsVendor|graphicsDeviceId|graphicsType|graphicsCompute|graphicsBusId|graphicsIntegratedBusId)\s*=\s*(?:"([^"]*)"|(true|false));`)
+var graphicsSetting = regexp.MustCompile(`(?m)^\s*(graphicsBusId|graphicsIntegratedBusId)\s*=\s*"([^"]*)";`)
 
 func readGraphicsSettings(path string) (map[string]string, error) {
 	contents, err := os.ReadFile(path)
@@ -193,9 +191,9 @@ func readGraphicsSettings(path string) (map[string]string, error) {
 	}
 	settings := make(map[string]string)
 	for _, match := range graphicsSetting.FindAllStringSubmatch(string(contents), -1) {
-		settings[match[1]] = match[2] + match[3]
+		settings[match[1]] = match[2]
 	}
-	if len(settings) != 6 {
+	if len(settings) != 2 {
 		return nil, errors.New("required graphics fields are missing")
 	}
 	return settings, nil
@@ -252,13 +250,31 @@ func checkPresetCompatibility(r *Report, preset, user map[string]json.RawMessage
 	}
 }
 
-// These values are selected from detected hardware by configure_ai.sh. They
-// must not be requested from, or persisted by, the user preset.
+// These values are derived from hardware discovery or ODDC resolution. They
+// are installer-owned and must never be accepted as user intent.
 var installerManagedFields = map[string]bool{
-	"aiModel":               true,
-	"aiAccelerationProfile": true,
-	"aiContextTokens":       true,
-	"aiVramMB":              true,
+	"aiModel":                 true,
+	"aiAccelerationProfile":   true,
+	"aiContextTokens":         true,
+	"aiVramMB":                true,
+	"deviceBoardName":         true,
+	"deviceBoardVendor":       true,
+	"deviceBoardVersion":      true,
+	"deviceProductName":       true,
+	"deviceProductVersion":    true,
+	"deviceSysVendor":         true,
+	"graphicsBusId":           true,
+	"graphicsCompute":         true,
+	"graphicsDeviceId":        true,
+	"graphicsDriverBranch":    true,
+	"graphicsIntegratedBusId": true,
+	"graphicsType":            true,
+	"graphicsVendor":          true,
+	"oddcModel":               true,
+	"orientationSensorEnable": true,
+	"penTabletEnable":         true,
+	"touchscreenEnable":       true,
+	"wifiDriver":              true,
 }
 
 func checkRequiredFiles(r *Report, root string) {
@@ -266,8 +282,13 @@ func checkRequiredFiles(r *Report, root string) {
 		"scripts/installation/install.sh",
 		"cmd/gjallar-installer/main.go",
 		"internal/installer/app/app.go",
+		"generated/state.nix",
+		"generated/hardware.nix",
+		"generated/install-state.nix",
+		"system/default.nix",
 		"system/apps/ollama.nix",
 		"system/tools/commands/default.nix",
+		"user/default.nix",
 	} {
 		if info, err := os.Stat(filepath.Join(root, relative)); err != nil || info.IsDir() {
 			r.Findings = append(r.Findings, Finding{Error, fmt.Sprintf("required file missing: %s", relative)})
@@ -288,5 +309,208 @@ func checkRegistration(r *Report, root string) {
 		} else {
 			r.Findings = append(r.Findings, Finding{Warn, fmt.Sprintf("installer checker not registered in %s", relative)})
 		}
+	}
+}
+
+var flakeInputDeclaration = regexp.MustCompile(`(?m)^    ([A-Za-z0-9][A-Za-z0-9_-]*)(?:\.url)?\s*=`)
+var nixLiteralPath = regexp.MustCompile(`(?:^|[[:space:]\[\(\{=])((?:\./|\.\./)[A-Za-z0-9_./-]+)`)
+
+func checkFlakeInputWiring(r *Report, root string) {
+	path := filepath.Join(root, "flake.nix")
+	contents, err := os.ReadFile(path)
+	if err != nil {
+		r.Findings = append(r.Findings, Finding{Error, fmt.Sprintf("flake.nix unreadable: %v", err)})
+		return
+	}
+
+	parts := strings.SplitN(string(contents), "outputs =", 2)
+	if len(parts) != 2 {
+		r.Findings = append(r.Findings, Finding{Error, "flake.nix has no outputs declaration"})
+		return
+	}
+
+	seen := make(map[string]bool)
+	inputs := make([]string, 0)
+	for _, match := range flakeInputDeclaration.FindAllStringSubmatch(parts[0], -1) {
+		name := match[1]
+		if name == "inputs" || seen[name] {
+			continue
+		}
+		seen[name] = true
+		inputs = append(inputs, name)
+	}
+	sort.Strings(inputs)
+
+	usedByInputs := make(map[string]bool)
+	for _, name := range inputs {
+		if strings.Contains(parts[1], name) {
+			usedByInputs[name] = true
+		}
+	}
+
+	_ = filepath.WalkDir(root, func(path string, entry fs.DirEntry, walkErr error) error {
+		if walkErr != nil {
+			return nil
+		}
+		if entry.IsDir() {
+			base := entry.Name()
+			if base == ".git" || base == ".direnv" || base == "node_modules" {
+				return filepath.SkipDir
+			}
+			if path == filepath.Join(root, "pkgs", "monique") {
+				return filepath.SkipDir
+			}
+			return nil
+		}
+		if filepath.Ext(path) != ".nix" || path == filepath.Join(root, "flake.nix") {
+			return nil
+		}
+		data, err := os.ReadFile(path)
+		if err != nil {
+			return nil
+		}
+		text := string(data)
+		for _, name := range inputs {
+			if strings.Contains(text, "inputs."+name) {
+				usedByInputs[name] = true
+			}
+		}
+		return nil
+	})
+
+	unused := make([]string, 0)
+	for _, name := range inputs {
+		if !usedByInputs[name] {
+			unused = append(unused, name)
+		}
+	}
+
+	if len(unused) == 0 {
+		r.Findings = append(r.Findings, Finding{OK, fmt.Sprintf("flake input wiring: %d inputs are referenced", len(inputs))})
+		return
+	}
+	for _, name := range unused {
+		r.Findings = append(r.Findings, Finding{Warn, fmt.Sprintf("unused flake input: %s", name)})
+	}
+}
+
+func checkModuleWiring(r *Report, root string) {
+	wired := make(map[string]bool)
+	sources := make([]string, 0)
+
+	for _, relative := range []string{"flake.nix", "system", "user"} {
+		path := filepath.Join(root, relative)
+		info, err := os.Stat(path)
+		if err != nil {
+			continue
+		}
+		if !info.IsDir() {
+			sources = append(sources, path)
+			continue
+		}
+		_ = filepath.WalkDir(path, func(source string, entry fs.DirEntry, walkErr error) error {
+			if walkErr != nil {
+				return nil
+			}
+			if entry.IsDir() {
+				return nil
+			}
+			if filepath.Ext(source) == ".nix" {
+				sources = append(sources, source)
+			}
+			return nil
+		})
+	}
+
+	for _, source := range sources {
+		contents, err := os.ReadFile(source)
+		if err != nil {
+			continue
+		}
+		text := string(contents)
+
+		// Dynamic sibling imports such as (./. + "/${settings.theme}.nix")
+		// intentionally select one module from the current directory.
+		if strings.Contains(text, `./. + "/${`) {
+			entries, err := os.ReadDir(filepath.Dir(source))
+			if err == nil {
+				for _, entry := range entries {
+					if !entry.IsDir() && filepath.Ext(entry.Name()) == ".nix" {
+						wired[filepath.Join(filepath.Dir(source), entry.Name())] = true
+					}
+				}
+			}
+		}
+
+		for _, match := range nixLiteralPath.FindAllStringSubmatch(text, -1) {
+			resolved := filepath.Clean(filepath.Join(filepath.Dir(source), match[1]))
+			info, err := os.Stat(resolved)
+			if err != nil {
+				continue
+			}
+			if !info.IsDir() {
+				if filepath.Ext(resolved) == ".nix" {
+					wired[resolved] = true
+				}
+				continue
+			}
+
+			defaultModule := filepath.Join(resolved, "default.nix")
+			if info, err := os.Stat(defaultModule); err == nil && !info.IsDir() {
+				wired[defaultModule] = true
+				continue
+			}
+
+			// Only recurse through a literal directory when the source explicitly
+			// consumes it with listFilesRecursive. Dynamic imports such as
+			// ./wm/${wm} must not accidentally mark an entire tree as wired.
+			if !strings.Contains(text, "listFilesRecursive "+match[1]) {
+				continue
+			}
+			_ = filepath.WalkDir(resolved, func(path string, entry fs.DirEntry, walkErr error) error {
+				if walkErr == nil && !entry.IsDir() && filepath.Ext(path) == ".nix" {
+					wired[path] = true
+				}
+				return nil
+			})
+		}
+	}
+
+	candidateRoots := []string{
+		"system/apps",
+		"system/compat",
+		"system/maintenance",
+		"system/management",
+		"system/security",
+		"system/services",
+		"user/apps",
+		"user/services",
+	}
+
+	unwired := make([]string, 0)
+	for _, relativeRoot := range candidateRoots {
+		candidateRoot := filepath.Join(root, relativeRoot)
+		_ = filepath.WalkDir(candidateRoot, func(path string, entry fs.DirEntry, walkErr error) error {
+			if walkErr != nil {
+				return nil
+			}
+			if entry.IsDir() || filepath.Ext(path) != ".nix" || wired[path] {
+				return nil
+			}
+			relative, err := filepath.Rel(root, path)
+			if err == nil {
+				unwired = append(unwired, filepath.ToSlash(relative))
+			}
+			return nil
+		})
+	}
+	sort.Strings(unwired)
+
+	if len(unwired) == 0 {
+		r.Findings = append(r.Findings, Finding{OK, "module wiring: no orphan candidates in owned module roots"})
+		return
+	}
+	for _, relative := range unwired {
+		r.Findings = append(r.Findings, Finding{Warn, fmt.Sprintf("likely unwired Nix module: %s", relative)})
 	}
 }

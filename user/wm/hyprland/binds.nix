@@ -3,6 +3,8 @@
   pkgs,
   lib,
   hyprlandShellDetails,
+  gjallarRun,
+  gjallarFileManager,
   settings,
   ...
 }:
@@ -21,20 +23,17 @@ let
 
     launcher = if shell.launcher == "fuzzel" then lib.getExe pkgs.fuzzel else shell.launcher;
 
-    terminal = lib.getExe pkgs.kitty;
+    terminal = "${lib.getExe gjallarRun} ${lib.getExe pkgs.ghostty}";
 
-    # Resolve selected applications from nixpkgs
-    editor = lib.getExe pkgs.${settings.preferredEditor};
-    browser = lib.getExe pkgs.${settings.preferredBrowser};
+    editor = "${lib.getExe gjallarRun} ${lib.getExe pkgs.${settings.preferredEditor}}";
+    browser = "${lib.getExe gjallarRun} ${lib.getExe pkgs.${settings.preferredBrowser}}";
 
-    fileManager = "${commands.terminal} -e ${lib.getExe config.programs.yazi.package}";
+    fileManager = lib.getExe gjallarFileManager;
 
-    # GjallarOS-AI
     gjallarAI = "gjallar-ai";
 
-    # Applications
-    libreoffice = lib.getExe pkgs.libreoffice;
-    teams = "gjallar-teams";
+    libreoffice = "${lib.getExe gjallarRun} ${lib.getExe pkgs.libreoffice}";
+    teams = "${lib.getExe gjallarRun} gjallar-teams";
 
     screenshot = shell.screenshot;
 
@@ -66,6 +65,7 @@ let
   renderBindm = binding: "${binding.mods or ""}, ${binding.key}, ${binding.action}";
 in
 {
+
   wayland.windowManager.hyprland.settings = {
     "$mod" = "SUPER";
 

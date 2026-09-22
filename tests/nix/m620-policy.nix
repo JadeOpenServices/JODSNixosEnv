@@ -5,28 +5,33 @@
 }:
 let
   settings = {
-    graphicsVendor = "nvidia";
-    graphicsDeviceId = "13b4";
-    graphicsDriverBranch = "legacy_580";
-    graphicsType = "hybrid";
-    graphicsCompute = true;
     graphicsBusId = "PCI:1:0:0";
     graphicsIntegratedBusId = "PCI:0:2:0";
   };
+
+  oddcResolved = (import ../../oddc/lib/registry.nix { lib = nixpkgs.lib; }).resolveEntity "model/hp/zbook-x2-g4";
 
   evaluated = nixpkgs.lib.nixosSystem {
     inherit system;
     modules = [
       graphicsModule
-      {
-        system.stateVersion = "26.05";
+      (
+        { lib, ... }:
+        {
+          options.oddc.resolved = lib.mkOption {
+            type = lib.types.attrs;
+            default = { };
+          };
+          config.oddc.resolved = oddcResolved.resolved;
+          config.system.stateVersion = "26.05";
 
-        nixpkgs.config.allowUnfreePredicate =
-          pkg:
-          builtins.elem (nixpkgs.lib.getName pkg) [
-            "nvidia-x11"
-          ];
-      }
+          config.nixpkgs.config.allowUnfreePredicate =
+            pkg:
+            builtins.elem (nixpkgs.lib.getName pkg) [
+              "nvidia-x11"
+            ];
+        }
+      )
     ];
     specialArgs = {
       inherit settings;

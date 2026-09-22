@@ -1,8 +1,12 @@
 package nixrender
 
 import (
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/bakanura/gjallarOS/internal/installer/config"
 )
 
 func TestStringEscapesNixInterpolation(t *testing.T) {
@@ -14,9 +18,9 @@ func TestStringEscapesNixInterpolation(t *testing.T) {
 }
 
 func TestRenderEscapesAllUserStrings(t *testing.T) {
-	s := Settings{System: "x86_64-linux", Profile: `${builtins.abort "bad"}`, Editors: []string{`a${b}`}}
+	s := Settings{System: "x86_64-linux", Hostname: `${builtins.abort "bad"}`, Editors: []string{`a${b}`}}
 	got := string(Render(s))
-	if !strings.Contains(got, `profile = "\${builtins.abort \"bad\"}";`) || !strings.Contains(got, `editors = [ "a\${b}" ];`) {
+	if !strings.Contains(got, `hostname = "\${builtins.abort \"bad\"}";`) || !strings.Contains(got, `editors = [ "a\${b}" ];`) {
 		t.Fatalf("unsafe or missing escaped output:\n%s", got)
 	}
 }
@@ -34,6 +38,8 @@ func TestRenderRecoveryPolicyDefaultsDisabled(t *testing.T) {
 		"recoveryPartitionEnable = false;",
 		"jodsPrebootLockEnable = false;",
 		"secureBootEnable = false;",
+		"usbTrustEnforce = false;",
+		`usbTrustTpmHandle = "";`,
 		"endpointManagedDevice = false;",
 	} {
 		if !strings.Contains(got, want) {
@@ -96,30 +102,6 @@ func TestRenderJODSDoesNotContainSecretFields(t *testing.T) {
 	}
 }
 
-func TestRenderDeviceIdentity(t *testing.T) {
-	got := string(Render(Settings{
-		DeviceSysVendor:      "HP",
-		DeviceProductName:    "HP ZBook x2 G4",
-		DeviceProductVersion: "A",
-		DeviceBoardVendor:    "HP",
-		DeviceBoardName:      "824C",
-		DeviceBoardVersion:   "KBC Version 43.72",
-	}))
-
-	for _, want := range []string{
-		`deviceSysVendor = "HP";`,
-		`deviceProductName = "HP ZBook x2 G4";`,
-		`deviceProductVersion = "A";`,
-		`deviceBoardVendor = "HP";`,
-		`deviceBoardName = "824C";`,
-		`deviceBoardVersion = "KBC Version 43.72";`,
-	} {
-		if !strings.Contains(got, want) {
-			t.Fatalf("missing %q in:\n%s", want, got)
-		}
-	}
-}
-
 func TestRenderIncludesOrientationSensorSetting(t *testing.T) {
 	rendered := string(Render(Settings{
 		OrientationSensorEnable: true,
@@ -127,5 +109,136 @@ func TestRenderIncludesOrientationSensorSetting(t *testing.T) {
 
 	if !strings.Contains(rendered, "orientationSensorEnable = true;") {
 		t.Fatalf("orientation setting missing from render: %s", rendered)
+	}
+}
+
+func TestRenderThemeDetailsUsesRepositoryThemeDirectory(t *testing.T) {
+	got := string(Render(Settings{Theme: "noctalia"}))
+	want := `themeDetails = import (./. + "/../themes/${theme}.nix") {inherit pkgs;};`
+	if !strings.Contains(got, want) {
+		t.Fatalf("theme path is not rooted above generated/:\n%s", got)
+	}
+}
+
+func TestFromUserMapsRoutedIntent(t *testing.T) {
+	user := config.User{
+		Hostname:               "gjallarOS",
+		Username:               "baka",
+		USBGuardEnable:         true,
+		USBTrustEnforce:        true,
+		USBTrustTPMHandle:      "0x81000042",
+		PrintingEnable:         true,
+		NetworkPrintingEnable:  true,
+		ContainersEnable:       true,
+		PlaneEnable:            true,
+		PlaneHost:              "https://plane.example.test",
+		EndpointManagedDevice:  true,
+		JODSEndpoint:           "https://jods.example.test",
+		JODSPolicySigningKey:   strings.Repeat("ab", 32),
+		JODSRecoverySigningKey: strings.Repeat("cd", 32),
+		JODSEnrollmentMode:     "manual",
+		JODSDeviceClass:        "laptop",
+		JODSDesktopProfile:     "headless",
+		JODSFingerprintEnroll:  true,
+		Theme:                  "noctalia",
+		Editors:                []string{"vscodium"},
+		Browsers:               []string{"librewolf"},
+		PreferredEditor:        "vscodium",
+		PreferredBrowser:       "librewolf",
+		Shell:                  "zsh",
+		AIAgentMode:            "workspace",
+	}
+	got := FromUser(user)
+	if !got.PrintingEnable || !got.NetworkPrintingEnable || !got.ContainersEnable || !got.USBGuardEnable || !got.USBTrustEnforce {
+		t.Fatalf("routed booleans were not mapped: %#v", got)
+	}
+	if got.USBTrustTPMHandle != user.USBTrustTPMHandle {
+		t.Fatalf("USB trust TPM handle was not mapped: %#v", got)
+	}
+	if got.PlaneHost != user.PlaneHost || got.JODSEndpoint != user.JODSEndpoint || got.Theme != user.Theme {
+		t.Fatalf("routed strings were not mapped: %#v", got)
+	}
+	if got.ODDCModel != "" || got.AIModel != "" {
+		t.Fatalf("derived fields leaked into FromUser: %#v", got)
+	}
+}
+
+func TestSyncUserIntentPreservesDerivedState(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "state.nix")
+	before := `{pkgs, inputs, ...}:
+rec {
+    hostname = "old";
+    printingEnable = false;
+    planeEnable = false;
+    planeHost = "";
+    graphicsVendor = "amd";
+    graphicsDeviceId = "15bf";
+    graphicsType = "integrated";
+    graphicsCompute = true;
+    graphicsDriverBranch = "legacy_580";
+    frameworkEnable = true;
+    workUsername = "legacy-work";
+    deviceSysVendor = "Legacy Vendor";
+    wifiDriver = "legacy-driver";
+    aiModel = "derived-model";
+    theme = "old-theme";
+    themeDetails = import (./. + "/../themes/${theme}.nix") {inherit pkgs;};
+}
+`
+	if err := os.WriteFile(path, []byte(before), 0o640); err != nil {
+		t.Fatal(err)
+	}
+
+	user := config.User{
+		Hostname:           "gjallarOS",
+		PrintingEnable:     true,
+		PlaneEnable:        true,
+		PlaneHost:          "https://plane.example.test",
+		Theme:              "noctalia",
+		AIAgentMode:        "workspace",
+		JODSEnrollmentMode: "manual",
+	}
+	if err := SyncUserIntent(path, user); err != nil {
+		t.Fatal(err)
+	}
+
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := string(data)
+	for _, want := range []string{
+		`hostname = "gjallarOS";`,
+		`printingEnable = true;`,
+		`planeEnable = true;`,
+		`planeHost = "https://plane.example.test";`,
+		`aiModel = "derived-model";`,
+		`theme = "noctalia";`,
+	} {
+		if !strings.Contains(got, want) {
+			t.Fatalf("missing %q after sync:\n%s", want, got)
+		}
+	}
+	info, err := os.Stat(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, retired := range []string{
+		"graphicsVendor",
+		"graphicsDeviceId",
+		"graphicsType",
+		"graphicsCompute",
+		"graphicsDriverBranch",
+		"frameworkEnable",
+		"workUsername",
+		"deviceSysVendor",
+		"wifiDriver",
+	} {
+		if strings.Contains(got, retired+" = ") {
+			t.Fatalf("retired generated field %q survived sync:\n%s", retired, got)
+		}
+	}
+	if info.Mode().Perm() != 0o640 {
+		t.Fatalf("mode changed to %o", info.Mode().Perm())
 	}
 }

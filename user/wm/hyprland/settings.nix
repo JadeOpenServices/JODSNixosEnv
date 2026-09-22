@@ -26,16 +26,12 @@ let
         ;;
     esac
 
-    # Give the focused client enough time to consume the selection before
-    # destroying it. Keep this short enough to feel immediate.
     ${pkgs.coreutils}/bin/sleep 0.12
 
-    # Remove both the normal clipboard and primary selection.
     ${pkgs.wl-clipboard}/bin/wl-copy --clear >/dev/null 2>&1 || true
     ${pkgs.wl-clipboard}/bin/wl-copy --primary --clear >/dev/null 2>&1 || true
   '';
   themeDetails = settings.themeDetails;
-  profileDetails = settings.profileDetails;
   shellDetails = hyprlandShellDetails;
   wallpaperDetails =
     if builtins.isAttrs themeDetails.wallpaper then
@@ -43,15 +39,11 @@ let
     else
       { center = themeDetails.wallpaper; };
   startupWallpaper =
-    if config.home.username == settings.workUsername && settings.backgroundWork != "" then
-      settings.backgroundWork
-    else if settings.backgroundNormal != "" then
+    if settings.backgroundNormal != "" then
       settings.backgroundNormal
     else
       wallpaperDetails.center;
   sessionStart = pkgs.writeShellScript "gjallar-hyprland-session-start" ''
-    # Noctalia stores the wallpaper selected in its UI here.  Use the same
-    # image immediately, rather than briefly showing the Nix fallback first.
     selected_wallpaper=${lib.escapeShellArg startupWallpaper}
     noctalia_state="''${XDG_STATE_HOME:-$HOME/.local/state}/noctalia/settings.toml"
     if [ -r "$noctalia_state" ]; then
@@ -71,16 +63,16 @@ let
     fi
     ${pkgs.swaybg}/bin/swaybg --image "$selected_wallpaper" --mode fill &
     ${pkgs.coreutils}/bin/sleep 0.1
-    # Give NetworkManager a brief chance to establish an actual connection.
-    # This prevents Noctalia weather/plugin/API refreshes from racing early boot.
-    # The timeout is bounded: offline use must never prevent the shell starting.
     ${pkgs.networkmanager}/bin/nm-online -q -t 10 || true
 
-    exec ${lib.getExe inputs.noctalia.packages.${pkgs.stdenv.hostPlatform.system}.default}
+    exec ${lib.getExe config.programs.noctalia.package}
   '';
   virtualKeyboard = pkgs.writeShellApplication {
     name = "gjallar-virtual-keyboard";
-    runtimeInputs = [ pkgs.procps pkgs.wvkbd ];
+    runtimeInputs = [
+      pkgs.procps
+      pkgs.wvkbd
+    ];
     text = ''
       set -euo pipefail
       if pgrep -x wvkbd-mobintl >/dev/null; then
@@ -96,8 +88,15 @@ let
 in
 {
   home.packages =
-    (with pkgs; [ awww swaybg wayvnc ])
-    ++ lib.optionals (settings.touchscreenEnable or false) [ virtualKeyboard pkgs.wvkbd ];
+    (with pkgs; [
+      awww
+      swaybg
+      wayvnc
+    ])
+    ++ lib.optionals (settings.touchscreenEnable or false) [
+      virtualKeyboard
+      pkgs.wvkbd
+    ];
 
   wayland.windowManager.hyprland.settings = {
     bind =
@@ -105,14 +104,14 @@ in
         "SUPER, C, exec, ${lib.getExe config.programs.noctalia.package} msg status >/dev/null 2>&1 && ${lib.getExe config.programs.noctalia.package} msg panel-toggle control-center >/dev/null 2>&1 || true"
       ]
       ++ lib.optionals (settings.touchscreenEnable or false) [
-      "SUPER, K, exec, ${lib.getExe virtualKeyboard}"
-    
-      "CTRL, V, exec, ${gjallarPasteOnce} ctrl-v"
-      "CTRL SHIFT, V, exec, ${gjallarPasteOnce} ctrl-shift-v"
-      "SHIFT, INSERT, exec, ${gjallarPasteOnce} shift-insert"
-];
+        "SUPER, K, exec, ${lib.getExe virtualKeyboard}"
 
-    monitor = profileDetails.hyprlandMonitors ++ [
+        "CTRL, V, exec, ${gjallarPasteOnce} ctrl-v"
+        "CTRL SHIFT, V, exec, ${gjallarPasteOnce} ctrl-shift-v"
+        "SHIFT, INSERT, exec, ${gjallarPasteOnce} shift-insert"
+      ];
+
+    monitor = [
       ",preferred,auto,1"
     ];
 
@@ -121,8 +120,8 @@ in
         "${sessionStart}"
       ]
       ++ lib.optionals (settings.touchscreenEnable or false) [
-      "${pkgs.wvkbd}/bin/wvkbd-mobintl --hidden -H 320 -L 240"
-    ];
+        "${pkgs.wvkbd}/bin/wvkbd-mobintl --hidden -H 320 -L 240"
+      ];
 
     general = {
       gaps_in = 8;
@@ -141,7 +140,7 @@ in
 
       blur = {
         enabled = true;
-        special = true;
+        special = false;
         brightness = 1.0;
         contrast = 1.0;
         noise = 0.02;
@@ -194,20 +193,11 @@ in
         natural_scroll = true;
       };
 
-      # Hyprland handles pressure, tilt, erasers, and tablet-pad buttons
-      # natively. Pens use absolute positioning by default.
       tablet = lib.mkIf (settings.penTabletEnable or false) {
         relative_input = false;
       };
     };
 
-    device = {
-      name = "logitech-usb-receiver-mouse";
-      sensitivity = -1.0;
-    };
-
-    # Hyprland 0.55 removed gestures.workspace_swipe. The replacement is the
-    # top-level gesture keyword; native libinput remains sufficient here.
     gesture = lib.optionals settings.touchpadWorkspaceSwipe [
       "3, horizontal, workspace"
     ];

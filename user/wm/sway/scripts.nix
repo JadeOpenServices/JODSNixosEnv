@@ -1,42 +1,9 @@
 {
-  lib,
   pkgs,
-  settings,
   ...
 }:
 
 let
-  outputs = lib.filter (output: output != "*") (
-    builtins.attrNames settings.profileDetails.swayMonitors
-  );
-
-  outputSpecs = lib.imap0 (index: output: {
-    inherit output;
-    offset = index * 10;
-  }) outputs;
-
-  workspaceAssignments = lib.concatMap (
-    { output, offset }:
-    map (
-      localNumber:
-      let
-        globalNumber = offset + localNumber;
-      in
-      {
-        workspace = "${toString globalNumber}:${toString localNumber}";
-        inherit output;
-      }
-    ) (lib.range 1 10)
-  ) outputSpecs;
-
-  outputCases = lib.concatStringsSep "\n" (
-    map ({ output, offset }: ''
-      ${lib.escapeShellArg output})
-        offset=${toString offset}
-        ;;
-    '') outputSpecs
-  );
-
   swayWorkspace = pkgs.writeShellApplication {
     name = "sway-workspace";
 
@@ -59,7 +26,7 @@ let
         exit 2
       }
 
-      action="''${1:-}"
+      action="$1"
 
       case "$action" in
         focus|move|prev|next|move-prev|move-next)
@@ -71,18 +38,28 @@ let
 
       focused_output="$(
         swaymsg -r -t get_outputs |
-          jq -er '.[] | select(.focused == true) | .name'
+          jq -er '.[] | select(.active == true and .focused == true) | .name'
       )"
 
-      case "$focused_output" in
-        ${outputCases}
-        *)
-          printf \
-            'sway-workspace: output "%s" is not configured in swayMonitors\n' \
-            "$focused_output" >&2
-          exit 1
-          ;;
-      esac
+      offset=-1
+      index=0
+
+      while IFS= read -r output; do
+        if [ "$output" = "$focused_output" ]; then
+          offset=$((index * 10))
+          break
+        fi
+        index=$((index + 1))
+      done < <(
+        swaymsg -r -t get_outputs |
+          jq -r '[.[] | select(.active == true) | .name] | sort[]'
+      )
+
+      if [ "$offset" -lt 0 ]; then
+        printf 'sway-workspace: focused output "%s" is not active\n' \
+          "$focused_output" >&2
+        exit 1
+      fi
 
       case "$action" in
         focus|move)
@@ -155,20 +132,9 @@ let
   };
 in
 {
-  assertions = [
-    {
-      assertion = outputs != [ ];
-      message = ''
-        The Sway workspace script requires at least one explicitly named
-        output in settings.profileDetails.swayMonitors.
-      '';
-    }
-  ];
-
   _module.args.swayWorkspaces = {
     command = "${swayWorkspace}/bin/sway-workspace";
-    assignments = workspaceAssignments;
-    inherit outputs;
+    assignments = [ ];
   };
 
   home.packages = [

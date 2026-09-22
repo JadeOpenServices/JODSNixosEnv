@@ -1,4 +1,5 @@
 {
+  config,
   lib,
   settings,
   pkgs,
@@ -6,10 +7,7 @@
 }:
 
 let
-
-  # ==========================================================
-  # gjallarCode / Caveman
-  # ==========================================================
+  graphics = import ../../oddc/nixos/lib/graphics.nix { inherit lib; } config.oddc.resolved;
 
   cavemanSrc = pkgs.fetchFromGitHub {
     owner = "JuliusBrussee";
@@ -59,16 +57,6 @@ let
           "          |__/",
       ]
 
-      # IMPORTANT:
-      # Do not use a JS template literal here. ASCII art contains
-      # literal backticks (`), which would terminate it.
-      #
-      # json.dumps() creates a valid quoted JavaScript/JSON string,
-      # safely escaping:
-      #   - newlines
-      #   - backslashes
-      #   - quotes
-      #   - while allowing literal backticks inside the string.
       import json
 
       logo_text = "\n" + "\n".join(logo_lines) + "\n"
@@ -134,15 +122,6 @@ let
     '';
   });
 
-  # Desktop-side clipboard broker.
-  #
-  # Security boundary:
-  # - accepts WRITE only;
-  # - no clipboard-read operation exists;
-  # - validates kernel SO_PEERCRED;
-  # - validates caller is inside gjallar-ai-session@ cgroup;
-  # - bounds copied data;
-  # - only this broker receives Wayland access.
   gjallarClipboardServer = pkgs.writeShellScript "gjallar-ai-clipboard-server" ''
             set -euo pipefail
 
@@ -172,7 +151,7 @@ let
 
     MAX_BYTES = 8 * 1024 * 1024
 
-    CGROUP_TOKEN = "/gjallar-ai-session@"
+    CGROUP_TOKEN = "/ai-session@"
 
 
     def find_wayland():
@@ -298,8 +277,6 @@ let
                 )
 
             except Exception:
-                # Fail closed. Clipboard errors do not grant
-                # additional access or return clipboard data.
                 continue
     PYCLIP
   '';
@@ -307,24 +284,11 @@ let
   gjallarWlCopy = pkgs.writeShellScriptBin "wl-copy" ''
     set -euo pipefail
 
-    # Presence-only audit marker. Never records copied text.
     ${pkgs.coreutils}/bin/touch \
       "''${XDG_RUNTIME_DIR:-/tmp}/gjallar-clipboard-write-hit" \
       2>/dev/null || true
 
 
-    # gjallarCode clipboard is WRITE ONLY.
-    #
-    # OpenCode
-    #   -> fake wl-copy
-    #   -> tmux buffer
-    #   -> OSC52
-    #   -> Kitty
-    #   -> desktop clipboard
-    #
-    # No Wayland socket.
-    # No wl-paste.
-    # No clipboard read capability.
 
     if [ -z "''${TMUX:-}" ]; then
       echo \
@@ -344,7 +308,7 @@ let
       set-option \
       -as \
       terminal-features \
-      ',xterm-kitty:clipboard' \
+      ',xterm-ghostty:clipboard' \
       >/dev/null 2>&1 || true
 
     exec ${pkgs.tmux}/bin/tmux \
@@ -357,24 +321,17 @@ let
   aiSystemPrompt = (builtins.fromJSON (builtins.readFile ./ai/system-prompt.json)).system;
 
   ollamaPackage =
-    if settings.graphicsVendor == "amd" && builtins.hasAttr "ollama-rocm" pkgs then
+    if graphics.vendor == "amd" && builtins.hasAttr "ollama-rocm" pkgs then
       pkgs.ollama-rocm
     else
       pkgs.ollama;
 
-  # Ollama normally ignores integrated GPUs. AMD APUs such as the
-  # Radeon 780M can nevertheless be useful for local inference, so
-  # explicitly enable Ollama's iGPU support when the installer detected
-  # an AMD integrated graphics controller.
-  #
-  # This is deliberately derived from installer-generated settings rather
-  # than hard-coded to a particular laptop/GPU model.
   ollamaIgpuEnable =
     lib.optionalAttrs
       (
         (if settings ? aiEnable then settings.aiEnable else false)
-        && settings.graphicsVendor == "amd"
-        && settings.graphicsType == "integrated"
+        && graphics.vendor == "amd"
+        && graphics.type == "integrated"
         && settings.graphicsIntegratedBusId != ""
       )
       {
@@ -404,9 +361,6 @@ let
     ${securityInstructions.system}"""
     PARAMETER num_ctx ${toString settings.aiContextTokens}
   '';
-  # Installer-resolved Ollama acceleration policy.
-  #
-  # Hardware/model selection happens in internal/ai/profile.
   accelerationProfileName = settings.aiAccelerationProfile;
 
   accelerationProfiles = {
@@ -416,8 +370,6 @@ let
     };
 
     full = {
-      # Oversized intentionally: request every available model layer
-      # without encoding a model-specific layer count here.
       numGpu = 999;
       description = "Request complete model-layer GPU offload";
     };
@@ -569,8 +521,6 @@ let
             ${pkgs.coreutils}/bin/id -g "$username"
           )"
 
-          # PID 1 has already bind-mounted the path encoded by this
-          # template instance onto /workspace.
           workspace="/workspace"
 
           [ -d "$workspace" ] ||
@@ -657,18 +607,12 @@ let
           [ "$ready" = true ] ||
             die "model broker bridge did not become ready"
 
-          # HOME/config/data are isolated per controlled session.
-          # OpenCode conversations never leak into the next launch.
-          # Security/audit state remains persistent.
           export HOME="$RUNTIME_DIRECTORY/home"
           export XDG_CONFIG_HOME="$RUNTIME_DIRECTORY/config"
           export XDG_CACHE_HOME="$CACHE_DIRECTORY"
           export XDG_DATA_HOME="$RUNTIME_DIRECTORY/data"
           export XDG_STATE_HOME="$STATE_DIRECTORY/state"
 
-            # ------------------------------------------------------
-            # gjallarCode runtime
-            # ------------------------------------------------------
 
             opencode_config="$XDG_CONFIG_HOME/opencode"
 
@@ -695,21 +639,15 @@ let
                 "$opencode_config/AGENTS.md"
             fi
 
-            # Files copied from the Nix store are read-only.
-            # Make our private runtime copy writable before adding
-            # gjallarCode-specific rules.
             ${pkgs.coreutils}/bin/chmod \
               0600 \
               "$opencode_config/AGENTS.md"
 
-            # Caveman skills remain installed, but the upstream activation
-            # document does not become the global instruction set.
             ${pkgs.coreutils}/bin/printf '%s' "" > "$opencode_config/AGENTS.md"
 
             ${pkgs.coreutils}/bin/cat >> \
               "$opencode_config/AGENTS.md" <<'GJALLARCODE_RULES'
 
-    # gjallarCode
 
     You are gjallarCode, a powerful local engineering assistant using
     OpenCode's native Build agent.
@@ -787,9 +725,6 @@ let
     GJALLARCODE_RULES
 
 
-            # ------------------------------------------------------
-            # Complete gjallarOS management skill
-            # ------------------------------------------------------
 
             ${pkgs.coreutils}/bin/mkdir -p \
               "$opencode_config/skills/gjallaros"
@@ -806,7 +741,6 @@ let
       platform: NixOS
     ---
 
-    # gjallarOS engineering
 
     You are the local engineering agent for the complete gjallarOS
     repository.
@@ -869,7 +803,7 @@ let
     - Home Manager modules
     - application modules
     - package overlays
-    - `settings.nix`
+    - `generated/state.nix`
     - installer configuration/schema
     - preset JSON
     - Nix rendering
@@ -894,9 +828,9 @@ let
 
     Prefer modifying the canonical source rather than generated output.
 
-    ## Generated settings
+    ## Generated machine state
 
-    `settings.nix` and related configuration may be generated.
+    `generated/state.nix` and related machine-local configuration may be generated.
 
     Before changing generated state, determine its durable source.
 
@@ -911,7 +845,7 @@ let
     - installer UI
     - config parsing
     - Nix renderer
-    - generated settings
+    - generated machine state
     - validation
     - tests
     - documentation
@@ -1202,26 +1136,6 @@ let
           export PATH="${gjallarWlCopy}/bin:/etc/profiles/per-user/$username/bin:/run/current-system/sw/bin"
 
 
-          # gjallarCode Build-agent context warm-up
-          #
-          # Do NOT just ping Ollama here.
-          #
-          # A direct Ollama request only loads model weights. The first
-          # real OpenCode request would still have to evaluate the large
-          # coding-agent/system/tool/skill prefix.
-          #
-          # Instead, run a hidden request through the SAME Build agent
-          # used by the TUI and force it to perform a real repository read.
-          #
-          # This pays:
-          #   - model cold load
-          #   - OpenCode initialization
-          #   - system prompt evaluation
-          #   - Build-agent prompt evaluation
-          #   - tool schema evaluation
-          #   - repo tool initialization
-          #
-          # while the startup spinner is already visible.
           printf '%s\n' \
             "Priming gjallarCode coding agent..." \
             >&3
@@ -1241,9 +1155,6 @@ let
             "gjallarCode coding agent ready." \
             >&3
 
-    # Run the TUI behind a private tmux server rather than a socat
-          # synthetic PTY. tmux propagates the real client terminal geometry
-          # and SIGWINCH resize events correctly.
           tmux_socket="$RUNTIME_DIRECTORY/tmux.sock"
 
           ${pkgs.tmux}/bin/tmux \
@@ -1253,8 +1164,6 @@ let
             -s gjallar-ai \
             ${lib.escapeShellArg "${gjallarCodeOpencode}/bin/opencode /workspace --agent build"}
 
-          # Keep the systemd service alive for exactly as long as the controlled
-          # OpenCode tmux session exists.
           while ${pkgs.tmux}/bin/tmux \
             -S "$tmux_socket" \
             has-session \
@@ -1276,8 +1185,8 @@ let
     echo "Definition hash: ${modelDefinitionHash}"
     printf 'Ollama service: '; ${pkgs.systemd}/bin/systemctl is-active ollama.service 2>/dev/null || true
     printf 'Provision service: '; ${pkgs.systemd}/bin/systemctl is-active ollama-model-provision.service 2>/dev/null || true
-    printf 'Model broker: '; ${pkgs.systemd}/bin/systemctl is-active gjallar-ai-model.service 2>/dev/null || true
-    printf 'Research broker: '; ${pkgs.systemd}/bin/systemctl is-active gjallar-ai-research.service 2>/dev/null || true
+    printf 'Model broker: '; ${pkgs.systemd}/bin/systemctl is-active ai-model-broker.service 2>/dev/null || true
+    printf 'Research broker: '; ${pkgs.systemd}/bin/systemctl is-active ai-research-broker.service 2>/dev/null || true
     printf 'Model broker health: '
     if ${pkgs.curl}/bin/curl \
       --silent \
@@ -1317,7 +1226,7 @@ let
     unit="$1"
 
     case "$unit" in
-      gjallar-ai-session@*.service)
+      ai-session@*.service)
         ;;
       *)
         echo \
@@ -1327,45 +1236,31 @@ let
         ;;
     esac
 
-    # The AI backend is intentionally stopped whenever
-    # gjallarCode is not in use. Start it only after successful
-    # fingerprint/password authentication.
     ${pkgs.systemd}/bin/systemctl \
       start \
       ollama.service
 
-    # Model downloads and derived-model creation happen lazily when
-    # gjallarCode is actually used. Never block boot or nixos-rebuild.
     ${pkgs.systemd}/bin/systemctl \
       start \
       ollama-model-provision.service
 
     ${pkgs.systemd}/bin/systemctl \
       start \
-      gjallar-ai-model.service
+      ai-model-broker.service
 
     exec ${pkgs.systemd}/bin/systemctl \
       start \
       "$unit"
   '';
 
-  # Hard shutdown for the local AI backend.
-  #
-  # This is called only by systemd when the controlled gjallarCode
-  # session terminates. It is deliberately not installed in the
-  # user's PATH.
   gjallarAiBackendStop = pkgs.writeShellScript "gjallar-ai-backend-stop" ''
     set -euo pipefail
 
-    # Kill the inference boundary first so nothing can submit more
-    # work while Ollama is shutting down.
     ${pkgs.systemd}/bin/systemctl \
       stop \
-      gjallar-ai-model.service \
+      ai-model-broker.service \
       >/dev/null 2>&1 || true
 
-    # Stopping Ollama terminates the llama runner too, releasing
-    # model RAM/VRAM immediately.
     ${pkgs.systemd}/bin/systemctl \
       stop \
       ollama.service \
@@ -1390,37 +1285,30 @@ lib.mkIf (if settings ? aiEnable then settings.aiEnable else false) {
 
   environment.etc."opencode/opencode.json".source = managedOpencodeConfig;
 
-  users.groups.gjallar-ai-model = { };
+  users.groups.ai-model-access = { };
 
   users.users.gjallar-ai-model = {
     isSystemUser = true;
-    group = "gjallar-ai-model";
+    group = "ai-model-access";
   };
 
   users.users.${settings.username}.extraGroups = lib.mkAfter [
-    "gjallar-ai-model"
+    "ai-model-access"
   ];
 
   systemd.tmpfiles.rules = [
     "d /workspace 0755 root root -"
 
-    # Ollama previously used DynamicUser and therefore may leave its
-    # StateDirectory tree owned by the old transient UID. Preserve file
-    # modes but recursively transfer ownership to the stable service account.
     "d /var/lib/ollama 0750 ollama ollama -"
     "Z /var/lib/ollama - ollama ollama -"
   ];
 
-  # Keep the machine's existing firewall backend unchanged. This isolated
-  # nftables table exists only to enforce the local Ollama transport boundary.
-  #
-  # Ollama must never start unless this gate was installed successfully.
-  systemd.services.gjallar-ai-model-firewall = {
-    description = "GjallarOS local Ollama API firewall";
+  systemd.services.ai-model-firewall = {
+    description = "Local Ollama API firewall";
 
     before = [
       "ollama.service"
-      "gjallar-ai-model.service"
+      "ai-model-broker.service"
       "ollama-model-provision.service"
     ];
 
@@ -1468,8 +1356,6 @@ lib.mkIf (if settings ? aiEnable then settings.aiEnable else false) {
 
       nft=${pkgs.nftables}/bin/nft
 
-      # Remove only our own table from a previous invocation. Never flush
-      # or modify the machine-wide firewall ruleset.
       if "$nft" list table inet gjallar_ai_model >/dev/null 2>&1; then
         "$nft" delete table inet gjallar_ai_model
       fi
@@ -1487,7 +1373,6 @@ lib.mkIf (if settings ? aiEnable then settings.aiEnable else false) {
       }
       EOF
 
-      # Fail closed if the expected reject rule is not actually present.
       "$nft" list table inet gjallar_ai_model \
         | ${pkgs.gnugrep}/bin/grep -F \
             'ip daddr 127.0.0.1 tcp dport 11434 counter packets 0 bytes 0 reject' \
@@ -1507,14 +1392,12 @@ lib.mkIf (if settings ? aiEnable then settings.aiEnable else false) {
     '';
   };
 
-  # Security dependency, not merely ordering:
-  # a failed/missing firewall gate prevents Ollama from starting.
   systemd.services.ollama.requires = [
-    "gjallar-ai-model-firewall.service"
+    "ai-model-firewall.service"
   ];
 
   systemd.services.ollama.after = [
-    "gjallar-ai-model-firewall.service"
+    "ai-model-firewall.service"
   ];
 
   security.polkit.extraConfig = lib.mkAfter ''
@@ -1539,7 +1422,7 @@ lib.mkIf (if settings ? aiEnable then settings.aiEnable else false) {
 
       if (
         typeof unit !== "string" ||
-        !/^gjallar-ai-session@[^/]+\\.service$/.test(unit)
+        !/^ai-session@[^/]+\\.service$/.test(unit)
       ) {
         return polkit.Result.NOT_HANDLED;
       }
@@ -1558,7 +1441,7 @@ lib.mkIf (if settings ? aiEnable then settings.aiEnable else false) {
     // gjallarCode session lifecycle authorization
     //
     // Only the configured gjallarOS user and only
-    // gjallar-ai-session@*.service are covered.
+    // ai-session@*.service are covered.
     polkit.addRule(function(action, subject) {
       if (
         action.id != "org.freedesktop.systemd1.manage-units" ||
@@ -1572,7 +1455,7 @@ lib.mkIf (if settings ? aiEnable then settings.aiEnable else false) {
 
       if (
         typeof unit != "string" ||
-        unit.indexOf("gjallar-ai-session@") !== 0 ||
+        unit.indexOf("ai-session@") !== 0 ||
         unit.slice(-8) != ".service"
       ) {
         return polkit.Result.NOT_HANDLED;
@@ -1597,8 +1480,8 @@ lib.mkIf (if settings ? aiEnable then settings.aiEnable else false) {
     });
   '';
 
-  systemd.services.gjallar-ai-clipboard = {
-    description = "gjallarCode authenticated write-only clipboard broker";
+  systemd.services.ai-clipboard-broker = {
+    description = "Authenticated write-only AI clipboard broker";
 
     wantedBy = [
       "multi-user.target"
@@ -1637,8 +1520,8 @@ lib.mkIf (if settings ? aiEnable then settings.aiEnable else false) {
     };
   };
 
-  systemd.services.gjallar-ai-model = {
-    description = "GjallarOS inference-only model broker";
+  systemd.services.ai-model-broker = {
+    description = "Inference-only AI model broker";
 
     after = [
       "ollama.service"
@@ -1660,10 +1543,10 @@ lib.mkIf (if settings ? aiEnable then settings.aiEnable else false) {
         + "--upstream http://127.0.0.1:11434 "
         + "--model ${assistantModel} "
         + "--user ${lib.escapeShellArg settings.username} "
-        + "--cgroup-prefix /gjallar-ai-session@";
+        + "--cgroup-prefix /ai-session@";
 
       User = "gjallar-ai-model";
-      Group = "gjallar-ai-model";
+      Group = "ai-model-access";
 
       RuntimeDirectory = "gjallar-ai-model";
       RuntimeDirectoryMode = "0750";
@@ -1695,36 +1578,23 @@ lib.mkIf (if settings ? aiEnable then settings.aiEnable else false) {
     };
   };
 
-  systemd.services."gjallar-ai-session@" = {
-    description = "GjallarOS controlled AI session for %i";
+  systemd.services."ai-session@" = {
+    description = "Controlled AI workspace session for %i";
 
     after = [
-      "gjallar-ai-model.service"
+      "ai-model-broker.service"
       "ollama-model-provision.service"
     ];
 
     requires = [
-      "gjallar-ai-model.service"
+      "ai-model-broker.service"
       "ollama.service"
     ];
 
     serviceConfig = {
 
-      # Always tear down the complete local AI backend when this
-      # session ends, whether the TUI exits normally or crashes.
-      #
-      # '-' ignores cleanup failure.
-      # '+' executes the cleanup helper with full service-manager
-      # privileges rather than the sandboxed desktop user identity.
       ExecStopPost = "-+${gjallarAiBackendStop}";
 
-      # gjallarCode protected trust root
-      #
-      # The AI may READ its implementation but cannot modify,
-      # rename, replace, or delete its own runtime/security core.
-      #
-      # This is enforced by the systemd mount namespace, not by
-      # model instructions.
       ReadOnlyPaths = [
         "/workspace/system/apps/ollama.nix"
         "/workspace/user/apps/opencode.nix"
@@ -1735,9 +1605,6 @@ lib.mkIf (if settings ? aiEnable then settings.aiEnable else false) {
         "/workspace/flake.lock"
       ];
 
-      # AI may never reach the compositor/user runtime.
-      # Clipboard writes go only through the authenticated
-      # broker under /run/gjallar-ai-clipboard.
       InaccessiblePaths = [
         "/run/user"
       ];
@@ -1751,8 +1618,6 @@ lib.mkIf (if settings ? aiEnable then settings.aiEnable else false) {
 
       RuntimeDirectoryMode = "0755";
 
-      # Persist only OpenCode application state/cache. The user's real home
-      # remains hidden by the sandbox.
       StateDirectory = "gjallar-ai";
       StateDirectoryMode = "0700";
 
@@ -1766,16 +1631,12 @@ lib.mkIf (if settings ? aiEnable then settings.aiEnable else false) {
       PrivateDevices = true;
       PrivateMounts = true;
 
-      # Decode the systemd-escaped absolute instance path and expose only
-      # that Git workspace inside the service namespace.
       BindPaths = [
         "%f:/workspace"
       ];
 
       WorkingDirectory = "/workspace";
 
-      # Hide all real home directories after systemd has established the
-      # explicit workspace bind.
       TemporaryFileSystem = [
         "/home:mode=0755,nosuid,nodev"
       ];
@@ -1808,7 +1669,7 @@ lib.mkIf (if settings ? aiEnable then settings.aiEnable else false) {
   };
 
   systemd.services.ollama-model-provision = {
-    description = "Provision the resolved GjallarOS Ollama model";
+    description = "Provision the resolved Ollama model";
     after = [ "ollama.service" ];
     requires = [ "ollama.service" ];
     path = [
@@ -1855,15 +1716,16 @@ lib.mkIf (if settings ? aiEnable then settings.aiEnable else false) {
     '';
   };
 
-  systemd.services.gjallar-ai-research = {
-    description = "GjallarOS read-only research broker";
+  systemd.services.ai-research-broker = {
+    description = "Read-only AI research broker";
     wantedBy = [ "multi-user.target" ];
     serviceConfig = {
       ExecStart = "${
         pkgs.gjallarctl or (pkgs.callPackage ../../pkgs/gjallarctl { })
       }/bin/gjallarctl ai research-serve";
       RuntimeDirectory = "gjallar-ai";
-      RuntimeDirectoryMode = "0755";
+      RuntimeDirectoryMode = "0700";
+      User = settings.username;
       NoNewPrivileges = true;
       PrivateTmp = true;
       ProtectSystem = "strict";
@@ -1896,8 +1758,6 @@ lib.mkIf (if settings ? aiEnable then settings.aiEnable else false) {
     user = "ollama";
     group = "ollama";
 
-    # Keep the model API local; expose it deliberately through a reverse
-    # proxy or VPN if remote access is ever required.
     openFirewall = false;
     host = "127.0.0.1";
     port = 11434;
@@ -1908,11 +1768,6 @@ lib.mkIf (if settings ? aiEnable then settings.aiEnable else false) {
   };
 
   systemd.services.ollama.serviceConfig = {
-    # Ollama must have a stable kernel UID because the local API firewall
-    # identifies the originating socket by skuid.
-    #
-    # Current NixOS Ollama modules can still force DynamicUser=true even
-    # when a static services.ollama.user is configured.
     DynamicUser = lib.mkForce false;
 
     NoNewPrivileges = true;
@@ -1931,18 +1786,6 @@ lib.mkIf (if settings ? aiEnable then settings.aiEnable else false) {
     ];
   };
 
-  # gjallarCode fingerprint-authenticated start
-  #
-  # Only this fixed helper is authorized.
-  #
-  # sudo PAM provides:
-  #
-  #   fingerprint (when enrolled)
-  #       ↓ failure/timeout
-  #   Unix password
-  #
-  # This does NOT add the user to wheel and does NOT grant general
-  # sudo access.
   security.sudo.extraRules = lib.mkAfter [
     {
       users = [ settings.username ];

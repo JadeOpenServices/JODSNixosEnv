@@ -51,9 +51,8 @@ func testHardwarePath(t *testing.T) (string, string) {
 	root := t.TempDir()
 	target := filepath.Join(
 		root,
-		"profiles",
-		"laptop",
-		"hardware-configuration.nix",
+		"generated",
+		"hardware.nix",
 	)
 
 	if err := os.MkdirAll(filepath.Dir(target), 0755); err != nil {
@@ -285,7 +284,7 @@ func TestReconcileSkipMissingFailsBeforeGeneration(t *testing.T) {
 	)
 
 	if err == nil {
-		t.Fatal("skip-hardware accepted missing selected hardware configuration")
+		t.Fatal("skip-hardware accepted missing generated hardware configuration")
 	}
 	if !strings.Contains(err.Error(), "refusing to continue to flake validation") {
 		t.Fatalf("unexpected error: %v", err)

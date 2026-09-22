@@ -35,7 +35,7 @@ Microsoft account despite not having an internet connection.
 qemu command line:
 
 ```
--drive file=~/Drives/ssd1/nemu/virtio-win-0.1.271.iso,media=cdrom
+-drive file=/path/to/virtio-win.iso,media=cdrom
 
  -chardev socket,path=/tmp/qga.sock,server=on,wait=off,id=qga0 \
  -device virtio-serial \

@@ -10,8 +10,7 @@ import (
 )
 
 type Hardware struct {
-	FormFactor   string
-	LaptopVendor string
+	FormFactor string
 
 	SysVendor      string
 	ProductName    string
@@ -24,7 +23,7 @@ type Hardware struct {
 	PenTablet         bool
 	OrientationSensor bool
 }
-type Options struct{ Profiles, Shells, Editors, Browsers, Themes []string }
+type Options struct{ Shells, Editors, Browsers, Themes []string }
 
 func DetectHardware(sysRoot string) Hardware {
 	h := Hardware{
@@ -39,25 +38,12 @@ func DetectHardware(sysRoot string) Hardware {
 	batteries, _ := filepath.Glob(filepath.Join(sysRoot, "class", "power_supply", "BAT*"))
 	if len(batteries) > 0 {
 		h.FormFactor = "laptop"
-		h.LaptopVendor = "generic"
 	} else if data, err := os.ReadFile(filepath.Join(sysRoot, "class", "dmi", "id", "chassis_type")); err == nil {
 		switch strings.TrimSpace(string(data)) {
 		case "8", "9", "10", "11", "14", "30", "31", "32":
 			h.FormFactor = "laptop"
-			h.LaptopVendor = "generic"
 		case "3", "4", "5", "6", "7", "13", "15", "16", "17", "18", "19", "20", "21", "22", "23", "24", "25", "26", "27", "28", "29", "33", "34", "35", "36":
 			h.FormFactor = "desktop"
-		}
-	}
-
-	if h.ProductName != "" {
-		product := strings.ToLower(h.ProductName)
-		if strings.Contains(product, "thinkpad") {
-			h.FormFactor = "laptop"
-			h.LaptopVendor = "thinkpad"
-		} else if strings.Contains(product, "framework") {
-			h.FormFactor = "laptop"
-			h.LaptopVendor = "framework"
 		}
 	}
 
@@ -137,24 +123,7 @@ func readInput(device string, parts ...string) string {
 
 // Linux exposes input capability bitsets as hexadecimal, most-significant
 // word first. Reading from the right keeps this independent of word size.
-func Discover(repo string, preset bool, hardware Hardware) (Options, error) {
-	profiles, err := directories(filepath.Join(repo, "profiles"))
-	if err != nil {
-		return Options{}, err
-	}
-	if !preset {
-		filtered := profiles[:0]
-		for _, v := range profiles {
-			if hardware.FormFactor == "desktop" {
-				if v == "desktop" {
-					filtered = append(filtered, v)
-				}
-			} else if v != "desktop" && v != "work" && v != "work-user" {
-				filtered = append(filtered, v)
-			}
-		}
-		profiles = filtered
-	}
+func Discover(repo string) (Options, error) {
 	shells, err := nixFiles(filepath.Join(repo, "user", "shells"))
 	if err != nil {
 		return Options{}, err
@@ -171,7 +140,12 @@ func Discover(repo string, preset bool, hardware Hardware) (Options, error) {
 	if err != nil {
 		return Options{}, err
 	}
-	return Options{profiles, shells, editors, browsers, themes}, nil
+	return Options{
+		Shells:   shells,
+		Editors:  editors,
+		Browsers: browsers,
+		Themes:   themes,
+	}, nil
 }
 
 func directories(path string) ([]string, error) {

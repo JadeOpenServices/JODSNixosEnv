@@ -9,6 +9,7 @@
 let
   shell = settings.themeDetails.shell or "noctalia";
   gjallarctl = pkgs.callPackage ../../../pkgs/gjallarctl { };
+  moniquePackage = pkgs.callPackage ../../../pkgs/monique/nix/package.nix { };
   hyprlandSession = pkgs.writeShellScriptBin "gjallar-hyprland-session" ''
         state_dir="''${XDG_STATE_HOME:-$HOME/.local/state}/hyprland"
         noctalia_state_dir="''${XDG_STATE_HOME:-$HOME/.local/state}/noctalia"
@@ -16,9 +17,6 @@ let
         mkdir -p "$state_dir"
         mkdir -p "$noctalia_state_dir" "$hypr_config_dir"
 
-        # Hyprland treats a missing source target as a configuration error. These
-        # fallbacks are only created when absent; Noctalia/nwg-displays retain full
-        # ownership once they write their generated files.
         if [ ! -e "$noctalia_state_dir/hyprland-colors.conf" ]; then
           cat >"$noctalia_state_dir/hyprland-colors.conf" <<'EOF'
     $primary = rgb(7aa2f7)
@@ -65,14 +63,12 @@ in
 {
   environment.systemPackages = [ hyprlandSession ];
 
-  # Make the wrapper a display-manager session. Otherwise greeters can miss it
-  # and silently launch upstream's bare Hyprland session.
   services.displayManager.sessionPackages = [ hyprlandSessionEntry ];
 
-  systemd.user.services.gjallar-hyprland-rotation =
+  systemd.user.services.display-input-rotation =
     lib.mkIf (settings.orientationSensorEnable or false)
       {
-        description = "GjallarOS automatic display and input rotation";
+        description = "Automatic display and input rotation";
 
         wantedBy = [ "graphical-session.target" ];
         after = [ "graphical-session.target" ];
@@ -90,11 +86,15 @@ in
   ++ lib.optional (shell == "noctalia") ../shells/noctalia.nix;
 
   programs = {
+    monique = {
+      enable = true;
+      package = moniquePackage;
+      enablePolkit = false;
+    };
+
     hyprland = {
       enable = true;
       xwayland.enable = true;
-      # package = inputs.hyprland.packages.${pkgs.system}.default;
-      # portalPackage = inputs.hyprland.packages.${pkgs.system}.xdg-desktop-portal-hyprland;
       package = pkgs.hyprland;
       portalPackage = pkgs.xdg-desktop-portal-hyprland;
     };
@@ -108,8 +108,14 @@ in
   xdg.portal = {
     enable = true;
     xdgOpenUsePortal = true;
-    config = {
-      hyprland.default = [ "hyprland" ];
+    extraPortals = [ pkgs.xdg-desktop-portal-gtk ];
+    config.hyprland = {
+      default = [
+        "hyprland"
+        "gtk"
+      ];
+      "org.freedesktop.impl.portal.AppChooser" = [ "gtk" ];
+      "org.freedesktop.impl.portal.FileChooser" = [ "gtk" ];
     };
   };
 }
