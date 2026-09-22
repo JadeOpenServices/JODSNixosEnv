@@ -130,12 +130,14 @@ func Audit(input AuditInput) (AuditResult, error) {
 					Message:   "expected internal USB device is present but has no accepted machine-local identity",
 				})
 			default:
-				findings = append(findings, Finding{
-					State:   AuditReview,
-					Code:    CodeInternalAmbiguous,
-					Role:    expected.Role,
-					Message: "multiple USB devices match the same ODDC internal-device expectation",
-				})
+				for _, i := range candidates {
+					consumed[i] = true
+					findings = append(findings, Finding{
+						State: AuditReview, Code: CodeInternalAmbiguous, Role: expected.Role,
+						RuntimeID: input.Observed[i].RuntimeID,
+						Message:   "multiple USB devices match the same ODDC internal-device expectation",
+					})
+				}
 			}
 
 			continue
@@ -171,16 +173,17 @@ func Audit(input AuditInput) (AuditResult, error) {
 		if len(candidates) > 0 {
 			for _, i := range candidates {
 				consumed[i] = true
+				finding := Finding{
+					State: AuditBlock, Code: CodeInternalChanged, Role: expected.Role,
+					TrustedID: trusted.ID, RuntimeID: input.Observed[i].RuntimeID,
+					Message: "internal USB device matches the expected role but its accepted physical identity changed",
+				}
+				if len(candidates) > 1 {
+					finding.Code = CodeInternalAmbiguous
+					finding.Message = "multiple changed USB identities match the accepted ODDC role; resolve ambiguity before replacement"
+				}
+				findings = append(findings, finding)
 			}
-
-			findings = append(findings, Finding{
-				State:     AuditBlock,
-				Code:      CodeInternalChanged,
-				Role:      expected.Role,
-				TrustedID: trusted.ID,
-				RuntimeID: input.Observed[candidates[0]].RuntimeID,
-				Message:   "internal USB device matches the expected role but its accepted physical identity changed",
-			})
 
 			continue
 		}

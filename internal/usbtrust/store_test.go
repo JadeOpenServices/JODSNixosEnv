@@ -169,6 +169,7 @@ func TestCanonicalOrderingIsStable(t *testing.T) {
 
 	second := doc.Devices[0]
 	second.ID = "external:test"
+	second.Role = ""
 	second.Class = ClassExternal
 	second.ExpectedByODDC = false
 	second.Portable = true

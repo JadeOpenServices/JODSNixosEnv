@@ -21,6 +21,9 @@ import (
 //
 //	caller must cryptographically verify them before use.
 func SignedStatePresent(dir string) (bool, error) {
+	if present, err := pathPresent(filepath.Join(dir, EnvelopeFile)); err != nil || present {
+		return present, err
+	}
 	trustPath := filepath.Join(
 		dir,
 		TrustFile,

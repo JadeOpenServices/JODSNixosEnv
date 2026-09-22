@@ -33,7 +33,7 @@ in
     vhostNetGroup = mkOption {
       type = types.nullOr types.str;
       default = null;
-      example = "vhost";
+      example = "nemu-vhost";
       description = ''
         Group for /dev/vhost-net. Will be created and udev rule will be added.
       '';
@@ -42,20 +42,12 @@ in
     macvtapGroup = mkOption {
       type = types.nullOr types.str;
       default = null;
-      example = "vhost";
+      example = "nemu-vhost";
       description = ''
         Group for /dev/tapN. Will be created and udev rule will be added.
       '';
     };
 
-    usbGroup = mkOption {
-      type = types.nullOr types.str;
-      default = null;
-      example = "usb";
-      description = ''
-        Group for USB devices. Will be created and udev rule will be added.
-      '';
-    };
 
     users = mkOption {
       default = { };
@@ -75,8 +67,7 @@ in
       };
       description = ''
         Users which will be able to run nemu.
-        They will be added to vhostNetGroup, macvtapGroup,
-        usbGroup and kvm group.
+        They will be added to vhostNetGroup, macvtapGroup and kvm group.
       '';
       type = types.attrsOf (
         types.submodule {
@@ -121,7 +112,6 @@ in
   config = mkIf cfg.enable {
     environment.systemPackages = with pkgs; [ cfg.package ];
 
-    # Set capabilities
     security.wrappers.nemu = {
       owner = "root";
       group = "root";
@@ -129,19 +119,14 @@ in
       capabilities = "cap_net_admin+ep";
     };
 
-    # Add vhost-net, macvtap and usb groups
     users.groups =
       optionalAttrs (isString cfg.vhostNetGroup) {
         "${cfg.vhostNetGroup}" = { };
       }
       // optionalAttrs (isString cfg.macvtapGroup) {
         "${cfg.macvtapGroup}" = { };
-      }
-      // optionalAttrs (isString cfg.usbGroup) {
-        "${cfg.usbGroup}" = { };
       };
 
-    # Add nemu users to kvm, vhost-net, macvtap and usb groups
     users.users = mapAttrs' (
       user: _:
       nameValuePair "${user}" {
@@ -149,43 +134,34 @@ in
           [ "kvm" ]
           ++ optional (isString cfg.vhostNetGroup) cfg.vhostNetGroup
           ++ optional (isString cfg.macvtapGroup) cfg.macvtapGroup
-          ++ optional (isString cfg.usbGroup) cfg.usbGroup
         );
       }
     ) cfg.users;
 
-    # Add udev rules for vhost-net, macvtap and usb groups
     services.udev.extraRules =
       optionalString (isString cfg.vhostNetGroup) ''
         KERNEL=="vhost-net", MODE="0660", GROUP="${cfg.vhostNetGroup}"
       ''
       + optionalString (isString cfg.macvtapGroup) ''
         SUBSYSTEM=="macvtap", MODE="0660", GROUP="${cfg.macvtapGroup}"
-      ''
-      + optionalString (isString cfg.usbGroup) ''
-        SUBSYSTEM=="usb", MODE="0664", GROUP="${cfg.usbGroup}"
       '';
 
-    # Add systemd nemu.target
     systemd.targets.nemu = {
       description = "nemu autostart target";
       wantedBy = [ "multi-user.target" ];
     };
 
-    # Add systemd nemu-veth.target
     systemd.targets.nemu-veth = {
       description = "nemu veth creation target";
       before = [ "network-pre.target" ];
       wantedBy = [ "nemu.target" ];
     };
 
-    # Add systemd nemu-vm.target
     systemd.targets.nemu-vm = {
       description = "nemu autostart target";
       wantedBy = [ "nemu.target" ];
     };
 
-    # Add nemu-daemon, nemu-veth and nemu-vm systemd services for users
     systemd.services =
       mapAttrs' (
         user: _:

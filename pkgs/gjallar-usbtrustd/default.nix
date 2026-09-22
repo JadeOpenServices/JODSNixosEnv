@@ -7,7 +7,16 @@ buildGoModule {
   pname = "gjallar-usbtrustd";
   version = "0.1.0";
 
-  src = ../..;
+  src = lib.fileset.toSource {
+    root = ../..;
+    fileset = lib.fileset.unions [
+      ../../go.mod
+      ../../cmd/gjallar-usbtrustd
+      ../../internal/usbtrust
+      ../../pkg/oddc
+      ../../oddc
+    ];
+  };
 
   vendorHash = null;
 

@@ -16,7 +16,6 @@ import (
 
 	"github.com/bakanura/gjallarOS/internal/ai/profile"
 	"github.com/bakanura/gjallarOS/internal/hardware/graphics"
-	"github.com/bakanura/gjallarOS/internal/hardware/network"
 	"github.com/bakanura/gjallarOS/internal/input/xkb"
 	"github.com/bakanura/gjallarOS/internal/installer/background"
 	"github.com/bakanura/gjallarOS/internal/installer/baremetalinstall"
@@ -53,19 +52,18 @@ type options struct {
 	recoverySigningPublicKey                                 string
 }
 type state struct {
-	user                         config.User
-	render                       nixrender.Settings
-	preset, existing             bool
-	control                      string
-	touchscreen                  bool
-	penTablet                    bool
-	orientationSensor            bool
-	graphicsDriverBranchOverride string
-	recoveryDisk                 string
-	recoveryPartition            string
-	recoverySigningKey           string
-	recoverySigningPublicKey     string
-	secureBootFirmware           oddc.EffectiveSecureBootFirmwarePolicy
+	user                     config.User
+	render                   nixrender.Settings
+	preset, existing         bool
+	control                  string
+	touchscreen              bool
+	penTablet                bool
+	orientationSensor        bool
+	recoveryDisk             string
+	recoveryPartition        string
+	recoverySigningKey       string
+	recoverySigningPublicKey string
+	secureBootFirmware       oddc.EffectiveSecureBootFirmwarePolicy
 }
 
 const (
@@ -327,11 +325,9 @@ func Run(ctx context.Context, args []string, in io.Reader, out, errOut io.Writer
 		}
 	}
 
-	effectiveGraphics, err := oddc.ResolveGraphicsPolicy(resolvedDevice)
-	if err != nil {
+	if _, err := oddc.ResolveGraphicsPolicy(resolvedDevice); err != nil {
 		return fail(errOut, err)
 	}
-	s.graphicsDriverBranchOverride = effectiveGraphics.Policy.DriverBranch
 
 	fmt.Fprintf(out, "ODDC canonical model: %s\n", resolvedDevice.ModelID)
 
@@ -989,54 +985,6 @@ func Run(ctx context.Context, args []string, in io.Reader, out, errOut io.Writer
 				errors.New("refusing destructive fresh-disk provisioning; GjallarOS installation must preserve the existing system layout"),
 			)
 
-			targetDisk, err := selectFreshTargetDisk(
-				ctx,
-				ui,
-				out,
-				opt.targetDisk,
-			)
-			if err != nil {
-				return fail(errOut, err)
-			}
-
-			if s.recoveryDisk != "" || s.recoveryPartition != "" {
-				return fail(
-					errOut,
-					errors.New(
-						"canonical fresh installation owns recovery storage on --target-disk; "+
-							"do not combine it with --recovery-disk or --recovery-partition",
-					),
-				)
-			}
-
-			fresh, err := runFreshBareMetal(
-				ctx,
-				ui,
-				root,
-				targetDisk,
-				s.user.Hostname,
-				hardware,
-				resolvedDevice,
-				opt.recovery,
-				s.user.RecoveryEnable &&
-					s.user.RecoveryPartitionEnable,
-				[]string{
-					s.render.RootPasswordFile,
-				},
-				out,
-			)
-			if err != nil {
-				return fail(errOut, err)
-			}
-
-			if fresh.RecoveryPartition != "" {
-				s.recoveryPartition = fresh.RecoveryPartition
-				fmt.Fprintf(
-					out,
-					"Canonical recovery storage prepared at %s; recovery identity/release provisioning is handled by the appropriate local or JODS trust flow.\n",
-					fresh.RecoveryPartition,
-				)
-			}
 		}
 	}
 
@@ -1610,7 +1558,7 @@ func collectInteractive(ctx context.Context, ui prompt.UI, root string, hardware
 	if err != nil {
 		return err
 	}
-	u.USBGuardEnable, err = ui.Confirm(ctx, "Enable USBGuard? New devices will be blocked until permitted.", false)
+	u.USBGuardEnable, err = ui.Confirm(ctx, "Enable USB trust review in audit mode? Blocking requires separate activation after device enrollment.", false)
 	if err != nil {
 		return err
 	}
@@ -2254,13 +2202,6 @@ func detectAndRenderState(
 	if err != nil {
 		return err
 	}
-	if g.Vendor == "nvidia" && strings.TrimSpace(s.graphicsDriverBranchOverride) != "" {
-		g.DriverBranch = s.graphicsDriverBranchOverride
-	}
-	wifi, err := network.DetectWiFiDriver(ctx)
-	if err != nil {
-		return err
-	}
 	ai := profile.Result{Model: "qwen3-coder:30b", ContextTokens: 8192}
 	if u.AIEnable {
 		ai, err = profile.Detect(ctx, func() string {
@@ -2286,20 +2227,8 @@ func detectAndRenderState(
 	s.render.OrientationSensorEnable = s.orientationSensor
 	s.render.RootPasswordFile = rootPasswordFile
 	s.render.ODDCModel = resolvedDevice.ModelID
-	s.render.DeviceSysVendor = hardware.SysVendor
-	s.render.DeviceProductName = hardware.ProductName
-	s.render.DeviceProductVersion = hardware.ProductVersion
-	s.render.DeviceBoardVendor = hardware.BoardVendor
-	s.render.DeviceBoardName = hardware.BoardName
-	s.render.DeviceBoardVersion = hardware.BoardVersion
-	s.render.GraphicsVendor = g.Vendor
-	s.render.GraphicsDeviceID = g.DeviceID
-	s.render.GraphicsDriverBranch = g.DriverBranch
-	s.render.GraphicsType = g.Type
-	s.render.GraphicsCompute = g.Compute
 	s.render.GraphicsBusID = g.BusID
 	s.render.GraphicsIntegratedBusID = g.IntegratedBusID
-	s.render.WiFiDriver = wifi
 	s.render.AIModel = ai.Model
 	s.render.AIAccelerationProfile = ai.AccelerationProfile
 	s.render.AIContextTokens = ai.ContextTokens

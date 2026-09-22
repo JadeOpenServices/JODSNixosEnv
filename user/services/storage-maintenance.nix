@@ -87,21 +87,6 @@ let
 
 in
 {
-  # Home Manager generations are GC roots and therefore need explicit
-  # retention just like system generations.
-  nix.gc = {
-    automatic = true;
-    dates = "weekly";
-    persistent = true;
-    randomizedDelaySec = "2h";
-    options = "--delete-older-than 14d";
-  };
-
-  # Human-visible persistent container data lives here.
-  #
-  # GjallarOS-managed containers that need persistent user-accessible data
-  # should bind mount subdirectories of this location rather than exposing
-  # Podman's internal graph storage.
   home.sessionVariables = lib.mkIf settings.containersEnable {
     GJALLAR_CONTAINER_DATA_HOME = containerDataHome;
   };
@@ -118,13 +103,10 @@ in
         containerStorageInfo
       ];
 
-  # Rootless Podman storage belongs to the user. Automatically remove only
-  # old images unused by every container. Containers, named volumes and
-  # human-owned persistent data are deliberately preserved.
-  systemd.user.services.gjallar-podman-storage-maintenance =
+  systemd.user.services.podman-storage-maintenance =
     lib.mkIf settings.containersEnable
       {
-        Unit.Description = "GjallarOS rootless Podman storage maintenance";
+        Unit.Description = "Rootless Podman storage maintenance";
 
         Service = {
           Type = "oneshot";
@@ -134,10 +116,10 @@ in
         };
       };
 
-  systemd.user.timers.gjallar-podman-storage-maintenance =
+  systemd.user.timers.podman-storage-maintenance =
     lib.mkIf settings.containersEnable
       {
-        Unit.Description = "GjallarOS rootless Podman storage maintenance timer";
+        Unit.Description = "Rootless Podman storage maintenance timer";
 
         Timer = {
           OnCalendar = "weekly";

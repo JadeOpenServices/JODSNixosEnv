@@ -22,7 +22,7 @@ const (
 )
 
 var persistentHandlePattern = regexp.MustCompile(
-	`^0x[0-9a-fA-F]{8}$`,
+	`^0x810[0-9a-fA-F]{5}$`,
 )
 
 type publicKeyReader func(
@@ -39,7 +39,7 @@ type TPMSigner struct {
 func NewTPMSigner(handle string) (*TPMSigner, error) {
 	if !persistentHandlePattern.MatchString(handle) {
 		return nil, fmt.Errorf(
-			"invalid TPM persistent handle %q",
+			"invalid USB trust TPM handle %q; require reserved owner handle 0x81000000..0x810fffff",
 			handle,
 		)
 	}
@@ -47,6 +47,30 @@ func NewTPMSigner(handle string) (*TPMSigner, error) {
 	return &TPMSigner{
 		Handle: handle,
 	}, nil
+}
+
+// ValidateSigner proves that the configured signing key is usable for the
+// exact sign/verify operation required by persistent USB trust. It is safe to
+// run at daemon startup and after provisioning; it does not mutate trust state.
+func ValidateSigner(
+	ctx context.Context,
+	signer Signer,
+) error {
+	if signer == nil {
+		return fmt.Errorf("USB trust signer is not configured")
+	}
+
+	payload := []byte("USB trust signing-key self-test")
+	signature, err := signer.Sign(ctx, payload)
+	if err != nil {
+		return fmt.Errorf("USB trust signing self-test failed: %w", err)
+	}
+
+	if err := signer.Verify(ctx, payload, signature); err != nil {
+		return fmt.Errorf("USB trust verification self-test failed: %w", err)
+	}
+
+	return nil
 }
 
 func (s *TPMSigner) Sign(

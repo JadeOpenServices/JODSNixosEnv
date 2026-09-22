@@ -17,10 +17,18 @@ let
 
   powerProfilesDaemonEnabled =
     laptop.data.policy.power.powerProfilesDaemon.enable or false;
+
+  batteryProtection = laptop.data.policy.power.batteryProtection;
+  chargeThresholdPolicy = laptop.data.policy.power.chargeThresholds;
 in
 assert batteryAvailable;
 assert !chargeThresholdsSupported;
 assert powerProfilesDaemonEnabled;
+assert batteryProtection.lowWarningPercent == 10;
+assert batteryProtection.criticalWarningPercent == 5;
+assert batteryProtection.shutdownPercent == 2;
+assert chargeThresholdPolicy.startPercent == 75;
+assert chargeThresholdPolicy.endPercent == 95;
 pkgs.runCommand "gjallar-framework-battery-policy-check" { } ''
   touch "$out"
 ''

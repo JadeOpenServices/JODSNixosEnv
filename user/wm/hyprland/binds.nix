@@ -25,16 +25,13 @@ let
 
     terminal = "${lib.getExe gjallarRun} ${lib.getExe pkgs.ghostty}";
 
-    # Resolve selected applications from nixpkgs
     editor = "${lib.getExe gjallarRun} ${lib.getExe pkgs.${settings.preferredEditor}}";
     browser = "${lib.getExe gjallarRun} ${lib.getExe pkgs.${settings.preferredBrowser}}";
 
     fileManager = lib.getExe gjallarFileManager;
 
-    # GjallarOS-AI
     gjallarAI = "gjallar-ai";
 
-    # Applications
     libreoffice = "${lib.getExe gjallarRun} ${lib.getExe pkgs.libreoffice}";
     teams = "${lib.getExe gjallarRun} gjallar-teams";
 

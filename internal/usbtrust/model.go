@@ -92,6 +92,7 @@ func (d Document) Validate() error {
 	}
 
 	seen := make(map[string]struct{}, len(d.Devices))
+	internalRoles := make(map[string]struct{})
 
 	for _, device := range d.Devices {
 		if strings.TrimSpace(device.ID) == "" {
@@ -104,13 +105,31 @@ func (d Document) Validate() error {
 		seen[device.ID] = struct{}{}
 
 		switch device.Class {
-		case ClassInternal, ClassExternal:
+		case ClassInternal:
+			role := strings.TrimSpace(device.Role)
+			if role == "" {
+				return fmt.Errorf("internal device %q has no ODDC role", device.ID)
+			}
+			if _, exists := internalRoles[role]; exists {
+				return fmt.Errorf("duplicate internal USB trust role %q", role)
+			}
+			internalRoles[role] = struct{}{}
+		case ClassExternal:
+			if strings.TrimSpace(device.Role) != "" || device.ExpectedByODDC {
+				return fmt.Errorf("external device %q cannot claim an ODDC role", device.ID)
+			}
 		default:
 			return fmt.Errorf(
 				"device %q has invalid class %q",
 				device.ID,
 				device.Class,
 			)
+		}
+
+		switch device.Strength {
+		case StrengthDescriptor, StrengthSerialDescriptor, StrengthSerialDescriptorTopology, StrengthHardwareAttested:
+		default:
+			return fmt.Errorf("device %q has invalid identity strength %q", device.ID, device.Strength)
 		}
 
 		if strings.TrimSpace(device.Identity.VIDPID) == "" {

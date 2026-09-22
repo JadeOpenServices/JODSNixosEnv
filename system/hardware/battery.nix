@@ -17,6 +17,33 @@ let
     "chargeThresholds"
   ] false config.oddc.resolved;
 
+  chargeThresholdPolicy = lib.attrByPath [
+    "class"
+    "policy"
+    "power"
+    "chargeThresholds"
+  ] { } config.oddc.resolved;
+
+  chargeStartPercent = chargeThresholdPolicy.startPercent or null;
+  chargeEndPercent = chargeThresholdPolicy.endPercent or null;
+  chargeStartValue = if chargeStartPercent == null then 0 else chargeStartPercent;
+  chargeEndValue = if chargeEndPercent == null then 100 else chargeEndPercent;
+
+  batteryProtection = lib.attrByPath [
+    "class"
+    "policy"
+    "power"
+    "batteryProtection"
+  ] { } config.oddc.resolved;
+
+  lowWarningPercent = batteryProtection.lowWarningPercent or null;
+  criticalWarningPercent = batteryProtection.criticalWarningPercent or null;
+  shutdownPercent = batteryProtection.shutdownPercent or null;
+
+  lowWarningValue = if lowWarningPercent == null then 10 else lowWarningPercent;
+  criticalWarningValue = if criticalWarningPercent == null then 5 else criticalWarningPercent;
+  shutdownValue = if shutdownPercent == null then 2 else shutdownPercent;
+
   batteryCountdown = pkgs.writeShellApplication {
     name = "gjallar-battery-countdown";
     runtimeInputs = [ pkgs.zenity ];
@@ -39,12 +66,12 @@ let
 
           [ "$found" -eq 1 ] || return 0
           [ "$status" = Discharging ] || return 0
-          [ "$capacity" -gt 2 ] || return 0
-          [ "$capacity" -le 5 ] || return 0
+          [ "$capacity" -gt ${toString shutdownValue} ] || return 0
+          [ "$capacity" -le ${toString criticalWarningValue} ] || return 0
 
-          progress=$(( (capacity - 2) * 100 / 3 ))
+          progress=$(( (capacity - ${toString shutdownValue}) * 100 / (${toString criticalWarningValue} - ${toString shutdownValue}) ))
           printf '%s\n' "$progress"
-          printf '# Battery: %s%%\nEmergency shutdown at 2%%. Connect power now.\n' "$capacity"
+          printf '# Battery: %s%%\nEmergency shutdown at ${toString shutdownValue}%%. Connect power now.\n' "$capacity"
           sleep 10
         done
       }
@@ -79,7 +106,7 @@ let
         runtime="/run/user/$(id -u ${lib.escapeShellArg settings.username})"
         [ -S "$runtime/bus" ] || return 0
 
-        unit="gjallar-battery-$level-$(date +%s%N)"
+        unit="battery-notification-$level-$(date +%s%N)"
         runuser -u ${lib.escapeShellArg settings.username} -- env \
           XDG_RUNTIME_DIR="$runtime" \
           DBUS_SESSION_BUS_ADDRESS="unix:path=$runtime/bus" \
@@ -99,7 +126,7 @@ let
           XDG_RUNTIME_DIR="$runtime" \
           DBUS_SESSION_BUS_ADDRESS="unix:path=$runtime/bus" \
           systemd-run --user --quiet --collect \
-            --unit=gjallar-battery-countdown \
+            --unit=battery-shutdown-countdown \
             ${batteryCountdown}/bin/gjallar-battery-countdown \
             >/dev/null 2>&1 || true
       }
@@ -124,22 +151,22 @@ let
           continue
         fi
 
-        if [ "$capacity" -le 2 ]; then
+        if [ "$capacity" -le ${toString shutdownValue} ]; then
           plymouth --show-splash >/dev/null 2>&1 || true
           plymouth change-mode --shutdown >/dev/null 2>&1 || true
           systemctl poweroff
           exit 0
         fi
 
-        if [ "$capacity" -le 5 ] && [ "$warned5" -eq 0 ]; then
+        if [ "$capacity" -le ${toString criticalWarningValue} ] && [ "$warned5" -eq 0 ]; then
           warned5=1
           launch_warning critical \
-            "<b>Critical battery: $capacity%</b>\n\nGjallarOS will shut down automatically at 2% to protect the battery. Connect power now."
+            "<b>Critical battery: $capacity%</b>\n\nGjallarOS will shut down automatically at ${toString shutdownValue}% to protect the battery. Connect power now."
           launch_countdown
-        elif [ "$capacity" -le 10 ] && [ "$warned10" -eq 0 ]; then
+        elif [ "$capacity" -le ${toString lowWarningValue} ] && [ "$warned10" -eq 0 ]; then
           warned10=1
           launch_warning low \
-            "<b>Low battery: $capacity%</b>\n\nConnect power soon. A shutdown countdown starts at 5%, with emergency shutdown at 2%."
+            "<b>Low battery: $capacity%</b>\n\nConnect power soon. A shutdown countdown starts at ${toString criticalWarningValue}%, with emergency shutdown at ${toString shutdownValue}%."
         fi
 
         sleep 20
@@ -150,6 +177,20 @@ in
 {
   config = lib.mkIf batteryAvailable (lib.mkMerge [
     {
+      assertions = [
+        {
+          assertion =
+            shutdownPercent != null
+            && criticalWarningPercent != null
+            && lowWarningPercent != null
+            && shutdownPercent >= 0
+            && shutdownPercent < criticalWarningPercent
+            && criticalWarningPercent < lowWarningPercent
+            && lowWarningPercent <= 100;
+          message = "ODDC battery-protection policy requires 0 <= shutdownPercent < criticalWarningPercent < lowWarningPercent <= 100.";
+        }
+      ];
+
       powerManagement.enable = true;
       services.upower.enable = true;
 
@@ -163,8 +204,8 @@ in
         HandleLidSwitchDocked = "ignore";
       };
 
-      systemd.services.gjallar-battery-guard = {
-        description = "GjallarOS low-battery warnings and emergency shutdown";
+      systemd.services.battery-guard = {
+        description = "Low-battery warnings and emergency shutdown";
         wantedBy = [ "multi-user.target" ];
         after = [
           "systemd-logind.service"
@@ -181,8 +222,19 @@ in
     }
 
     (lib.mkIf chargeThresholdsSupported {
-      systemd.services.gjallar-battery-charge-threshold = {
-        description = "Apply GjallarOS battery charge thresholds";
+      assertions = [
+        {
+          assertion =
+            chargeStartPercent != null
+            && chargeEndPercent != null
+            && chargeStartPercent >= 0
+            && chargeStartPercent < chargeEndPercent
+            && chargeEndPercent <= 100;
+          message = "ODDC charge-threshold policy requires 0 <= startPercent < endPercent <= 100.";
+        }
+      ];
+      systemd.services.battery-charge-thresholds = {
+        description = "Apply battery charge thresholds";
         wantedBy = [ "multi-user.target" ];
         after = [ "local-fs.target" ];
         serviceConfig.Type = "oneshot";
@@ -194,18 +246,18 @@ in
             [ -d "$battery" ] || continue
 
             if [ -w "$battery/charge_control_start_threshold" ]; then
-              printf '%s\n' 75 > "$battery/charge_control_start_threshold"
+              printf '%s\n' ${toString chargeStartValue} > "$battery/charge_control_start_threshold"
               start_applied=1
             elif [ -w "$battery/charge_start_threshold" ]; then
-              printf '%s\n' 75 > "$battery/charge_start_threshold"
+              printf '%s\n' ${toString chargeStartValue} > "$battery/charge_start_threshold"
               start_applied=1
             fi
 
             if [ -w "$battery/charge_control_end_threshold" ]; then
-              printf '%s\n' 95 > "$battery/charge_control_end_threshold"
+              printf '%s\n' ${toString chargeEndValue} > "$battery/charge_control_end_threshold"
               end_applied=1
             elif [ -w "$battery/charge_stop_threshold" ]; then
-              printf '%s\n' 95 > "$battery/charge_stop_threshold"
+              printf '%s\n' ${toString chargeEndValue} > "$battery/charge_stop_threshold"
               end_applied=1
             fi
           done

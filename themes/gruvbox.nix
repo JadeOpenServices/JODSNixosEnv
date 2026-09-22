@@ -4,7 +4,6 @@
   wallpaper = ../non-nix/wallpapers/nature-gruvbox.jpg;
   override = null;
 
-  # Override stylix theme of btop.
   btopTheme = "gruvbox_dark_v2";
   shell = "noctalia";
 

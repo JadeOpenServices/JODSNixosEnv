@@ -25,6 +25,8 @@ type User struct {
 	TouchpadWorkspaceSwipe    bool     `json:"touchpadWorkspaceSwipe"`
 	ClamshellEnable           bool     `json:"clamshellEnable"`
 	USBGuardEnable            bool     `json:"usbguardEnable"`
+	USBTrustEnforce           bool     `json:"usbTrustEnforce"`
+	USBTrustTPMHandle         string   `json:"usbTrustTpmHandle"`
 	PrintingEnable            bool     `json:"printingEnable"`
 	NetworkPrintingEnable     bool     `json:"networkPrintingEnable"`
 	Name                      string   `json:"name"`
@@ -120,6 +122,7 @@ func WriteAtomic(path string, user User) error {
 }
 
 var usernamePattern = regexp.MustCompile(`^[a-z_][a-z0-9_-]*$`)
+var usbTrustTPMHandlePattern = regexp.MustCompile(`^0x810[0-9a-fA-F]{5}$`)
 
 func Load(path string) (User, error) {
 	contents, err := os.ReadFile(path)
@@ -150,6 +153,17 @@ func Validate(user User) error {
 	}
 	if len(user.Editors) == 0 || len(user.Browsers) == 0 {
 		return fmt.Errorf("at least one editor and browser are required")
+	}
+	if user.USBTrustTPMHandle != "" && !usbTrustTPMHandlePattern.MatchString(user.USBTrustTPMHandle) {
+		return fmt.Errorf("invalid usbTrustTpmHandle: %q", user.USBTrustTPMHandle)
+	}
+	if user.USBTrustEnforce {
+		if !user.USBGuardEnable {
+			return fmt.Errorf("usbTrustEnforce requires usbguardEnable")
+		}
+		if user.USBTrustTPMHandle == "" {
+			return fmt.Errorf("usbTrustEnforce requires usbTrustTpmHandle")
+		}
 	}
 	if user.AIEnable {
 		if user.OverrideAISelection && strings.TrimSpace(user.OverrideModelWith) == "" {

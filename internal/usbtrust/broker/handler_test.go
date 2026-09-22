@@ -144,9 +144,10 @@ func TestHandlerRootMutationStillFailsClosed(t *testing.T) {
 		context.Background(),
 		0,
 		Request{
-			Action:    ActionTrustPermanent,
-			RuntimeID: "7",
-			Portable:  &portable,
+			Action:     ActionTrustPermanent,
+			RuntimeID:  "7",
+			Connection: "review-token",
+			Portable:   &portable,
 		},
 	)
 

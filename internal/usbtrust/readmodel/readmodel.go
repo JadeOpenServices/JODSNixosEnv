@@ -11,8 +11,8 @@ import (
 
 // ResolvedSource returns the already-resolved ODDC machine view.
 //
-// It must not make policy decisions. Later this can read the generated
-// machine-local ODDC capsule instead of resolving the full catalog.
+// It must not make policy decisions. NixOS supplies its fully resolved view;
+// standalone tools may resolve an explicitly selected catalog model.
 type ResolvedSource interface {
 	Resolved(context.Context) (map[string]any, error)
 }

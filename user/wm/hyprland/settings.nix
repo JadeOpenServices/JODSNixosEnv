@@ -26,11 +26,8 @@ let
         ;;
     esac
 
-    # Give the focused client enough time to consume the selection before
-    # destroying it. Keep this short enough to feel immediate.
     ${pkgs.coreutils}/bin/sleep 0.12
 
-    # Remove both the normal clipboard and primary selection.
     ${pkgs.wl-clipboard}/bin/wl-copy --clear >/dev/null 2>&1 || true
     ${pkgs.wl-clipboard}/bin/wl-copy --primary --clear >/dev/null 2>&1 || true
   '';
@@ -47,8 +44,6 @@ let
     else
       wallpaperDetails.center;
   sessionStart = pkgs.writeShellScript "gjallar-hyprland-session-start" ''
-    # Noctalia stores the wallpaper selected in its UI here.  Use the same
-    # image immediately, rather than briefly showing the Nix fallback first.
     selected_wallpaper=${lib.escapeShellArg startupWallpaper}
     noctalia_state="''${XDG_STATE_HOME:-$HOME/.local/state}/noctalia/settings.toml"
     if [ -r "$noctalia_state" ]; then
@@ -68,12 +63,9 @@ let
     fi
     ${pkgs.swaybg}/bin/swaybg --image "$selected_wallpaper" --mode fill &
     ${pkgs.coreutils}/bin/sleep 0.1
-    # Give NetworkManager a brief chance to establish an actual connection.
-    # This prevents Noctalia weather/plugin/API refreshes from racing early boot.
-    # The timeout is bounded: offline use must never prevent the shell starting.
     ${pkgs.networkmanager}/bin/nm-online -q -t 10 || true
 
-    exec ${lib.getExe inputs.noctalia.packages.${pkgs.stdenv.hostPlatform.system}.default}
+    exec ${lib.getExe config.programs.noctalia.package}
   '';
   virtualKeyboard = pkgs.writeShellApplication {
     name = "gjallar-virtual-keyboard";
@@ -201,15 +193,11 @@ in
         natural_scroll = true;
       };
 
-      # Hyprland handles pressure, tilt, erasers, and tablet-pad buttons
-      # natively. Pens use absolute positioning by default.
       tablet = lib.mkIf (settings.penTabletEnable or false) {
         relative_input = false;
       };
     };
 
-    # Hyprland 0.55 removed gestures.workspace_swipe. The replacement is the
-    # top-level gesture keyword; native libinput remains sufficient here.
     gesture = lib.optionals settings.touchpadWorkspaceSwipe [
       "3, horizontal, workspace"
     ];

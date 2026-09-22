@@ -70,6 +70,8 @@ func run(args []string, stdout, stderr io.Writer) int {
 	}
 
 	switch args[0] {
+	case "usb":
+		return runUSB(args[1:], stdout, stderr)
 	case "installer":
 		return runInstaller(args[1:], stdout, stderr)
 	case "check":
@@ -113,11 +115,8 @@ func run(args []string, stdout, stderr io.Writer) int {
 
 func runInstaller(args []string, stdout, stderr io.Writer) int {
 	if len(args) == 0 {
-		fmt.Fprintln(stderr, "Usage: gjallarctl installer {check-secrets|deploy|firmware|generate-hardware|policy|protect-local|release|render|resolve-background|local-password}")
+		fmt.Fprintln(stderr, "Usage: gjallarctl installer {check-secrets|deploy|firmware|generate-hardware|policy|protect-local|release|resolve-background|local-password}")
 		return 2
-	}
-	if args[0] == "render" {
-		return runRender(args[1:], stdout, stderr)
 	}
 	if args[0] == "protect-local" {
 		return runProtectLocal(args[1:], stdout, stderr)
@@ -168,7 +167,7 @@ func runInstaller(args []string, stdout, stderr io.Writer) int {
 		return runBootstrap(args[1:], stdout, stderr)
 	}
 	if args[0] != "policy" {
-		fmt.Fprintln(stderr, "Usage: gjallarctl installer {check-secrets|deploy|firmware|generate-hardware|policy|protect-local|release|render|resolve-background|local-password}")
+		fmt.Fprintln(stderr, "Usage: gjallarctl installer {check-secrets|deploy|firmware|generate-hardware|policy|protect-local|release|resolve-background|local-password}")
 		return 2
 	}
 	flags := flag.NewFlagSet("gjallarctl installer policy", flag.ContinueOnError)
@@ -183,13 +182,15 @@ func runInstaller(args []string, stdout, stderr io.Writer) int {
 		return 1
 	}
 	features := policy.FromUser(user)
-	fmt.Fprintf(stdout, "ai_enable=%t\nauto_reboot=%t\ndebug_functions=%t\ndocker_enable=%t\nclamshell_enable=%t\nusbguard_enable=%t\nnemu_enable=%t\ntouchpad_workspace_swipe=%t\n",
+	fmt.Fprintf(stdout, "ai_enable=%t\nauto_reboot=%t\ndebug_functions=%t\ndocker_enable=%t\nclamshell_enable=%t\nusbguard_enable=%t\nusb_trust_enforce=%t\nusb_trust_tpm_handle=%s\nnemu_enable=%t\ntouchpad_workspace_swipe=%t\n",
 		features.AIEnable,
 		features.AutoReboot,
 		features.DebugFunctions,
 		features.ContainersEnable,
 		features.ClamshellEnable,
 		features.USBGuardEnable,
+		features.USBTrustEnforce,
+		features.USBTrustTPMHandle,
 		features.NemuEnable,
 		features.TouchpadWorkspaceSwipe,
 	)
@@ -839,96 +840,6 @@ func runProtectLocal(args []string, stdout, stderr io.Writer) int {
 	return 0
 }
 
-type stringList []string
-
-func (s *stringList) String() string     { return strings.Join(*s, ",") }
-func (s *stringList) Set(v string) error { *s = append(*s, v); return nil }
-
-func runRender(args []string, stdout, stderr io.Writer) int {
-	f := flag.NewFlagSet("gjallarctl installer render", flag.ContinueOnError)
-	f.SetOutput(stderr)
-	var s nixrender.Settings
-	output := f.String("output", "generated/state.nix", "output path")
-	f.StringVar(&s.System, "system", "", "system")
-	f.StringVar(&s.Hostname, "hostname", "", "hostname")
-	f.StringVar(&s.Username, "username", "", "username")
-	f.StringVar(&s.Timezone, "timezone", "", "timezone")
-	f.StringVar(&s.Locale, "locale", "", "locale")
-	f.StringVar(&s.KeyboardLayout, "keyboard-layout", "", "keyboard layout")
-	f.StringVar(&s.KeyboardVariant, "keyboard-variant", "", "keyboard variant")
-	f.BoolVar(&s.TouchpadWorkspaceSwipe, "touchpad-workspace-swipe", false, "")
-	f.BoolVar(&s.TouchscreenEnable, "touchscreen-enable", false, "")
-	f.BoolVar(&s.PenTabletEnable, "pen-tablet-enable", false, "")
-	f.BoolVar(&s.ClamshellEnable, "clamshell-enable", false, "")
-	f.BoolVar(&s.USBGuardEnable, "usbguard-enable", false, "")
-	f.StringVar(&s.Name, "name", "", "name")
-	f.StringVar(&s.Email, "email", "", "email")
-	f.StringVar(&s.GitHubUsername, "github-username", "", "GitHub username")
-	f.StringVar(&s.DotfilesDir, "dotfiles-dir", "", "dotfiles directory")
-	f.BoolVar(&s.ContainersEnable, "containers-enable", false, "")
-	f.BoolVar(&s.DebugFunctions, "debug-functions", false, "")
-	f.StringVar(&s.Shell, "shell", "", "")
-	f.Var((*stringList)(&s.Editors), "editor", "repeatable editor")
-	f.Var((*stringList)(&s.Browsers), "browser", "repeatable browser")
-	f.StringVar(&s.PreferredEditor, "preferred-editor", "", "")
-	f.StringVar(&s.PreferredBrowser, "preferred-browser", "", "")
-	f.BoolVar(&s.PlaneEnable, "plane-enable", false, "")
-	f.StringVar(&s.PlaneHost, "plane-host", "", "")
-	f.BoolVar(&s.DrawioEnable, "drawio-enable", false, "")
-	f.BoolVar(&s.DrawioSelfHosted, "drawio-self-hosted", false, "")
-	f.StringVar(&s.DrawioHost, "drawio-host", "", "")
-	f.BoolVar(&s.NextcloudEnable, "nextcloud-enable", false, "")
-	f.StringVar(&s.NextcloudHost, "nextcloud-host", "", "")
-	f.StringVar(&s.BackgroundNormal, "background-normal", "", "")
-	f.StringVar(&s.ODDCModel, "oddc-model", "", "")
-	f.StringVar(&s.DeviceSysVendor, "device-sys-vendor", "", "")
-	f.StringVar(&s.DeviceProductName, "device-product-name", "", "")
-	f.StringVar(&s.DeviceProductVersion, "device-product-version", "", "")
-	f.StringVar(&s.DeviceBoardVendor, "device-board-vendor", "", "")
-	f.StringVar(&s.DeviceBoardName, "device-board-name", "", "")
-	f.StringVar(&s.DeviceBoardVersion, "device-board-version", "", "")
-	f.StringVar(&s.GraphicsVendor, "graphics-vendor", "", "")
-	f.StringVar(&s.GraphicsType, "graphics-type", "", "")
-	f.BoolVar(&s.GraphicsCompute, "graphics-compute", false, "")
-	f.StringVar(&s.GraphicsBusID, "graphics-bus-id", "", "")
-	f.StringVar(&s.GraphicsIntegratedBusID, "graphics-integrated-bus-id", "", "")
-	f.StringVar(&s.WiFiDriver, "wifi-driver", "", "")
-	f.BoolVar(&s.AIEnable, "ai-enable", false, "")
-	f.StringVar(&s.AIModel, "ai-model", "", "")
-	f.StringVar(&s.AIAgentMode, "ai-agent-mode", "workspace", "")
-	f.IntVar(&s.AIContextTokens, "ai-context-tokens", 0, "")
-	f.IntVar(&s.AIVRAMMB, "ai-vram-mb", 0, "")
-	f.BoolVar(&s.NemuEnable, "nemu-enable", false, "")
-	f.BoolVar(&s.LUKSTPM2Enable, "luks-tpm2-enable", false, "")
-	f.BoolVar(&s.RecoveryEnable, "recovery-enable", false, "")
-	f.BoolVar(&s.JODSPrebootLockEnable, "jods-preboot-lock-enable", false, "")
-	f.BoolVar(&s.SecureBootEnable, "secure-boot-enable", false, "")
-	f.BoolVar(&s.EndpointManagedDevice, "endpoint-managed-device", false, "")
-	f.StringVar(&s.JODSEndpoint, "jods-endpoint", "", "")
-	f.StringVar(&s.JODSPolicySigningPublicKey, "jods-policy-signing-public-key", "", "")
-	f.StringVar(&s.JODSRecoveryCommandSigningPublicKey, "jods-recovery-command-signing-public-key", "", "")
-	f.StringVar(&s.JODSEnrollmentMode, "jods-enrollment-mode", "", "")
-	f.BoolVar(&s.JODSAllowInsecureTLS, "jods-allow-insecure-tls", false, "")
-	f.StringVar(&s.JODSDeviceClass, "jods-device-class", "", "")
-	f.StringVar(&s.JODSDesktopProfile, "jods-desktop-profile", "", "")
-	f.BoolVar(&s.JODSFingerprintEnrollmentAllowed, "jods-fingerprint-enrollment-allowed", false, "")
-	f.Var((*stringList)(&s.WMs), "wm", "repeatable window manager")
-	f.StringVar(&s.Theme, "theme", "", "")
-	if err := f.Parse(args); err != nil || f.NArg() != 0 {
-		return 2
-	}
-	if *output == "" || !filepath.IsAbs(*output) {
-		fmt.Fprintln(stderr, "ERROR: --output must be an absolute path")
-		return 2
-	}
-	if err := nixrender.WriteAtomic(*output, s); err != nil {
-		fmt.Fprintf(stderr, "ERROR: %v\n", err)
-		return 1
-	}
-	fmt.Fprintf(stdout, "Wrote %s\n", *output)
-	return 0
-}
-
 func runPreset(args []string, stdout, stderr io.Writer) int {
 	if len(args) == 0 || (args[0] != "validate" && args[0] != "get" && args[0] != "list" && args[0] != "bool") {
 		fmt.Fprintln(stderr, "Usage: gjallarctl preset {validate|get|list|bool} --config PATH [--key NAME]")
@@ -1036,7 +947,7 @@ func runAIModelServe(args []string, stdout, stderr io.Writer) int {
 
 	cgroupPrefix := f.String(
 		"cgroup-prefix",
-		"/system.slice/gjallar-ai-session@",
+		"/system.slice/ai-session@",
 		"required system-service cgroup prefix",
 	)
 
@@ -1203,7 +1114,7 @@ func runAIResearchServe(args []string, stdout, stderr io.Writer) int {
 		return 1
 	}
 	defer listener.Close()
-	_ = os.Chmod(*socket, 0666)
+	_ = os.Chmod(*socket, 0600)
 	b := research.Broker{AllowedHosts: []string{"nixos.org", "github.com", "docs.ollama.com", "opencode.ai"}, MaxBytes: *maxBytes, Timeout: 15 * time.Second}
 	server := &http.Server{Handler: research.Handler(b), ReadHeaderTimeout: 5 * time.Second, IdleTimeout: 30 * time.Second}
 	if err := server.Serve(listener); err != nil && err != http.ErrServerClosed {
@@ -1986,6 +1897,7 @@ func runCheck(args []string, stdout, stderr io.Writer) int {
 }
 
 func printUsage(out io.Writer) {
+	fmt.Fprintln(out, "Usage: gjallarctl usb {status|audit|policy|review|provision-key|allow-once|trust-permanent|keep-blocked|enroll-internal|accept-replacement|forget} [OPTIONS]")
 	fmt.Fprintln(out, "Usage: gjallarctl check [--repo PATH] [--timeout DURATION]")
 	fmt.Fprintln(out, "       gjallarctl preflight [--repo PATH]")
 	fmt.Fprintln(out, "       gjallarctl oddc validate-device [--repo PATH]")
@@ -1997,6 +1909,24 @@ func printUsage(out io.Writer) {
 	fmt.Fprintln(out, "       gjallarctl preset {validate|get|list|bool} --config PATH [--key NAME]")
 	fmt.Fprintln(out)
 	fmt.Fprintln(out, "Safe GjallarOS maintenance commands. Rebuild invokes sudo explicitly.")
+}
+
+func normalizeRebuildUserIntent(user *config.User, repo string) (bool, error) {
+	if user == nil {
+		return false, errors.New("user configuration is nil")
+	}
+
+	repo = strings.TrimSpace(repo)
+	if repo == "" || !filepath.IsAbs(repo) {
+		return false, fmt.Errorf("repository path must be absolute: %q", repo)
+	}
+
+	if strings.TrimSpace(user.DotfilesDir) != "" {
+		return false, nil
+	}
+
+	user.DotfilesDir = filepath.Clean(repo)
+	return true, nil
 }
 
 func runRebuild(args []string, stdout, stderr io.Writer) int {
@@ -2051,6 +1981,19 @@ func runRebuild(args []string, stdout, stderr io.Writer) int {
 	if err != nil {
 		fmt.Fprintf(stderr, "[GjallarOS] Error: load user configuration: %v\n", err)
 		return 1
+	}
+
+	intentChanged, err := normalizeRebuildUserIntent(&userConfig, repo)
+	if err != nil {
+		fmt.Fprintf(stderr, "[GjallarOS] Error: normalize user configuration: %v\n", err)
+		return 1
+	}
+	if intentChanged {
+		if err := config.WriteAtomic(configPath, userConfig); err != nil {
+			fmt.Fprintf(stderr, "[GjallarOS] Error: persist normalized user configuration: %v\n", err)
+			return 1
+		}
+		fmt.Fprintln(stdout, "[GjallarOS] Migrated missing dotfilesDir to the discovered repository path.")
 	}
 
 	if host == "" {
@@ -2150,23 +2093,11 @@ func runRebuild(args []string, stdout, stderr io.Writer) int {
 	}
 
 	started := time.Now()
-	commandArgs := []string{"nixos-rebuild", "switch", "--impure", "--flake", "path:" + repo + "#" + host}
 	rebuildHome := os.Getenv("GJALLAR_REBUILD_CALLER_HOME")
 	if rebuildHome == "" {
 		rebuildHome, _ = os.UserHomeDir()
 	}
-
-	if rebuildHome != "" {
-		palette := filepath.Join(rebuildHome, ".local", "state", "noctalia", "stylix-override.json")
-		if info, err := os.Stat(palette); err == nil && info.Mode().IsRegular() {
-			commandArgs = append([]string{"env", "GJALLAR_NOCTALIA_PALETTE=" + palette}, commandArgs...)
-			commandArgs = append(commandArgs, "--impure")
-		}
-	}
-	if debug {
-		commandArgs = append(commandArgs, "--show-trace")
-	}
-	commandArgs = append(commandArgs, rebuildArgs...)
+	commandArgs := rebuildCommandArgs(repo, host, rebuildHome, debug, rebuildArgs)
 
 	var status int
 	if debug {
@@ -2191,7 +2122,12 @@ func runRebuild(args []string, stdout, stderr io.Writer) int {
 	}
 
 	if status == 0 && cleanup {
-		status = runCleanupOld(nil, stdout, stderr)
+		if cleanupStatus := runCleanupOld(nil, stdout, stderr); cleanupStatus != 0 {
+			fmt.Fprintln(
+				stderr,
+				"WARN: rebuild switched successfully, but old-generation cleanup failed; run cleanup-old-generations later.",
+			)
+		}
 	}
 	elapsed := int(time.Since(started).Round(time.Second) / time.Second)
 	if status == 130 {
@@ -2202,6 +2138,44 @@ func runRebuild(args []string, stdout, stderr io.Writer) int {
 		fmt.Fprintf(stderr, "\n⏱ %02d:%02d  ✗ Rebuild failed.\n", elapsed/60, elapsed%60)
 	}
 	return status
+}
+
+func rebuildCommandArgs(
+	repo, host, rebuildHome string,
+	debug bool,
+	rebuildArgs []string,
+) []string {
+	commandArgs := []string{
+		"nixos-rebuild",
+		"switch",
+		"--flake",
+		"path:" + repo + "#" + host,
+	}
+
+	// Pure evaluation is the default. The only current impure input is the
+	// explicitly discovered Noctalia palette used to snapshot live colors into
+	// build-time Stylix targets. Add --impure exactly once when that input exists.
+	if rebuildHome != "" {
+		palette := filepath.Join(
+			rebuildHome,
+			".local",
+			"state",
+			"noctalia",
+			"stylix-override.json",
+		)
+		if info, err := os.Stat(palette); err == nil && info.Mode().IsRegular() {
+			commandArgs = append(
+				[]string{"env", "GJALLAR_NOCTALIA_PALETTE=" + palette},
+				commandArgs...,
+			)
+			commandArgs = append(commandArgs, "--impure")
+		}
+	}
+
+	if debug {
+		commandArgs = append(commandArgs, "--show-trace")
+	}
+	return append(commandArgs, rebuildArgs...)
 }
 
 func runUpdate(args []string, stdout, stderr io.Writer) int {
@@ -2233,12 +2207,45 @@ func runUpdate(args []string, stdout, stderr io.Writer) int {
 	return 0
 }
 
+const (
+	systemProfilePath          = "/nix/var/nix/profiles/system"
+	rebuildGenerationRetention = 5
+)
+
+func systemGenerationCleanupArgs(keep int) []string {
+	return []string{
+		"nix-env",
+		"--profile",
+		systemProfilePath,
+		"--delete-generations",
+		fmt.Sprintf("+%d", keep),
+	}
+}
+
+func parseCleanupKeep(raw string) (int, error) {
+	keep, err := strconv.Atoi(raw)
+	if err != nil || keep < 1 {
+		return 0, fmt.Errorf("keep count must be a positive integer")
+	}
+	return keep, nil
+}
+
+func trimSystemGenerations(keep int, stdout, stderr io.Writer) int {
+	fmt.Fprintf(stdout, "[cleanup] Keeping the latest %d system generations.\n", keep)
+	return runPrivilegedCommand(
+		context.Background(),
+		stdout,
+		stderr,
+		systemGenerationCleanupArgs(keep)...,
+	)
+}
+
 func runCleanup(args []string, stdout, stderr io.Writer) int {
-	keep := "5"
+	keepRaw := strconv.Itoa(rebuildGenerationRetention)
 	for i := 0; i < len(args); i++ {
 		if (args[i] == "-k" || args[i] == "--keep") && i+1 < len(args) {
 			i++
-			keep = args[i]
+			keepRaw = args[i]
 		} else if args[i] == "-h" || args[i] == "--help" {
 			fmt.Fprintln(stdout, "Usage: cleanup [--keep N]")
 			return 0
@@ -2247,18 +2254,27 @@ func runCleanup(args []string, stdout, stderr io.Writer) int {
 			return 2
 		}
 	}
-	for _, r := range keep {
-		if r < '0' || r > '9' {
-			fmt.Fprintln(stderr, "Keep count must be numeric.")
-			return 2
-		}
+
+	keep, err := parseCleanupKeep(keepRaw)
+	if err != nil {
+		fmt.Fprintf(stderr, "ERROR: %v\n", err)
+		return 2
 	}
-	for _, command := range [][]string{{"sudo", "nix-env", "--profile", "/nix/var/nix/profiles/system", "--delete-generations", "+" + keep}, {"nix", "store", "gc"}, {"sudo", "nix", "store", "gc"}} {
-		if status := runCommand(context.Background(), stdout, stderr, command[0], command[1:]...); status != 0 {
-			return status
-		}
+
+	if status := trimSystemGenerations(keep, stdout, stderr); status != 0 {
+		return status
 	}
-	return 0
+
+	// Explicit cleanup is the place for store GC. Normal rebuilds only trim
+	// rollback history; scheduled system nix.gc owns periodic collection.
+	fmt.Fprintln(stdout, "[cleanup] Collecting unreachable Nix store paths.")
+	return runPrivilegedCommand(
+		context.Background(),
+		stdout,
+		stderr,
+		"nix-store",
+		"--gc",
+	)
 }
 
 func runCleanupOld(args []string, stdout, stderr io.Writer) int {
@@ -2266,52 +2282,11 @@ func runCleanupOld(args []string, stdout, stderr io.Writer) int {
 		fmt.Fprintln(stderr, "Usage: cleanup-old-generations")
 		return 2
 	}
-	var generationCommand *exec.Cmd
-	if os.Geteuid() == 0 {
-		generationCommand = exec.Command(
-			"nix-env",
-			"--profile",
-			"/nix/var/nix/profiles/system",
-			"--list-generations",
-		)
-	} else {
-		generationCommand = exec.Command(
-			"sudo",
-			"nix-env",
-			"--profile",
-			"/nix/var/nix/profiles/system",
-			"--list-generations",
-		)
-	}
 
-	data, err := generationCommand.Output()
-	if err != nil {
-		fmt.Fprintf(stderr, "ERROR: %v\n", err)
-		return 1
-	}
-	var generations []string
-	scanner := bufio.NewScanner(strings.NewReader(string(data)))
-	for scanner.Scan() {
-		fields := strings.Fields(scanner.Text())
-		if len(fields) > 0 {
-			if _, err := strconv.Atoi(fields[0]); err == nil {
-				generations = append(generations, fields[0])
-			}
-		}
-	}
-	if len(generations) <= 5 {
-		fmt.Fprintf(stdout, "[GjallarOS] Nothing to clean (%d generations, keeping 5).\n", len(generations))
-		return 0
-	}
-	remove := generations[:len(generations)-5]
-	fmt.Fprintf(stdout, "[GjallarOS] Removing %d old generations; keeping 5.\n", len(remove))
-	command := []string{"nix-env", "--profile", "/nix/var/nix/profiles/system", "--delete-generations"}
-	command = append(command, remove...)
-	return runPrivilegedCommand(
-		context.Background(),
+	return trimSystemGenerations(
+		rebuildGenerationRetention,
 		stdout,
 		stderr,
-		command...,
 	)
 }
 
@@ -2401,8 +2376,13 @@ func runRebuildQuiet(stdout, stderr io.Writer, host string, messages []string, s
 		fmt.Fprintf(stderr, "ERROR: create rebuild log: %v\n", err)
 		return 1
 	}
-	defer os.Remove(log.Name())
-	defer log.Close()
+	keepLog := false
+	defer func() {
+		_ = log.Close()
+		if !keepLog {
+			_ = os.Remove(log.Name())
+		}
+	}()
 
 	terminal, ok := stdout.(*os.File)
 	interactive := ok && isTerminal(terminal)
@@ -2454,12 +2434,82 @@ func runRebuildQuiet(stdout, stderr io.Writer, host string, messages []string, s
 		ui.Wait()
 		fmt.Fprint(stdout, rebuildUILeave)
 	}
+
+	elapsed := time.Since(started)
+	localBuilds := rebuildLocalDerivations(log)
+	if elapsed >= time.Minute {
+		keepLog = true
+		fmt.Fprintf(
+			stdout,
+			"[rebuild] Slow rebuild: %s elapsed; %d local derivation(s) observed.\n",
+			elapsed.Round(time.Second),
+			len(localBuilds),
+		)
+		if len(localBuilds) != 0 {
+			fmt.Fprintf(
+				stdout,
+				"[rebuild] Recent local builds: %s\n",
+				strings.Join(lastStrings(localBuilds, 8), ", "),
+			)
+		}
+		fmt.Fprintf(stdout, "[rebuild] Detailed log retained: %s\n", log.Name())
+	}
 	if status != 0 {
+		keepLog = true
 		if _, err := log.Seek(0, io.SeekStart); err == nil {
 			_, _ = io.Copy(stderr, log)
 		}
+		fmt.Fprintf(stderr, "[rebuild] Detailed log retained: %s\n", log.Name())
 	}
 	return status
+}
+
+func rebuildLocalDerivations(log io.ReadSeeker) []string {
+	if _, err := log.Seek(0, io.SeekStart); err != nil {
+		return nil
+	}
+
+	seen := map[string]struct{}{}
+	var names []string
+	scanner := bufio.NewScanner(log)
+	for scanner.Scan() {
+		line := scanner.Text()
+		marker := "building '"
+		start := strings.Index(line, marker)
+		if start < 0 {
+			continue
+		}
+		value := line[start+len(marker):]
+		end := strings.IndexByte(value, '\'')
+		if end < 0 {
+			continue
+		}
+		path := value[:end]
+		if !strings.HasSuffix(path, ".drv") {
+			continue
+		}
+
+		name := strings.TrimSuffix(filepath.Base(path), ".drv")
+		if dash := strings.IndexByte(name, '-'); dash >= 0 && dash+1 < len(name) {
+			name = name[dash+1:]
+		}
+		if name == "" {
+			continue
+		}
+		if _, ok := seen[name]; ok {
+			continue
+		}
+		seen[name] = struct{}{}
+		names = append(names, name)
+	}
+	return names
+}
+
+func lastStrings(values []string, count int) []string {
+	if count <= 0 || len(values) <= count {
+		return values
+	}
+	return values[len(values)-count:]
 }
 
 func runPrivilegedCommand(

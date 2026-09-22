@@ -35,45 +35,42 @@ func Strings(values []string) string {
 // Settings contains only values written to generated/state.nix. Values are rendered
 // as literals; none are evaluated as Nix source.
 type Settings struct {
-	System                                                                 string
-	Hostname, Username, Timezone, Locale                                   string
-	KeyboardLayout, KeyboardVariant                                        string
-	WeatherCity, WeatherCountry                                            string
-	TouchpadWorkspaceSwipe, TouchscreenEnable                              bool
-	PenTabletEnable, OrientationSensorEnable                               bool
-	ClamshellEnable, USBGuardEnable, PrintingEnable, NetworkPrintingEnable bool
-	Name, Email, GitHubUsername, DotfilesDir                               string
-	RootPasswordFile                                                       string
-	ContainersEnable, DebugFunctions                                       bool
-	Shell                                                                  string
-	Editors, Browsers                                                      []string
-	PreferredEditor, PreferredBrowser                                      string
-	PlaneHost, DrawioHost, NextcloudHost                                   string
-	PlaneEnable, DrawioEnable, DrawioSelfHosted, NextcloudEnable           bool
-	BackgroundNormal                                                       string
-	ODDCModel                                                              string
-	DeviceSysVendor, DeviceProductName, DeviceProductVersion               string
-	DeviceBoardVendor, DeviceBoardName, DeviceBoardVersion                 string
-	GraphicsVendor, GraphicsDeviceID, GraphicsDriverBranch, GraphicsType   string
-	GraphicsCompute                                                        bool
-	GraphicsBusID, GraphicsIntegratedBusID, WiFiDriver                     string
-	AIEnable                                                               bool
-	AIModel, AIAccelerationProfile                                         string
-	AIAgentMode                                                            string
-	AIContextTokens, AIVRAMMB                                              int
-	NemuEnable                                                             bool
-	LUKSTPM2Enable                                                         bool
-	RecoveryEnable, RecoveryPartitionEnable, JODSPrebootLockEnable         bool
-	SecureBootEnable                                                       bool
-	EndpointManagedDevice                                                  bool
-	JODSEndpoint, JODSPolicySigningPublicKey                               string
-	JODSRecoveryCommandSigningPublicKey                                    string
-	JODSEnrollmentMode                                                     string
-	JODSAllowInsecureTLS                                                   bool
-	JODSDeviceClass, JODSDesktopProfile                                    string
-	JODSFingerprintEnrollmentAllowed                                       bool
-	WMs                                                                    []string
-	Theme                                                                  string
+	System                                                                                  string
+	Hostname, Username, Timezone, Locale                                                    string
+	KeyboardLayout, KeyboardVariant                                                         string
+	WeatherCity, WeatherCountry                                                             string
+	TouchpadWorkspaceSwipe, TouchscreenEnable                                               bool
+	PenTabletEnable, OrientationSensorEnable                                                bool
+	ClamshellEnable, USBGuardEnable, USBTrustEnforce, PrintingEnable, NetworkPrintingEnable bool
+	USBTrustTPMHandle                                                                       string
+	Name, Email, GitHubUsername, DotfilesDir                                                string
+	RootPasswordFile                                                                        string
+	ContainersEnable, DebugFunctions                                                        bool
+	Shell                                                                                   string
+	Editors, Browsers                                                                       []string
+	PreferredEditor, PreferredBrowser                                                       string
+	PlaneHost, DrawioHost, NextcloudHost                                                    string
+	PlaneEnable, DrawioEnable, DrawioSelfHosted, NextcloudEnable                            bool
+	BackgroundNormal                                                                        string
+	ODDCModel                                                                               string
+	GraphicsBusID, GraphicsIntegratedBusID                                                  string
+	AIEnable                                                                                bool
+	AIModel, AIAccelerationProfile                                                          string
+	AIAgentMode                                                                             string
+	AIContextTokens, AIVRAMMB                                                               int
+	NemuEnable                                                                              bool
+	LUKSTPM2Enable                                                                          bool
+	RecoveryEnable, RecoveryPartitionEnable, JODSPrebootLockEnable                          bool
+	SecureBootEnable                                                                        bool
+	EndpointManagedDevice                                                                   bool
+	JODSEndpoint, JODSPolicySigningPublicKey                                                string
+	JODSRecoveryCommandSigningPublicKey                                                     string
+	JODSEnrollmentMode                                                                      string
+	JODSAllowInsecureTLS                                                                    bool
+	JODSDeviceClass, JODSDesktopProfile                                                     string
+	JODSFingerprintEnrollmentAllowed                                                        bool
+	WMs                                                                                     []string
+	Theme                                                                                   string
 }
 
 // FromUser maps direct user intent into generated-state fields. Hardware,
@@ -93,6 +90,8 @@ func FromUser(user config.User) Settings {
 		TouchpadWorkspaceSwipe:              user.TouchpadWorkspaceSwipe,
 		ClamshellEnable:                     user.ClamshellEnable,
 		USBGuardEnable:                      user.USBGuardEnable,
+		USBTrustEnforce:                     user.USBTrustEnforce,
+		USBTrustTPMHandle:                   user.USBTrustTPMHandle,
 		PrintingEnable:                      user.PrintingEnable,
 		NetworkPrintingEnable:               user.NetworkPrintingEnable,
 		Name:                                user.Name,
@@ -135,6 +134,27 @@ func FromUser(user config.User) Settings {
 	}
 }
 
+var retiredGeneratedKeys = map[string]bool{
+	"backgroundWork":       true,
+	"deviceBoardName":      true,
+	"deviceBoardVendor":    true,
+	"deviceBoardVersion":   true,
+	"deviceProductName":    true,
+	"deviceProductVersion": true,
+	"deviceSysVendor":      true,
+	"frameworkEnable":      true,
+	"frameworkModel":       true,
+	"graphicsCompute":      true,
+	"graphicsDeviceId":     true,
+	"graphicsDriverBranch": true,
+	"graphicsType":         true,
+	"graphicsVendor":       true,
+	"wifiDriver":           true,
+	"workUserEnable":       true,
+	"workUserPasswordFile": true,
+	"workUsername":         true,
+}
+
 var userIntentKeys = []string{
 	"hostname",
 	"username",
@@ -147,6 +167,8 @@ var userIntentKeys = []string{
 	"touchpadWorkspaceSwipe",
 	"clamshellEnable",
 	"usbguardEnable",
+	"usbTrustEnforce",
+	"usbTrustTpmHandle",
 	"printingEnable",
 	"networkPrintingEnable",
 	"name",
@@ -219,6 +241,10 @@ func SyncUserIntent(path string, user config.User) error {
 
 	for _, line := range lines {
 		trimmed := strings.TrimSpace(line)
+		assignmentKey := strings.TrimSpace(strings.SplitN(trimmed, "=", 2)[0])
+		if retiredGeneratedKeys[assignmentKey] {
+			continue
+		}
 
 		if !insertedMissing && strings.HasPrefix(trimmed, "themeDetails = ") {
 			for _, key := range userIntentKeys {
@@ -315,6 +341,8 @@ func Render(s Settings) []byte {
 	boolean("orientationSensorEnable", s.OrientationSensorEnable)
 	boolean("clamshellEnable", s.ClamshellEnable)
 	boolean("usbguardEnable", s.USBGuardEnable)
+	boolean("usbTrustEnforce", s.USBTrustEnforce)
+	str("usbTrustTpmHandle", s.USBTrustTPMHandle)
 	boolean("printingEnable", s.PrintingEnable)
 	boolean("networkPrintingEnable", s.NetworkPrintingEnable)
 	str("name", s.Name)
@@ -338,20 +366,8 @@ func Render(s Settings) []byte {
 	str("nextcloudHost", s.NextcloudHost)
 	str("backgroundNormal", s.BackgroundNormal)
 	str("oddcModel", s.ODDCModel)
-	str("deviceSysVendor", s.DeviceSysVendor)
-	str("deviceProductName", s.DeviceProductName)
-	str("deviceProductVersion", s.DeviceProductVersion)
-	str("deviceBoardVendor", s.DeviceBoardVendor)
-	str("deviceBoardName", s.DeviceBoardName)
-	str("deviceBoardVersion", s.DeviceBoardVersion)
-	str("graphicsVendor", s.GraphicsVendor)
-	str("graphicsDeviceId", s.GraphicsDeviceID)
-	str("graphicsDriverBranch", s.GraphicsDriverBranch)
-	str("graphicsType", s.GraphicsType)
-	boolean("graphicsCompute", s.GraphicsCompute)
 	str("graphicsBusId", s.GraphicsBusID)
 	str("graphicsIntegratedBusId", s.GraphicsIntegratedBusID)
-	str("wifiDriver", s.WiFiDriver)
 	boolean("aiEnable", s.AIEnable)
 	str("aiModel", s.AIModel)
 	str("aiAccelerationProfile", s.AIAccelerationProfile)

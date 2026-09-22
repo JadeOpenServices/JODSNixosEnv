@@ -170,7 +170,7 @@ let
     [ -n "$escaped" ] ||
       die "failed to encode workspace"
 
-    unit="gjallar-ai-session@$escaped.service"
+    unit="ai-session@$escaped.service"
 
     socket="/run/gjallar-ai-session-$escaped/tmux.sock"
 

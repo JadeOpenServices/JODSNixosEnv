@@ -27,9 +27,6 @@ in
     base16Scheme = lib.mkIf (
       details.themeName != null
     ) "${pkgs.base16-schemes}/share/themes/${details.themeName}.yaml";
-    # During an interactive `rebuild`, GjallarOS exports Noctalia's current
-    # palette.  Stylix remains the build-time adapter for targets such as the
-    # initrd Plymouth theme, while Noctalia remains the color authority.
     override =
       let
         configured = if details.override == null then { } else details.override;

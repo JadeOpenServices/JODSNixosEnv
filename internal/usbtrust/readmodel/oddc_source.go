@@ -21,7 +21,6 @@ type registryLoader func(
 ) (modelResolver, error)
 
 // CatalogResolvedSource is the temporary concrete ODDC source used while
-// GjallarOS still resolves the catalog directly.
 //
 // It deliberately receives the selected model ID from its caller rather
 // than rediscovering hardware. The future machine-local resolved capsule

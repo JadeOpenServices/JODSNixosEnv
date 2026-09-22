@@ -20,13 +20,22 @@ type Reader interface {
 type Handler struct {
 	OwnerUID uint32
 	Reader   Reader
+	Mutator  interface {
+		Mutate(context.Context, Request) (Response, error)
+	}
+	OnDecision func(uint32, Request, Response)
 }
 
 func (h Handler) Handle(
 	ctx context.Context,
 	peerUID uint32,
 	request Request,
-) Response {
+) (response Response) {
+	defer func() {
+		if h.OnDecision != nil && request.Action.Mutation() {
+			h.OnDecision(peerUID, request, response)
+		}
+	}()
 	if err := ValidateRequest(request); err != nil {
 		return errorResponse(err)
 	}
@@ -39,9 +48,14 @@ func (h Handler) Handle(
 		return errorResponse(err)
 	}
 
-	// Even root receives no mutation path until the mutation engine,
-	// interactive authorization and signed-state transaction are wired.
 	if request.Action.Mutation() {
+		if h.Mutator != nil {
+			response, err := h.Mutator.Mutate(ctx, request)
+			if err != nil {
+				return errorResponse(err)
+			}
+			return response
+		}
 		return errorResponse(fmt.Errorf(
 			"USB trust mutation %q is not enabled",
 			request.Action,
@@ -55,6 +69,22 @@ func (h Handler) Handle(
 	}
 
 	switch request.Action {
+	case ActionPolicy:
+		reader, ok := h.Reader.(interface {
+			Policy(context.Context) ([]usbtrust.Decision, uint64, error)
+		})
+		if !ok {
+			return errorResponse(fmt.Errorf("USB trust policy reader is unavailable"))
+		}
+		policy, revision, err := reader.Policy(ctx)
+		if err != nil {
+			return errorResponse(err)
+		}
+		enforcing := false
+		if mode, ok := h.Reader.(interface{ EnforcementEnabled() bool }); ok {
+			enforcing = mode.EnforcementEnabled()
+		}
+		return Response{OK: true, Policy: policy, Revision: revision, Enforcing: enforcing}
 	case ActionStatus:
 		status, err := h.Reader.Status(ctx)
 		if err != nil {
@@ -65,9 +95,10 @@ func (h Handler) Handle(
 		}
 
 		return Response{
-			OK:       true,
-			Revision: status.Revision,
-			Status:   &status,
+			OK:        true,
+			Enforcing: status.Enforcing,
+			Revision:  status.Revision,
+			Status:    &status,
 		}
 
 	case ActionAudit:

@@ -16,7 +16,6 @@
       n = "https://mynixos.com/search?q={}";
     };
     quickmarks = {
-      # Work
       gh = "https://github.com";
       ghr = "https://github.com/search?q=&type=repositories";
       ghi = "https://github.com/issues";
@@ -31,12 +30,10 @@
       wt = "https://www.tarantool.io/en";
       wm = "https://myteam.mail.ru/webim";
 
-      # University
       up = "https://student.bmstu.ru/hpronto";
       ul = "https://lks.bmstu.ru";
       ud = "https://delo.bmstu.ru";
 
-      # General
       em = "https://e.mail.ru/inbox";
       yt = "https://www.youtube.com";
 

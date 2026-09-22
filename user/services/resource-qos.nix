@@ -84,7 +84,6 @@ let
 
         [ -n "$unit" ] || return 0
 
-        # The app may disappear between a focus event and this update.
         systemctl --user set-property \
           --runtime \
           "$unit" \
@@ -113,9 +112,6 @@ let
 
         unit="''${cgroup##*/}"
 
-        # app2unit escapes '-' inside its application-name component.
-        # Only the desktop family is focus-sensitive. JODS, AI and explicit
-        # background workloads keep the policy assigned when they start.
         case "$unit" in
           app-*-gjallar\\x2dai\\x2d*.scope|app-*-gjallar-ai-*.scope)
             return 1
@@ -180,27 +176,15 @@ let
 
 in
 {
-  # One app2unit launch boundary, with identity families kept separate from
-  # policy. Desktop focus policy applies only to gjallar-* scopes.
-  #
-  #   desktop    -> gjallar-*    -> app.slice, CPUWeight 80/100 by focus
-  #   jods       -> jods-*       -> app.slice, CPUWeight 80
-  #   ai         -> gjallar-ai-* -> app.slice, CPUWeight 80
-  #   background -> background-* -> background.slice, CPUWeight 25
-  #
-  # Existing JODS and Gjallar AI system services keep their own systemd
-  # ownership. These families are for app2unit-launched user workloads.
   _module.args.gjallarRun = gjallarRun;
 
   home.packages = [
     gjallarRun
   ];
 
-  # Runtime QoS changes controller values only. Applications stay in the
-  # systemd scope in which they were originally launched.
-  systemd.user.services.gjallar-resource-qos = {
+  systemd.user.services.interactive-resource-qos = {
     Unit = {
-      Description = "GjallarOS interactive application QoS";
+      Description = "Interactive application QoS";
       After = [ "graphical-session.target" ];
       PartOf = [ "graphical-session.target" ];
     };

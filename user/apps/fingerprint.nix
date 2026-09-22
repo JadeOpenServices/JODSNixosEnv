@@ -70,15 +70,13 @@ lib.mkIf (fingerprintPresent && !(settings.endpointManagedDevice or false)) {
     pkgs.yad
   ];
 
-  systemd.user.services.gjallar-fingerprint-enroll = {
+  systemd.user.services.fingerprint-enrollment-prompt = {
     Unit = {
       Description = "Offer first-login fingerprint enrollment";
       After = [ "graphical-session.target" ];
     };
 
     Service = {
-      # Kitty stays open for user input. Type=oneshot makes Home Manager wait
-      # for that window and eventually time out during a rebuild.
       Type = "exec";
       ExecStart = launcher;
     };

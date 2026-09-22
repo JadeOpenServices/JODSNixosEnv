@@ -44,11 +44,6 @@ Tarantool development shells intentionally use unstable.
 Hyprland bindings are maintained in
 [`user/wm/hyprland/keybinds.json`](user/wm/hyprland/keybinds.json).
 
-## Wiki
-
-See the [wiki](wiki/README.md) for installation, architecture, hardware,
-desktop, security, AI, virtualization, and maintenance guides.
-
 ## Credits
 
 GjallarOS builds on the ideas and groundwork of

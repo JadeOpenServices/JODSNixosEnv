@@ -9,23 +9,27 @@ import (
 	"github.com/bakanura/gjallarOS/internal/usbtrust"
 )
 
-type Action string
+type Action = usbtrust.Action
 
 const (
-	ActionStatus            Action = "status"
-	ActionAudit             Action = "audit"
-	ActionAllowOnce         Action = "allow-once"
-	ActionTrustPermanent    Action = "trust-permanent"
-	ActionForget            Action = "forget"
-	ActionAcceptReplacement Action = "accept-replacement"
-	ActionEnrollInternal    Action = "enroll-internal"
+	ActionStatus            = usbtrust.ActionStatus
+	ActionAudit             = usbtrust.ActionAudit
+	ActionPolicy            = usbtrust.ActionPolicy
+	ActionKeepBlocked       = usbtrust.ActionKeepBlocked
+	ActionProvisionKey      = usbtrust.ActionProvisionKey
+	ActionAllowOnce         = usbtrust.ActionAllowOnce
+	ActionTrustPermanent    = usbtrust.ActionTrustPermanent
+	ActionForget            = usbtrust.ActionForget
+	ActionAcceptReplacement = usbtrust.ActionAcceptReplacement
+	ActionEnrollInternal    = usbtrust.ActionEnrollInternal
 )
 
 type Request struct {
-	Action    Action `json:"action"`
-	RuntimeID string `json:"runtimeId,omitempty"`
-	TrustedID string `json:"trustedId,omitempty"`
-	Role      string `json:"role,omitempty"`
+	Action     Action `json:"action"`
+	RuntimeID  string `json:"runtimeId,omitempty"`
+	TrustedID  string `json:"trustedId,omitempty"`
+	Role       string `json:"role,omitempty"`
+	Connection string `json:"connection,omitempty"`
 
 	// Portable is explicit for permanent external trust.
 	// nil means the caller did not make a portability decision.
@@ -33,48 +37,25 @@ type Request struct {
 }
 
 type Status struct {
-	StatePresent    bool   `json:"statePresent"`
-	Revision        uint64 `json:"revision,omitempty"`
-	TrustedDevices  int    `json:"trustedDevices"`
-	ExpectedDevices int    `json:"expectedDevices"`
-	ObservedDevices int    `json:"observedDevices"`
+	Devices             []usbtrust.Device `json:"devices,omitempty"`
+	Enforcing           bool              `json:"enforcing"`
+	PermanentTrustReady bool              `json:"permanentTrustReady"`
+	StatePresent        bool              `json:"statePresent"`
+	Revision            uint64            `json:"revision,omitempty"`
+	TrustedDevices      int               `json:"trustedDevices"`
+	ExpectedDevices     int               `json:"expectedDevices"`
+	ObservedDevices     int               `json:"observedDevices"`
 }
 
 type Response struct {
-	OK       bool                  `json:"ok"`
-	Message  string                `json:"message,omitempty"`
-	Error    string                `json:"error,omitempty"`
-	Revision uint64                `json:"revision,omitempty"`
-	Status   *Status               `json:"status,omitempty"`
-	Audit    *usbtrust.AuditResult `json:"audit,omitempty"`
-}
-
-func (a Action) Valid() bool {
-	switch a {
-	case ActionStatus,
-		ActionAudit,
-		ActionAllowOnce,
-		ActionTrustPermanent,
-		ActionForget,
-		ActionAcceptReplacement,
-		ActionEnrollInternal:
-		return true
-	default:
-		return false
-	}
-}
-
-func (a Action) Mutation() bool {
-	switch a {
-	case ActionAllowOnce,
-		ActionTrustPermanent,
-		ActionForget,
-		ActionAcceptReplacement,
-		ActionEnrollInternal:
-		return true
-	default:
-		return false
-	}
+	Enforcing bool                  `json:"enforcing"`
+	OK        bool                  `json:"ok"`
+	Message   string                `json:"message,omitempty"`
+	Error     string                `json:"error,omitempty"`
+	Revision  uint64                `json:"revision,omitempty"`
+	Status    *Status               `json:"status,omitempty"`
+	Audit     *usbtrust.AuditResult `json:"audit,omitempty"`
+	Policy    []usbtrust.Decision   `json:"policy,omitempty"`
 }
 
 func ValidateRequest(request Request) error {
@@ -84,25 +65,37 @@ func ValidateRequest(request Request) error {
 			request.Action,
 		)
 	}
+	// Reject surplus fields rather than letting an unrelated identifier alter
+	// the target of a mutation.
+	if request.Action.Mutation() {
+		if request.TrustedID != "" && request.Action != ActionForget && request.Action != ActionAcceptReplacement {
+			return fmt.Errorf("%s does not accept trustedId", request.Action)
+		}
+		if request.Role != "" && request.Action != ActionEnrollInternal {
+			return fmt.Errorf("%s does not accept role", request.Action)
+		}
+		if request.Portable != nil && request.Action != ActionTrustPermanent {
+			return fmt.Errorf("%s does not accept portable", request.Action)
+		}
+		if request.Action == ActionForget && (request.RuntimeID != "" || request.Connection != "") {
+			return fmt.Errorf("forget does not accept a connection")
+		}
+	}
 
 	switch request.Action {
-	case ActionStatus, ActionAudit:
+	case ActionProvisionKey:
+		return noMutationArguments(request)
+	case ActionStatus, ActionAudit, ActionPolicy:
 		return noMutationArguments(request)
 
-	case ActionAllowOnce:
-		if strings.TrimSpace(request.RuntimeID) == "" {
-			return fmt.Errorf(
-				"%s requires runtimeId",
-				request.Action,
-			)
+	case ActionAllowOnce, ActionKeepBlocked:
+		if err := requireCurrentConnection(request); err != nil {
+			return err
 		}
 
 	case ActionTrustPermanent:
-		if strings.TrimSpace(request.RuntimeID) == "" {
-			return fmt.Errorf(
-				"%s requires runtimeId",
-				request.Action,
-			)
+		if err := requireCurrentConnection(request); err != nil {
+			return err
 		}
 
 		if request.Portable == nil {
@@ -121,22 +114,38 @@ func ValidateRequest(request Request) error {
 		}
 
 	case ActionAcceptReplacement:
-		if strings.TrimSpace(request.RuntimeID) == "" ||
-			strings.TrimSpace(request.TrustedID) == "" {
+		if err := requireCurrentConnection(request); err != nil {
+			return err
+		}
+		if strings.TrimSpace(request.TrustedID) == "" {
 			return fmt.Errorf(
-				"%s requires runtimeId and trustedId",
+				"%s requires trustedId",
 				request.Action,
 			)
 		}
 
 	case ActionEnrollInternal:
-		if strings.TrimSpace(request.RuntimeID) == "" ||
-			strings.TrimSpace(request.Role) == "" {
+		if err := requireCurrentConnection(request); err != nil {
+			return err
+		}
+		if strings.TrimSpace(request.Role) == "" {
 			return fmt.Errorf(
-				"%s requires runtimeId and role",
+				"%s requires role",
 				request.Action,
 			)
 		}
+	}
+
+	return nil
+}
+
+func requireCurrentConnection(request Request) error {
+	if strings.TrimSpace(request.RuntimeID) == "" ||
+		strings.TrimSpace(request.Connection) == "" {
+		return fmt.Errorf(
+			"%s requires runtimeId and connection",
+			request.Action,
+		)
 	}
 
 	return nil
@@ -146,6 +155,7 @@ func noMutationArguments(request Request) error {
 	if request.RuntimeID != "" ||
 		request.TrustedID != "" ||
 		request.Role != "" ||
+		request.Connection != "" ||
 		request.Portable != nil {
 		return fmt.Errorf(
 			"%s does not accept mutation arguments",

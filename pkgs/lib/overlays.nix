@@ -1,4 +1,3 @@
-# This configures nixpkgs.overlays to include our overlays/ directory.
 let
   path = ../overlays;
 in

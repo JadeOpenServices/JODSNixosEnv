@@ -38,6 +38,8 @@ func TestRenderRecoveryPolicyDefaultsDisabled(t *testing.T) {
 		"recoveryPartitionEnable = false;",
 		"jodsPrebootLockEnable = false;",
 		"secureBootEnable = false;",
+		"usbTrustEnforce = false;",
+		`usbTrustTpmHandle = "";`,
 		"endpointManagedDevice = false;",
 	} {
 		if !strings.Contains(got, want) {
@@ -100,30 +102,6 @@ func TestRenderJODSDoesNotContainSecretFields(t *testing.T) {
 	}
 }
 
-func TestRenderDeviceIdentity(t *testing.T) {
-	got := string(Render(Settings{
-		DeviceSysVendor:      "HP",
-		DeviceProductName:    "HP ZBook x2 G4",
-		DeviceProductVersion: "A",
-		DeviceBoardVendor:    "HP",
-		DeviceBoardName:      "824C",
-		DeviceBoardVersion:   "KBC Version 43.72",
-	}))
-
-	for _, want := range []string{
-		`deviceSysVendor = "HP";`,
-		`deviceProductName = "HP ZBook x2 G4";`,
-		`deviceProductVersion = "A";`,
-		`deviceBoardVendor = "HP";`,
-		`deviceBoardName = "824C";`,
-		`deviceBoardVersion = "KBC Version 43.72";`,
-	} {
-		if !strings.Contains(got, want) {
-			t.Fatalf("missing %q in:\n%s", want, got)
-		}
-	}
-}
-
 func TestRenderIncludesOrientationSensorSetting(t *testing.T) {
 	rendered := string(Render(Settings{
 		OrientationSensorEnable: true,
@@ -146,6 +124,9 @@ func TestFromUserMapsRoutedIntent(t *testing.T) {
 	user := config.User{
 		Hostname:               "gjallarOS",
 		Username:               "baka",
+		USBGuardEnable:         true,
+		USBTrustEnforce:        true,
+		USBTrustTPMHandle:      "0x81000042",
 		PrintingEnable:         true,
 		NetworkPrintingEnable:  true,
 		ContainersEnable:       true,
@@ -168,13 +149,16 @@ func TestFromUserMapsRoutedIntent(t *testing.T) {
 		AIAgentMode:            "workspace",
 	}
 	got := FromUser(user)
-	if !got.PrintingEnable || !got.NetworkPrintingEnable || !got.ContainersEnable {
+	if !got.PrintingEnable || !got.NetworkPrintingEnable || !got.ContainersEnable || !got.USBGuardEnable || !got.USBTrustEnforce {
 		t.Fatalf("routed booleans were not mapped: %#v", got)
+	}
+	if got.USBTrustTPMHandle != user.USBTrustTPMHandle {
+		t.Fatalf("USB trust TPM handle was not mapped: %#v", got)
 	}
 	if got.PlaneHost != user.PlaneHost || got.JODSEndpoint != user.JODSEndpoint || got.Theme != user.Theme {
 		t.Fatalf("routed strings were not mapped: %#v", got)
 	}
-	if got.ODDCModel != "" || got.GraphicsVendor != "" || got.AIModel != "" {
+	if got.ODDCModel != "" || got.AIModel != "" {
 		t.Fatalf("derived fields leaked into FromUser: %#v", got)
 	}
 }
@@ -188,6 +172,14 @@ rec {
     planeEnable = false;
     planeHost = "";
     graphicsVendor = "amd";
+    graphicsDeviceId = "15bf";
+    graphicsType = "integrated";
+    graphicsCompute = true;
+    graphicsDriverBranch = "legacy_580";
+    frameworkEnable = true;
+    workUsername = "legacy-work";
+    deviceSysVendor = "Legacy Vendor";
+    wifiDriver = "legacy-driver";
     aiModel = "derived-model";
     theme = "old-theme";
     themeDetails = import (./. + "/../themes/${theme}.nix") {inherit pkgs;};
@@ -220,7 +212,6 @@ rec {
 		`printingEnable = true;`,
 		`planeEnable = true;`,
 		`planeHost = "https://plane.example.test";`,
-		`graphicsVendor = "amd";`,
 		`aiModel = "derived-model";`,
 		`theme = "noctalia";`,
 	} {
@@ -231,6 +222,21 @@ rec {
 	info, err := os.Stat(path)
 	if err != nil {
 		t.Fatal(err)
+	}
+	for _, retired := range []string{
+		"graphicsVendor",
+		"graphicsDeviceId",
+		"graphicsType",
+		"graphicsCompute",
+		"graphicsDriverBranch",
+		"frameworkEnable",
+		"workUsername",
+		"deviceSysVendor",
+		"wifiDriver",
+	} {
+		if strings.Contains(got, retired+" = ") {
+			t.Fatalf("retired generated field %q survived sync:\n%s", retired, got)
+		}
 	}
 	if info.Mode().Perm() != 0o640 {
 		t.Fatalf("mode changed to %o", info.Mode().Perm())

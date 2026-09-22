@@ -1,8 +1,9 @@
-{ ... }:
+{ lib, settings, ... }:
 
 {
   wayland.windowManager.hyprland.settings = {
-    windowrule = [
+    windowrule = lib.optionals (settings.nextcloudEnable or false) [
+      "match:class ^([Nn]extcloud|com\\.nextcloud\\.desktopclient\\.nextcloud)$, focus_on_activate on"
     ];
 
     workspace = [

@@ -126,8 +126,10 @@ func (s Server) Serve(ctx context.Context) error {
 				return
 			}
 
+			requestCtx, cancel := context.WithDeadline(ctx, deadline)
+			defer cancel()
 			if err := s.Handler.ServeConn(
-				ctx,
+				requestCtx,
 				conn,
 			); err != nil {
 				s.report(fmt.Errorf(

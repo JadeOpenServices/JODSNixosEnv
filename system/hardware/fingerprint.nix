@@ -9,8 +9,6 @@
 let
   managed = settings.endpointManagedDevice or false;
 
-  # This may only be enabled through signed JODS-managed configuration.
-  # Unmanaged installer presets intentionally do not expose it.
   jodsEnrollmentAllowed =
     settings.jodsFingerprintEnrollmentAllowed or false;
 
@@ -36,8 +34,6 @@ let
       exit 0
     fi
 
-    # fprintd keeps per-user enrollment metadata below /var/lib/fprint.
-    # Do not call back into fprintd from its own polkit authorization path.
     if [ -d "/var/lib/fprint/$user" ] &&
        ${pkgs.findutils}/bin/find \
          "/var/lib/fprint/$user" \
@@ -76,13 +72,9 @@ lib.mkMerge [
       sudo = {
         fprintAuth = true;
 
-        # After fingerprint failure/timeout, start a fresh password
-        # conversation instead of reusing the fprint PAM token.
         rules.auth.unix.args = lib.mkForce [ "likeauth" ];
       };
 
-      # Polkit authorization must use a password. Otherwise an already enrolled
-      # fingerprint could authorize adding another fingerprint.
       polkit-1 = {
         fprintAuth = false;
         rules.auth.unix.args = lib.mkForce [ "likeauth" ];

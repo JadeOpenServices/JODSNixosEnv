@@ -9,8 +9,6 @@ buildGoModule {
 
   nativeCheckInputs = [ git ];
 
-  # Only the Go module enters the store.  In particular, user.config.json,
-  # generated settings, and encrypted secrets never become build inputs.
   src = lib.fileset.toSource {
     root = ../../.;
     fileset = lib.fileset.unions [
@@ -23,15 +21,13 @@ buildGoModule {
       ../../internal/installercheck
       ../../internal/installer
       ../../internal/preset
+      ../../internal/usbtrust
       ../../oddc
     ];
   };
 
   vendorHash = null;
 
-  # This package owns the established GjallarOS command suite.
-  # Privileged feature daemons such as gjallar-usbtrustd are
-  # packaged independently by their owning subsystem.
   subPackages = [
     "cmd/gjallarctl"
     "cmd/gjallar-installer"

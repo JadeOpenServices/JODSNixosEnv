@@ -13,10 +13,10 @@ func TestDetectHardware(t *testing.T) {
 	if err := os.MkdirAll(path, 0755); err != nil {
 		t.Fatal(err)
 	}
-	os.WriteFile(filepath.Join(path, "chassis_type"), []byte("3\n"), 0644)
+	os.WriteFile(filepath.Join(path, "chassis_type"), []byte("32\n"), 0644)
 	os.WriteFile(filepath.Join(path, "product_name"), []byte("Framework Laptop 13\n"), 0644)
 	got := DetectHardware(root)
-	if got.FormFactor != "laptop" || got.LaptopVendor != "framework" {
+	if got.FormFactor != "laptop" {
 		t.Fatalf("%+v", got)
 	}
 }

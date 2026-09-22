@@ -19,11 +19,6 @@ let
 
   generatedInstallerPreset = pkgs.writeText "gjallar-installer-fallback.json" (
     builtins.toJSON {
-      # IMPORTANT:
-      # This object is config.User input, NOT rendered generated/state.nix output.
-      # Do not add derived fields such as aiModel, graphicsVendor,
-      # aiContextTokens, wifiDriver, etc. Those are rediscovered/rendered
-      # later by the installer.
       system = getSetting "system" pkgs.stdenv.hostPlatform.system;
       hostname = getSetting "hostname" "gjallarOS";
       username = getSetting "username" "user";
@@ -36,6 +31,8 @@ let
       touchpadWorkspaceSwipe = getSetting "touchpadWorkspaceSwipe" true;
       clamshellEnable = getSetting "clamshellEnable" true;
       usbguardEnable = getSetting "usbguardEnable" false;
+      usbTrustEnforce = getSetting "usbTrustEnforce" false;
+      usbTrustTpmHandle = getSetting "usbTrustTpmHandle" "";
 
       name = getSetting "name" "";
       email = getSetting "email" "";
@@ -88,27 +85,23 @@ let
     }
   );
 
-  # Preserve the device's actual user configuration when one exists in the
-  # source used to build the recovery image. This is the normal local fallback.
   installerFallbackPreset =
     if builtins.pathExists sourceUserConfig then sourceUserConfig else generatedInstallerPreset;
 in
 {
   imports = [ "${modulesPath}/installer/cd-dvd/installation-cd-minimal.nix" ];
 
+  services.usbguard.enable = lib.mkForce false;
+
   image.fileName = lib.mkForce "gjallar-recovery-${config.system.nixos.label}-${pkgs.stdenv.hostPlatform.system}.iso";
   isoImage.squashfsCompression = "zstd -Xcompression-level 15";
   boot.zfs.forceImportRoot = false;
 
-  # Installer/recovery media follows the keyboard selected for GjallarOS.
   services.xserver.xkb = {
     layout = settings.keyboardLayout;
     variant = settings.keyboardVariant;
   };
 
-  # A minimal recovery ISO primarily runs on the Linux virtual console.
-  # For ordinary layouts without an XKB variant, set the VC keymap directly
-  # so the selected layout is active from the first login prompt onward.
   console =
     if settings.keyboardVariant == "" then
       {
@@ -127,16 +120,10 @@ in
   services.openssh.enable = lib.mkForce false;
   programs.ssh.startAgent = false;
 
-  # Installer-only upstream libfprint visibility. This does not enable
-  # fingerprint authentication or alter PAM.
   services.fprintd.enable = true;
 
-  # The installer needs a writable GjallarOS repository because fresh-target
-  # hardware configuration and generated installer settings are produced
-  # during installation. The flake source itself is immutable in the Nix
-  # store, so copy it into ephemeral /run storage at boot.
-  systemd.services.gjallar-installer-repository = {
-    description = "Prepare writable GjallarOS installer repository";
+  systemd.services.installer-repository = {
+    description = "Prepare writable installer repository";
     wantedBy = [ "multi-user.target" ];
     before = [
       "getty@tty1.service"
@@ -156,9 +143,6 @@ in
       ${pkgs.coreutils}/bin/mkdir -p "$target"
       ${pkgs.coreutils}/bin/cp -a ${repoSource}/. "$target"/
 
-      # Configuration authority is resolved immediately before the
-      # installer runs. Never inherit user.config.json merely because
-      # it happened to be present in the embedded source checkout.
       ${pkgs.coreutils}/bin/rm -f "$target/user.config.json"
       ${pkgs.coreutils}/bin/chown -R nixos:users "$target"
       ${pkgs.coreutils}/bin/chmod -R u+rwX "$target"
@@ -169,12 +153,12 @@ in
     '';
   };
 
-  systemd.services.gjallar-device-probe = {
-    description = "Collect GjallarOS installer hardware state";
+  systemd.services.installer-device-probe = {
+    description = "Collect installer hardware state";
     wantedBy = [ "multi-user.target" ];
 
-    after = [ "gjallar-installer-repository.service" ];
-    requires = [ "gjallar-installer-repository.service" ];
+    after = [ "installer-repository.service" ];
+    requires = [ "installer-repository.service" ];
 
     path = with pkgs; [
       pciutils
@@ -210,19 +194,19 @@ in
   };
 
   services.udev.extraRules = ''
-    ACTION=="add|remove|change", SUBSYSTEM=="pci", RUN+="${pkgs.systemd}/bin/systemctl --no-block start gjallar-device-probe.service"
-    ACTION=="add|remove|change", SUBSYSTEM=="usb", RUN+="${pkgs.systemd}/bin/systemctl --no-block start gjallar-device-probe.service"
-    ACTION=="add|remove|change", SUBSYSTEM=="input", RUN+="${pkgs.systemd}/bin/systemctl --no-block start gjallar-device-probe.service"
-    ACTION=="add|remove|change", SUBSYSTEM=="iio", RUN+="${pkgs.systemd}/bin/systemctl --no-block start gjallar-device-probe.service"
-    ACTION=="add|remove|change", SUBSYSTEM=="thunderbolt", RUN+="${pkgs.systemd}/bin/systemctl --no-block start gjallar-device-probe.service"
+    ACTION=="add|remove|change", SUBSYSTEM=="pci", RUN+="${pkgs.systemd}/bin/systemctl --no-block start installer-device-probe.service"
+    ACTION=="add|remove|change", SUBSYSTEM=="usb", RUN+="${pkgs.systemd}/bin/systemctl --no-block start installer-device-probe.service"
+    ACTION=="add|remove|change", SUBSYSTEM=="input", RUN+="${pkgs.systemd}/bin/systemctl --no-block start installer-device-probe.service"
+    ACTION=="add|remove|change", SUBSYSTEM=="iio", RUN+="${pkgs.systemd}/bin/systemctl --no-block start installer-device-probe.service"
+    ACTION=="add|remove|change", SUBSYSTEM=="thunderbolt", RUN+="${pkgs.systemd}/bin/systemctl --no-block start installer-device-probe.service"
   '';
 
-  environment.etc."systemd/system-sleep/gjallar-device-probe-refresh" = {
+  environment.etc."systemd/system-sleep/installer-device-probe-refresh" = {
     mode = "0755";
     text = ''
       #!/bin/sh
       if [ "$1" = post ]; then
-        ${pkgs.systemd}/bin/systemctl --no-block start gjallar-device-probe.service
+        ${pkgs.systemd}/bin/systemctl --no-block start installer-device-probe.service
       fi
     '';
   };
@@ -264,8 +248,6 @@ in
     Network access is opt-in; SSH is disabled.
   '';
 
-  # Sourced from deployment/release-policy.json by the root flake. The
-  # recovery image can therefore never silently drift from the main release.
   systemd.tmpfiles.rules = [
     "d /run/gjallarOS/device-config 0700 root root - -"
   ];

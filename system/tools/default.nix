@@ -44,52 +44,6 @@ let
     ${pkgs.systemd}/bin/journalctl -b -p warning..alert --no-pager || true
     log 'end'
   '';
-  usbguardReviewModule =
-    { pkgs, ... }:
-    let
-      reviewScript = pkgs.writeShellScript "gjallar-usbguard-review" ''
-        set -u
-        declare -A prompted=()
-        while :; do
-          active_ids=' '
-          while IFS= read -r line; do
-            id="$(${pkgs.gnused}/bin/sed -n 's/^\([0-9][0-9]*\):.*/\1/p' <<< "$line")"
-            [ -n "$id" ] || continue
-            active_ids+="$id "
-            [ -z "''${prompted[$id]+x}" ] || continue
-            prompted[$id]=1
-            ${pkgs.yad}/bin/yad --question --title='USBGuard approval' \
-              --text="A new USB device is blocked:\n\n$line\n\nAllow it?" \
-              --width=620 --center \
-              --button='Allow once:0' --button='Always allow:2' --button='Keep blocked:1'
-            choice="$?"
-            case "$choice" in
-              0) printf '%s\n' "USB authorization is owned by gjallar-usbtrust; privileged broker not wired yet." >&2 ;;
-              2) printf '%s\n' "Permanent USB trust is owned by gjallar-usbtrust; privileged broker not wired yet." >&2 ;;
-            esac
-          done < <(${pkgs.usbguard}/bin/usbguard list-devices --blocked 2>/dev/null || true)
-          for id in "''${!prompted[@]}"; do
-            [[ "$active_ids" == *" $id "* ]] || unset 'prompted[$id]'
-          done
-          ${pkgs.coreutils}/bin/sleep 2
-        done
-      '';
-    in
-    {
-      systemd.user.services.gjallar-usbguard-review = {
-        Unit = {
-          Description = "GjallarOS USBGuard approval prompts";
-          After = [ "hyprland-session.target" ];
-          PartOf = [ "hyprland-session.target" ];
-        };
-        Service = {
-          ExecStart = reviewScript;
-          Restart = "on-failure";
-          RestartSec = 3;
-        };
-        Install.WantedBy = [ "hyprland-session.target" ];
-      };
-    };
   homeDiagnosticsModule =
     { config, ... }:
     let
@@ -129,15 +83,15 @@ let
         ${pkgs.hyprland}/bin/hyprctl clients || true
         ${lib.getExe config.programs.noctalia.package} config validate || true
         ${lib.getExe config.programs.noctalia.package} msg status >/dev/null 2>&1 || true
-        ${pkgs.systemd}/bin/journalctl --user -b --no-pager -u gjallar-hyprland-session-diagnostics.service || true
+        ${pkgs.systemd}/bin/journalctl --user -b --no-pager -u hyprland-session-diagnostics.service || true
         ${pkgs.procps}/bin/pgrep -f -a -u "$USER" 'Hyprland|noctalia|fuzzel|ghostty|swaybg|waybar' || true
         log 'end'
       '';
     in
     {
-      systemd.user.services.gjallar-hyprland-session-diagnostics = {
+      systemd.user.services.hyprland-session-diagnostics = {
         Unit = {
-          Description = "GjallarOS Hyprland session diagnostics";
+          Description = "Hyprland session diagnostics";
           After = [ "hyprland-session.target" ];
           PartOf = [ "hyprland-session.target" ];
         };
@@ -154,14 +108,6 @@ in
   imports = [ ./commands/default.nix ];
   config = lib.mkMerge [
     {
-      services.usbguard = {
-        enable = settings.usbguardEnable or false;
-        dbus.enable = settings.usbguardEnable or false;
-        IPCAllowedGroups = [ "wheel" ];
-      };
-
-      # Replace the noisy kernel/systemd console with Plymouth's graphical
-      # spinner. Kernel errors remain visible when a boot actually fails.
       boot = {
         plymouth.enable = true;
 
@@ -178,31 +124,14 @@ in
         ];
       };
 
-      # Noctalia's greetd compositor takes over the DRM device. Keep Plymouth
-      # visible until that compositor and its greeter client are both running.
       systemd.services.plymouth-quit.enable = false;
       systemd.services.plymouth-quit-wait.enable = false;
 
-      # Stop Plymouth immediately before greetd launches, retaining its last
-      # frame. This releases DRM without the multi-second blocking delay of
-      # `plymouth deactivate`; the greeter then overwrites the retained frame.
       systemd.services.greetd.serviceConfig.ExecStartPre =
         pkgs.writeShellScript "handoff-plymouth-to-greetd" ''
           ${pkgs.plymouth}/bin/plymouth quit --retain-splash || true
         '';
 
-      # Plymouth shutdown handoff.
-      #
-      # Do not race Plymouth against greetd/Hyprland for DRM ownership.
-      # The stock Plymouth shutdown units are designed to start after the
-      # display manager has released the VT/DRM device and before the final
-      # systemd power action.  The previous conflict-only override allowed the
-      # two jobs to run concurrently, which could cause:
-      #
-      #   splash -> console -> splash/freeze -> console
-      #
-      # Keep the compositor's retained final frame on-screen while greetd
-      # exits, then let Plymouth take over exactly once.
       systemd.services.plymouth-poweroff = {
         after = [
           "display-manager.service"
@@ -260,14 +189,10 @@ in
         power-profiles-daemon
       ];
     }
-    (lib.mkIf (settings.usbguardEnable or false) {
-      # Only the primary interactive user receives hardware approval prompts.
-      home-manager.users.${settings.username} = usbguardReviewModule;
-    })
     (lib.mkIf diagnosticsEnabled {
       home-manager.sharedModules = [ homeDiagnosticsModule ];
-      systemd.services.gjallar-boot-diagnostics = {
-        description = "GjallarOS boot diagnostics";
+      systemd.services.boot-diagnostics = {
+        description = "Boot diagnostics";
         wantedBy = [ "multi-user.target" ];
         after = [
           "NetworkManager.service"

@@ -100,9 +100,9 @@ const (
 )
 
 var presetSchema = map[string]presetValueType{
-	"profile": presetString, "hostname": presetString, "username": presetString,
+	"hostname": presetString, "username": presetString,
 	"timezone": presetString, "locale": presetString, "keyboardLayout": presetString, "keyboardVariant": presetString,
-	"touchpadWorkspaceSwipe": presetBool, "clamshellEnable": presetBool, "usbguardEnable": presetBool, "printingEnable": presetBool, "networkPrintingEnable": presetBool,
+	"touchpadWorkspaceSwipe": presetBool, "clamshellEnable": presetBool, "usbguardEnable": presetBool, "usbTrustEnforce": presetBool, "usbTrustTpmHandle": presetString, "printingEnable": presetBool, "networkPrintingEnable": presetBool,
 	"allowUnvalidatedODDCModel": presetBool,
 	"unattendedInstall":         presetBool,
 	"name":                      presetString, "email": presetString, "githubUsername": presetString, "dotfilesDir": presetString,
@@ -114,10 +114,7 @@ var presetSchema = map[string]presetValueType{
 	"containersEnable": presetBool, "debugFunctions": presetBool, "aiEnable": presetBool,
 	"overrideAiSelection": presetBool, "overrideModelWith": presetString, "aiAgentMode": presetString,
 	"jodsFingerprintEnrollmentAllowed": presetBool,
-	"oddcModel":                        presetString,
-	"deviceSysVendor":                  presetString, "deviceProductName": presetString, "deviceProductVersion": presetString,
-	"deviceBoardVendor": presetString, "deviceBoardName": presetString, "deviceBoardVersion": presetString,
-	"nemuEnable": presetBool, "luksTpm2Enable": presetBool,
+	"nemuEnable":                       presetBool, "luksTpm2Enable": presetBool,
 	"recoveryEnable":          presetBool,
 	"recoveryPartitionEnable": presetBool, "jodsPrebootLockEnable": presetBool,
 	"secureBootEnable": presetBool, "secureBootPrompt": presetBool, "endpointManagedDevice": presetBool,
@@ -170,26 +167,22 @@ func checkNativeGraphics(ctx context.Context, r *Report, root string) {
 
 	generated, err := readGraphicsSettings(filepath.Join(root, "generated", "state.nix"))
 	if err != nil {
-		r.Findings = append(r.Findings, Finding{Warn, fmt.Sprintf("generated graphics settings unavailable: %v", err)})
+		r.Findings = append(r.Findings, Finding{Warn, fmt.Sprintf("generated graphics topology unavailable: %v", err)})
 		return
 	}
 	for key, actual := range map[string]string{
-		"graphicsVendor":          live.Vendor,
-		"graphicsDeviceId":        live.DeviceID,
-		"graphicsType":            live.Type,
-		"graphicsCompute":         fmt.Sprintf("%t", live.Compute),
 		"graphicsBusId":           live.BusID,
 		"graphicsIntegratedBusId": live.IntegratedBusID,
 	} {
 		if generated[key] != actual {
-			r.Findings = append(r.Findings, Finding{Warn, fmt.Sprintf("generated %s is %q; live detection is %q; rerun the installer to regenerate generated/state.nix", key, generated[key], actual)})
+			r.Findings = append(r.Findings, Finding{Warn, fmt.Sprintf("generated %s is %q; live detection is %q; rerun the installer to refresh machine topology", key, generated[key], actual)})
 			return
 		}
 	}
-	r.Findings = append(r.Findings, Finding{OK, "generated graphics settings match native detection"})
+	r.Findings = append(r.Findings, Finding{OK, "generated graphics topology matches native detection; portable graphics facts are ODDC-owned"})
 }
 
-var graphicsSetting = regexp.MustCompile(`(?m)^\s*(graphicsVendor|graphicsDeviceId|graphicsType|graphicsCompute|graphicsBusId|graphicsIntegratedBusId)\s*=\s*(?:"([^"]*)"|(true|false));`)
+var graphicsSetting = regexp.MustCompile(`(?m)^\s*(graphicsBusId|graphicsIntegratedBusId)\s*=\s*"([^"]*)";`)
 
 func readGraphicsSettings(path string) (map[string]string, error) {
 	contents, err := os.ReadFile(path)
@@ -198,9 +191,9 @@ func readGraphicsSettings(path string) (map[string]string, error) {
 	}
 	settings := make(map[string]string)
 	for _, match := range graphicsSetting.FindAllStringSubmatch(string(contents), -1) {
-		settings[match[1]] = match[2] + match[3]
+		settings[match[1]] = match[2]
 	}
-	if len(settings) != 6 {
+	if len(settings) != 2 {
 		return nil, errors.New("required graphics fields are missing")
 	}
 	return settings, nil
@@ -257,13 +250,31 @@ func checkPresetCompatibility(r *Report, preset, user map[string]json.RawMessage
 	}
 }
 
-// These values are selected from detected hardware by configure_ai.sh. They
-// must not be requested from, or persisted by, the user preset.
+// These values are derived from hardware discovery or ODDC resolution. They
+// are installer-owned and must never be accepted as user intent.
 var installerManagedFields = map[string]bool{
-	"aiModel":               true,
-	"aiAccelerationProfile": true,
-	"aiContextTokens":       true,
-	"aiVramMB":              true,
+	"aiModel":                 true,
+	"aiAccelerationProfile":   true,
+	"aiContextTokens":         true,
+	"aiVramMB":                true,
+	"deviceBoardName":         true,
+	"deviceBoardVendor":       true,
+	"deviceBoardVersion":      true,
+	"deviceProductName":       true,
+	"deviceProductVersion":    true,
+	"deviceSysVendor":         true,
+	"graphicsBusId":           true,
+	"graphicsCompute":         true,
+	"graphicsDeviceId":        true,
+	"graphicsDriverBranch":    true,
+	"graphicsIntegratedBusId": true,
+	"graphicsType":            true,
+	"graphicsVendor":          true,
+	"oddcModel":               true,
+	"orientationSensorEnable": true,
+	"penTabletEnable":         true,
+	"touchscreenEnable":       true,
+	"wifiDriver":              true,
 }
 
 func checkRequiredFiles(r *Report, root string) {

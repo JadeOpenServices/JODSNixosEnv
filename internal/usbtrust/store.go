@@ -87,6 +87,11 @@ func ReadVerified(
 	dir string,
 	signer Signer,
 ) (Document, error) {
+	if present, err := pathPresent(filepath.Join(dir, EnvelopeFile)); err != nil {
+		return Document{}, err
+	} else if present {
+		return readEnvelope(ctx, dir, signer)
+	}
 	var document Document
 
 	if err := EnsureSecureStateDirectory(dir); err != nil {

@@ -36,7 +36,7 @@ func TestCheckRejectsInvalidUserConfig(t *testing.T) {
 }
 
 func TestCheckAcceptsInstallerDefaults(t *testing.T) {
-	root := testRepository(t, `{"profile":"laptop"}`)
+	root := testRepository(t, `{"hostname":"gjallarOS"}`)
 	report := Check(context.Background(), root)
 	if report.Failed() {
 		t.Fatalf("valid minimal config should not fail: %#v", report.Findings)
@@ -44,7 +44,7 @@ func TestCheckAcceptsInstallerDefaults(t *testing.T) {
 }
 
 func TestCheckRejectsWrongPresetFieldType(t *testing.T) {
-	root := testRepository(t, `{"profile":false}`)
+	root := testRepository(t, `{"hostname":false}`)
 	report := Check(context.Background(), root)
 	if !report.Failed() {
 		t.Fatal("wrong preset field type must fail")
@@ -63,7 +63,7 @@ func testRepository(t *testing.T, config string) string {
 `,
 		"user.config.json":                config,
 		"scripts/installation/install.sh": "#!/usr/bin/env bash\n",
-		"scripts/installation/user_PresetJSON/default.user.config.json": `{"profile":"laptop"}`,
+		"scripts/installation/user_PresetJSON/default.user.config.json": `{"hostname":"gjallarOS"}`,
 		"cmd/gjallar-installer/main.go":                                 "package main\n",
 		"internal/installer/app/app.go":                                 "package app\n",
 		"generated/state.nix":                                           "{}\n",
@@ -87,7 +87,7 @@ func testRepository(t *testing.T, config string) string {
 }
 
 func TestPreflightWarnsAboutUnusedFlakeInput(t *testing.T) {
-	root := testRepository(t, `{"profile":"laptop"}`)
+	root := testRepository(t, `{"hostname":"gjallarOS"}`)
 	flake := `
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs";
@@ -106,7 +106,7 @@ func TestPreflightWarnsAboutUnusedFlakeInput(t *testing.T) {
 }
 
 func TestPreflightWarnsAboutUnwiredModule(t *testing.T) {
-	root := testRepository(t, `{"profile":"laptop"}`)
+	root := testRepository(t, `{"hostname":"gjallarOS"}`)
 	path := filepath.Join(root, "system", "compat", "orphan.nix")
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 		t.Fatal(err)

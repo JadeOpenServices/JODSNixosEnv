@@ -43,7 +43,6 @@ in
     urlHandler
   ];
 
-  # Keep the launcher icon independent from Edge's generic application icon.
   home.file.".local/share/icons/hicolor/scalable/apps/gjallar-teams.svg".source =
     "${pkgs.papirus-icon-theme}/share/icons/Papirus/64x64/apps/teams-for-linux.svg";
 
@@ -81,7 +80,6 @@ in
         update-desktop-database "$HOME/.local/share/applications" >/dev/null 2>&1 || true
     fi
   '';
-  # GjallarOS backend-browser desktop masks
 
   xdg.dataFile."applications/microsoft-edge.desktop".text = ''
     [Desktop Entry]
@@ -91,5 +89,4 @@ in
     Hidden=true
   '';
 
-  # End GjallarOS backend-browser desktop masks
 }

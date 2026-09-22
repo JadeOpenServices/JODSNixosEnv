@@ -5,8 +5,8 @@ import "fmt"
 // AuthorizePeer is deliberately conservative.
 //
 // The configured desktop user may inspect status/audit state.
-// Mutation requests remain root-only until GjallarOS wires an
-// explicit interactive authorization mechanism.
+// Mutation requests are root-only. Desktop clients obtain a fresh sudo/PAM
+// authorization before sending the same validated request as root.
 func AuthorizePeer(
 	peerUID uint32,
 	action Action,

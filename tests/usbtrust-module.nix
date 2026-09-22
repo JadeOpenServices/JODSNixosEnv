@@ -1,0 +1,84 @@
+{
+  nixpkgs ? <nixpkgs>,
+}:
+let
+  evaluate =
+    enabled: enforce: managed:
+    let
+      evaluated = import (nixpkgs + "/nixos/lib/eval-config.nix") {
+        system = "x86_64-linux";
+        specialArgs.settings = {
+          username = "testuser";
+          usbguardEnable = enabled;
+          usbTrustEnforce = enforce;
+          usbTrustTpmHandle = if enabled then "0x81000042" else "";
+          endpointManagedDevice = managed;
+        };
+        modules = [
+          ../oddc/nixos/modules
+          ../system/services/removable-media.nix
+          ({ lib, ... }: {
+            options.home-manager.users = lib.mkOption {
+              type = lib.types.attrsOf lib.types.raw;
+              default = { };
+            };
+            config = {
+              system.stateVersion = "26.05";
+              oddc.device = "model/framework/laptop-13-amd-ryzen-7040";
+            };
+          })
+        ];
+      };
+      c = evaluated.config;
+    in
+    {
+      backend = c.services.usbguard.enable;
+      inherit (c.services.gjallar-usbtrust) enforce;
+      policy = c.services.usbguard.implicitPolicyTarget;
+      groups = c.services.usbguard.IPCAllowedGroups;
+      users = c.services.usbguard.IPCAllowedUsers;
+      rules = c.services.usbguard.rules;
+      usbguardReadWritePaths =
+        if enabled then c.systemd.services.usbguard.serviceConfig.ReadWritePaths else [ ];
+      start = if enabled then c.systemd.services.usb-trust-broker.serviceConfig.ExecStart else null;
+      desktopGroups = if enabled then c.users.users.testuser.extraGroups else [ ];
+      brokerGroup = if enabled then c.systemd.services.usb-trust-broker.serviceConfig.Group else null;
+      stateDirectory = if enabled then c.systemd.services.usb-trust-broker.serviceConfig.StateDirectory else null;
+      startsWithBackend =
+        !enabled || builtins.elem "usbguard.service" c.systemd.services.usb-trust-broker.wantedBy;
+      review =
+        if enabled then
+          let
+            hm = c.home-manager.users.testuser { pkgs = evaluated.pkgs; };
+            services = hm.systemd.user.services;
+          in
+          if builtins.hasAttr "usb-device-review" services then
+            services.usb-device-review.Service.ExecStart
+          else
+            null
+        else
+          null;
+      usbAssertions = builtins.all (
+        a: a.assertion || builtins.match "USB trust.*" a.message == null
+      ) c.assertions;
+    };
+  dormant = evaluate false false false;
+  audit = evaluate true false false;
+  enforcing = evaluate true true false;
+  managedAudit = evaluate true false true;
+in
+assert !dormant.backend;
+assert audit.backend && !audit.enforce && audit.policy == "allow";
+assert enforcing.policy == "block" && enforcing.rules == "";
+assert enforcing.groups == [ ] && enforcing.users == [ "root" ];
+assert builtins.elem "usb-trust-access" enforcing.desktopGroups;
+assert enforcing.brokerGroup == "usb-trust-access";
+assert enforcing.stateDirectory == "gjallar-usbtrust";
+assert builtins.elem "-/sys" enforcing.usbguardReadWritePaths;
+assert enforcing.usbAssertions;
+assert audit.startsWithBackend && enforcing.startsWithBackend;
+assert audit.review != null;
+assert managedAudit.review == null;
+{
+  inherit dormant audit enforcing managedAudit;
+}

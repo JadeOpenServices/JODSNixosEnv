@@ -27,8 +27,6 @@ let
 in
 {
 
-  # Generic virtualization never takes ownership of a host GPU.
-  # Physical passthrough requires an explicit validated ODDC contract.
   warnings = lib.optional (
     passthroughMode != "disabled" && !passthroughAllowed
   ) ''
@@ -58,17 +56,12 @@ in
   programs.nemu = {
     package = pkgs._nemu;
     enable = true;
-    vhostNetGroup = "vhost";
-    macvtapGroup = "vhost";
-    usbGroup = "usb";
+    vhostNetGroup = "nemu-vhost";
+    macvtapGroup = "nemu-vhost";
     users = {
       ${settings.username} = {
-        # Install Nemu without starting its daemon or creating veth
-        # devices during boot. Users can start it on demand once a
-        # VM definition exists; this keeps normal boots clean.
         autoAddVeth = false;
         autoStartDaemon = false;
-        # autoStartVMs = [ "Win11" ];
       };
     };
   };

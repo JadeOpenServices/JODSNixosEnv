@@ -53,7 +53,7 @@ func TestDecodeRejectsTrailingJSON(t *testing.T) {
 func TestPermanentTrustRequiresPortableDecision(t *testing.T) {
 	_, err := DecodeRequest(
 		strings.NewReader(
-			`{"action":"trust-permanent","runtimeId":"7"}`,
+			`{"action":"trust-permanent","runtimeId":"7","connection":"review-token"}`,
 		),
 	)
 
@@ -70,13 +70,29 @@ func TestPermanentTrustAcceptsExplicitPortableDecision(
 	portable := false
 
 	request := Request{
-		Action:    ActionTrustPermanent,
-		RuntimeID: "7",
-		Portable:  &portable,
+		Action:     ActionTrustPermanent,
+		RuntimeID:  "7",
+		Connection: "review-token",
+		Portable:   &portable,
 	}
 
 	if err := ValidateRequest(request); err != nil {
 		t.Fatal(err)
+	}
+}
+
+func TestConnectionBoundMutationsRequireReviewToken(t *testing.T) {
+	portable := false
+	for _, request := range []Request{
+		{Action: ActionAllowOnce, RuntimeID: "7"},
+		{Action: ActionKeepBlocked, RuntimeID: "7"},
+		{Action: ActionTrustPermanent, RuntimeID: "7", Portable: &portable},
+		{Action: ActionEnrollInternal, RuntimeID: "7", Role: "hardware.input"},
+		{Action: ActionAcceptReplacement, RuntimeID: "7", TrustedID: "device:old"},
+	} {
+		if err := ValidateRequest(request); err == nil {
+			t.Fatalf("%s accepted without current connection token", request.Action)
+		}
 	}
 }
 

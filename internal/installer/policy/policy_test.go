@@ -8,12 +8,14 @@ import (
 
 func TestFromUser(t *testing.T) {
 	got := FromUser(config.User{
-		AIEnable:       true,
-		USBGuardEnable: true,
-		NemuEnable:     true,
+		AIEnable:          true,
+		USBGuardEnable:    true,
+		USBTrustEnforce:   true,
+		USBTrustTPMHandle: "0x81000042",
+		NemuEnable:        true,
 	})
 
-	if !got.AIEnable || !got.USBGuardEnable || !got.NemuEnable || got.ContainersEnable {
+	if !got.AIEnable || !got.USBGuardEnable || !got.USBTrustEnforce || got.USBTrustTPMHandle != "0x81000042" || !got.NemuEnable || got.ContainersEnable {
 		t.Fatalf("unexpected features: %#v", got)
 	}
 }

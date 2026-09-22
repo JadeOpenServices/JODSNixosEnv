@@ -6,10 +6,11 @@
   ...
 }:
 let
-  vendor = settings.graphicsVendor;
-  driverBranch = settings.graphicsDriverBranch or "stable";
+  graphics = import ../../../oddc/nixos/lib/graphics.nix { inherit lib; } config.oddc.resolved;
+  vendor = graphics.vendor;
+  driverBranch = lib.attrByPath [ "policy" "graphics" "discrete" "driverBranch" ] "stable" config.oddc.resolved;
   legacy580 = vendor == "nvidia" && driverBranch == "legacy_580";
-  hybrid = settings.graphicsType == "hybrid";
+  hybrid = graphics.type == "hybrid";
 
   selectedNvidiaPackage =
     if legacy580 then
@@ -132,6 +133,11 @@ let
       selectedNvidiaPackage;
 in
 {
+  assertions = lib.optional (vendor == "nvidia") {
+    assertion = builtins.elem driverBranch [ "stable" "legacy_580" ];
+    message = "ODDC NVIDIA driverBranch must be stable or legacy_580.";
+  };
+
   services.xserver.enable = true;
   hardware.graphics = {
     enable = true;
@@ -163,8 +169,8 @@ in
     };
   };
 
-  hardware.amdgpu.opencl.enable = lib.mkIf (vendor == "amd" && settings.graphicsCompute) true;
-  hardware.graphics.extraPackages = lib.mkIf (vendor == "amd" && settings.graphicsCompute) (
+  hardware.amdgpu.opencl.enable = lib.mkIf (vendor == "amd" && graphics.compute) true;
+  hardware.graphics.extraPackages = lib.mkIf (vendor == "amd" && graphics.compute) (
     with pkgs;
     [
       rocmPackages.clr

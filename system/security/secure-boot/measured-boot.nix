@@ -24,13 +24,13 @@ in
     }
   ];
 
-  systemd.services.gjallar-tpm2-enroll =
+  systemd.services.measured-boot-tpm2-enrollment =
     lib.mkIf (settings.secureBootEnable && settings.luksTpm2Enable)
       {
-        description = "Enroll GjallarOS measured-boot TPM2 LUKS token";
+        description = "Enroll measured-boot TPM2 LUKS token";
         wantedBy = [ "multi-user.target" ];
         after = [
-          "gjallar-secure-boot-finalize.service"
+          "secure-boot-verification.service"
           "systemd-pcrlock-make-policy.service"
         ];
         requires = [ "systemd-pcrlock-make-policy.service" ];
@@ -71,8 +71,6 @@ in
           chmod 0600 "$keyfile"
           cryptsetup open --test-passphrase --type luks "$device" --key-file "$keyfile"
 
-          # Fresh installs must not inherit an unidentified TPM token. Refuse an
-          # ambiguous state instead of deleting any unknown slot.
           before="$(cryptsetup luksDump --dump-json-metadata "$device")"
           if printf '%s' "$before" | grep -q 'systemd-tpm2'; then
             printf '%s\n' 'ERROR: an existing TPM2 token needs explicit audited migration; no slot was changed.' >&2

@@ -21,7 +21,7 @@
 
     ./security/firewall.nix
     ./security/keyring.nix
-  ./maintenance/storage.nix
+    ./maintenance/storage.nix
     ./services/printing.nix
     ./services/removable-media.nix
     ./services/tailscale.nix

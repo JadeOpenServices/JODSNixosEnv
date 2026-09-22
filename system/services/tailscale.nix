@@ -16,12 +16,10 @@ in
 {
   services.tailscale.enable = true;
 
-  # Reapply after every tailscaled start/restart.
   systemd.services.tailscaled.postStart = ''
     ${applyLocalLanBypass}
   '';
 
-  # Reapply after tailscale set/preferences changes.
   systemd.services.tailscale-local-lan-bypass = {
     description = "Prefer local 192.168.8.0/24 over Tailscale policy routing";
     after = [ "tailscaled.service" ];

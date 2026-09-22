@@ -57,10 +57,6 @@ func runDeviceStage(
 
 	results = append(
 		results,
-	)
-
-	results = append(
-		results,
 		runtimeGraphicsResult(ctx, runner, graphics.Detect, repo),
 		runtimeInputResult(ctx, runner, discovery.DetectHardware, repo),
 		secureBootPolicyResult(device.Resolved),

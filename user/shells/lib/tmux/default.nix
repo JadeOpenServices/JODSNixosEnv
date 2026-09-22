@@ -25,20 +25,16 @@ in
       ]
       ++ theme;
     extraConfig = ''
-      # Empty line before status bar
       set -Fg 'status-format[1]' '#{status-format[0]}'
       set -g 'status-format[0]' ""
       set -g status 2
 
       ####################
-      #     Shortcuts    #
       ####################
 
-      # Reload config.
       unbind r
       bind r source-file ~/.config/tmux/tmux.conf
 
-      # Move between windows
       bind-key -n C-Left previous-window
       bind-key -n C-Right next-window
     '';

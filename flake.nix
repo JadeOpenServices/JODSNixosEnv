@@ -67,8 +67,6 @@
       inputs.nixpkgs.follows = "nixpkgs";
     };
 
-    # OS-neutral JODS agent protocol with the NixOS executor imported through
-    # system/management/jods. Pinned source; never a developer-machine path.
     jods = {
       url = "git+https://github.com/bakanura/jods.git?rev=3673356b81109bfaf827eea0cc58888f1add8779&shallow=1";
       flake = false;

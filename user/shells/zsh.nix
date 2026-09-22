@@ -9,7 +9,6 @@
 {
   imports = [
     ./lib/bat.nix
-    # ./lib/zoxide.nix
     ./lib/starship.nix
     ./lib/television
     ./lib/tmux
@@ -46,8 +45,6 @@
       gca = "git commit -a";
       v = "$EDITOR";
       mv = "mv -v";
-      # cd = "z";
-      # cdi = "zi";
       cp = "rsync -avhW --no-compress --progress";
       rm = "rm -rv";
       w3md = "w3m https://lite.duckduckgo.com/lite/";

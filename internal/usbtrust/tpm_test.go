@@ -260,10 +260,19 @@ func TestTPMSignerVerifyRejectsWrongKeyType(
 func TestNewTPMSignerRejectsInvalidHandle(
 	t *testing.T,
 ) {
-	if _, err := NewTPMSigner(
+	for _, handle := range []string{
 		"not-a-handle",
-	); err == nil {
-		t.Fatal("invalid TPM handle accepted")
+		"0x80000000",
+		"0x81100000",
+		"0x81ffffff",
+	} {
+		if _, err := NewTPMSigner(handle); err == nil {
+			t.Fatalf("invalid or unreserved TPM handle %q accepted", handle)
+		}
+	}
+
+	if _, err := NewTPMSigner("0x81000042"); err != nil {
+		t.Fatalf("reserved owner TPM handle rejected: %v", err)
 	}
 }
 

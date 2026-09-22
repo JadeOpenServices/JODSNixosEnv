@@ -10,6 +10,8 @@ type Features struct {
 	ContainersEnable       bool
 	ClamshellEnable        bool
 	USBGuardEnable         bool
+	USBTrustEnforce        bool
+	USBTrustTPMHandle      string
 	NemuEnable             bool
 	RecoveryEnable         bool
 	JODSPrebootLockEnable  bool
@@ -24,7 +26,7 @@ func FromUser(user config.User) Features {
 	return Features{
 		AIEnable: user.AIEnable, AutoReboot: user.AutoReboot,
 		DebugFunctions: user.DebugFunctions, ContainersEnable: user.ContainersEnable,
-		ClamshellEnable: user.ClamshellEnable, USBGuardEnable: user.USBGuardEnable, PrintingEnable: user.PrintingEnable, NetworkPrintingEnable: user.NetworkPrintingEnable,
+		ClamshellEnable: user.ClamshellEnable, USBGuardEnable: user.USBGuardEnable, USBTrustEnforce: user.USBTrustEnforce, USBTrustTPMHandle: user.USBTrustTPMHandle, PrintingEnable: user.PrintingEnable, NetworkPrintingEnable: user.NetworkPrintingEnable,
 		NemuEnable:     user.NemuEnable,
 		RecoveryEnable: user.RecoveryEnable, JODSPrebootLockEnable: user.JODSPrebootLockEnable,
 		SecureBootEnable:       user.SecureBootEnable,

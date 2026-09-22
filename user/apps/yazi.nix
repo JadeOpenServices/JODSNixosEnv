@@ -92,6 +92,9 @@ let
     hovered = { fg = "{{colors.on_primary.default.hex}}", bg = "{{colors.primary.default.hex}}", bold = true }
     footer = { fg = "{{colors.on_surface.default.hex}}", bg = "{{colors.surface_container_lowest.default.hex}}" }
   '';
+  nextcloudPlace = lib.optionalString (settings.nextcloudEnable or false) ''
+        place("Nextcloud", "gn", home .. "/Nextcloud", true),
+  '';
   init = ''
     require("sduf"):setup({
       filled_bg = "{{colors.primary.default.hex}}",
@@ -101,6 +104,39 @@ let
       text_fg = "{{colors.on_surface.default.hex}}",
       error_fg = "{{colors.error.default.hex}}",
     })
+
+    -- Superfile-like quick locations without replacing Yazi's native layout.
+    -- Keep them in the header so the file panes retain their full semantics.
+    local function place(label, key, path, recursive)
+      local cwd = tostring(cx.active.current.cwd)
+      local active = cwd == path or (recursive and cwd:sub(1, #path + 1) == path .. "/")
+      local span = ui.Span(" " .. key .. " " .. label .. " ")
+
+      if active then
+        return span
+          :fg("{{colors.on_primary.default.hex}}")
+          :bg("{{colors.primary.default.hex}}")
+          :bold()
+      end
+
+      return span
+        :fg("{{colors.on_surface.default.hex}}")
+        :bg("{{colors.surface_container_lowest.default.hex}}")
+    end
+
+    Header:children_add(function()
+      local home = os.getenv("HOME") or ""
+      return ui.Line {
+${nextcloudPlace}        place("Home", "gh", home, false),
+        place("Downloads", "gd", home .. "/Downloads", true),
+        place("Documents", "gD", home .. "/Documents", true),
+        ui.Span(" ? Help ")
+          :fg("{{colors.secondary.default.hex}}")
+          :bg("{{colors.surface_container_lowest.default.hex}}")
+          :bold(),
+      }
+    end, 900, Header.RIGHT)
+
   '';
   gjallarFileManager = pkgs.writeShellApplication {
     name = "gjallar-file-manager";
@@ -156,6 +192,31 @@ in
 
     keymap.mgr.prepend_keymap = [
       {
+        on = [ "?" ];
+        run = "help";
+        desc = "Open complete keybinding help";
+      }
+      {
+        on = [ "<F1>" ];
+        run = "help";
+        desc = "Open complete keybinding help";
+      }
+      {
+        on = [ "g" "h" ];
+        run = "cd ~";
+        desc = "Go to Home";
+      }
+      {
+        on = [ "g" "d" ];
+        run = "cd ~/Downloads";
+        desc = "Go to Downloads";
+      }
+      {
+        on = [ "g" "D" ];
+        run = "cd ~/Documents";
+        desc = "Go to Documents";
+      }
+      {
         on = [ "M" ];
         run = "plugin mount";
         desc = "Mount, unmount or eject removable media";
@@ -172,8 +233,6 @@ in
     file fd ripgrep fzf chafa wl-clipboard gjallarFileManager
   ];
 
-  # Session-wide file-manager route. GUI file chooser dialogs remain
-  # portal-owned; opening a directory uses this GjallarOS application route.
   xdg.desktopEntries.gjallar-yazi = {
     name = "Yazi File Manager";
     genericName = "File Manager";

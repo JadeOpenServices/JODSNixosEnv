@@ -25,9 +25,6 @@ func TestDesktopChassis(t *testing.T) {
 	if got.FormFactor != "desktop" {
 		t.Fatalf("FormFactor=%q", got.FormFactor)
 	}
-	if got.LaptopVendor != "" {
-		t.Fatalf("desktop LaptopVendor=%q", got.LaptopVendor)
-	}
 }
 
 func TestBatteryLaptop(t *testing.T) {
@@ -42,17 +39,17 @@ func TestBatteryLaptop(t *testing.T) {
 
 func TestUnknownHardware(t *testing.T) {
 	got := DetectHardware(t.TempDir())
-	if got.FormFactor != "" || got.LaptopVendor != "" {
+	if got.FormFactor != "" {
 		t.Fatalf("unexpected detection: %+v", got)
 	}
 }
 
-func TestFrameworkLaptop(t *testing.T) {
+func TestProductNameDoesNotDefineFormFactor(t *testing.T) {
 	root := t.TempDir()
 	fixture(t, root, "class/dmi/id/product_name", "Framework Laptop 13\n")
 
 	got := DetectHardware(root)
-	if got.FormFactor != "laptop" || got.LaptopVendor != "framework" {
-		t.Fatalf("unexpected detection: %+v", got)
+	if got.FormFactor != "" {
+		t.Fatalf("product-specific form-factor policy leaked into discovery: %+v", got)
 	}
 }

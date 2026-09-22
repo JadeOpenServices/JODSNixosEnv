@@ -277,7 +277,6 @@ let
     llama-index-readers-file
     pip-install-test
 
-    # Runtime things
     faiss
     llama-index
   ];
@@ -293,7 +292,6 @@ stdenv.mkDerivation rec {
     hash = "sha256-SKZxl5KaP/vJVk0R19YFuGe06YVqV9TquERMSLMcGo0=";
   };
 
-  # strictDeps = true;
 
   nativeBuildInputs = [
     meson
@@ -333,7 +331,6 @@ stdenv.mkDerivation rec {
     gappsWrapperArgs+=(
     --set PYTHONPATH "${python3.pkgs.makePythonPath pythonDependencies}"
 
-    # Add multiple package binaries to PATH
     --prefix PATH : ${
       lib.makeBinPath [
         python3.pkgs.pip
@@ -358,7 +355,6 @@ stdenv.mkDerivation rec {
     cp ${pklFile} $out/share/nyarchassistant/data/smart-prompts/NyaMedium_0.3_256.pkl
     cp ${tokenizerConfig} $out/share/nyarchassistant/data/smart-prompts/l2_supercat_tokenizer_config.json
 
-      # live2d resources extraction and move
       mkdir -p $out/share/nyarchassistant/data/live2d/web
       tar -xJf ${live2dTarball} -C $out/share/nyarchassistant/data/live2d/web --no-same-owner
       cp ${archChanPng} $out/share/nyarchassistant/data/live2d/web/arch-chan.png

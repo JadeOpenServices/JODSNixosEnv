@@ -10,8 +10,7 @@ import (
 )
 
 type Hardware struct {
-	FormFactor   string
-	LaptopVendor string
+	FormFactor string
 
 	SysVendor      string
 	ProductName    string
@@ -39,25 +38,12 @@ func DetectHardware(sysRoot string) Hardware {
 	batteries, _ := filepath.Glob(filepath.Join(sysRoot, "class", "power_supply", "BAT*"))
 	if len(batteries) > 0 {
 		h.FormFactor = "laptop"
-		h.LaptopVendor = "generic"
 	} else if data, err := os.ReadFile(filepath.Join(sysRoot, "class", "dmi", "id", "chassis_type")); err == nil {
 		switch strings.TrimSpace(string(data)) {
 		case "8", "9", "10", "11", "14", "30", "31", "32":
 			h.FormFactor = "laptop"
-			h.LaptopVendor = "generic"
 		case "3", "4", "5", "6", "7", "13", "15", "16", "17", "18", "19", "20", "21", "22", "23", "24", "25", "26", "27", "28", "29", "33", "34", "35", "36":
 			h.FormFactor = "desktop"
-		}
-	}
-
-	if h.ProductName != "" {
-		product := strings.ToLower(h.ProductName)
-		if strings.Contains(product, "thinkpad") {
-			h.FormFactor = "laptop"
-			h.LaptopVendor = "thinkpad"
-		} else if strings.Contains(product, "framework") {
-			h.FormFactor = "laptop"
-			h.LaptopVendor = "framework"
 		}
 	}
 

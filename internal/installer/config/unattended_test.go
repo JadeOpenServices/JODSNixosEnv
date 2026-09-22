@@ -8,9 +8,7 @@ import (
 func TestUnattendedInstallDefaultsFalse(t *testing.T) {
 	var user User
 
-	if err := json.Unmarshal([]byte(`{
-		"profile": "laptop"
-	}`), &user); err != nil {
+	if err := json.Unmarshal([]byte(`{}`), &user); err != nil {
 		t.Fatal(err)
 	}
 
@@ -36,9 +34,7 @@ func TestUnattendedInstallCanBeExplicitlyEnabled(t *testing.T) {
 func TestForceRedeployDefaultsFalse(t *testing.T) {
 	var user User
 
-	if err := json.Unmarshal([]byte(`{
-		"profile": "laptop"
-	}`), &user); err != nil {
+	if err := json.Unmarshal([]byte(`{}`), &user); err != nil {
 		t.Fatal(err)
 	}
 
