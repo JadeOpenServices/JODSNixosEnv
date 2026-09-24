@@ -3,6 +3,7 @@
   imports = [
     ./btop
     ./drawio.nix
+    ./dolphin.nix
     ./fingerprint.nix
     ./fastfetch
     ./git.nix
@@ -13,7 +14,6 @@
     ./plane.nix
     ./qbittorrent.nix
     ./rust.nix
-    ./yazi.nix
     ./teams.nix
     ./vlc.nix
     ./wine.nix

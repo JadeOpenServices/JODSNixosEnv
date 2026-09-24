@@ -31,18 +31,59 @@ let
     else
       [ preferredBrowser ];
 
+  openvfs = pkgs.stdenv.mkDerivation {
+    pname = "openvfs";
+    version = "0.1.0";
+
+    # Qt6 is present only so ECM can query qtpaths during configuration.
+    # OpenVFS itself does not require Qt application wrapping.
+    dontWrapQtApps = true;
+
+    src = pkgs.fetchFromGitHub {
+      owner = "opencloud-eu";
+      repo = "openvfs";
+      rev = "2fdf61c8a7c1bb57d78b618ac17eaed12208db7d";
+      sha256 = "1nh1pbdb96zyyjsbjf2hfg5whxjdzf5w67yygb2z8rdzzj0chvq4";
+    };
+
+    nativeBuildInputs = [
+      pkgs.cmake
+      pkgs.kdePackages.extra-cmake-modules
+      pkgs.kdePackages.qtbase
+      pkgs.pkg-config
+    ];
+
+    buildInputs = [
+      pkgs.fuse3
+      pkgs.nlohmann_json
+    ];
+  };
+
   client = pkgs.nextcloud-client.overrideAttrs (old: {
+    version = "34.0.50-openvfs";
+
+    src = pkgs.fetchFromGitHub {
+      owner = "nextcloud";
+      repo = "desktop";
+      rev = "fc07fe7474afb938dd5253aded6da0ea1f664704";
+      sha256 = "0q387p0g3n13d8rw5rp6l6y48i4vmadr843a9b8s1xzhdp9wvxqw";
+    };
+
+    # The nixpkgs patch targets the old 4.0.8 source. GjallarOS already
+    # disables upstream autostart explicitly below, so do not carry it
+    # across to this pinned development source.
+    patches = [ ];
+
+    buildInputs = (old.buildInputs or [ ]) ++ [
+      openvfs
+      pkgs.kdsingleapplication
+    ];
+
     cmakeFlags = (old.cmakeFlags or [ ]) ++ [
-      "-DENFORCE_VIRTUAL_FILES_SYNC_FOLDER=ON"
       "-DENFORCE_SINGLE_ACCOUNT=ON"
     ];
 
     postPatch = (old.postPatch or "") + ''
-      if ! grep -Eq 'option\([[:space:]]*ENFORCE_VIRTUAL_FILES_SYNC_FOLDER' NEXTCLOUD.cmake; then
-        echo "Nextcloud no longer exposes ENFORCE_VIRTUAL_FILES_SYNC_FOLDER" >&2
-        exit 1
-      fi
-
       if ! grep -Fq '"--overrideserverurl"' src/gui/application.cpp \
         || ! grep -Fq '"--overridelocaldir"' src/gui/application.cpp
       then
@@ -55,10 +96,43 @@ let
         exit 1
       fi
 
-      if ! grep -R -Fq 'enforceVirtualFilesSyncFolder' src/gui src/libsync; then
-        echo "Nextcloud VFS enforcement hook moved or disappeared" >&2
+      account_settings='src/gui/accountsettings.cpp'
+      vfs_mode_old='if (folderWizard->property("useVirtualFiles").toBool()) {
+        definition.virtualFilesMode = bestAvailableVfsMode();
+    }'
+      vfs_mode_new='if (ConfigFile().isVfsEnabled() || folderWizard->property("useVirtualFiles").toBool()) {
+        definition.virtualFilesMode = bestAvailableVfsMode();
+    }'
+
+      vfs_wizard_old='if (definition.virtualFilesMode != Vfs::Off && folderWizard->property("useVirtualFiles").toBool()) {'
+      vfs_wizard_new='if (definition.virtualFilesMode != Vfs::Off && (ConfigFile().isVfsEnabled() || folderWizard->property("useVirtualFiles").toBool())) {'
+
+      if [ ! -f "$account_settings" ]; then
+        echo "Nextcloud account settings source moved" >&2
         exit 1
       fi
+
+      if grep -Fq "$vfs_mode_old" "$account_settings"; then
+        substituteInPlace "$account_settings" \
+          --replace-fail \
+            "$vfs_mode_old" \
+            "$vfs_mode_new"
+      elif ! grep -Fq "$vfs_mode_new" "$account_settings"; then
+        echo "Nextcloud VFS mode-selection policy changed" >&2
+        exit 1
+      fi
+
+      if grep -Fq "$vfs_wizard_old" "$account_settings"; then
+        substituteInPlace "$account_settings" \
+          --replace-fail \
+            "$vfs_wizard_old" \
+            "$vfs_wizard_new"
+      elif ! grep -Fq "$vfs_wizard_new" "$account_settings"; then
+        echo "Nextcloud VFS folder-wizard policy changed" >&2
+        exit 1
+      fi
+
+      echo "GjallarOS OpenVFS folder-wizard policy enforced"
 
       application='src/gui/application.cpp'
       autostart_enable='Utility::setLaunchOnStartup(_theme->appName(), _theme->appNameGUI(), true);'
@@ -101,10 +175,10 @@ let
         substituteInPlace "$browser_utility" \
           --replace-fail \
             'if (!QDesktopServices::openUrl(url)) {' \
-            'const auto gjallarBrowserOpener = qEnvironmentVariable("GJALLAR_NEXTCLOUD_BROWSER_OPENER");
-    if (!gjallarBrowserOpener.isEmpty()) {
-        const QStringList gjallarBrowserArguments{url.toString(QUrl::FullyEncoded)};
-        if (QProcess::startDetached(gjallarBrowserOpener, gjallarBrowserArguments)) {
+            'const auto nextcloudBrowserOpener = qEnvironmentVariable("NEXTCLOUD_BROWSER_OPENER");
+    if (!nextcloudBrowserOpener.isEmpty()) {
+        const QStringList nextcloudBrowserArguments{url.toString(QUrl::FullyEncoded)};
+        if (QProcess::startDetached(nextcloudBrowserOpener, nextcloudBrowserArguments)) {
             return true;
         }
         qCWarning(lcUtility) << "Nextcloud browser opener failed for" << url;
@@ -112,7 +186,7 @@ let
     }
 
     if (!QDesktopServices::openUrl(url)) {'
-      elif ! grep -Fq 'GJALLAR_NEXTCLOUD_BROWSER_OPENER' "$browser_utility"; then
+      elif ! grep -Fq 'NEXTCLOUD_BROWSER_OPENER' "$browser_utility"; then
         echo "Nextcloud browser-opening implementation changed" >&2
         exit 1
       fi
@@ -152,23 +226,135 @@ let
           --replace-fail \
             'emit result(LoggedIn, QString(), loginName, appPassword);' \
             'emit result(LoggedIn, QString(), loginName, appPassword);
-    const auto gjallarBrowserCloser = qEnvironmentVariable("GJALLAR_NEXTCLOUD_BROWSER_CLOSER");
-    if (!gjallarBrowserCloser.isEmpty()) {
-        QProcess::startDetached(gjallarBrowserCloser, {});
+    const auto nextcloudBrowserCloser = qEnvironmentVariable("NEXTCLOUD_BROWSER_CLOSER");
+    if (!nextcloudBrowserCloser.isEmpty()) {
+        QProcess::startDetached(nextcloudBrowserCloser, {});
     }'
       elif grep -Fq 'Q_EMIT result(LoggedIn, QString(), loginName, appPassword);' "$flow2"; then
         substituteInPlace "$flow2" \
           --replace-fail \
             'Q_EMIT result(LoggedIn, QString(), loginName, appPassword);' \
             'Q_EMIT result(LoggedIn, QString(), loginName, appPassword);
-    const auto gjallarBrowserCloser = qEnvironmentVariable("GJALLAR_NEXTCLOUD_BROWSER_CLOSER");
-    if (!gjallarBrowserCloser.isEmpty()) {
-        QProcess::startDetached(gjallarBrowserCloser, {});
+    const auto nextcloudBrowserCloser = qEnvironmentVariable("NEXTCLOUD_BROWSER_CLOSER");
+    if (!nextcloudBrowserCloser.isEmpty()) {
+        QProcess::startDetached(nextcloudBrowserCloser, {});
     }'
-      elif ! grep -Fq 'GJALLAR_NEXTCLOUD_BROWSER_CLOSER' "$flow2"; then
+      elif ! grep -Fq 'NEXTCLOUD_BROWSER_CLOSER' "$flow2"; then
         echo "unknown Nextcloud Flow2 success path" >&2
         exit 1
       fi
+
+      socket_api='src/gui/socketapi/socketapi.cpp'
+      dolphin_overlay='shell_integration/dolphin/ownclouddolphinoverlayplugin.cpp'
+
+      if [ ! -f "$socket_api" ] || [ ! -f "$dolphin_overlay" ]; then
+        echo "Nextcloud Dolphin/OpenVFS shell integration source moved" >&2
+        exit 1
+      fi
+
+      availability_helper='void setClipboardText(const QString &text)'
+      availability_helper_new='QString openVfsAvailabilitySocketSuffix(OCC::Folder *folder, const QString &relativePath)
+{
+    if (!folder || folder->vfs().mode() != OCC::Vfs::OpenVFS) {
+        return {};
+    }
+
+    const auto availability = folder->vfs().availability(
+        relativePath,
+        OCC::Vfs::AvailabilityRecursivity::NotRecursiveAvailability);
+
+    if (!availability) {
+        return {};
+    }
+
+    switch (*availability) {
+    case OCC::VfsItemAvailability::AlwaysLocal:
+    case OCC::VfsItemAvailability::AllHydrated:
+        return QStringLiteral("+VFS_LOCAL");
+    case OCC::VfsItemAvailability::AllDehydrated:
+    case OCC::VfsItemAvailability::OnlineOnly:
+        return QStringLiteral("+VFS_ONLINE_ONLY");
+    case OCC::VfsItemAvailability::Mixed:
+        return QStringLiteral("+VFS_HYDRATING");
+    }
+
+    return {};
+}
+
+void setClipboardText(const QString &text)'
+
+      if grep -Fq "$availability_helper" "$socket_api" \
+        && ! grep -Fq 'openVfsAvailabilitySocketSuffix' "$socket_api"
+      then
+        substituteInPlace "$socket_api" \
+          --replace-fail \
+            "$availability_helper" \
+            "$availability_helper_new"
+      elif ! grep -Fq 'openVfsAvailabilitySocketSuffix' "$socket_api"; then
+        echo "Nextcloud socket availability helper anchor changed" >&2
+        exit 1
+      fi
+
+      broadcast_old='    QString msg = buildMessage(QLatin1String("STATUS"), systemPath, fileStatus.toSocketAPIString());'
+      broadcast_new='    const auto fileData = FileData::get(systemPath);
+    const QString statusString = fileStatus.toSocketAPIString()
+        + openVfsAvailabilitySocketSuffix(fileData.folder, fileData.folderRelativePath);
+    QString msg = buildMessage(QLatin1String("STATUS"), systemPath, statusString);'
+
+      if grep -Fq "$broadcast_old" "$socket_api"; then
+        substituteInPlace "$socket_api" \
+          --replace-fail \
+            "$broadcast_old" \
+            "$broadcast_new"
+      elif ! grep -Fq 'openVfsAvailabilitySocketSuffix(fileData.folder, fileData.folderRelativePath)' "$socket_api"; then
+        echo "Nextcloud socket status-broadcast implementation changed" >&2
+        exit 1
+      fi
+
+      retrieve_old='        SyncFileStatus fileStatus = fileData.syncFileStatus();
+        statusString = fileStatus.toSocketAPIString();'
+      retrieve_new='        SyncFileStatus fileStatus = fileData.syncFileStatus();
+        statusString = fileStatus.toSocketAPIString()
+            + openVfsAvailabilitySocketSuffix(fileData.folder, fileData.folderRelativePath);'
+
+      if grep -Fq "$retrieve_old" "$socket_api"; then
+        substituteInPlace "$socket_api" \
+          --replace-fail \
+            "$retrieve_old" \
+            "$retrieve_new"
+      elif ! grep -Fq 'statusString = fileStatus.toSocketAPIString()' "$socket_api" \
+        || ! grep -Fq 'openVfsAvailabilitySocketSuffix(fileData.folder, fileData.folderRelativePath)' "$socket_api"
+      then
+        echo "Nextcloud socket status-retrieval implementation changed" >&2
+        exit 1
+      fi
+
+      overlay_old='        if (status.startsWith("OK")) {
+            r << QStringLiteral("vcs-normal");
+        }'
+      overlay_new='        if (status.startsWith("OK")) {
+            if (status.contains("+VFS_ONLINE_ONLY")) {
+                r << QStringLiteral("folder-cloud");
+            } else if (status.contains("+VFS_LOCAL")) {
+                r << QStringLiteral("emblem-ok-symbolic");
+            } else if (status.contains("+VFS_HYDRATING")) {
+                r << QStringLiteral("vcs-update-required");
+            } else {
+                r << QStringLiteral("vcs-normal");
+            }
+        }'
+
+      if grep -Fq "$overlay_old" "$dolphin_overlay"; then
+        substituteInPlace "$dolphin_overlay" \
+          --replace-fail \
+            "$overlay_old" \
+            "$overlay_new"
+      elif ! grep -Fq '+VFS_ONLINE_ONLY' "$dolphin_overlay"; then
+        echo "Nextcloud Dolphin overlay mapping changed" >&2
+        exit 1
+      fi
+
+      echo "Nextcloud Dolphin OpenVFS availability overlays secured"
 
       echo "Nextcloud Flow2 auth-window close hook secured"
       echo "Nextcloud enrollment browser hook secured"
@@ -189,8 +375,8 @@ let
     '';
   });
 
-  nextcloudBrowserCloser = pkgs.writeShellScript "gjallar-nextcloud-browser-close" ''
-    session="''${GJALLAR_NEXTCLOUD_AUTH_SESSION:-}"
+  nextcloudBrowserCloser = pkgs.writeShellScript "nextcloud-browser-close" ''
+    session="''${NEXTCLOUD_AUTH_SESSION:-}"
 
     if [ -z "$session" ]; then
       exit 0
@@ -204,7 +390,7 @@ let
     fi
 
     runtime="''${XDG_RUNTIME_DIR:-/run/user/$(${pkgs.coreutils}/bin/id -u)}"
-    state_dir="$runtime/gjallar-nextcloud-auth"
+    state_dir="$runtime/nextcloud-auth"
     state="$state_dir/$session.window"
 
     if [ ! -f "$state" ]; then
@@ -262,7 +448,7 @@ for client in clients:
     ${pkgs.coreutils}/bin/rmdir "$state_dir" 2>/dev/null || true
   '';
 
-  nextcloudBrowserOpener = pkgs.writeShellScript "gjallar-nextcloud-browser" ''
+  nextcloudBrowserOpener = pkgs.writeShellScript "nextcloud-browser-open" ''
     if [ "$#" -ne 1 ]; then
       echo "Nextcloud browser opener expects exactly one URL." >&2
       exit 64
@@ -279,7 +465,7 @@ for client in clients:
 
     hyprctl=${lib.getExe' pkgs.hyprland "hyprctl"}
     python=${lib.getExe pkgs.python3}
-    workspace="''${GJALLAR_NEXTCLOUD_WORKSPACE:-}"
+    workspace="''${NEXTCLOUD_WORKSPACE:-}"
 
     if [ -n "''${HYPRLAND_INSTANCE_SIGNATURE:-}" ]; then
       nextcloud_workspace="$($hyprctl clients -j 2>/dev/null \
@@ -379,13 +565,13 @@ if candidates:
         $hyprctl dispatch movetoworkspacesilent "$workspace,address:$address" >/dev/null 2>&1 || true
         $hyprctl dispatch focuswindow "address:$address" >/dev/null 2>&1 || true
 
-        session="''${GJALLAR_NEXTCLOUD_AUTH_SESSION:-}"
+        session="''${NEXTCLOUD_AUTH_SESSION:-}"
         if [ -n "$session" ] \
           && printf '%s\n' "$session" \
             | ${pkgs.gnugrep}/bin/grep -Eq '^[A-Za-z0-9._-]+$'
         then
           runtime="''${XDG_RUNTIME_DIR:-/run/user/$(${pkgs.coreutils}/bin/id -u)}"
-          state_dir="$runtime/gjallar-nextcloud-auth"
+          state_dir="$runtime/nextcloud-auth"
 
           ${pkgs.coreutils}/bin/install -d -m 0700 "$state_dir"
 
@@ -516,15 +702,26 @@ for raw in lines:
         continue
 
     match = re.fullmatch(
-        r"(\d+)\\Folders(?:WithPlaceholders)?\\(\d+)\\"
+        r"(\d+)\\(Folders|FoldersWithPlaceholders)\\(\d+)\\"
         r"(localPath|targetPath|virtualFilesMode)",
         key,
     )
     if not match:
         continue
 
-    account, folder, field = match.groups()
+    account, folder_kind, folder, field = match.groups()
     fields = folders.setdefault((account, folder), {})
+
+    previous_kind = fields.get("_kind")
+    if previous_kind is not None and previous_kind != folder_kind:
+        print(
+            "Nextcloud policy refused: conflicting folder storage groups "
+            f"for account {account}, folder {folder}.",
+            file=sys.stderr,
+        )
+        raise SystemExit(78)
+
+    fields["_kind"] = folder_kind
     fields[field] = value.strip()
 
 if not accounts:
@@ -603,20 +800,28 @@ if fields.get("targetPath", "") != "/":
     )
     raise SystemExit(78)
 
-vfs = fields.get("virtualFilesMode", "").strip().lower()
-if vfs in {"", "0", "off", "false", "none"}:
+if fields.get("_kind") != "FoldersWithPlaceholders":
     print(
-        "Nextcloud policy refused: this integration requires a virtual-files sync connection.",
+        "Nextcloud policy refused: classic sync folders are not allowed; "
+        "GjallarOS requires an OpenVFS placeholder folder.",
         file=sys.stderr,
     )
     raise SystemExit(78)
+
+if fields.get("virtualFilesMode", "").strip().lower() != "openvfs":
+    print(
+        "Nextcloud policy refused: virtualFilesMode must be 'openvfs'.",
+        file=sys.stderr,
+    )
+    raise SystemExit(78)
+
 PY
   '';
 
-  enrollmentLauncher = pkgs.writeShellScriptBin "gjallar-nextcloud-enroll" ''
+  enrollmentLauncher = pkgs.writeShellScriptBin "nextcloud-enroll" ''
     config="''${XDG_CONFIG_HOME:-$HOME/.config}/Nextcloud/nextcloud.cfg"
     root="$HOME/Nextcloud"
-    logdir="''${XDG_STATE_HOME:-$HOME/.local/state}/gjallarOS/nextcloud"
+    logdir="''${XDG_STATE_HOME:-$HOME/.local/state}/nextcloud"
 
     ${pkgs.coreutils}/bin/install -d -m 0700 "$logdir"
     ${nextcloudConfigPolicy} "$config"
@@ -643,9 +848,9 @@ PY
 
     if [ "$policy_status" -eq 10 ]; then
       auth_session="$$-$RANDOM-$RANDOM"
-      export GJALLAR_NEXTCLOUD_AUTH_SESSION="$auth_session"
-      export GJALLAR_NEXTCLOUD_BROWSER_OPENER=${nextcloudBrowserOpener}
-      export GJALLAR_NEXTCLOUD_BROWSER_CLOSER=${nextcloudBrowserCloser}
+      export NEXTCLOUD_AUTH_SESSION="$auth_session"
+      export NEXTCLOUD_BROWSER_OPENER=${nextcloudBrowserOpener}
+      export NEXTCLOUD_BROWSER_CLOSER=${nextcloudBrowserCloser}
 
       if [ -n "''${HYPRLAND_INSTANCE_SIGNATURE:-}" ]; then
         workspace="$(${lib.getExe' pkgs.hyprland "hyprctl"} activeworkspace -j 2>/dev/null \
@@ -660,85 +865,40 @@ if isinstance(wid, int) and wid > 0:
     print(wid)
 ' 2>/dev/null || true)"
         if [ -n "$workspace" ]; then
-          export GJALLAR_NEXTCLOUD_WORKSPACE="$workspace"
+          export NEXTCLOUD_WORKSPACE="$workspace"
         fi
       fi
 
-      exec ${lib.getExe client} \
+      override_status=0
+      ${lib.getExe client} \
         --overrideserverurl ${lib.escapeShellArg host} \
-        --overridelocaldir "$root"
+        --overridelocaldir "$root" \
+        || override_status=$?
+
+      if [ "$override_status" -ne 0 ]; then
+        echo "Nextcloud enrollment defaults could not be written." >&2
+        exit "$override_status"
+      fi
+
+      exec ${lib.getExe client} --logdir "$logdir" --logflush "$@"
     fi
-  '';
-
-  nextcloudYaziAction = pkgs.writeShellScript "gjallar-nextcloud-yazi-action" ''
-    if [ "$#" -ne 2 ]; then
-      echo "usage: gjallar-nextcloud-yazi-action <sync|remote> <placeholder>" >&2
-      exit 64
-    fi
-
-    mode="$1"
-    placeholder="$2"
-    root="$HOME/Nextcloud/"
-
-    case "$placeholder" in
-      "$root"*.nextcloud) ;;
-      *)
-        echo "refusing non-Nextcloud placeholder path." >&2
-        exit 64
-        ;;
-    esac
-
-    logical="''${placeholder%.nextcloud}"
-
-    case "$mode" in
-      sync)
-        exec ${pkgs.xdg-utils}/bin/xdg-open "$placeholder"
-        ;;
-
-      remote)
-        rel="''${logical#"$root"}"
-        parent="$(${pkgs.coreutils}/bin/dirname "/$rel")"
-        name="$(${pkgs.coreutils}/bin/basename "$rel")"
-
-        url="$(${lib.getExe pkgs.python3} - \
-          ${lib.escapeShellArg host} \
-          "$parent" \
-          "$name" <<'PY'
-import sys
-from urllib.parse import quote
-
-base, directory, name = sys.argv[1:4]
-
-print(
-    base.rstrip("/")
-    + "/apps/files/?dir="
-    + quote(directory, safe="/")
-    + "&scrollto="
-    + quote(name, safe="")
-)
-PY
-)"
-
-        exec ${pkgs.xdg-utils}/bin/xdg-open "$url"
-        ;;
-
-      *)
-        echo "unknown Nextcloud Yazi action." >&2
-        exit 64
-        ;;
-    esac
   '';
 
   managedClient = pkgs.symlinkJoin {
-    name = "gjallar-nextcloud-client";
-    paths = [ client ];
+    name = "nextcloud-client-managed";
+    paths = [
+      client
+      openvfs
+      pkgs.fuse3
+    ];
     nativeBuildInputs = [ pkgs.makeWrapper ];
 
     postBuild = ''
       rm -f "$out/bin/nextcloud"
       makeWrapper \
-        ${enrollmentLauncher}/bin/gjallar-nextcloud-enroll \
-        "$out/bin/nextcloud"
+        ${enrollmentLauncher}/bin/nextcloud-enroll \
+        "$out/bin/nextcloud" \
+        --prefix XDG_CONFIG_DIRS : "$out/etc/xdg"
 
       rm -f "$out"/etc/xdg/autostart/*nextcloud*.desktop
 
@@ -753,13 +913,13 @@ PY
 
       if [ -f "$desktop" ]; then
         sed -i \
-          "0,/^Exec=/{s|^Exec=.*|Exec=${enrollmentLauncher}/bin/gjallar-nextcloud-enroll|}" \
+          "0,/^Exec=/{s|^Exec=.*|Exec=$out/bin/nextcloud|}" \
           "$desktop"
       fi
     '';
   };
 
-  syncRunner = pkgs.writeShellScript "gjallar-nextcloud-sync" ''
+  syncRunner = pkgs.writeShellScript "nextcloud-sync" ''
     config="''${XDG_CONFIG_HOME:-$HOME/.config}/Nextcloud/nextcloud.cfg"
     root="$HOME/Nextcloud"
 
@@ -773,7 +933,7 @@ PY
         ;;
       10)
         echo "Nextcloud account setup is incomplete; automatic enrollment is disabled."
-        echo "Run gjallar-nextcloud-enroll to configure it."
+        echo "Run nextcloud-enroll to configure it."
         exit 0
         ;;
       11)
@@ -785,7 +945,7 @@ PY
         ;;
     esac
 
-    exec ${lib.getExe client} --background
+    exec ${managedClient}/bin/nextcloud --background
   '';
 in
 {
@@ -806,7 +966,7 @@ in
   ];
 
 
-  home.activation.gjallarNextcloudAutostartOwnership = lib.mkIf enable (
+  home.activation.nextcloudAutostartOwnership = lib.mkIf enable (
     lib.hm.dag.entryAfter [ "writeBoundary" ] ''
       ${pkgs.coreutils}/bin/rm -f \
         "$HOME/.config/autostart/Nextcloud.desktop" \
@@ -816,7 +976,7 @@ in
 
   systemd.user.services.nextcloud-sync = lib.mkIf enable {
     Unit = {
-      Description = "Nextcloud virtual-file synchronization";
+      Description = "Nextcloud synchronization";
       After = [ "graphical-session.target" ];
       PartOf = [ "graphical-session.target" ];
     };
@@ -827,8 +987,6 @@ in
 
       Restart = "no";
 
-      PrivateTmp = true;
-      LockPersonality = true;
     };
 
     Install.WantedBy = [
@@ -836,143 +994,4 @@ in
     ];
   };
 
-  xdg.configFile."yazi/plugins/nextcloud-vfs.yazi/main.lua".text = ''
-    local hovered = ya.sync(function()
-      local h = cx.active.current.hovered
-      if not h then
-        return nil, nil
-      end
-
-      return tostring(h.url), h.name
-    end)
-
-    local function launch(mode, path)
-      local _, err = Command("${nextcloudYaziAction}")
-        :arg { mode, path }
-        :stdout(Command.NULL)
-        :stderr(Command.NULL)
-        :spawn()
-
-      if err then
-        ya.notify {
-          title = "Nextcloud",
-          content = tostring(err),
-          timeout = 5,
-          level = "error",
-        }
-      end
-    end
-
-    return {
-      entry = function()
-        local path, name = hovered()
-
-        if not path or not name then
-          return
-        end
-
-        -- Ordinary files retain Yazi's normal opening behaviour.
-        if not name:match("%.nextcloud$") then
-          ya.emit("open", {})
-          return
-        end
-
-        local logical = name:gsub("%.nextcloud$", "")
-
-        local choice = ya.which {
-          cands = {
-            {
-              on = "s",
-              desc = "Sync locally + open: " .. logical,
-            },
-            {
-              on = "r",
-              desc = "Open remote in Nextcloud Web: " .. logical,
-            },
-          },
-        }
-
-        if choice == 1 then
-          launch("sync", path)
-        elseif choice == 2 then
-          launch("remote", path)
-        end
-      end,
-    }
-  '';
-
-  programs.yazi.keymap.mgr.prepend_keymap = lib.mkAfter [
-    {
-      on = [
-        "g"
-        "n"
-      ];
-      run = "cd ~/Nextcloud";
-      desc = "Go to Nextcloud";
-    }
-    {
-      on = "<Enter>";
-      run = "plugin nextcloud-vfs";
-      desc = "Open / choose Nextcloud virtual-file action";
-    }
-    {
-      on = "o";
-      run = "plugin nextcloud-vfs";
-      desc = "Open / choose Nextcloud virtual-file action";
-    }
-  ];
-
-  programs.yazi.theme.icon.prepend_dirs = lib.mkBefore [
-    {
-      name = "Nextcloud";
-      text = "";
-    }
-  ];
-
-  programs.yazi.theme.icon.prepend_exts = lib.mkBefore [
-    {
-      name = "nextcloud";
-      text = "󰇚";
-    }
-  ];
-
-  programs.yazi.settings.opener."nextcloud-sync-local" = [
-    {
-      run = "${nextcloudYaziAction} sync %s1";
-      orphan = true;
-      desc = "Sync locally and open";
-    }
-  ];
-
-  programs.yazi.settings.opener."nextcloud-open-remote" = [
-    {
-      run = "${nextcloudYaziAction} remote %s1";
-      orphan = true;
-      desc = "Open remote in Nextcloud Web";
-    }
-  ];
-
-  programs.yazi.settings.open.prepend_rules = lib.mkBefore [
-    {
-      url = "*.nextcloud";
-      use = [
-        "nextcloud-sync-local"
-        "nextcloud-open-remote"
-      ];
-    }
-  ];
-
-  programs.yazi.settings.plugin.prepend_previewers = lib.mkBefore [
-    {
-      url = "*.nextcloud";
-      run = "noop";
-    }
-  ];
-
-  programs.yazi.settings.plugin.prepend_preloaders = lib.mkBefore [
-    {
-      url = "*.nextcloud";
-      run = "noop";
-    }
-  ];
 }

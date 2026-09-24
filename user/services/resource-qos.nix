@@ -13,6 +13,20 @@ let
     ];
 
     text = ''
+      # Hyprland starts before the interactive shell, so GUI keybinds do not
+      # automatically inherit Home Manager's session environment. Load it
+      # here so managed GUI launches see the same XDG/Qt/theme policy.
+      for hm_session_vars in \
+        "/etc/profiles/per-user/$USER/etc/profile.d/hm-session-vars.sh" \
+        "$HOME/.nix-profile/etc/profile.d/hm-session-vars.sh"
+      do
+        if [ -r "$hm_session_vars" ]; then
+          # shellcheck disable=SC1090
+          source "$hm_session_vars"
+          break
+        fi
+      done
+
       family="desktop"
 
       if [ "$#" -ge 2 ] && [ "$1" = "--family" ]; then
@@ -55,6 +69,7 @@ let
       esac
 
       exec app2unit \
+        -t scope \
         -s "$slice" \
         -a "$app_name" \
         -p "CPUWeight=$weight" \
