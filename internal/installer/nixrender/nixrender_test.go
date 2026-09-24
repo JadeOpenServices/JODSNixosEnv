@@ -122,16 +122,20 @@ func TestRenderThemeDetailsUsesRepositoryThemeDirectory(t *testing.T) {
 
 func TestFromUserMapsRoutedIntent(t *testing.T) {
 	user := config.User{
-		Hostname:               "gjallarOS",
-		Username:               "baka",
-		USBGuardEnable:         true,
-		USBTrustEnforce:        true,
-		USBTrustTPMHandle:      "0x81000042",
-		PrintingEnable:         true,
-		NetworkPrintingEnable:  true,
-		ContainersEnable:       true,
-		PlaneEnable:            true,
-		PlaneHost:              "https://plane.example.test",
+		Hostname:              "gjallarOS",
+		Username:              "baka",
+		USBGuardEnable:        true,
+		USBTrustEnforce:       true,
+		USBTrustTPMHandle:     "0x81000042",
+		PrintingEnable:        true,
+		NetworkPrintingEnable: true,
+		ContainersEnable:      true,
+		WebApplications: []config.WebApplicationIntent{
+			{
+				ID:       config.WebApplicationPlane,
+				Endpoint: "https://plane.example.test",
+			},
+		},
 		EndpointManagedDevice:  true,
 		JODSEndpoint:           "https://jods.example.test",
 		JODSPolicySigningKey:   strings.Repeat("ab", 32),
@@ -148,23 +152,54 @@ func TestFromUserMapsRoutedIntent(t *testing.T) {
 		Shell:                  "zsh",
 		AIAgentMode:            "workspace",
 	}
+
 	got := FromUser(user)
-	if !got.PrintingEnable || !got.NetworkPrintingEnable || !got.ContainersEnable || !got.USBGuardEnable || !got.USBTrustEnforce {
-		t.Fatalf("routed booleans were not mapped: %#v", got)
+
+	if !got.PrintingEnable ||
+		!got.NetworkPrintingEnable ||
+		!got.ContainersEnable ||
+		!got.USBGuardEnable ||
+		!got.USBTrustEnforce {
+		t.Fatalf(
+			"routed booleans were not mapped: %#v",
+			got,
+		)
 	}
+
 	if got.USBTrustTPMHandle != user.USBTrustTPMHandle {
-		t.Fatalf("USB trust TPM handle was not mapped: %#v", got)
+		t.Fatalf(
+			"USB trust TPM handle was not mapped: %#v",
+			got,
+		)
 	}
-	if got.PlaneHost != user.PlaneHost || got.JODSEndpoint != user.JODSEndpoint || got.Theme != user.Theme {
-		t.Fatalf("routed strings were not mapped: %#v", got)
+
+	if got.JODSEndpoint != user.JODSEndpoint ||
+		got.Theme != user.Theme {
+		t.Fatalf(
+			"routed strings were not mapped: %#v",
+			got,
+		)
 	}
+
+	if len(got.WebApplications) != 1 ||
+		got.WebApplications[0] != user.WebApplications[0] {
+		t.Fatalf(
+			"canonical web application intent was not mapped: %#v",
+			got.WebApplications,
+		)
+	}
+
 	if got.ODDCModel != "" || got.AIModel != "" {
-		t.Fatalf("derived fields leaked into FromUser: %#v", got)
+		t.Fatalf(
+			"derived fields leaked into FromUser: %#v",
+			got,
+		)
 	}
 }
 
 func TestSyncUserIntentPreservesDerivedState(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "state.nix")
+
 	before := `{pkgs, inputs, ...}:
 rec {
     hostname = "old";
@@ -185,19 +220,25 @@ rec {
     themeDetails = import (./. + "/../themes/${theme}.nix") {inherit pkgs;};
 }
 `
+
 	if err := os.WriteFile(path, []byte(before), 0o640); err != nil {
 		t.Fatal(err)
 	}
 
 	user := config.User{
-		Hostname:           "gjallarOS",
-		PrintingEnable:     true,
-		PlaneEnable:        true,
-		PlaneHost:          "https://plane.example.test",
+		Hostname:       "gjallarOS",
+		PrintingEnable: true,
+		WebApplications: []config.WebApplicationIntent{
+			{
+				ID:       config.WebApplicationPlane,
+				Endpoint: "https://plane.example.test",
+			},
+		},
 		Theme:              "noctalia",
 		AIAgentMode:        "workspace",
 		JODSEnrollmentMode: "manual",
 	}
+
 	if err := SyncUserIntent(path, user); err != nil {
 		t.Fatal(err)
 	}
@@ -206,12 +247,13 @@ rec {
 	if err != nil {
 		t.Fatal(err)
 	}
+
 	got := string(data)
+
 	for _, want := range []string{
 		`hostname = "gjallarOS";`,
 		`printingEnable = true;`,
-		`planeEnable = true;`,
-		`planeHost = "https://plane.example.test";`,
+		`webApplications = [ { id = "plane"; endpoint = "https://plane.example.test"; } ];`,
 		`aiModel = "derived-model";`,
 		`theme = "noctalia";`,
 	} {
@@ -219,11 +261,10 @@ rec {
 			t.Fatalf("missing %q after sync:\n%s", want, got)
 		}
 	}
-	info, err := os.Stat(path)
-	if err != nil {
-		t.Fatal(err)
-	}
+
 	for _, retired := range []string{
+		"planeEnable",
+		"planeHost",
 		"graphicsVendor",
 		"graphicsDeviceId",
 		"graphicsType",
@@ -235,9 +276,19 @@ rec {
 		"wifiDriver",
 	} {
 		if strings.Contains(got, retired+" = ") {
-			t.Fatalf("retired generated field %q survived sync:\n%s", retired, got)
+			t.Fatalf(
+				"retired generated field %q survived sync:\n%s",
+				retired,
+				got,
+			)
 		}
 	}
+
+	info, err := os.Stat(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+
 	if info.Mode().Perm() != 0o640 {
 		t.Fatalf("mode changed to %o", info.Mode().Perm())
 	}

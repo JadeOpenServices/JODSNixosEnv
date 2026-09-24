@@ -6,10 +6,28 @@
   ...
 }:
 let
+  webApplication = import ./lib/web-application.nix { inherit lib pkgs; };
 
-  drawioEnable = settings.drawioEnable or false;
-  drawioSelfHosted = settings.drawioSelfHosted or false;
-  drawioHost = settings.drawioHost or "";
+  canonicalWebApplications = settings ? webApplications;
+  webApplications = settings.webApplications or [ ];
+  drawioApplication = lib.findFirst (
+    application: (application.id or "") == "drawio"
+  ) null webApplications;
+
+  drawioEnable =
+    if canonicalWebApplications
+    then drawioApplication != null
+    else settings.drawioEnable or false;
+
+  drawioHost =
+    if drawioApplication != null
+    then drawioApplication.endpoint or ""
+    else settings.drawioHost or "";
+
+  drawioSelfHosted =
+    if canonicalWebApplications
+    then drawioEnable && drawioHost != ""
+    else settings.drawioSelfHosted or false;
 
   publicEndpoint = "https://app.diagrams.net/";
   endpoint =
@@ -17,16 +35,18 @@ let
     then drawioHost
     else publicEndpoint;
 
-
-  drawioLauncher = pkgs.writeShellScriptBin "gjallar-drawio" ''
-    exec ${lib.getExe pkgs.brave} \
-      --user-data-dir="$HOME/.config/gjallarOS/brave-drawio" \
-      --app=${lib.escapeShellArg endpoint} \
-      --no-first-run \
-      --no-default-browser-check \
-      --disable-sync \
-      --disable-background-mode
-  '';
+  drawioLauncher = webApplication.mkIsolatedWebApplication {
+    name = "gjallar-drawio";
+    browser = pkgs.brave;
+    profile = ".config/gjallarOS/brave-drawio";
+    url = endpoint;
+    browserArguments = [
+      "--no-first-run"
+      "--no-default-browser-check"
+      "--disable-sync"
+      "--disable-background-mode"
+    ];
+  };
 in
 {
   config = lib.mkIf drawioEnable {

@@ -6,19 +6,36 @@
   ...
 }:
 let
+  webApplication = import ./lib/web-application.nix { inherit lib pkgs; };
 
-  planeEnable = settings.planeEnable or false;
-  planeHost = settings.planeHost or "";
+  canonicalWebApplications = settings ? webApplications;
+  webApplications = settings.webApplications or [ ];
+  planeApplication = lib.findFirst (
+    application: (application.id or "") == "plane"
+  ) null webApplications;
 
-  planeLauncher = pkgs.writeShellScriptBin "plane" ''
-    exec ${lib.getExe pkgs.brave} \
-      --user-data-dir="$HOME/.config/gjallarOS/brave-plane" \
-      --app=${lib.escapeShellArg planeHost} \
-      --no-first-run \
-      --no-default-browser-check \
-      --disable-sync \
-      --disable-background-mode
-  '';
+  planeEnable =
+    if canonicalWebApplications
+    then planeApplication != null
+    else settings.planeEnable or false;
+
+  planeHost =
+    if planeApplication != null
+    then planeApplication.endpoint or ""
+    else settings.planeHost or "";
+
+  planeLauncher = webApplication.mkIsolatedWebApplication {
+    name = "plane";
+    browser = pkgs.brave;
+    profile = ".config/gjallarOS/brave-plane";
+    url = planeHost;
+    browserArguments = [
+      "--no-first-run"
+      "--no-default-browser-check"
+      "--disable-sync"
+      "--disable-background-mode"
+    ];
+  };
 in
 {
   config = lib.mkIf planeEnable {

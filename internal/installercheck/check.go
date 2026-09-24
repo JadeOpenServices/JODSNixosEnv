@@ -97,6 +97,7 @@ const (
 	presetString presetValueType = iota
 	presetBool
 	presetStringList
+	presetWebApplicationList
 )
 
 var presetSchema = map[string]presetValueType{
@@ -109,6 +110,7 @@ var presetSchema = map[string]presetValueType{
 	"shell": presetString, "editors": presetStringList, "browsers": presetStringList,
 	"preferredEditor": presetString, "preferredBrowser": presetString, "theme": presetString,
 	"weatherCity": presetString, "weatherCountry": presetString,
+	"webApplications": presetWebApplicationList,
 	"planeEnable": presetBool, "planeHost": presetString, "drawioEnable": presetBool, "drawioSelfHosted": presetBool, "drawioHost": presetString, "nextcloudEnable": presetBool, "nextcloudHost": presetString,
 	"backgroundNormal": presetString,
 	"containersEnable": presetBool, "debugFunctions": presetBool, "aiEnable": presetBool,
@@ -152,6 +154,8 @@ func matchesPresetType(raw json.RawMessage, expected presetValueType) bool {
 	case presetStringList:
 		var value []string
 		return json.Unmarshal(raw, &value) == nil
+	case presetWebApplicationList:
+		return matchesPresetWebApplicationList(raw)
 	default:
 		return false
 	}

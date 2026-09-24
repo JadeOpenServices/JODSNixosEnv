@@ -11,9 +11,6 @@
   "containersEnable": false,
   "debugFunctions": false,
   "dotfilesDir": "",
-  "drawioEnable": false,
-  "drawioHost": "",
-  "drawioSelfHosted": false,
   "editors": [
     "vscodium"
   ],
@@ -29,8 +26,8 @@
   "jodsEnrollmentMode": "manual",
   "jodsFingerprintEnrollmentAllowed": false,
   "jodsPolicySigningPublicKey": "",
-  "jodsRecoveryCommandSigningPublicKey": "",
   "jodsPrebootLockEnable": false,
+  "jodsRecoveryCommandSigningPublicKey": "",
   "keyboardLayout": "de",
   "keyboardVariant": "",
   "locale": "en_US.UTF-8",
@@ -42,8 +39,6 @@
   "nextcloudHost": "",
   "overrideAiSelection": false,
   "overrideModelWith": "",
-  "planeEnable": false,
-  "planeHost": "",
   "preferredBrowser": "librewolf",
   "preferredEditor": "vscodium",
   "printingEnable": false,
@@ -64,5 +59,6 @@
   "username": "usernamehere",
   "weatherCity": "",
   "weatherCountry": "",
+  "webApplications": [],
   "writeConfig": true
 }

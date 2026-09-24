@@ -17,8 +17,23 @@ let
 
   sourceUserConfig = repoSource + "/user.config.json";
 
-  generatedInstallerPreset = pkgs.writeText "gjallar-installer-fallback.json" (
-    builtins.toJSON {
+  webApplicationPresetFields =
+    if settings ? webApplications then
+      {
+        webApplications = getSetting "webApplications" [ ];
+      }
+    else
+      {
+        # Preserve pre-GJAL-95 generated-state semantics. Absence of the
+        # canonical field tells config normalization to migrate legacy state.
+        planeEnable = getSetting "planeEnable" false;
+        planeHost = getSetting "planeHost" "";
+        drawioEnable = getSetting "drawioEnable" false;
+        drawioSelfHosted = getSetting "drawioSelfHosted" false;
+        drawioHost = getSetting "drawioHost" "";
+      };
+
+  generatedInstallerPresetData = {
       system = getSetting "system" pkgs.stdenv.hostPlatform.system;
       hostname = getSetting "hostname" "gjallarOS";
       username = getSetting "username" "user";
@@ -49,12 +64,6 @@ let
       preferredEditor = getSetting "preferredEditor" "vscodium";
       preferredBrowser = getSetting "preferredBrowser" "librewolf";
 
-      planeEnable = getSetting "planeEnable" false;
-      planeHost = getSetting "planeHost" "";
-      drawioEnable = getSetting "drawioEnable" false;
-      drawioSelfHosted = getSetting "drawioSelfHosted" false;
-      drawioHost = getSetting "drawioHost" "";
-
       theme = getSetting "theme" "noctalia";
       backgroundNormal = getSetting "backgroundNormal" "";
 
@@ -83,6 +92,10 @@ let
       runRebuild = true;
       unattendedInstall = false;
     }
+    // webApplicationPresetFields;
+
+  generatedInstallerPreset = pkgs.writeText "gjallar-installer-fallback.json" (
+    builtins.toJSON generatedInstallerPresetData
   );
 
   installerFallbackPreset =

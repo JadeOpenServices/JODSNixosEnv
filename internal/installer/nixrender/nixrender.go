@@ -32,6 +32,21 @@ func Strings(values []string) string {
 	return "[ " + strings.Join(quoted, " ") + " ]"
 }
 
+func WebApplications(values []config.WebApplicationIntent) string {
+	rendered := make([]string, 0, len(values))
+	for _, application := range values {
+		rendered = append(
+			rendered,
+			fmt.Sprintf(
+				"{ id = %s; endpoint = %s; }",
+				String(application.ID),
+				String(application.Endpoint),
+			),
+		)
+	}
+	return "[ " + strings.Join(rendered, " ") + " ]"
+}
+
 // Settings contains only values written to generated/state.nix. Values are rendered
 // as literals; none are evaluated as Nix source.
 type Settings struct {
@@ -49,8 +64,9 @@ type Settings struct {
 	Shell                                                                                   string
 	Editors, Browsers                                                                       []string
 	PreferredEditor, PreferredBrowser                                                       string
-	PlaneHost, DrawioHost, NextcloudHost                                                    string
-	PlaneEnable, DrawioEnable, DrawioSelfHosted, NextcloudEnable                            bool
+	WebApplications                                                                         []config.WebApplicationIntent
+	NextcloudHost                                                                           string
+	NextcloudEnable                                                                         bool
 	BackgroundNormal                                                                        string
 	ODDCModel                                                                               string
 	GraphicsBusID, GraphicsIntegratedBusID                                                  string
@@ -105,11 +121,7 @@ func FromUser(user config.User) Settings {
 		Browsers:                            user.Browsers,
 		PreferredEditor:                     user.PreferredEditor,
 		PreferredBrowser:                    user.PreferredBrowser,
-		PlaneEnable:                         user.PlaneEnable,
-		PlaneHost:                           user.PlaneHost,
-		DrawioEnable:                        user.DrawioEnable,
-		DrawioSelfHosted:                    user.DrawioSelfHosted,
-		DrawioHost:                          user.DrawioHost,
+		WebApplications:                     user.WebApplications,
 		NextcloudEnable:                     user.NextcloudEnable,
 		NextcloudHost:                       user.NextcloudHost,
 		BackgroundNormal:                    user.BackgroundNormal,
@@ -144,6 +156,11 @@ var retiredGeneratedKeys = map[string]bool{
 	"deviceSysVendor":      true,
 	"frameworkEnable":      true,
 	"frameworkModel":       true,
+	"planeEnable":          true,
+	"planeHost":            true,
+	"drawioEnable":         true,
+	"drawioSelfHosted":     true,
+	"drawioHost":           true,
 	"graphicsCompute":      true,
 	"graphicsDeviceId":     true,
 	"graphicsDriverBranch": true,
@@ -182,11 +199,7 @@ var userIntentKeys = []string{
 	"browsers",
 	"preferredEditor",
 	"preferredBrowser",
-	"planeEnable",
-	"planeHost",
-	"drawioEnable",
-	"drawioSelfHosted",
-	"drawioHost",
+	"webApplications",
 	"nextcloudEnable",
 	"nextcloudHost",
 	"backgroundNormal",
@@ -357,11 +370,7 @@ func Render(s Settings) []byte {
 	list("browsers", s.Browsers)
 	str("preferredEditor", s.PreferredEditor)
 	str("preferredBrowser", s.PreferredBrowser)
-	boolean("planeEnable", s.PlaneEnable)
-	str("planeHost", s.PlaneHost)
-	boolean("drawioEnable", s.DrawioEnable)
-	boolean("drawioSelfHosted", s.DrawioSelfHosted)
-	str("drawioHost", s.DrawioHost)
+	fmt.Fprintf(&b, "    webApplications = %s;\n", WebApplications(s.WebApplications))
 	boolean("nextcloudEnable", s.NextcloudEnable)
 	str("nextcloudHost", s.NextcloudHost)
 	str("backgroundNormal", s.BackgroundNormal)

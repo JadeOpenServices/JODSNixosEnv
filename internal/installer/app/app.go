@@ -1676,36 +1676,91 @@ func collectInteractive(ctx context.Context, ui prompt.UI, root string, hardware
 }
 
 func collectProjectTools(ctx context.Context, ui prompt.UI, u *config.User) error {
-	var err error
+	// Canonical installer intent is the generic webApplications list.
+	// Legacy Plane/Draw.io fields are populated by normalization only as a
+	// temporary compatibility bridge for older generated-state consumers.
+	u.WebApplications = nil
+	u.PlaneEnable = false
+	u.PlaneHost = ""
+	u.DrawioEnable = false
+	u.DrawioSelfHosted = false
+	u.DrawioHost = ""
 
-	u.PlaneEnable, err = ui.Confirm(ctx, "Enable Plane integration?", false)
-	if err != nil {
-		return err
-	}
-	if u.PlaneEnable {
-		u.PlaneHost, err = ui.Value(ctx, "Plane host", "")
+	for _, id := range config.SupportedWebApplicationIDs() {
+		label := id
+
+		switch id {
+		case config.WebApplicationPlane:
+			label = "Plane"
+		case config.WebApplicationDrawio:
+			label = "Draw.io"
+		case config.WebApplicationTeams:
+			label = "Microsoft Teams"
+		}
+
+		enabled, err := ui.Confirm(
+			ctx,
+			"Enable "+label+" web application integration?",
+			false,
+		)
 		if err != nil {
 			return err
 		}
-	}
-
-	u.DrawioEnable, err = ui.Confirm(ctx, "Enable Draw.io integration?", false)
-	if err != nil {
-		return err
-	}
-	if u.DrawioEnable {
-		u.DrawioSelfHosted, err = ui.Confirm(ctx, "Use a self-hosted Draw.io server?", false)
-		if err != nil {
-			return err
+		if !enabled {
+			continue
 		}
 
-		if u.DrawioSelfHosted {
-			u.DrawioHost, err = ui.Value(ctx, "Draw.io endpoint", "")
+		application := config.WebApplicationIntent{ID: id}
+
+		switch id {
+		case config.WebApplicationPlane:
+			application.Endpoint, err = ui.Value(
+				ctx,
+				"Plane endpoint",
+				"",
+			)
 			if err != nil {
 				return err
 			}
+
+		case config.WebApplicationDrawio:
+			selfHosted, err := ui.Confirm(
+				ctx,
+				"Use a self-hosted Draw.io server?",
+				false,
+			)
+			if err != nil {
+				return err
+			}
+
+			if selfHosted {
+				application.Endpoint, err = ui.Value(
+					ctx,
+					"Draw.io endpoint",
+					"",
+				)
+				if err != nil {
+					return err
+				}
+			}
+
+		case config.WebApplicationTeams:
+			// Teams owns its default service endpoint.
+
+		default:
+			return fmt.Errorf(
+				"unsupported web application integration: %q",
+				id,
+			)
 		}
+
+		u.WebApplications = append(
+			u.WebApplications,
+			application,
+		)
 	}
+
+	var err error
 
 	u.NextcloudEnable, err = ui.Confirm(
 		ctx,
@@ -1725,7 +1780,6 @@ func collectProjectTools(ctx context.Context, ui prompt.UI, u *config.User) erro
 		if err != nil {
 			return err
 		}
-
 	}
 
 	return config.NormalizeProjectTools(u)
