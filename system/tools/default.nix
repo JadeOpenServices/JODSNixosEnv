@@ -105,7 +105,11 @@ let
     };
 in
 {
-  imports = [ ./commands/default.nix ];
+  imports = [
+    ./commands/default.nix
+    ./network-diagnostics.nix
+  ];
+
   config = lib.mkMerge [
     {
       boot = {
@@ -185,7 +189,6 @@ in
         procps
         gawk
         findutils
-        openssl
         power-profiles-daemon
       ];
     }
