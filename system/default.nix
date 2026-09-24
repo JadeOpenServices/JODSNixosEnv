@@ -81,7 +81,6 @@
     pciutils
     go-mtpfs
     lsof
-    wget
     git
     vim
   ];
