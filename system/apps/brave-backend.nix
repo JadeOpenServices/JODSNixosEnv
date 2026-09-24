@@ -5,9 +5,25 @@
 }:
 
 let
-  projectWebAppsEnabled =
+  canonicalWebApplications = settings ? webApplications;
+  webApplications = settings.webApplications or [ ];
+
+  genericBraveWebApplicationEnabled = builtins.any (
+    application:
+    let
+      id = application.id or "";
+    in
+    id == "plane" || id == "drawio"
+  ) webApplications;
+
+  legacyBraveWebApplicationEnabled =
     (settings.planeEnable or false)
     || (settings.drawioEnable or false);
+
+  projectWebAppsEnabled =
+    if canonicalWebApplications
+    then genericBraveWebApplicationEnabled
+    else legacyBraveWebApplicationEnabled;
 in
 {
   config = lib.mkIf projectWebAppsEnabled {

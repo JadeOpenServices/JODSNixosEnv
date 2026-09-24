@@ -14,68 +14,72 @@ import (
 )
 
 type User struct {
-	Hostname                  string   `json:"hostname"`
-	Username                  string   `json:"username"`
-	Timezone                  string   `json:"timezone"`
-	Locale                    string   `json:"locale"`
-	KeyboardLayout            string   `json:"keyboardLayout"`
-	KeyboardVariant           string   `json:"keyboardVariant"`
-	WeatherCity               string   `json:"weatherCity"`
-	WeatherCountry            string   `json:"weatherCountry"`
-	TouchpadWorkspaceSwipe    bool     `json:"touchpadWorkspaceSwipe"`
-	ClamshellEnable           bool     `json:"clamshellEnable"`
-	USBGuardEnable            bool     `json:"usbguardEnable"`
-	USBTrustEnforce           bool     `json:"usbTrustEnforce"`
-	USBTrustTPMHandle         string   `json:"usbTrustTpmHandle"`
-	PrintingEnable            bool     `json:"printingEnable"`
-	NetworkPrintingEnable     bool     `json:"networkPrintingEnable"`
-	Name                      string   `json:"name"`
-	Email                     string   `json:"email"`
-	GitHubUsername            string   `json:"githubUsername"`
-	DotfilesDir               string   `json:"dotfilesDir"`
-	Shell                     string   `json:"shell"`
-	Editors                   []string `json:"editors"`
-	Browsers                  []string `json:"browsers"`
-	PreferredEditor           string   `json:"preferredEditor"`
-	PreferredBrowser          string   `json:"preferredBrowser"`
-	PlaneEnable               bool     `json:"planeEnable"`
-	PlaneHost                 string   `json:"planeHost"`
-	DrawioEnable              bool     `json:"drawioEnable"`
-	DrawioSelfHosted          bool     `json:"drawioSelfHosted"`
-	DrawioHost                string   `json:"drawioHost"`
-	NextcloudEnable           bool     `json:"nextcloudEnable"`
-	NextcloudHost             string   `json:"nextcloudHost"`
-	Theme                     string   `json:"theme"`
-	BackgroundNormal          string   `json:"backgroundNormal"`
-	ContainersEnable          bool     `json:"containersEnable"`
-	DebugFunctions            bool     `json:"debugFunctions"`
-	AIEnable                  bool     `json:"aiEnable"`
-	OverrideAISelection       bool     `json:"overrideAiSelection"`
-	OverrideModelWith         string   `json:"overrideModelWith"`
-	AIAgentMode               string   `json:"aiAgentMode"`
-	NemuEnable                bool     `json:"nemuEnable"`
-	LUKSTPM2Enable            bool     `json:"luksTpm2Enable"`
-	RecoveryEnable            bool     `json:"recoveryEnable"`
-	RecoveryPartitionEnable   bool     `json:"recoveryPartitionEnable"`
-	JODSPrebootLockEnable     bool     `json:"jodsPrebootLockEnable"`
-	SecureBootEnable          bool     `json:"secureBootEnable"`
-	SecureBootPrompt          bool     `json:"secureBootPrompt"`
-	EndpointManagedDevice     bool     `json:"endpointManagedDevice"`
-	JODSEndpoint              string   `json:"jodsEndpoint"`
-	JODSPolicySigningKey      string   `json:"jodsPolicySigningPublicKey"`
-	JODSRecoverySigningKey    string   `json:"jodsRecoveryCommandSigningPublicKey"`
-	JODSEnrollmentMode        string   `json:"jodsEnrollmentMode"`
-	JODSAllowInsecureTLS      bool     `json:"jodsAllowInsecureTls"`
-	JODSDeviceClass           string   `json:"jodsDeviceClass"`
-	JODSDesktopProfile        string   `json:"jodsDesktopProfile"`
-	JODSFingerprintEnroll     bool     `json:"jodsFingerprintEnrollmentAllowed"`
-	AllowUnvalidatedODDCModel bool     `json:"allowUnvalidatedODDCModel"`
-	UnattendedInstall         bool     `json:"unattendedInstall"`
-	AutoReboot                bool     `json:"autoReboot"`
-	RunUpdateChecks           bool     `json:"runUpdateChecks"`
-	WriteConfig               bool     `json:"writeConfig"`
-	RunRebuild                bool     `json:"runRebuild"`
-	ForceRedeploy             bool     `json:"forceRedeploy"`
+	Hostname               string                 `json:"hostname"`
+	Username               string                 `json:"username"`
+	Timezone               string                 `json:"timezone"`
+	Locale                 string                 `json:"locale"`
+	KeyboardLayout         string                 `json:"keyboardLayout"`
+	KeyboardVariant        string                 `json:"keyboardVariant"`
+	WeatherCity            string                 `json:"weatherCity"`
+	WeatherCountry         string                 `json:"weatherCountry"`
+	TouchpadWorkspaceSwipe bool                   `json:"touchpadWorkspaceSwipe"`
+	ClamshellEnable        bool                   `json:"clamshellEnable"`
+	USBGuardEnable         bool                   `json:"usbguardEnable"`
+	USBTrustEnforce        bool                   `json:"usbTrustEnforce"`
+	USBTrustTPMHandle      string                 `json:"usbTrustTpmHandle"`
+	PrintingEnable         bool                   `json:"printingEnable"`
+	NetworkPrintingEnable  bool                   `json:"networkPrintingEnable"`
+	Name                   string                 `json:"name"`
+	Email                  string                 `json:"email"`
+	GitHubUsername         string                 `json:"githubUsername"`
+	DotfilesDir            string                 `json:"dotfilesDir"`
+	Shell                  string                 `json:"shell"`
+	Editors                []string               `json:"editors"`
+	Browsers               []string               `json:"browsers"`
+	PreferredEditor        string                 `json:"preferredEditor"`
+	PreferredBrowser       string                 `json:"preferredBrowser"`
+	WebApplications        []WebApplicationIntent `json:"webApplications"`
+
+	// Compatibility fields retained while the installer prompt and generated
+	// Nix settings migrate to the generic webApplications contract.
+	PlaneEnable               bool   `json:"planeEnable"`
+	PlaneHost                 string `json:"planeHost"`
+	DrawioEnable              bool   `json:"drawioEnable"`
+	DrawioSelfHosted          bool   `json:"drawioSelfHosted"`
+	DrawioHost                string `json:"drawioHost"`
+	NextcloudEnable           bool   `json:"nextcloudEnable"`
+	NextcloudHost             string `json:"nextcloudHost"`
+	Theme                     string `json:"theme"`
+	BackgroundNormal          string `json:"backgroundNormal"`
+	ContainersEnable          bool   `json:"containersEnable"`
+	DebugFunctions            bool   `json:"debugFunctions"`
+	AIEnable                  bool   `json:"aiEnable"`
+	OverrideAISelection       bool   `json:"overrideAiSelection"`
+	OverrideModelWith         string `json:"overrideModelWith"`
+	AIAgentMode               string `json:"aiAgentMode"`
+	NemuEnable                bool   `json:"nemuEnable"`
+	LUKSTPM2Enable            bool   `json:"luksTpm2Enable"`
+	RecoveryEnable            bool   `json:"recoveryEnable"`
+	RecoveryPartitionEnable   bool   `json:"recoveryPartitionEnable"`
+	JODSPrebootLockEnable     bool   `json:"jodsPrebootLockEnable"`
+	SecureBootEnable          bool   `json:"secureBootEnable"`
+	SecureBootPrompt          bool   `json:"secureBootPrompt"`
+	EndpointManagedDevice     bool   `json:"endpointManagedDevice"`
+	JODSEndpoint              string `json:"jodsEndpoint"`
+	JODSPolicySigningKey      string `json:"jodsPolicySigningPublicKey"`
+	JODSRecoverySigningKey    string `json:"jodsRecoveryCommandSigningPublicKey"`
+	JODSEnrollmentMode        string `json:"jodsEnrollmentMode"`
+	JODSAllowInsecureTLS      bool   `json:"jodsAllowInsecureTls"`
+	JODSDeviceClass           string `json:"jodsDeviceClass"`
+	JODSDesktopProfile        string `json:"jodsDesktopProfile"`
+	JODSFingerprintEnroll     bool   `json:"jodsFingerprintEnrollmentAllowed"`
+	AllowUnvalidatedODDCModel bool   `json:"allowUnvalidatedODDCModel"`
+	UnattendedInstall         bool   `json:"unattendedInstall"`
+	AutoReboot                bool   `json:"autoReboot"`
+	RunUpdateChecks           bool   `json:"runUpdateChecks"`
+	WriteConfig               bool   `json:"writeConfig"`
+	RunRebuild                bool   `json:"runRebuild"`
+	ForceRedeploy             bool   `json:"forceRedeploy"`
 }
 
 // WriteAtomic persists the confirmed machine-local installer input.
@@ -236,26 +240,7 @@ func NormalizeProjectTools(user *User) error {
 		user.NextcloudHost = ""
 	}
 
-	if user.PlaneEnable {
-		normalized, err := NormalizeExternalServiceEndpoint(user.PlaneHost)
-		if err != nil {
-			return fmt.Errorf("planeHost: %w", err)
-		}
-		user.PlaneHost = normalized
-	}
-
-	if user.DrawioEnable && user.DrawioSelfHosted {
-		normalized, err := NormalizeExternalServiceEndpoint(user.DrawioHost)
-		if err != nil {
-			return fmt.Errorf("drawioHost: %w", err)
-		}
-		user.DrawioHost = normalized
-	} else if user.DrawioEnable {
-		// Public diagrams.net mode does not require or consume a custom host.
-		user.DrawioHost = ""
-	}
-
-	return nil
+	return NormalizeWebApplications(user)
 }
 
 func ValidateProjectTools(user User) error {

@@ -179,7 +179,7 @@ func TestCollectProjectToolsDefaultsDisabled(t *testing.T) {
 
 	err := collectProjectTools(
 		context.Background(),
-		prompt.New(strings.NewReader("\n\n\n"), &output),
+		prompt.New(strings.NewReader("\n\n\n\n"), &output),
 		&u,
 	)
 	if err != nil {
@@ -205,20 +205,20 @@ func TestCollectProjectToolsSupportsIndependentSelection(t *testing.T) {
 	}{
 		{
 			name:        "plane only",
-			input:       "yes\nhttps://plane.example.test\nno\nno\n",
+			input:       "yes\nhttps://plane.example.test\nno\nno\nno\n",
 			planeEnable: true,
 			planeHost:   "https://plane.example.test",
 		},
 		{
 			name:             "drawio only",
-			input:            "no\nyes\nyes\nhttps://drawio.example.test\nno\n",
+			input:            "no\nyes\nyes\nhttps://drawio.example.test\nno\nno\n",
 			drawioEnable:     true,
 			drawioSelfHosted: true,
 			drawioHost:       "https://drawio.example.test",
 		},
 		{
 			name:             "both",
-			input:            "yes\nplane.internal:3000\nyes\nyes\ndrawio.internal:8080\nno\n",
+			input:            "yes\nplane.internal:3000\nyes\nyes\ndrawio.internal:8080\nno\nno\n",
 			planeEnable:      true,
 			drawioEnable:     true,
 			drawioSelfHosted: true,
@@ -270,7 +270,7 @@ func TestCollectProjectToolsSupportsNextcloud(t *testing.T) {
 		context.Background(),
 		prompt.New(
 			strings.NewReader(
-				"no\nno\nyes\nhttps://cloud.example.test\n",
+				"no\nno\nno\nyes\nhttps://cloud.example.test\n",
 			),
 			&output,
 		),
