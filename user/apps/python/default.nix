@@ -1,3 +1,4 @@
+# gjallar: dormant-module
 {
   config,
   pkgs,
