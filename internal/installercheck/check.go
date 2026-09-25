@@ -501,6 +501,12 @@ func checkModuleWiring(r *Report, root string) {
 			if entry.IsDir() || filepath.Ext(path) != ".nix" || wired[path] {
 				return nil
 			}
+
+			data, err := os.ReadFile(path)
+			if err == nil && strings.Contains(string(data), "# gjallar: dormant-module") {
+				return nil
+			}
+
 			relative, err := filepath.Rel(root, path)
 			if err == nil {
 				unwired = append(unwired, filepath.ToSlash(relative))

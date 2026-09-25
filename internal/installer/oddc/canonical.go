@@ -16,6 +16,7 @@ func (resolved Resolved) StableDeviceID() string {
 
 func (source EmbeddedSource) resolveCanonical(
 	identity Identity,
+	host []HostOverlay,
 ) (Resolved, error) {
 	registry, err := portable.LoadRegistry(source.Root)
 	if err != nil {
@@ -46,7 +47,7 @@ func (source EmbeddedSource) resolveCanonical(
 	canonical, err := registry.ResolveModel(
 		modelID,
 		nil,
-		nil,
+		host,
 	)
 	if err != nil {
 		return Resolved{}, err

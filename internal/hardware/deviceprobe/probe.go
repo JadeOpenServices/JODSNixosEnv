@@ -34,7 +34,11 @@ type Snapshot struct {
 	AMDPower        AMDPowerState           `json:"amdPower"`
 }
 
-func Collect(ctx context.Context, sysRoot string) (Snapshot, error) {
+// CollectLocal gathers hardware facts exposed directly by the kernel/sysfs.
+// It deliberately performs no external command or D-Bus calls, so callers such
+// as the installer can reuse the canonical hardware inventory independently of
+// optional userspace tooling.
+func CollectLocal(sysRoot string) Snapshot {
 	s := Snapshot{
 		Schema:          1,
 		SysVendor:       read(filepath.Join(sysRoot, "class/dmi/id/sys_vendor")),
@@ -50,7 +54,7 @@ func Collect(ctx context.Context, sysRoot string) (Snapshot, error) {
 		Thunderbolt:     nonNilThunderboltDevices(thunderboltDevices(sysRoot)),
 		Block:           nonNilBlockDevices(blockDevices(sysRoot)),
 		Audio:           nonNilAudioDevices(audioDevices(sysRoot)),
-		Fingerprint:     fingerprintState(ctx),
+		Fingerprint:     FingerprintState{Devices: []FingerprintDevice{}},
 		PowerSupplies:   nonNilPowerSupplies(powerSupplies(sysRoot)),
 		Backlights:      nonNilBacklights(backlightDevices(sysRoot)),
 		VideoDevices:    nonNilVideoDevices(videoDevices(sysRoot)),
@@ -59,13 +63,22 @@ func Collect(ctx context.Context, sysRoot string) (Snapshot, error) {
 		AMDPower:        amdPowerState(sysRoot),
 	}
 
-	if len(s.Thunderbolt) != 0 {
-		s.ThunderboltHost = true
-	} else if out, err := command(ctx, "boltctl", "domains"); err == nil {
-		for _, line := range lines(out) {
-			if strings.Contains(strings.ToLower(line), "domain") {
-				s.ThunderboltHost = true
-				break
+	s.ThunderboltHost = len(s.Thunderbolt) != 0
+
+	return s
+}
+
+func Collect(ctx context.Context, sysRoot string) (Snapshot, error) {
+	s := CollectLocal(sysRoot)
+	s.Fingerprint = fingerprintState(ctx)
+
+	if !s.ThunderboltHost {
+		if out, err := command(ctx, "boltctl", "domains"); err == nil {
+			for _, line := range lines(out) {
+				if strings.Contains(strings.ToLower(line), "domain") {
+					s.ThunderboltHost = true
+					break
+				}
 			}
 		}
 	}

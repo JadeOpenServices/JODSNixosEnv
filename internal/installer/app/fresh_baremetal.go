@@ -42,6 +42,7 @@ func runFreshBareMetal(
 	recovery bool,
 	enableRecovery bool,
 	passwordFiles []string,
+	hostOverlay *oddc.HostOverlay,
 	out io.Writer,
 ) (freshBareMetalResult, error) {
 	if out == nil {
@@ -221,6 +222,24 @@ func runFreshBareMetal(
 		return freshBareMetalResult{}, fmt.Errorf(
 			"install fresh GjallarOS: %w",
 			err,
+		)
+	}
+
+	if err := saveODDCHostOverlay(
+		ctx,
+		rootResult.MountPoint,
+		hostOverlay,
+	); err != nil {
+		return freshBareMetalResult{}, fmt.Errorf(
+			"commit fresh target ODDC host state: %w",
+			err,
+		)
+	}
+
+	if hostOverlay != nil {
+		fmt.Fprintln(
+			out,
+			"PASS: machine-local ODDC host state committed to fresh target.",
 		)
 	}
 

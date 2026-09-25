@@ -1,6 +1,10 @@
 package oddc
 
-import "errors"
+import (
+	"errors"
+
+	portable "github.com/bakanura/gjallarOS/pkg/oddc"
+)
 
 var (
 	ErrNoMatch        = errors.New("no canonical ODDC model matched")
@@ -26,6 +30,19 @@ type DeviceSource interface {
 	Metadata() SourceMetadata
 }
 
+type HostOverlay = portable.Overlay
+
+// HostOverlayDeviceSource is an optional capability for sources that can
+// resolve immutable canonical ODDC data together with separate machine-local
+// host state. Host overlays are intentionally not source metadata.
+type HostOverlayDeviceSource interface {
+	DeviceSource
+	ResolveWithHost(
+		identity Identity,
+		host []HostOverlay,
+	) (Resolved, error)
+}
+
 type EmbeddedSource struct {
 	Root       string
 	Repository string
@@ -45,5 +62,12 @@ func (source EmbeddedSource) Metadata() SourceMetadata {
 func (source EmbeddedSource) Resolve(
 	identity Identity,
 ) (Resolved, error) {
-	return source.resolveCanonical(identity)
+	return source.resolveCanonical(identity, nil)
+}
+
+func (source EmbeddedSource) ResolveWithHost(
+	identity Identity,
+	host []HostOverlay,
+) (Resolved, error) {
+	return source.resolveCanonical(identity, host)
 }

@@ -2081,12 +2081,9 @@ func runRebuild(args []string, stdout, stderr io.Writer) int {
 		)
 	}
 	if os.Geteuid() != 0 {
-		if status := runCommand(
+		if status := runPrivilegeAuthentication(
 			context.Background(),
-			stdout,
 			stderr,
-			"sudo",
-			"-v",
 		); status != 0 {
 			return status
 		}
@@ -2532,12 +2529,18 @@ func runPrivilegedCommand(
 		)
 	}
 
+	if status := runPrivilegeAuthentication(ctx, stderr); status != 0 {
+		return status
+	}
+
+	sudoArgs := append([]string{"-n"}, args...)
+
 	return runCommand(
 		ctx,
 		stdout,
 		stderr,
 		"sudo",
-		args...,
+		sudoArgs...,
 	)
 }
 
@@ -2561,6 +2564,52 @@ func shellQuote(value string) string {
 		"'",
 		"'\"'\"'",
 	) + "'"
+}
+
+func attachControllingTTY(cmd *exec.Cmd, tty *os.File) {
+	cmd.Stdin = tty
+	cmd.Stdout = tty
+	cmd.Stderr = tty
+}
+
+func runPrivilegeAuthentication(ctx context.Context, stderr io.Writer) int {
+	tty, err := os.OpenFile("/dev/tty", os.O_RDWR, 0)
+	if err != nil {
+		fmt.Fprintf(
+			stderr,
+			"ERROR: privilege authentication requires a controlling terminal: %v\n",
+			err,
+		)
+		return 1
+	}
+	defer tty.Close()
+
+	fmt.Fprintln(tty)
+	fmt.Fprintln(
+		tty,
+		"[GjallarOS] Authenticate for privileged operation (fingerprint first; password fallback).",
+	)
+
+	cmd := exec.CommandContext(ctx, "sudo", "-v")
+	attachControllingTTY(cmd, tty)
+	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
+
+	err = cmd.Run()
+	if err == nil {
+		return 0
+	}
+
+	if ctx.Err() != nil && cmd.Process != nil {
+		_ = syscall.Kill(-cmd.Process.Pid, syscall.SIGTERM)
+		return 130
+	}
+
+	if exit, ok := err.(*exec.ExitError); ok {
+		return exit.ExitCode()
+	}
+
+	fmt.Fprintf(stderr, "ERROR: sudo authentication: %v\n", err)
+	return 1
 }
 
 func runCommand(ctx context.Context, stdout, stderr io.Writer, name string, args ...string) int {

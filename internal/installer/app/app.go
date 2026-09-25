@@ -272,12 +272,13 @@ func Run(ctx context.Context, args []string, in io.Reader, out, errOut io.Writer
 		return fail(errOut, fmt.Errorf("resolve GjallarOS source revision: %w", err))
 	}
 
-	hardware := discovery.DetectHardware("/sys")
-	s.touchscreen = hardware.Touchscreen
-	s.penTablet = hardware.PenTablet
-	s.orientationSensor = hardware.OrientationSensor
+	hardware := detectInstallerHardware("/sys")
 
-	resolvedDevice, err := resolveODDCModel(root, sourceRevision, hardware)
+	resolvedSource := currentODDCSource(root, sourceRevision)
+	resolvedDevice, err := resolveODDCModelFromSource(
+		resolvedSource,
+		hardware,
+	)
 	if err != nil {
 		return fail(errOut, err)
 	}
@@ -307,13 +308,15 @@ func Run(ctx context.Context, args []string, in io.Reader, out, errOut io.Writer
 		)
 
 		if !needsDeviceRebind {
+			resolvedSource = oddc.EmbeddedSource{
+				Root:       filepath.Join(capsulePath, "oddc"),
+				Repository: capsule.Source.ODDCRepository,
+				Revision:   capsule.Source.ODDCRevision,
+				Integrity:  capsule.Source.ODDCIntegrity,
+			}
+
 			resolvedDevice, err = resolveODDCModelFromSource(
-				oddc.EmbeddedSource{
-					Root:       filepath.Join(capsulePath, "oddc"),
-					Repository: capsule.Source.ODDCRepository,
-					Revision:   capsule.Source.ODDCRevision,
-					Integrity:  capsule.Source.ODDCIntegrity,
-				},
+				resolvedSource,
 				hardware,
 			)
 			if err != nil {
@@ -324,6 +327,61 @@ func Run(ctx context.Context, args []string, in io.Reader, out, errOut io.Writer
 			}
 		}
 	}
+
+	var activeHostOverlay *oddc.HostOverlay
+
+	if shouldApplyODDCHostOverlay(
+		persistentInstalledHost,
+		needsDeviceRebind,
+	) {
+		resolvedDevice, activeHostOverlay, err = resolveODDCModelWithHost(
+			ctx,
+			installedRoot,
+			resolvedSource,
+			hardware,
+			resolvedDevice,
+		)
+		if err != nil {
+			return fail(errOut, err)
+		}
+	}
+
+	hostOverlayChanged := false
+
+	hardware, activeHostOverlay, hostOverlayChanged, err =
+		reconcileInternalHardware(
+			ctx,
+			ui,
+			resolvedDevice,
+			hardware,
+			activeHostOverlay,
+			s.user.UnattendedInstall,
+			out,
+		)
+	if err != nil {
+		return fail(errOut, err)
+	}
+
+	if hostOverlayChanged {
+		resolvedDevice, err = resolveODDCModelFromSourceWithHost(
+			resolvedSource,
+			hardware,
+			activeHostOverlay,
+		)
+		if err != nil {
+			return fail(
+				errOut,
+				fmt.Errorf(
+					"apply staged machine-local ODDC hardware removals: %w",
+					err,
+				),
+			)
+		}
+	}
+
+	s.touchscreen = hardware.Touchscreen
+	s.penTablet = hardware.PenTablet
+	s.orientationSensor = hardware.OrientationSensor
 
 	if _, err := oddc.ResolveGraphicsPolicy(resolvedDevice); err != nil {
 		return fail(errOut, err)
@@ -805,6 +863,16 @@ func Run(ctx context.Context, args []string, in io.Reader, out, errOut io.Writer
 			return fail(errOut, fmt.Errorf("unsupported Secure Boot ownership state %q", inspection.State))
 		}
 	}
+	hostOverlayToCommit, err := hostOverlayForCommit(
+		activeHostOverlay,
+		hostOverlayChanged,
+		needsDeviceRebind,
+		resolvedDevice.ModelID,
+	)
+	if err != nil {
+		return fail(errOut, err)
+	}
+
 	runRebuild := s.user.RunRebuild && !opt.noRebuild
 	if opt.forceRedeploy {
 		runRebuild = true
@@ -911,6 +979,21 @@ func Run(ctx context.Context, args []string, in io.Reader, out, errOut io.Writer
 						"PASS: recovery device profile rebound to current hardware.",
 					)
 				}
+
+				if err := saveODDCHostOverlay(
+					ctx,
+					installedRoot,
+					hostOverlayToCommit,
+				); err != nil {
+					return fail(errOut, err)
+				}
+
+				if hostOverlayToCommit != nil {
+					fmt.Fprintln(
+						out,
+						"PASS: machine-local ODDC host state committed after recovery deployment.",
+					)
+				}
 			} else {
 				target, err := deploy.Target(
 					root,
@@ -928,6 +1011,21 @@ func Run(ctx context.Context, args []string, in io.Reader, out, errOut io.Writer
 
 				if err := deploy.Apply(ctx, target); err != nil {
 					return fail(errOut, err)
+				}
+
+				if err := saveODDCHostOverlay(
+					ctx,
+					installedRoot,
+					hostOverlayToCommit,
+				); err != nil {
+					return fail(errOut, err)
+				}
+
+				if hostOverlayToCommit != nil {
+					fmt.Fprintln(
+						out,
+						"PASS: machine-local ODDC host state committed after deployment.",
+					)
 				}
 			}
 
@@ -980,11 +1078,47 @@ func Run(ctx context.Context, args []string, in io.Reader, out, errOut io.Writer
 				return fail(errOut, err)
 			}
 		} else {
-			return fail(
-				errOut,
-				errors.New("refusing destructive fresh-disk provisioning; GjallarOS installation must preserve the existing system layout"),
+			targetDisk, err := selectFreshTargetDisk(
+				ctx,
+				ui,
+				out,
+				opt.targetDisk,
 			)
+			if err != nil {
+				return fail(
+					errOut,
+					fmt.Errorf(
+						"select fresh installation target: %w",
+						err,
+					),
+				)
+			}
 
+			result, err := runFreshBareMetal(
+				ctx,
+				ui,
+				root,
+				targetDisk,
+				s.user.Hostname,
+				hardware,
+				resolvedDevice,
+				opt.recovery,
+				s.user.RecoveryEnable,
+				[]string{s.render.RootPasswordFile},
+				hostOverlayToCommit,
+				out,
+			)
+			if err != nil {
+				return fail(
+					errOut,
+					fmt.Errorf(
+						"run canonical fresh bare-metal installation: %w",
+						err,
+					),
+				)
+			}
+
+			s.recoveryPartition = result.RecoveryPartition
 		}
 	}
 

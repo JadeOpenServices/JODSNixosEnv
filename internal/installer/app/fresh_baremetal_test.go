@@ -461,3 +461,237 @@ func TestForceRedeployIsNonDestructive(t *testing.T) {
 		t.Fatal("force redeployment preservation boundary is missing")
 	}
 }
+
+func TestAppDispatchesCanonicalFreshBareMetalPipeline(t *testing.T) {
+	data, err := os.ReadFile("app.go")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	body := string(data)
+
+	branch := strings.Index(
+		body,
+		"if persistentInstalledHost {",
+	)
+	if branch < 0 {
+		t.Fatal("persistent-installed-host deployment branch missing")
+	}
+
+	after := body[branch:]
+
+	selectTarget := strings.Index(
+		after,
+		"selectFreshTargetDisk(",
+	)
+	runFresh := strings.Index(
+		after,
+		"runFreshBareMetal(",
+	)
+
+	if selectTarget < 0 {
+		t.Fatal("fresh target disk selector is not wired")
+	}
+	if runFresh < 0 {
+		t.Fatal("canonical fresh bare-metal pipeline is not wired")
+	}
+	if selectTarget >= runFresh {
+		t.Fatal(
+			"fresh target disk must be selected before fresh pipeline runs",
+		)
+	}
+
+	selectorCall := after[selectTarget:runFresh]
+	if !strings.Contains(selectorCall, "opt.targetDisk") {
+		t.Fatal("fresh target selector does not receive --target-disk override")
+	}
+
+	freshCall := after[runFresh:]
+
+	for _, want := range []string{
+		"s.user.Hostname",
+		"hardware",
+		"resolvedDevice",
+		"opt.recovery",
+		"s.user.RecoveryEnable",
+		"[]string{s.render.RootPasswordFile}",
+	} {
+		if !strings.Contains(freshCall, want) {
+			t.Fatalf(
+				"fresh pipeline dispatch missing %q",
+				want,
+			)
+		}
+	}
+}
+
+func TestFreshPipelineUsesOnlyDeclaredLocalPasswordArtifact(t *testing.T) {
+	data, err := os.ReadFile("app.go")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	body := string(data)
+
+	call := strings.Index(body, "runFreshBareMetal(")
+	if call < 0 {
+		t.Fatal("canonical fresh bare-metal pipeline is not wired")
+	}
+
+	after := body[call:]
+
+	if !strings.Contains(
+		after,
+		"[]string{s.render.RootPasswordFile}",
+	) {
+		t.Fatal(
+			"fresh install does not stage the declared root password artifact",
+		)
+	}
+
+	if strings.Contains(
+		after[:min(len(after), 900)],
+		"userPasswordFile",
+	) {
+		t.Fatal(
+			"fresh dispatch invented an undeclared normal-user password artifact",
+		)
+	}
+}
+
+func TestFreshHostOverlayCommitsOnlyAfterSuccessfulInstall(t *testing.T) {
+	data, err := os.ReadFile("fresh_baremetal.go")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	body := string(data)
+
+	install := strings.Index(
+		body,
+		"baremetalinstall.Install(",
+	)
+	save := strings.Index(
+		body,
+		"saveODDCHostOverlay(",
+	)
+
+	if install < 0 || save < 0 {
+		t.Fatal(
+			"fresh installation host-state commit boundary is incomplete",
+		)
+	}
+
+	if install >= save {
+		t.Fatal(
+			"fresh host overlay must be committed only after target installation succeeds",
+		)
+	}
+}
+
+func TestExistingHostOverlayCommitsAfterDeployment(t *testing.T) {
+	data, err := os.ReadFile("app.go")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	body := string(data)
+
+	recovery := strings.Index(
+		body,
+		"if opt.recovery && opt.acceptExisting {",
+	)
+	if recovery < 0 {
+		t.Fatal("recovery deployment branch missing")
+	}
+
+	recoveryBody := body[recovery:]
+
+	recoveryInstall := strings.Index(
+		recoveryBody,
+		"baremetalinstall.Install(",
+	)
+	recoverySave := strings.Index(
+		recoveryBody,
+		"saveODDCHostOverlay(",
+	)
+	normalDeploy := strings.Index(
+		recoveryBody,
+		"deploy.Apply(ctx, target)",
+	)
+
+	if recoveryInstall < 0 ||
+		recoverySave < 0 ||
+		normalDeploy < 0 {
+		t.Fatal(
+			"existing-host deployment/host-state boundaries are incomplete",
+		)
+	}
+
+	if !(recoveryInstall < recoverySave &&
+		recoverySave < normalDeploy) {
+		t.Fatal(
+			"recovery host state must commit after reinstall and before normal-host branch",
+		)
+	}
+
+	normalBody := recoveryBody[normalDeploy:]
+
+	normalSave := strings.Index(
+		normalBody,
+		"saveODDCHostOverlay(",
+	)
+	if normalSave < 0 {
+		t.Fatal(
+			"normal installed-host deployment does not commit host state",
+		)
+	}
+
+	if normalSave <= 0 {
+		t.Fatal(
+			"normal installed-host state commit ordering is invalid",
+		)
+	}
+}
+
+func TestRecoveryRebindReplacesHostStateAfterCapsuleCommit(
+	t *testing.T,
+) {
+	data, err := os.ReadFile("app.go")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	body := string(data)
+
+	recovery := strings.Index(
+		body,
+		"if opt.recovery && opt.acceptExisting {",
+	)
+	if recovery < 0 {
+		t.Fatal("recovery deployment branch missing")
+	}
+
+	section := body[recovery:]
+
+	rebind := strings.Index(
+		section,
+		`"hardware-rebind"`,
+	)
+	save := strings.Index(
+		section,
+		"saveODDCHostOverlay(",
+	)
+
+	if rebind < 0 || save < 0 {
+		t.Fatal(
+			"rebind capsule/host-state transaction is incomplete",
+		)
+	}
+
+	if rebind >= save {
+		t.Fatal(
+			"rebound host state must be committed after the new device-profile capsule",
+		)
+	}
+}

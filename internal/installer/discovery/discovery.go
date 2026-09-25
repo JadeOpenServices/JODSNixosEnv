@@ -1,6 +1,7 @@
 package discovery
 
 import (
+	"github.com/bakanura/gjallarOS/internal/hardware/deviceprobe"
 	"github.com/bakanura/gjallarOS/internal/hardware/inputclass"
 	"github.com/bakanura/gjallarOS/internal/hardware/orientation"
 	"os"
@@ -22,17 +23,20 @@ type Hardware struct {
 	Touchscreen       bool
 	PenTablet         bool
 	OrientationSensor bool
+
+	DeviceInventory deviceprobe.Snapshot
 }
 type Options struct{ Shells, Editors, Browsers, Themes []string }
 
 func DetectHardware(sysRoot string) Hardware {
 	h := Hardware{
-		SysVendor:      readDMI(sysRoot, "sys_vendor"),
-		ProductName:    readDMI(sysRoot, "product_name"),
-		ProductVersion: readDMI(sysRoot, "product_version"),
-		BoardVendor:    readDMI(sysRoot, "board_vendor"),
-		BoardName:      readDMI(sysRoot, "board_name"),
-		BoardVersion:   readDMI(sysRoot, "board_version"),
+		SysVendor:       readDMI(sysRoot, "sys_vendor"),
+		ProductName:     readDMI(sysRoot, "product_name"),
+		ProductVersion:  readDMI(sysRoot, "product_version"),
+		BoardVendor:     readDMI(sysRoot, "board_vendor"),
+		BoardName:       readDMI(sysRoot, "board_name"),
+		BoardVersion:    readDMI(sysRoot, "board_version"),
+		DeviceInventory: deviceprobe.CollectLocal(sysRoot),
 	}
 
 	batteries, _ := filepath.Glob(filepath.Join(sysRoot, "class", "power_supply", "BAT*"))

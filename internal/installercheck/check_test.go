@@ -121,6 +121,27 @@ func TestPreflightWarnsAboutUnwiredModule(t *testing.T) {
 	}
 }
 
+func TestPreflightAllowsExplicitDormantModule(t *testing.T) {
+	root := testRepository(t, `{"hostname":"gjallarOS"}`)
+	path := filepath.Join(root, "user", "apps", "dormant", "default.nix")
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(
+		path,
+		[]byte("# gjallar: dormant-module\n{}\n"),
+		0o600,
+	); err != nil {
+		t.Fatal(err)
+	}
+
+	report := Preflight(root)
+	message := "likely unwired Nix module: user/apps/dormant/default.nix"
+	if hasFinding(report, Warn, message) {
+		t.Fatalf("dormant module reported as unwired: %#v", report.Findings)
+	}
+}
+
 func hasFinding(report Report, level Level, message string) bool {
 	for _, finding := range report.Findings {
 		if finding.Level == level && finding.Message == message {
