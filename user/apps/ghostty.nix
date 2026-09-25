@@ -6,6 +6,8 @@
   ...
 }:
 let
+  semanticTheme = import ../../themes/lib/semantic.nix { inherit config; };
+
   ghosttyShell = pkgs.writeShellScript "gjallar-ghostty-shell" ''
     if [ -t 1 ]; then
       printf '\n'
@@ -25,28 +27,28 @@ in
 
           if [ ! -e "$theme_file" ]; then
             cat >"$theme_file" <<'THEME'
-    background = #${config.lib.stylix.colors.base00}
-    foreground = #${config.lib.stylix.colors.base05}
-    cursor-color = #${config.lib.stylix.colors.base0D}
-    cursor-text = #${config.lib.stylix.colors.base00}
-    selection-background = #${config.lib.stylix.colors.base0D}
-    selection-foreground = #${config.lib.stylix.colors.base00}
-    palette = 0=#${config.lib.stylix.colors.base00}
-    palette = 1=#${config.lib.stylix.colors.base08}
-    palette = 2=#${config.lib.stylix.colors.base0B}
-    palette = 3=#${config.lib.stylix.colors.base0A}
-    palette = 4=#${config.lib.stylix.colors.base0D}
-    palette = 5=#${config.lib.stylix.colors.base0E}
-    palette = 6=#${config.lib.stylix.colors.base0C}
-    palette = 7=#${config.lib.stylix.colors.base05}
-    palette = 8=#${config.lib.stylix.colors.base03}
-    palette = 9=#${config.lib.stylix.colors.base08}
-    palette = 10=#${config.lib.stylix.colors.base0B}
-    palette = 11=#${config.lib.stylix.colors.base0A}
-    palette = 12=#${config.lib.stylix.colors.base0D}
-    palette = 13=#${config.lib.stylix.colors.base0E}
-    palette = 14=#${config.lib.stylix.colors.base0C}
-    palette = 15=#${config.lib.stylix.colors.base07}
+    background = #${semanticTheme.fallback.terminal.background}
+    foreground = #${semanticTheme.fallback.terminal.foreground}
+    cursor-color = #${semanticTheme.fallback.terminal.cursor}
+    cursor-text = #${semanticTheme.fallback.terminal.cursorText}
+    selection-background = #${semanticTheme.fallback.selection}
+    selection-foreground = #${semanticTheme.fallback.onSelection}
+    palette = 0=#${semanticTheme.fallback.terminal.normal.black}
+    palette = 1=#${semanticTheme.fallback.terminal.normal.red}
+    palette = 2=#${semanticTheme.fallback.terminal.normal.green}
+    palette = 3=#${semanticTheme.fallback.terminal.normal.yellow}
+    palette = 4=#${semanticTheme.fallback.terminal.normal.blue}
+    palette = 5=#${semanticTheme.fallback.terminal.normal.magenta}
+    palette = 6=#${semanticTheme.fallback.terminal.normal.cyan}
+    palette = 7=#${semanticTheme.fallback.terminal.normal.white}
+    palette = 8=#${semanticTheme.fallback.terminal.bright.black}
+    palette = 9=#${semanticTheme.fallback.terminal.bright.red}
+    palette = 10=#${semanticTheme.fallback.terminal.bright.green}
+    palette = 11=#${semanticTheme.fallback.terminal.bright.yellow}
+    palette = 12=#${semanticTheme.fallback.terminal.bright.blue}
+    palette = 13=#${semanticTheme.fallback.terminal.bright.magenta}
+    palette = 14=#${semanticTheme.fallback.terminal.bright.cyan}
+    palette = 15=#${semanticTheme.fallback.terminal.bright.white}
     THEME
           fi
   '';

@@ -1,5 +1,4 @@
 {
-  config,
   settings,
   lib,
   ...
@@ -11,8 +10,8 @@
       borders-plus-plus {
           add_borders = 2
 
-          col.border_1 = rgb(${config.lib.stylix.colors.base00})
-          col.border_2 = rgb(${config.lib.stylix.colors.base00})
+          col.border_1 = $surface
+          col.border_2 = $surface
 
           border_size_1 = 3
           border_size_2 = 10
