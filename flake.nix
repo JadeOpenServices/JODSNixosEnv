@@ -2,11 +2,6 @@
   description = "GjallarOS — a practical Nordic NixOS workstation";
 
   inputs = {
-    yazi-disk-space = {
-      url = "github:shafayetejaman/sduf.yazi";
-      flake = false;
-    };
-
     nixpkgs.url = "github:nixos/nixpkgs/nixos-26.05";
 
     home-manager.url = "github:nix-community/home-manager/release-26.05";
@@ -31,21 +26,8 @@
 
     caelestia.url = "github:caelestia-dots/shell";
 
-    hyprland = {
-      type = "git";
-      url = "https://github.com/hyprwm/Hyprland";
-      submodules = true;
-    };
 
-    hyprland-plugins = {
-      url = "github:hyprwm/hyprland-plugins";
-      inputs.hyprland.follows = "hyprland";
-    };
 
-    hypr-dynamic-cursors = {
-      url = "github:VirtCode/hypr-dynamic-cursors";
-      inputs.hyprland.follows = "hyprland";
-    };
 
     plasma-manager = {
       url = "github:nix-community/plasma-manager";
