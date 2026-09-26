@@ -55,6 +55,7 @@ in
       }
     '';
 
+    targets.blender.enable = false;
     targets.ghostty.enable = false;
     targets.tmux.enable = false;
     targets.hyprlock.enable = false;
