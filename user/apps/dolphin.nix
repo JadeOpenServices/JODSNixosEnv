@@ -81,17 +81,23 @@ in
   # Do not restore an ever-growing collection of old tabs, and do
   # not funnel externally opened folders into the current Dolphin window.
   home.activation.dolphinSessionPolicy = lib.hm.dag.entryAfter [ "dolphinDefaults" ] ''
-    ${lib.getExe' pkgs.kdePackages.kconfig "kwriteconfig6"} \
-      --file dolphinrc \
-      --group General \
-      --key RememberOpenedTabs \
-      false
+    read_config=${lib.getExe' pkgs.kdePackages.kconfig "kreadconfig6"}
+    write_config=${lib.getExe' pkgs.kdePackages.kconfig "kwriteconfig6"}
 
-    ${lib.getExe' pkgs.kdePackages.kconfig "kwriteconfig6"} \
-      --file dolphinrc \
-      --group General \
-      --key OpenExternallyCalledFolderInNewTab \
-      false
+    remember_opened_tabs="$(
+      "$read_config" --file dolphinrc --group General --key RememberOpenedTabs 2>/dev/null || true
+    )"
+    externally_called_folder="$(
+      "$read_config" --file dolphinrc --group General --key OpenExternallyCalledFolderInNewTab 2>/dev/null || true
+    )"
+
+    if [ "$remember_opened_tabs" != "false" ]; then
+      run "$write_config" --file dolphinrc --group General --key RememberOpenedTabs false
+    fi
+
+    if [ "$externally_called_folder" != "false" ]; then
+      run "$write_config" --file dolphinrc --group General --key OpenExternallyCalledFolderInNewTab false
+    fi
   '';
 
   home.activation.dolphinNextcloudPlace = lib.mkIf (settings.nextcloudEnable or false) (
