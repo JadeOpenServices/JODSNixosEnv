@@ -153,38 +153,45 @@ in
       settings_file=${lib.escapeShellArg "${config.xdg.configHome}/VSCodium/User/settings.json"}
 
       if [ -f "$settings_file" ]; then
-        theme_count="$(${pkgs.gnugrep}/bin/grep -Ec '"workbench\.colorTheme"[[:space:]]*:' "$settings_file" || true)"
+        if ${pkgs.gnugrep}/bin/grep -Eq \
+          '^[[:space:]]*"workbench\.colorTheme"[[:space:]]*:[[:space:]]*"GjallarOS"[[:space:]]*,?[[:space:]]*$' \
+          "$settings_file"
+        then
+          :
+        else
+          theme_count="$(${pkgs.gnugrep}/bin/grep -Ec '"workbench\.colorTheme"[[:space:]]*:' "$settings_file" || true)"
 
-        case "$theme_count" in
-          0)
-            if ${pkgs.gnugrep}/bin/grep -q '^[[:space:]]*{' "$settings_file"; then
-              run ${pkgs.gnused}/bin/sed -i \
-                '0,/^[[:space:]]*{/{s//&\
+          case "$theme_count" in
+            0)
+              if ${pkgs.gnugrep}/bin/grep -q '^[[:space:]]*{' "$settings_file"; then
+                run ${pkgs.gnused}/bin/sed -i \
+                  '0,/^[[:space:]]*{/{s//&\
   "workbench.colorTheme": "GjallarOS",/}' \
+                  "$settings_file"
+              else
+                echo "VSCodium settings file has no JSON object opening" >&2
+                exit 1
+              fi
+              ;;
+            1)
+              if ${pkgs.gnugrep}/bin/grep -Eq \
+                '^[[:space:]]*"workbench\.colorTheme"[[:space:]]*:[[:space:]]*"[^"]*"[[:space:]]*,?[[:space:]]*$' \
                 "$settings_file"
-            else
-              echo "VSCodium settings file has no JSON object opening" >&2
+              then
+                run ${pkgs.gnused}/bin/sed -i -E \
+                  's|^([[:space:]]*)"workbench\.colorTheme"[[:space:]]*:[[:space:]]*"[^"]*"|\1"workbench.colorTheme": "GjallarOS"|' \
+                  "$settings_file"
+              else
+                echo "VSCodium colorTheme setting has an unexpected JSON shape" >&2
+                exit 1
+              fi
+              ;;
+            *)
+              echo "VSCodium settings contain duplicate workbench.colorTheme keys" >&2
               exit 1
-            fi
-            ;;
-          1)
-            if ${pkgs.gnugrep}/bin/grep -Eq \
-              '^[[:space:]]*"workbench\.colorTheme"[[:space:]]*:[[:space:]]*"[^"]*"[[:space:]]*,?[[:space:]]*$' \
-              "$settings_file"
-            then
-              run ${pkgs.gnused}/bin/sed -i -E \
-                's|^([[:space:]]*)"workbench\.colorTheme"[[:space:]]*:[[:space:]]*"[^"]*"|\1"workbench.colorTheme": "GjallarOS"|' \
-                "$settings_file"
-            else
-              echo "VSCodium colorTheme setting has an unexpected JSON shape" >&2
-              exit 1
-            fi
-            ;;
-          *)
-            echo "VSCodium settings contain duplicate workbench.colorTheme keys" >&2
-            exit 1
-            ;;
-        esac
+              ;;
+          esac
+        fi
       fi
     '';
 
