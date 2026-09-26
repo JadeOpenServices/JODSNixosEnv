@@ -56,6 +56,9 @@ in
     '';
 
     targets.blender.enable = false;
+    targets.forge.enable = false;
+    targets.gdu.enable = false;
+    targets.vencord.enable = false;
     targets.gedit.enable = false;
     targets.gnome-text-editor.enable = false;
     targets.gtksourceview.enable = false;
