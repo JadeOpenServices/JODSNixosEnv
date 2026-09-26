@@ -23,8 +23,8 @@ let
       BrowseThroughArchives = true;
       FilterBar = true;
       GlobalViewProps = true;
-      OpenExternallyCalledFolderInNewTab = true;
-      RememberOpenedTabs = true;
+      OpenExternallyCalledFolderInNewTab = false;
+      RememberOpenedTabs = false;
       ShowFullPath = true;
       ShowToolTips = true;
       ShowZoomSlider = true;
@@ -81,15 +81,40 @@ in
   # Do not restore an ever-growing collection of old tabs, and do
   # not funnel externally opened folders into the current Dolphin window.
   home.activation.dolphinSessionPolicy = lib.hm.dag.entryAfter [ "dolphinDefaults" ] ''
-    read_config=${lib.getExe' pkgs.kdePackages.kconfig "kreadconfig6"}
+    dolphin_config=${lib.escapeShellArg "${config.xdg.configHome}/dolphinrc"}
     write_config=${lib.getExe' pkgs.kdePackages.kconfig "kwriteconfig6"}
 
-    remember_opened_tabs="$(
-      "$read_config" --file dolphinrc --group General --key RememberOpenedTabs 2>/dev/null || true
-    )"
-    externally_called_folder="$(
-      "$read_config" --file dolphinrc --group General --key OpenExternallyCalledFolderInNewTab 2>/dev/null || true
-    )"
+    remember_opened_tabs=
+    externally_called_folder=
+    in_general=false
+
+    if [ -r "$dolphin_config" ]; then
+      while IFS= read -r line || [ -n "$line" ]; do
+        case "$line" in
+          '[General]')
+            in_general=true
+            continue
+            ;;
+          '['*']')
+            if [ "$in_general" = true ]; then
+              break
+            fi
+            continue
+            ;;
+        esac
+
+        if [ "$in_general" = true ]; then
+          case "$line" in
+            RememberOpenedTabs=*)
+              remember_opened_tabs="''${line#RememberOpenedTabs=}"
+              ;;
+            OpenExternallyCalledFolderInNewTab=*)
+              externally_called_folder="''${line#OpenExternallyCalledFolderInNewTab=}"
+              ;;
+          esac
+        fi
+      done < "$dolphin_config"
+    fi
 
     if [ "$remember_opened_tabs" != "false" ]; then
       run "$write_config" --file dolphinrc --group General --key RememberOpenedTabs false
