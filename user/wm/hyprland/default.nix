@@ -42,7 +42,11 @@ in
 
           ${pkgs.coreutils}/bin/mkdir -p "$monique_dir" "$hypr_dir"
 
-          ${pkgs.python3}/bin/python3 - "$settings_file" <<'PY'
+          if [ ! -f "$settings_file" ] \
+            || ! ${pkgs.gnugrep}/bin/grep -Eq '"hypr_config_format"[[:space:]]*:[[:space:]]*"legacy"' "$settings_file" \
+            || ! ${pkgs.gnugrep}/bin/grep -Eq '"monitor_config_name"[[:space:]]*:[[:space:]]*"monitors"' "$settings_file"
+          then
+            ${pkgs.python3}/bin/python3 - "$settings_file" <<'PY'
     import json
     import os
     import sys
@@ -69,6 +73,7 @@ in
     os.chmod(tmp, 0o600)
     os.replace(tmp, path)
     PY
+          fi
 
           ${pkgs.coreutils}/bin/rm -f \
             "$hypr_dir/monitors.lua" \
