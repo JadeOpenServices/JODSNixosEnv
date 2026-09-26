@@ -12,6 +12,11 @@ let
   settingsPath = "${config.xdg.configHome}/VSCodium/User/settings.json";
   settingsFile = config.home.file.${settingsPath};
 
+  # Home Manager's VS Code module always creates its profile activation,
+  # even when only the default profile exists. In that case there is no
+  # global-storage profile metadata to reconcile.
+  namedVscodiumProfiles = builtins.removeAttrs config.programs.vscodium.profiles [ "default" ];
+
   # Keep Stylix's font integration, but GjallarOS owns application colors.
   stylixVscodiumSettings =
     import "${inputs.stylix}/modules/vscode/templates/settings.nix" config.stylix.fonts;
@@ -182,6 +187,13 @@ in
         esac
       fi
     '';
+
+  # Avoid starting the upstream jq-based global-storage helper when there
+  # are no named profiles. If named profiles are added later, the upstream
+  # activation remains authoritative automatically.
+  home.activation.vscodiumProfiles = lib.mkIf (namedVscodiumProfiles == { }) (
+    lib.mkForce (lib.hm.dag.entryAfter [ "writeBoundary" ] ":")
+  );
 
   programs.vscodium = {
     enable = true;
