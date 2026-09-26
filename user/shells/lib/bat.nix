@@ -1,12 +1,4 @@
+{ pkgs, ... }:
 {
-  pkgs,
-  settings,
-  lib,
-  ...
-}:
-{
-  programs.bat = {
-    enable = true;
-    config = { };
-  };
+  home.packages = [ pkgs.bat ];
 }
