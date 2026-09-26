@@ -56,6 +56,9 @@ in
     '';
 
     targets.blender.enable = false;
+    targets.gedit.enable = false;
+    targets.gnome-text-editor.enable = false;
+    targets.gtksourceview.enable = false;
     targets.ghostty.enable = false;
     targets.tmux.enable = false;
     targets.hyprlock.enable = false;
