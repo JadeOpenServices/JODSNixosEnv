@@ -214,10 +214,7 @@ in
 
               inside_nextcloud &&
               /<bookmark:icon name="(folder-cloud|cloudstatus)"\/>/ {
-                sub(
-                  /name="(folder-cloud|cloudstatus)"/,
-                  "name=\"" icon "\""
-                )
+                sub(/name="(folder-cloud|cloudstatus)"/, "name=\"" icon "\"")
               }
 
               { print }
