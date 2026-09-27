@@ -1,26 +1,37 @@
 --- a/src/filewidgets/kfileplacesview.cpp
 +++ b/src/filewidgets/kfileplacesview.cpp
-@@ -237,0 +238,3 @@
+@@ -237,0 +238,11 @@
 +    QString capacityText;
 +    int capacityTextWidth = 0;
 +
-@@ -245,0 +249,7 @@
-+            const quint64 availableSpace = info.size - info.used;
++    QFont capacityFont = opt.font;
++    if (capacityFont.pointSizeF() > 0) {
++        capacityFont.setPointSizeF(capacityFont.pointSizeF() * 0.78);
++    } else if (capacityFont.pixelSize() > 0) {
++        capacityFont.setPixelSize(qMax(1, capacityFont.pixelSize() * 78 / 100));
++    }
++    const QFontMetrics capacityFontMetrics(capacityFont);
 +
-+            capacityText = i18nc("@info:status Free space out of total storage size",
-+                                 "%1 / %2",
-+                                 KIO::convertSize(availableSpace),
-+                                 KIO::convertSize(info.size));
-+            capacityTextWidth = opt.fontMetrics.horizontalAdvance(capacityText);
-@@ -290,0 +301,19 @@
+@@ -245,0 +257,7 @@
++            constexpr double bytesPerGB = 1000.0 * 1000.0 * 1000.0;
++
++            capacityText = i18nc("@info:status Used storage out of total storage size",
++                                 "%1/%2 GB",
++                                 QString::number(static_cast<double>(info.used) / bytesPerGB, 'f', 1),
++                                 QString::number(static_cast<double>(info.size) / bytesPerGB, 'f', 1));
++            capacityTextWidth = capacityFontMetrics.horizontalAdvance(capacityText);
+@@ -290,0 +309,22 @@
 +    QRect labelRect = rectText;
 +
 +    if (!capacityText.isEmpty()) {
 +        const int capacityTextSpacing = 2 * s_lateralMargin;
 +
++        painter->save();
++        painter->setFont(capacityFont);
 +        painter->drawText(rectText,
 +                          (isLTR ? Qt::AlignRight : Qt::AlignLeft) | Qt::AlignVCenter,
 +                          capacityText);
++        painter->restore();
 +
 +        // Keep capacity information visible in narrow Places panels. The
 +        // device name yields horizontal space first, while the bar retains
@@ -32,10 +43,10 @@
 +        }
 +    }
 +
-@@ -292 +321 @@
+@@ -292 +332 @@
 -    const QString elidedText = opt.fontMetrics.elidedText(text, Qt::ElideRight, rectText.width());
 +    const QString elidedText = opt.fontMetrics.elidedText(text, Qt::ElideRight, labelRect.width());
-@@ -302 +331,3 @@
+@@ -302 +342,3 @@
 -    painter->drawText(rectText, Qt::AlignLeft | Qt::AlignVCenter, elidedText);
 +    painter->drawText(labelRect,
 +                      (isLTR ? Qt::AlignLeft : Qt::AlignRight) | Qt::AlignVCenter,
