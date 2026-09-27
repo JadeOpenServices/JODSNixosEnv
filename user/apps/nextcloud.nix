@@ -337,12 +337,11 @@ void setClipboardText(const QString &text)'
       overlay_new='        if (status.startsWith("OK")) {
             if (status.contains("+VFS_ONLINE_ONLY")) {
                 r << QStringLiteral("${dolphinNextcloudIcons.onlineOnly}");
-            } else if (status.contains("+VFS_LOCAL")) {
-                r << QStringLiteral("${dolphinNextcloudIcons.local}");
             } else if (status.contains("+VFS_HYDRATING")) {
                 r << QStringLiteral("vcs-update-required");
             } else {
-                r << QStringLiteral("vcs-normal");
+                // Any other OK state is fully synced and locally available.
+                r << QStringLiteral("${dolphinNextcloudIcons.local}");
             }
         }'
 

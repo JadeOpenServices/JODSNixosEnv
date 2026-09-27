@@ -78,6 +78,23 @@ in
   # Stylix supplies the desktop's dark Kvantum palette and fonts.
   qt.qt6ctSettings.Appearance.icon_theme = lib.mkDefault settings.themeDetails.icons;
 
+  # Dolphin-specific Nextcloud availability glyphs. Unique names avoid
+  # mutating Papirus or other applications' icon lookup.
+  xdg.dataFile."icons/hicolor/scalable/places/${dolphinNextcloudIcons.places}.svg" =
+    lib.mkIf (settings.nextcloudEnable or false) {
+      source = dolphinNextcloudIcons.cloudSource;
+    };
+
+  xdg.dataFile."icons/hicolor/scalable/emblems/${dolphinNextcloudIcons.onlineOnly}.svg" =
+    lib.mkIf (settings.nextcloudEnable or false) {
+      source = dolphinNextcloudIcons.cloudSource;
+    };
+
+  xdg.dataFile."icons/hicolor/scalable/emblems/${dolphinNextcloudIcons.local}.svg" =
+    lib.mkIf (settings.nextcloudEnable or false) {
+      source = dolphinNextcloudIcons.localSource;
+    };
+
   # Seed once: Dolphin owns its live settings so UI changes survive rebuilds.
   home.activation.dolphinDefaults = lib.hm.dag.entryAfter [ "writeBoundary" ] ''
     dolphin_config=${lib.escapeShellArg "${config.xdg.configHome}/dolphinrc"}
@@ -174,6 +191,51 @@ in
       fi
     ''
   );
+
+  # Migrate only GjallarOS' previous Nextcloud icon defaults. Preserve any
+  # user-selected custom icon and every unrelated Places entry.
+  home.activation.dolphinNextcloudIconMigration =
+    lib.mkIf (settings.nextcloudEnable or false) (
+      lib.hm.dag.entryAfter [ "dolphinNextcloudPlace" ] ''
+        places=${lib.escapeShellArg "${config.xdg.dataHome}/user-places.xbel"}
+        nextcloud_uri="file://$HOME/Nextcloud"
+
+        if [ -f "$places" ] &&
+           ${pkgs.gnugrep}/bin/grep -Fq "href=\"$nextcloud_uri\"" "$places"
+        then
+          tmp="$places.gjallar-nextcloud-icon.$$"
+
+          ${pkgs.gawk}/bin/awk \
+            -v uri="$nextcloud_uri" \
+            -v icon=${lib.escapeShellArg dolphinNextcloudIcons.places} '
+              index($0, "<bookmark href=\"" uri "\">") {
+                inside_nextcloud = 1
+              }
+
+              inside_nextcloud &&
+              /<bookmark:icon name="(folder-cloud|cloudstatus)"\/>/ {
+                sub(
+                  /name="(folder-cloud|cloudstatus)"/,
+                  "name=\"" icon "\""
+                )
+              }
+
+              { print }
+
+              inside_nextcloud && /<\/bookmark>/ {
+                inside_nextcloud = 0
+              }
+            ' "$places" > "$tmp"
+
+          if ${pkgs.diffutils}/bin/cmp -s "$places" "$tmp"; then
+            ${pkgs.coreutils}/bin/rm -f "$tmp"
+          else
+            ${pkgs.coreutils}/bin/install -m 0600 "$tmp" "$places"
+            ${pkgs.coreutils}/bin/rm -f "$tmp"
+          fi
+        fi
+      ''
+    );
 
   xdg.desktopEntries."org.kde.dolphin" = {
     name = "Dolphin";
