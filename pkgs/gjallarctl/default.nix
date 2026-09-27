@@ -53,6 +53,12 @@ exec ${lib.getExe' systemd "systemd-ask-password"} \
   "$@"
 ASKPASS
     chmod 0555 "$out/bin/gjallar-sudo-askpass"
+
+    cat > "$out/bin/gjallar-sudo-auth" <<'AUTH'
+#!${runtimeShell}
+exit 0
+AUTH
+    chmod 0555 "$out/bin/gjallar-sudo-auth"
   '';
 
   meta = {

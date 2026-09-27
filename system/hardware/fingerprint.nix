@@ -9,6 +9,9 @@
 let
   managed = settings.endpointManagedDevice or false;
 
+  gjallarctlPackage = pkgs.callPackage ../../pkgs/gjallarctl { };
+  gjallarSudoAuth = "${gjallarctlPackage}/bin/gjallar-sudo-auth";
+
   jodsEnrollmentAllowed =
     settings.jodsFingerprintEnrollmentAllowed or false;
 
@@ -59,6 +62,29 @@ lib.mkMerge [
           "jodsFingerprintEnrollmentAllowed requires fingerprint hardware in the resolved ODDC device.";
       }
     ];
+
+    # GjallarOS privilege authentication intentionally splits biometric and
+    # password authentication into separate PAM transactions. The first
+    # service can never request a Unix password. The second can never invoke
+    # the fingerprint module.
+    security.pam.services = {
+      gjallar-sudo-fingerprint = {
+        unixAuth = false;
+        fprintAuth = fingerprintPresent;
+      };
+
+      gjallar-sudo-password = {
+        unixAuth = true;
+        fprintAuth = false;
+        rules.auth.unix.args = lib.mkForce [ "likeauth" ];
+      };
+    };
+
+    # Scope the split PAM policy to the immutable no-op helper only. Normal
+    # sudo keeps its existing system policy.
+    security.sudo.extraConfig = lib.mkAfter ''
+      Defaults!${gjallarSudoAuth} pam_service=gjallar-sudo-fingerprint, pam_askpass_service=gjallar-sudo-password
+    '';
   }
 
   (lib.mkIf fingerprintPresent {

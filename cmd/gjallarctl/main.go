@@ -2604,16 +2604,33 @@ func siblingExecutable(name string) (string, error) {
 	return sibling, nil
 }
 
-func privilegeAuthenticationCommand(
+func privilegeFingerprintCommand(
+	ctx context.Context,
+	tty *os.File,
+	authHelper string,
+) *exec.Cmd {
+	cmd := exec.CommandContext(ctx, "sudo", authHelper)
+
+	// The command-specific sudo policy selects a fingerprint-only PAM service.
+	// Keep stdin detached so this phase itself never owns shell input.
+	cmd.Stdin = nil
+	cmd.Stdout = tty
+	cmd.Stderr = tty
+	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
+
+	return cmd
+}
+
+func privilegePasswordCommand(
 	ctx context.Context,
 	tty *os.File,
 	askpass string,
+	authHelper string,
 ) *exec.Cmd {
-	cmd := exec.CommandContext(ctx, "sudo", "-A", "-v")
+	cmd := exec.CommandContext(ctx, "sudo", "-A", authHelper)
 
-	// Do not give sudo password-capable stdin. PAM fingerprint messages remain
-	// attached to the controlling terminal, while pam_unix password collection
-	// is isolated behind the immutable GjallarOS askpass helper.
+	// -A selects the helper's password-only PAM service. The password is
+	// collected by systemd-ask-password and passed directly to sudo.
 	cmd.Stdin = nil
 	cmd.Stdout = tty
 	cmd.Stderr = tty
@@ -2623,8 +2640,38 @@ func privilegeAuthenticationCommand(
 	return cmd
 }
 
+func authenticationCommandStatus(
+	ctx context.Context,
+	cmd *exec.Cmd,
+	stderr io.Writer,
+	label string,
+) int {
+	err := cmd.Run()
+	if err == nil {
+		return 0
+	}
+
+	if ctx.Err() != nil && cmd.Process != nil {
+		_ = syscall.Kill(-cmd.Process.Pid, syscall.SIGTERM)
+		return 130
+	}
+
+	if exit, ok := err.(*exec.ExitError); ok {
+		return exit.ExitCode()
+	}
+
+	fmt.Fprintf(stderr, "ERROR: %s: %v\n", label, err)
+	return 1
+}
+
 func runPrivilegeAuthentication(ctx context.Context, stderr io.Writer) int {
 	askpass, err := siblingExecutable("gjallar-sudo-askpass")
+	if err != nil {
+		fmt.Fprintf(stderr, "ERROR: privilege authentication helper: %v\n", err)
+		return 1
+	}
+
+	authHelper, err := siblingExecutable("gjallar-sudo-auth")
 	if err != nil {
 		fmt.Fprintf(stderr, "ERROR: privilege authentication helper: %v\n", err)
 		return 1
@@ -2647,24 +2694,38 @@ func runPrivilegeAuthentication(ctx context.Context, stderr io.Writer) int {
 		"[GjallarOS] Authenticate for privileged operation (fingerprint first; secure password fallback).",
 	)
 
-	cmd := privilegeAuthenticationCommand(ctx, tty, askpass)
-
-	err = cmd.Run()
-	if err == nil {
+	fingerprint := privilegeFingerprintCommand(ctx, tty, authHelper)
+	fingerprintStatus := authenticationCommandStatus(
+		ctx,
+		fingerprint,
+		stderr,
+		"fingerprint authentication",
+	)
+	if fingerprintStatus == 0 {
 		return 0
 	}
-
-	if ctx.Err() != nil && cmd.Process != nil {
-		_ = syscall.Kill(-cmd.Process.Pid, syscall.SIGTERM)
+	if fingerprintStatus == 130 {
 		return 130
 	}
 
-	if exit, ok := err.(*exec.ExitError); ok {
-		return exit.ExitCode()
-	}
+	fmt.Fprintln(
+		tty,
+		"[GjallarOS] Fingerprint not verified; using secure password fallback.",
+	)
 
-	fmt.Fprintf(stderr, "ERROR: sudo authentication: %v\n", err)
-	return 1
+	password := privilegePasswordCommand(
+		ctx,
+		tty,
+		askpass,
+		authHelper,
+	)
+
+	return authenticationCommandStatus(
+		ctx,
+		password,
+		stderr,
+		"password authentication",
+	)
 }
 
 func runCommand(ctx context.Context, stdout, stderr io.Writer, name string, args ...string) int {

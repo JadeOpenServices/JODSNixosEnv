@@ -7,7 +7,46 @@ import (
 	"testing"
 )
 
-func TestPrivilegeAuthenticationCommandUsesAskpassWithoutStdin(t *testing.T) {
+func TestPrivilegeFingerprintCommandHasNoPasswordInput(t *testing.T) {
+	tty, err := os.CreateTemp(t.TempDir(), "tty")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer tty.Close()
+
+	const authHelper = "/nix/store/test-gjallarctl/bin/gjallar-sudo-auth"
+
+	cmd := privilegeFingerprintCommand(
+		context.Background(),
+		tty,
+		authHelper,
+	)
+
+	if cmd.Stdin != nil {
+		t.Fatal("fingerprint authentication must not receive password-capable stdin")
+	}
+	if cmd.Stdout != tty || cmd.Stderr != tty {
+		t.Fatal("fingerprint authentication messages must use the controlling TTY")
+	}
+
+	if len(cmd.Args) != 2 ||
+		cmd.Args[0] != "sudo" ||
+		cmd.Args[1] != authHelper {
+		t.Fatalf("unexpected fingerprint command: %#v", cmd.Args)
+	}
+
+	for _, arg := range cmd.Args {
+		if arg == "-A" {
+			t.Fatal("fingerprint phase must not use askpass")
+		}
+	}
+
+	if cmd.SysProcAttr == nil || !cmd.SysProcAttr.Setpgid {
+		t.Fatal("fingerprint authentication process group isolation missing")
+	}
+}
+
+func TestPrivilegePasswordCommandUsesAskpassWithoutStdin(t *testing.T) {
 	tty, err := os.CreateTemp(t.TempDir(), "tty")
 	if err != nil {
 		t.Fatal(err)
@@ -15,34 +54,33 @@ func TestPrivilegeAuthenticationCommandUsesAskpassWithoutStdin(t *testing.T) {
 	defer tty.Close()
 
 	const askpass = "/nix/store/test-gjallarctl/bin/gjallar-sudo-askpass"
+	const authHelper = "/nix/store/test-gjallarctl/bin/gjallar-sudo-auth"
 
 	t.Setenv("SUDO_ASKPASS", "/tmp/untrusted-askpass")
 
-	cmd := privilegeAuthenticationCommand(
+	cmd := privilegePasswordCommand(
 		context.Background(),
 		tty,
 		askpass,
+		authHelper,
 	)
 
 	if cmd.Stdin != nil {
-		t.Fatal("sudo authentication must not receive password-capable stdin")
+		t.Fatal("password authentication must not receive password-capable stdin")
 	}
-	if cmd.Stdout != tty {
-		t.Fatal("sudo authentication stdout is not the controlling TTY")
-	}
-	if cmd.Stderr != tty {
-		t.Fatal("sudo authentication stderr is not the controlling TTY")
+	if cmd.Stdout != tty || cmd.Stderr != tty {
+		t.Fatal("password authentication messages must use the controlling TTY")
 	}
 
 	if len(cmd.Args) != 3 ||
 		cmd.Args[0] != "sudo" ||
 		cmd.Args[1] != "-A" ||
-		cmd.Args[2] != "-v" {
-		t.Fatalf("unexpected sudo authentication command: %#v", cmd.Args)
+		cmd.Args[2] != authHelper {
+		t.Fatalf("unexpected password command: %#v", cmd.Args)
 	}
 
 	if cmd.SysProcAttr == nil || !cmd.SysProcAttr.Setpgid {
-		t.Fatal("sudo authentication process group isolation missing")
+		t.Fatal("password authentication process group isolation missing")
 	}
 
 	var values []string
