@@ -3,42 +3,23 @@
      height="24"
      viewBox="0 0 24 24">
   <style id="current-color-scheme" type="text/css">
-    .ColorScheme-Text { color:#232629; }
     .ColorScheme-Background { color:#eff0f1; }
     .ColorScheme-PositiveText { color:#27ae60; }
-    .ColorScheme-HighlightedText { color:#ffffff; }
   </style>
 
-  <!-- Background halo keeps the status badge separate from arbitrary icons. -->
-  <circle class="ColorScheme-Background"
-          cx="12"
-          cy="12"
-          r="8.8"
-          fill="currentColor"/>
-
-  <!-- Positive-status body with a crisp semantic outline. -->
-  <circle class="ColorScheme-PositiveText"
-          cx="12"
-          cy="12"
-          r="7.3"
-          fill="currentColor"
-          stroke="currentColor"
-          stroke-width="1"/>
-
-  <circle class="ColorScheme-Text"
-          cx="12"
-          cy="12"
-          r="7.3"
-          fill="none"
-          stroke="currentColor"
-          stroke-width="1.2"/>
-
-  <!-- Thick high-contrast check remains legible when rendered as an emblem. -->
-  <path class="ColorScheme-HighlightedText"
-        d="M7.4 12.2 10.6 15.2 16.9 8.8"
+  <path class="ColorScheme-Background"
+        d="M6.8 12.2 10.5 15.7 17.4 8.5"
         fill="none"
         stroke="currentColor"
-        stroke-width="2.8"
+        stroke-width="4.0"
+        stroke-linecap="round"
+        stroke-linejoin="round"/>
+
+  <path class="ColorScheme-PositiveText"
+        d="M6.8 12.2 10.5 15.7 17.4 8.5"
+        fill="none"
+        stroke="currentColor"
+        stroke-width="2.35"
         stroke-linecap="round"
         stroke-linejoin="round"/>
 </svg>
