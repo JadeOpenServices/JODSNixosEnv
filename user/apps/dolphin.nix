@@ -22,7 +22,7 @@ let
       export QT_STYLE_OVERRIDE=${lib.escapeShellArg dolphinTheme.styleName}
       export QT_PLUGIN_PATH=${lib.escapeShellArg dolphinTheme.qtPluginPath}''${QT_PLUGIN_PATH:+:$QT_PLUGIN_PATH}
 
-      exec ${lib.getExe gjallarRun} ${lib.getExe pkgs.kdePackages.dolphin} "$@"
+      exec ${lib.getExe gjallarRun} ${lib.getExe pkgs.kdePackages.dolphin} --new-window "$@"
     '';
   };
   ini = pkgs.formats.ini { };
