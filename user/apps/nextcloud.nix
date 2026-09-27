@@ -5,6 +5,8 @@
   ...
 }:
 let
+  dolphinNextcloudIcons = import ../../themes/apps/dolphin/nextcloud-icons.nix;
+
   enable = settings.nextcloudEnable or false;
   host = settings.nextcloudHost or "";
   preferredBrowser = settings.preferredBrowser or "librewolf";
@@ -334,9 +336,9 @@ void setClipboardText(const QString &text)'
         }'
       overlay_new='        if (status.startsWith("OK")) {
             if (status.contains("+VFS_ONLINE_ONLY")) {
-                r << QStringLiteral("folder-cloud");
+                r << QStringLiteral("${dolphinNextcloudIcons.onlineOnly}");
             } else if (status.contains("+VFS_LOCAL")) {
-                r << QStringLiteral("emblem-ok-symbolic");
+                r << QStringLiteral("${dolphinNextcloudIcons.local}");
             } else if (status.contains("+VFS_HYDRATING")) {
                 r << QStringLiteral("vcs-update-required");
             } else {

@@ -8,6 +8,7 @@
 }:
 let
   dolphinTheme = import ../../themes/apps/dolphin/darkly.nix { inherit pkgs; };
+  dolphinNextcloudIcons = import ../../themes/apps/dolphin/nextcloud-icons.nix;
 
   fileManager = pkgs.writeShellApplication {
     name = "file-manager";
@@ -159,7 +160,7 @@ in
   <title>Nextcloud</title>\\
   <info>\\
    <metadata owner=\"http://freedesktop.org\">\\
-    <bookmark:icon name=\"folder-cloud\"/>\\
+    <bookmark:icon name=\"${dolphinNextcloudIcons.places}\"/>\\
    </metadata>\\
    <metadata owner=\"http://www.kde.org\">\\
     <ID>$nextcloud_id</ID>\\
