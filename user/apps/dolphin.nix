@@ -7,12 +7,20 @@
   ...
 }:
 let
+  dolphinTheme = import ../../themes/apps/dolphin/darkly.nix { inherit pkgs; };
+
   fileManager = pkgs.writeShellApplication {
     name = "file-manager";
     text = ''
       if [ "$#" -eq 0 ]; then
         set -- "$HOME"
       fi
+
+      # Darkly is Dolphin-local. qtct remains active and continues supplying
+      # the live Noctalia/KColorScheme palette.
+      export QT_STYLE_OVERRIDE=${lib.escapeShellArg dolphinTheme.styleName}
+      export QT_PLUGIN_PATH=${lib.escapeShellArg dolphinTheme.qtPluginPath}''${QT_PLUGIN_PATH:+:$QT_PLUGIN_PATH}
+
       exec ${lib.getExe gjallarRun} ${lib.getExe pkgs.kdePackages.dolphin} "$@"
     '';
   };
@@ -52,6 +60,7 @@ in
   _module.args.gjallarFileManager = fileManager;
 
   home.packages = with pkgs.kdePackages; [
+    dolphinTheme.package
     dolphin
     dolphin-plugins
     ark
