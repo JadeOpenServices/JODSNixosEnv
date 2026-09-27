@@ -1,0 +1,42 @@
+--- a/src/filewidgets/kfileplacesview.cpp
++++ b/src/filewidgets/kfileplacesview.cpp
+@@ -237,0 +238,3 @@
++    QString capacityText;
++    int capacityTextWidth = 0;
++
+@@ -245,0 +249,7 @@
++            const quint64 availableSpace = info.size - info.used;
++
++            capacityText = i18nc("@info:status Free space out of total storage size",
++                                 "%1 / %2",
++                                 KIO::convertSize(availableSpace),
++                                 KIO::convertSize(info.size));
++            capacityTextWidth = opt.fontMetrics.horizontalAdvance(capacityText);
+@@ -290,0 +301,19 @@
++    QRect labelRect = rectText;
++
++    if (!capacityText.isEmpty()) {
++        const int capacityTextSpacing = 2 * s_lateralMargin;
++
++        painter->drawText(rectText,
++                          (isLTR ? Qt::AlignRight : Qt::AlignLeft) | Qt::AlignVCenter,
++                          capacityText);
++
++        // Keep capacity information visible in narrow Places panels. The
++        // device name yields horizontal space first, while the bar retains
++        // the full text-area width underneath both labels.
++        if (isLTR) {
++            labelRect.setRight(qMax(labelRect.left(), labelRect.right() - capacityTextWidth - capacityTextSpacing));
++        } else {
++            labelRect.setLeft(qMin(labelRect.right(), labelRect.left() + capacityTextWidth + capacityTextSpacing));
++        }
++    }
++
+@@ -292 +321 @@
+-    const QString elidedText = opt.fontMetrics.elidedText(text, Qt::ElideRight, rectText.width());
++    const QString elidedText = opt.fontMetrics.elidedText(text, Qt::ElideRight, labelRect.width());
+@@ -302 +331,3 @@
+-    painter->drawText(rectText, Qt::AlignLeft | Qt::AlignVCenter, elidedText);
++    painter->drawText(labelRect,
++                      (isLTR ? Qt::AlignLeft : Qt::AlignRight) | Qt::AlignVCenter,
++                      elidedText);
