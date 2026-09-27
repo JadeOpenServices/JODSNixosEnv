@@ -2,6 +2,8 @@
   buildGoModule,
   git,
   lib,
+  runtimeShell,
+  systemd,
 }:
 buildGoModule {
   pname = "gjallarctl";
@@ -40,6 +42,18 @@ buildGoModule {
     "-s"
     "-w"
   ];
+
+  postInstall = ''
+    cat > "$out/bin/gjallar-sudo-askpass" <<'ASKPASS'
+#!${runtimeShell}
+exec ${lib.getExe' systemd "systemd-ask-password"} \
+  --echo=no \
+  --user \
+  --timeout=0 \
+  "$@"
+ASKPASS
+    chmod 0555 "$out/bin/gjallar-sudo-askpass"
+  '';
 
   meta = {
     description = "Safe GjallarOS maintenance and validation tool";

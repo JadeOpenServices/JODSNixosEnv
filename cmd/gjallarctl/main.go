@@ -2566,13 +2566,70 @@ func shellQuote(value string) string {
 	) + "'"
 }
 
-func attachControllingTTY(cmd *exec.Cmd, tty *os.File) {
-	cmd.Stdin = tty
+func environmentWithOverride(key, value string) []string {
+	prefix := key + "="
+	current := os.Environ()
+	env := make([]string, 0, len(current)+1)
+
+	for _, entry := range current {
+		if !strings.HasPrefix(entry, prefix) {
+			env = append(env, entry)
+		}
+	}
+
+	return append(env, prefix+value)
+}
+
+func siblingExecutable(name string) (string, error) {
+	executable, err := os.Executable()
+	if err != nil {
+		return "", fmt.Errorf("resolve gjallarctl executable: %w", err)
+	}
+
+	resolved, err := filepath.EvalSymlinks(executable)
+	if err != nil {
+		return "", fmt.Errorf("resolve gjallarctl executable symlink: %w", err)
+	}
+
+	sibling := filepath.Join(filepath.Dir(resolved), name)
+
+	info, err := os.Stat(sibling)
+	if err != nil {
+		return "", fmt.Errorf("resolve %s: %w", name, err)
+	}
+	if info.IsDir() || info.Mode()&0111 == 0 {
+		return "", fmt.Errorf("%s is not executable", sibling)
+	}
+
+	return sibling, nil
+}
+
+func privilegeAuthenticationCommand(
+	ctx context.Context,
+	tty *os.File,
+	askpass string,
+) *exec.Cmd {
+	cmd := exec.CommandContext(ctx, "sudo", "-A", "-v")
+
+	// Do not give sudo password-capable stdin. PAM fingerprint messages remain
+	// attached to the controlling terminal, while pam_unix password collection
+	// is isolated behind the immutable GjallarOS askpass helper.
+	cmd.Stdin = nil
 	cmd.Stdout = tty
 	cmd.Stderr = tty
+	cmd.Env = environmentWithOverride("SUDO_ASKPASS", askpass)
+	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
+
+	return cmd
 }
 
 func runPrivilegeAuthentication(ctx context.Context, stderr io.Writer) int {
+	askpass, err := siblingExecutable("gjallar-sudo-askpass")
+	if err != nil {
+		fmt.Fprintf(stderr, "ERROR: privilege authentication helper: %v\n", err)
+		return 1
+	}
+
 	tty, err := os.OpenFile("/dev/tty", os.O_RDWR, 0)
 	if err != nil {
 		fmt.Fprintf(
@@ -2587,12 +2644,10 @@ func runPrivilegeAuthentication(ctx context.Context, stderr io.Writer) int {
 	fmt.Fprintln(tty)
 	fmt.Fprintln(
 		tty,
-		"[GjallarOS] Authenticate for privileged operation (fingerprint first; password fallback).",
+		"[GjallarOS] Authenticate for privileged operation (fingerprint first; secure password fallback).",
 	)
 
-	cmd := exec.CommandContext(ctx, "sudo", "-v")
-	attachControllingTTY(cmd, tty)
-	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
+	cmd := privilegeAuthenticationCommand(ctx, tty, askpass)
 
 	err = cmd.Run()
 	if err == nil {
