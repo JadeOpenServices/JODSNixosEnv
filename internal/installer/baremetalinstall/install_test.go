@@ -132,9 +132,14 @@ func createInstalledProfile(t *testing.T) {
 	if err := os.Symlink("/nix/store/test-system", system); err != nil {
 		t.Skipf("cannot create /mnt system profile fixture: %v", err)
 	}
+	store := "/mnt/nix/store/test-system"
+	if err := os.MkdirAll(store, 0755); err != nil {
+		t.Skipf("cannot create /mnt store fixture: %v", err)
+	}
 
 	t.Cleanup(func() {
 		_ = os.Remove(system)
+		_ = os.Remove(store)
 	})
 }
 
@@ -514,5 +519,51 @@ func TestInstallKeepsExistingSwap(t *testing.T) {
 	}
 	if callIndex(r.calls, "sudo btrfs filesystem mkswapfile") >= 0 {
 		t.Fatal("created installation swap although swap is active")
+	}
+}
+
+// Live media: the profile links name /nix/store paths that exist only in the
+// target's store, never in the host's.
+func TestVerifySystemProfileResolvesInsideTarget(t *testing.T) {
+	root := t.TempDir()
+	profiles := filepath.Join(root, "nix", "var", "nix", "profiles")
+	store := filepath.Join(root, "nix", "store", "abc-nixos-system-test")
+	for _, dir := range []string{profiles, store} {
+		if err := os.MkdirAll(dir, 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	link := func(target, name string) {
+		t.Helper()
+		if err := os.Symlink(target, filepath.Join(profiles, name)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	link("/nix/store/abc-nixos-system-test", "system-1-link")
+	link("system-1-link", "system")
+
+	if err := verifySystemProfile(root); err != nil {
+		t.Fatalf("installed profile rejected: %v", err)
+	}
+
+	if err := os.Remove(store); err != nil {
+		t.Fatal(err)
+	}
+	if err := verifySystemProfile(root); err == nil {
+		t.Fatal("profile pointing at a missing target store path accepted")
+	}
+}
+
+func TestVerifySystemProfileRejectsMissingOrPlainProfile(t *testing.T) {
+	root := t.TempDir()
+	if err := verifySystemProfile(root); err == nil {
+		t.Fatal("missing profile accepted")
+	}
+	profiles := filepath.Join(root, "nix", "var", "nix", "profiles")
+	if err := os.MkdirAll(filepath.Join(profiles, "system"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := verifySystemProfile(root); err == nil {
+		t.Fatal("plain directory accepted as system profile")
 	}
 }

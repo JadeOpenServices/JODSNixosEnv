@@ -176,27 +176,8 @@ func install(
 	}
 
 	// Successful nixos-install must leave the target system profile behind.
-	systemProfile := filepath.Join(
-		targetRoot,
-		"nix",
-		"var",
-		"nix",
-		"profiles",
-		"system",
-	)
-	info, err := os.Stat(systemProfile)
-	if err != nil {
-		return Result{}, fmt.Errorf(
-			"verify installed system profile %s: %w",
-			systemProfile,
-			err,
-		)
-	}
-	if info.Mode()&os.ModeSymlink == 0 {
-		return Result{}, fmt.Errorf(
-			"installed system profile is not a symlink: %s",
-			systemProfile,
-		)
+	if err := verifySystemProfile(targetRoot); err != nil {
+		return Result{}, err
 	}
 
 	fmt.Fprintln(input.Out, "STAGE: os-installed")
@@ -211,6 +192,43 @@ func install(
 		Target: target,
 		Stage:  "os-installed",
 	}, nil
+}
+
+// verifySystemProfile checks that nixos-install left a system profile link
+// that resolves to a store path inside root. Profile links are absolute
+// (/nix/store/...) and name the target's store, not the host's: os.Stat
+// followed them into the live medium's store and rejected a good install
+// (e2e-target, 2026-09-29). Absolute links are therefore rebased onto root.
+func verifySystemProfile(root string) error {
+	profile := filepath.Join(root, "nix", "var", "nix", "profiles", "system")
+	info, err := os.Lstat(profile)
+	if err != nil {
+		return fmt.Errorf("verify installed system profile %s: %w", profile, err)
+	}
+	if info.Mode()&os.ModeSymlink == 0 {
+		return fmt.Errorf("installed system profile is not a symlink: %s", profile)
+	}
+
+	current := profile
+	for hops := 0; hops < 8; hops++ {
+		info, err := os.Lstat(current)
+		if err != nil {
+			return fmt.Errorf("verify installed system profile %s: %w", profile, err)
+		}
+		if info.Mode()&os.ModeSymlink == 0 {
+			return nil
+		}
+		link, err := os.Readlink(current)
+		if err != nil {
+			return fmt.Errorf("verify installed system profile %s: %w", profile, err)
+		}
+		if filepath.IsAbs(link) {
+			current = filepath.Join(root, link)
+		} else {
+			current = filepath.Join(filepath.Dir(current), link)
+		}
+	}
+	return fmt.Errorf("installed system profile has too many links: %s", profile)
 }
 
 // Live media keep their Nix store and the checkout in RAM, and have no swap:
