@@ -22,6 +22,8 @@
     path = [
       gjallarctlPackage
       pkgs.sbctl
+      # sbctl verify locates the ESP with lsblk (e2e-target, 2026-09-29).
+      pkgs.util-linux
       pkgs.coreutils
       pkgs.e2fsprogs
       pkgs.gnugrep

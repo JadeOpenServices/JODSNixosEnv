@@ -30,7 +30,12 @@ let
     };
   };
   post = evaluated.config.systemd.services.installer-post-secure-boot;
+  enrollment = evaluated.config.systemd.services.secure-boot-enrollment;
 in
+# gjallarctl runs sbctl verify in-process after enrolling; without lsblk the
+# enrollment transaction failed after the keys were written (e2e-target,
+# 2026-09-29).
+assert builtins.elem pkgs.util-linux enrollment.path;
 # Started in parallel with enrollment, the continuation told the user to
 # remove PK while firmware already was in Setup Mode (e2e-target, 2026-09-29).
 assert builtins.elem "secure-boot-enrollment.service" post.after;
