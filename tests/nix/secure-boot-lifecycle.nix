@@ -47,10 +47,12 @@ let
   tpm2 = evaluated.config.systemd.services.measured-boot-tpm2-enrollment;
 in
 # The TPM2 unlock self-test needs systemd's cryptsetup token plugin, which
-# cryptsetup does not find by default (e2e-target, 2026-09-29).
+# NixOS cryptsetup only finds through the library path; it ignores
+# --external-tokens-path (e2e-target, 2026-09-29).
 assert nixpkgs.lib.hasInfix
-  (builtins.unsafeDiscardStringContext "--external-tokens-path=${evaluated.config.systemd.package}/lib/cryptsetup")
+  (builtins.unsafeDiscardStringContext "LD_LIBRARY_PATH=${evaluated.config.systemd.package}/lib/cryptsetup \\\n  cryptsetup open --test-passphrase --token-only")
   (builtins.unsafeDiscardStringContext tpm2.script);
+assert !(nixpkgs.lib.hasInfix "--external-tokens-path" tpm2.script);
 # pcrlock drops PCRs it cannot predict; enrollment must refuse a policy
 # that no longer locks the measured-boot PCRs (e2e-target, 2026-09-29:
 # "pcrValues":[] bound the disk key to nothing).
