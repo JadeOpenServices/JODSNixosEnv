@@ -138,6 +138,7 @@
         secure-boot-lifecycle = import ./tests/nix/secure-boot-lifecycle.nix {
           inherit nixpkgs system;
           lifecycleModule = ./system/security/secure-boot/lifecycle.nix;
+          measuredBootModule = ./system/security/secure-boot/measured-boot.nix;
         };
 
         recovery-maintenance = import ./tests/nix/recovery-maintenance.nix {

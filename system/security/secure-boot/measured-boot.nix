@@ -33,6 +33,13 @@ in
           "secure-boot-verification.service"
           "systemd-pcrlock-make-policy.service"
         ];
+        # The passphrase prompt needs Plymouth's password agent, and greetd
+        # quits Plymouth; started alongside, the prompt vanished behind the
+        # greeter and enrollment waited forever (e2e-target, 2026-09-29).
+        before = [
+          "display-manager.service"
+          "greetd.service"
+        ];
         requires = [ "systemd-pcrlock-make-policy.service" ];
         unitConfig = {
           ConditionSecurity = "uefi-secureboot";
