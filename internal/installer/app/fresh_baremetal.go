@@ -29,6 +29,9 @@ type freshBareMetalResult struct {
 	RootPARTUUID      string
 	LUKSUUID          string
 	RecoveryPartition string
+	// ReleaseTargetState unmounts the target state bound over the live host
+	// paths; call it when the installer is done with the target.
+	ReleaseTargetState func()
 }
 
 func runFreshBareMetal(
@@ -194,6 +197,20 @@ func runFreshBareMetal(
 		)
 	}
 
+	releaseTargetState, err := bindFreshTargetState(ctx, rootResult.MountPoint, out)
+	if err != nil {
+		return freshBareMetalResult{}, fmt.Errorf(
+			"move installer state onto fresh target: %w",
+			err,
+		)
+	}
+	keepTargetState := false
+	defer func() {
+		if !keepTargetState {
+			releaseTargetState()
+		}
+	}()
+
 	hardwarePath := hardwareconfig.Target(repo)
 
 	fmt.Fprintln(out, "STAGE: generating target hardware configuration")
@@ -245,10 +262,12 @@ func runFreshBareMetal(
 	}
 
 	result := freshBareMetalResult{
-		TargetDisk:   plan.TargetDisk.Path,
-		RootPARTUUID: plan.Root.Partition.PARTUUID,
-		LUKSUUID:     rootResult.LUKSUUID,
+		TargetDisk:         plan.TargetDisk.Path,
+		RootPARTUUID:       plan.Root.Partition.PARTUUID,
+		LUKSUUID:           rootResult.LUKSUUID,
+		ReleaseTargetState: releaseTargetState,
 	}
+	keepTargetState = true
 
 	if plan.Recovery != nil {
 		// Return stable identity, never /dev/nvmeXpN naming as authority.

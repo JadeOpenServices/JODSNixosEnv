@@ -34,55 +34,35 @@ let
     ];
 
     text = ''
-            set -euo pipefail
+      set -euo pipefail
 
-            if [ "$(${pkgs.coreutils}/bin/id -u)" -ne 0 ]; then
-              exec sudo "$0" "$@"
-            fi
+      if [ "$(${pkgs.coreutils}/bin/id -u)" -ne 0 ]; then
+        exec sudo "$0" "$@"
+      fi
 
-            root="''${1:-/}"
+      root="''${1:-/}"
 
-            entry="$(
-              bootctl --root="$root" list --json=short |
-                ${pkgs.python3}/bin/python3 -c '
-      import json
-      import sys
+      # Arm only the generation the installer just activated: a rerun
+      # after a failed maintenance boot leaves older maintenance entries.
+      profile="$(basename "$(readlink "$root/nix/var/nix/profiles/system")")"
+      generation="''${profile#system-}"
+      generation="''${generation%-link}"
 
-      entries = json.load(sys.stdin)
-      matches = []
+      entry="$(
+        bootctl --root="$root" list --json=short |
+          ${pkgs.python3}/bin/python3 ${./select-maintenance-entry.py} "$generation"
+      )"
 
-      for entry in entries:
-          haystack = " ".join(
-              str(entry.get(field, ""))
-              for field in ("id", "title", "path")
-          )
+      test -n "$entry"
 
-          if "gjallar-recovery-maintenance" in haystack:
-              entry_id = entry.get("id")
+      bootctl --root="$root" set-oneshot "$entry"
 
-              if entry_id:
-                  matches.append(entry_id)
+      printf '%s\n' \
+        "PASS: armed one-shot GjallarOS recovery-storage maintenance boot" \
+        "PASS: normal default boot entry was not changed" \
+        "Rebooting into maintenance..."
 
-      if len(matches) != 1:
-          raise SystemExit(
-              "expected exactly one GjallarOS recovery-maintenance "
-              f"boot entry, found {len(matches)}"
-          )
-
-      print(matches[0])
-      '
-            )"
-
-            test -n "$entry"
-
-            bootctl --root="$root" set-oneshot "$entry"
-
-            printf '%s\n' \
-              "PASS: armed one-shot GjallarOS recovery-storage maintenance boot" \
-              "PASS: normal default boot entry was not changed" \
-              "Rebooting into maintenance..."
-
-            systemctl reboot
+      systemctl reboot
     '';
   };
 in
@@ -194,7 +174,7 @@ lib.mkMerge [
           # cryptsetup --key-file uses every byte of the file; the newline
           # systemd-ask-password appends by default would reject the correct
           # passphrase.
-          systemd-ask-password --timeout=0 --newline=no \
+          systemd-ask-password --timeout=0 -n \
             "GjallarOS: enter the LUKS recovery credential for storage maintenance" \
             > "$keyfile"
 

@@ -1128,6 +1128,8 @@ func Run(ctx context.Context, args []string, in io.Reader, out, errOut io.Writer
 				)
 			}
 
+			// The Secure Boot continuation below still works on the target.
+			defer result.ReleaseTargetState()
 			s.recoveryPartition = result.RecoveryPartition
 		}
 	}

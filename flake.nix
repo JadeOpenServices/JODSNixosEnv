@@ -129,6 +129,12 @@
           hardeningModule = ./system/security/local-hardening.nix;
         };
 
+        measured-boot-limit = import ./tests/nix/measured-boot-limit.nix {
+          inherit nixpkgs system;
+          lanzabooteModule = inputs.lanzaboote.nixosModules.lanzaboote;
+          secureBootModule = ./system/security/secure-boot/lanzaboote.nix;
+        };
+
         recovery-maintenance = import ./tests/nix/recovery-maintenance.nix {
           inherit nixpkgs system;
           recoveryModule = ./system/recovery;

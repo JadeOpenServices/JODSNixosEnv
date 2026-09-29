@@ -131,7 +131,7 @@ let
           device="''${2:?DEVICE required}"
           name="''${3:?mapping NAME required}"
           cryptsetup isLuks "$device"
-          systemd-ask-password --newline=no 'GjallarOS LUKS recovery passphrase:' |
+          systemd-ask-password -n 'GjallarOS LUKS recovery passphrase:' |
             cryptsetup open --type luks --key-file=- "$device" "$name"
           ;;
         mount)
@@ -166,7 +166,7 @@ let
 
           printf '%s\n'             'GjallarOS installed root is encrypted.'             'Authentication is required before its files can be viewed or modified.'
 
-          systemd-ask-password --newline=no             'GjallarOS recovery: enter the installed root LUKS passphrase:' |
+          systemd-ask-password -n             'GjallarOS recovery: enter the installed root LUKS passphrase:' |
             cryptsetup open               --type luks               --key-file=-               "$device"               "$name"
 
           cleanup_mapping=true
