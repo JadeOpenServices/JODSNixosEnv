@@ -13,7 +13,8 @@ let
       lifecycleModule
       measuredBootModule
       {
-        boot.initrd.luks.devices.cryptroot.device = "/dev/disk/by-uuid/00000000-0000-0000-0000-000000000000";
+        boot.initrd.luks.devices.cryptroot.device =
+          "/dev/disk/by-uuid/00000000-0000-0000-0000-000000000000";
         system.stateVersion = "26.05";
         boot.loader.grub.enable = false;
         fileSystems."/" = {
@@ -36,6 +37,11 @@ let
   enrollment = evaluated.config.systemd.services.secure-boot-enrollment;
   tpm2 = evaluated.config.systemd.services.measured-boot-tpm2-enrollment;
 in
+# The TPM2 unlock self-test needs systemd's cryptsetup token plugin, which
+# cryptsetup does not find by default (e2e-target, 2026-09-29).
+assert nixpkgs.lib.hasInfix
+  (builtins.unsafeDiscardStringContext "--external-tokens-path=${evaluated.config.systemd.package}/lib/cryptsetup")
+  (builtins.unsafeDiscardStringContext tpm2.script);
 # The TPM2 passphrase prompt needs Plymouth, which greetd quits (e2e-target,
 # 2026-09-29: prompt hidden behind the greeter, enrollment hung).
 assert builtins.elem "display-manager.service" tpm2.before;

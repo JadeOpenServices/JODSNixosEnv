@@ -93,7 +93,11 @@ in
             gjallarctl installer tpm2-metadata-token-id \
               "$state/luks/metadata.json.tmp"
           )"
-          cryptsetup open --test-passphrase --token-only --token-id "$token_id" "$device"
+          # cryptsetup only searches its own store path for token plugins;
+          # systemd ships the TPM2 one (e2e-target, 2026-09-29: "No usable
+          # token is available" after a successful enrollment).
+          cryptsetup open --test-passphrase --token-only --token-id "$token_id" \
+            --external-tokens-path=${config.systemd.package}/lib/cryptsetup "$device"
           gjallarctl installer tpm2-write-keyslot-record \
             "$state/luks/metadata.json.tmp" \
             "$state/luks/keyslots.json" \
