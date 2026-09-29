@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 )
 
@@ -145,15 +146,7 @@ func enrollFirmware(
 		}
 	}
 
-	args := []string{"enroll-keys"}
-	if len(snapshot.PreserveFirmwareBuiltin) != 0 {
-		args = append(
-			args,
-			"--firmware-builtin="+strings.Join(snapshot.PreserveFirmwareBuiltin, ","),
-		)
-	}
-
-	if err := ops.command(ctx, "sbctl", args...); err != nil {
+	if err := ops.command(ctx, "sbctl", enrollKeysArgs(snapshot)...); err != nil {
 		return "", fmt.Errorf("enroll Secure Boot keys: %w", err)
 	}
 
@@ -223,4 +216,23 @@ func enrollFirmware(
 	}
 
 	return EnrollmentCompleted, nil
+}
+
+func enrollKeysArgs(snapshot FirmwarePolicySnapshot) []string {
+	args := []string{"enroll-keys"}
+	if len(snapshot.PreserveFirmwareBuiltin) != 0 {
+		args = append(
+			args,
+			"--firmware-builtin="+strings.Join(snapshot.PreserveFirmwareBuiltin, ","),
+		)
+	}
+	// sbctl refuses when the TPM event log lists option ROMs, unless told the
+	// new db still trusts their signer; it ignores --firmware-builtin for
+	// that check. A preserved built-in db keeps the vendor CAs that sign the
+	// ROMs, so the refusal only blocked enrollment (e2e-target, 2026-09-29:
+	// virtio-net iPXE ROM). In sbctl this flag skips only that check.
+	if slices.Contains(snapshot.PreserveFirmwareBuiltin, "db") {
+		args = append(args, "--yes-this-might-brick-my-machine")
+	}
+	return args
 }

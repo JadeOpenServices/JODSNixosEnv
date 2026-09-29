@@ -169,6 +169,7 @@ func TestEnrollFirmwareUsesPolicyForFirmwareBuiltinEnrollment(t *testing.T) {
 		"sbctl",
 		"enroll-keys",
 		"--firmware-builtin=KEK,db",
+		"--yes-this-might-brick-my-machine",
 	}
 
 	found := false
@@ -280,5 +281,17 @@ func TestEnrollFirmwareRejectsModifiedUntouchedVariable(t *testing.T) {
 
 	if !strings.Contains(err.Error(), "dbx changed during enrollment") {
 		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+// Without the built-in db nothing vouches for option ROM signers, so sbctl's
+// option ROM check must stay active.
+func TestEnrollKeysArgsKeepsOptionROMCheckWithoutBuiltinDB(t *testing.T) {
+	snapshot := enrollmentTestSnapshot()
+	snapshot.PreserveFirmwareBuiltin = []string{"KEK"}
+	got := enrollKeysArgs(snapshot)
+	want := []string{"enroll-keys", "--firmware-builtin=KEK"}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("args = %v, want %v", got, want)
 	}
 }
