@@ -258,8 +258,10 @@ func enableInstallSwap(ctx context.Context, r runner, out io.Writer) (func(), er
 		fmt.Fprintln(out, "No swap active and the target is not Btrfs; installing without temporary swap.")
 		return noop, nil
 	}
+	// Cleanup must also run once an interrupt cancelled ctx.
+	cleanupCtx := context.WithoutCancel(ctx)
 	remove := func() {
-		_ = r.Run(ctx, nil, out, out, "sudo", "rm", "-f", "--", installSwapPath)
+		_ = r.Run(cleanupCtx, nil, out, out, "sudo", "rm", "-f", "--", installSwapPath)
 	}
 	remove() // leftover from an interrupted attempt
 	if err := r.Run(ctx, nil, out, out, "sudo", "btrfs", "filesystem", "mkswapfile", "--size", installSwapSize, installSwapPath); err != nil {
@@ -272,7 +274,7 @@ func enableInstallSwap(ctx context.Context, r runner, out io.Writer) (func(), er
 	}
 	fmt.Fprintf(out, "Temporary %s swap on the encrypted target: %s\n", installSwapSize, installSwapPath)
 	return func() {
-		_ = r.Run(ctx, nil, out, out, "sudo", "swapoff", installSwapPath)
+		_ = r.Run(cleanupCtx, nil, out, out, "sudo", "swapoff", installSwapPath)
 		remove()
 	}, nil
 }

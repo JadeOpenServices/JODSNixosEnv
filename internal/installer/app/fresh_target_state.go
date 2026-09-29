@@ -29,9 +29,12 @@ var freshTargetStatePaths = []struct {
 // returned release unmounts in reverse order.
 func bindFreshTargetState(ctx context.Context, targetRoot string, out io.Writer) (func(), error) {
 	var mounted []string
+	// Release must also run once an interrupt cancelled ctx: the binds sit
+	// over the live host's /boot and /var/lib.
+	cleanupCtx := context.WithoutCancel(ctx)
 	release := func() {
 		for i := len(mounted) - 1; i >= 0; i-- {
-			_, _ = privilegedCommand(ctx, "umount", "--", mounted[i])
+			_, _ = privilegedCommand(cleanupCtx, "umount", "--", mounted[i])
 		}
 		mounted = nil
 	}

@@ -23,13 +23,17 @@ func commandKey(name string, args ...string) string {
 }
 
 func (f *fakeRunner) Run(
-	_ context.Context,
+	ctx context.Context,
 	_ io.Reader,
 	_ io.Writer,
 	_ io.Writer,
 	name string,
 	args ...string,
 ) error {
+	// Like exec.CommandContext: a cancelled context never starts the command.
+	if err := ctx.Err(); err != nil {
+		return err
+	}
 	call := append([]string{name}, args...)
 	f.calls = append(f.calls, call)
 
@@ -41,10 +45,13 @@ func (f *fakeRunner) Run(
 }
 
 func (f *fakeRunner) Output(
-	_ context.Context,
+	ctx context.Context,
 	name string,
 	args ...string,
 ) ([]byte, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
 	call := append([]string{name}, args...)
 	f.calls = append(f.calls, call)
 
@@ -565,5 +572,25 @@ func TestVerifySystemProfileRejectsMissingOrPlainProfile(t *testing.T) {
 	}
 	if err := verifySystemProfile(root); err == nil {
 		t.Fatal("plain directory accepted as system profile")
+	}
+}
+
+// An interrupted installer (Ctrl-C, dropped SSH) cancels the context; the
+// swapfile must still be switched off and removed.
+func TestInstallSwapCleanupRunsAfterCancel(t *testing.T) {
+	r := mountedRunner()
+	ctx, cancel := context.WithCancel(context.Background())
+	release, err := enableInstallSwap(ctx, r, io.Discard)
+	if err != nil {
+		t.Fatal(err)
+	}
+	cancel()
+	r.calls = nil
+	release()
+	got := callsText(r.calls)
+	for _, want := range []string{"sudo swapoff " + installSwapPath, "sudo rm -f -- " + installSwapPath} {
+		if !strings.Contains(got, want) {
+			t.Fatalf("cleanup after cancel missing %q:\n%s", want, got)
+		}
 	}
 }

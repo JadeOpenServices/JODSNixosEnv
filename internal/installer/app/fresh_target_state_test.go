@@ -91,3 +91,30 @@ func TestFreshTargetStateCopyKeepsStagedFiles(t *testing.T) {
 		t.Fatalf("live-only state not copied: %v", err)
 	}
 }
+
+func TestBindFreshTargetStateReleasesAfterCancel(t *testing.T) {
+	var unmounted []string
+	previous := privilegedCommand
+	privilegedCommand = func(ctx context.Context, args ...string) ([]byte, error) {
+		// Like exec.CommandContext: a cancelled context never starts the command.
+		if err := ctx.Err(); err != nil {
+			return nil, err
+		}
+		if args[0] == "umount" {
+			unmounted = append(unmounted, args[len(args)-1])
+		}
+		return nil, nil
+	}
+	t.Cleanup(func() { privilegedCommand = previous })
+
+	ctx, cancel := context.WithCancel(context.Background())
+	release, err := bindFreshTargetState(ctx, "/mnt", io.Discard)
+	if err != nil {
+		t.Fatal(err)
+	}
+	cancel()
+	release()
+	if want := []string{"/boot", "/var/lib/gjallarOS", "/var/lib/sbctl"}; !slices.Equal(unmounted, want) {
+		t.Fatalf("unmounted after cancel = %v, want %v", unmounted, want)
+	}
+}
