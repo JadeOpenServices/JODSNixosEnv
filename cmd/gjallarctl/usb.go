@@ -117,9 +117,16 @@ func runUSBReview(args []string, stderr io.Writer) int {
 					text = "AUDIT MODE: USB blocking is not active. Keep blocked leaves the derived blocked decision unchanged; Allow once is memory-only for this connection; signed trust and enrollment choices persist but are not enforced until enforcement is enabled.\n\n" + text
 				}
 
-				dialog := []string{"--list", "--radiolist", "--title=USB device review", "--text=" + html.EscapeString(text), "--width=680", "--height=520", "--column=Choose", "--column=Action", "--column=Meaning", "--hide-column=2", "--print-column=2"}
+				dialog := []string{"--list", "--radiolist", "--title=USB device review", "--text=" + html.EscapeString(text), "--column=Choose", "--column=Action", "--column=Meaning", "--hide-column=2", "--print-column=2"}
 				rows, available := usbReviewChoices(d)
 				if len(rows) == 0 {
+					continue
+				}
+				// Announce the block quietly; the review dialog opens only on
+				// request. Dismissing the notice keeps the device blocked.
+				notice := exec.CommandContext(ctx, "notify-send", usbReviewNotice(d)...)
+				picked, err := notice.Output()
+				if err != nil || !usbReviewRequested(string(picked)) {
 					continue
 				}
 				dialog = append(dialog, rows...)
@@ -179,6 +186,35 @@ func runUSBReview(args []string, stderr io.Writer) int {
 		}
 	}
 	return 0
+}
+
+// usbReviewNotice builds the notify-send arguments announcing a blocked device.
+func usbReviewNotice(d usbtrust.Decision) []string {
+	name := d.Identity.Name
+	if name == "" {
+		name = "Unknown device"
+	}
+	return []string{
+		"--app-name=USB Guard",
+		"--icon=drive-removable-media-usb",
+		"--expire-time=0",
+		"--action=default=Review",
+		"--action=review=Review…",
+		"--action=keep=Keep blocked",
+		"USB device blocked",
+		// Notification bodies may carry markup; device strings are untrusted.
+		html.EscapeString(fmt.Sprintf("%s (%s)", name, d.Identity.VIDPID)),
+	}
+}
+
+// usbReviewRequested reports whether the notice was answered with Review or a
+// click on its body.
+func usbReviewRequested(output string) bool {
+	switch strings.TrimSpace(output) {
+	case "review", "default":
+		return true
+	}
+	return false
 }
 
 // The domain supplies available actions; this adapter only gives them labels.

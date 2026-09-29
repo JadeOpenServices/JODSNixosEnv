@@ -92,3 +92,27 @@ func TestUSBReviewIgnoresUnknownActions(t *testing.T) {
 		}
 	}
 }
+
+func TestUSBReviewNoticeEscapesDeviceStrings(t *testing.T) {
+	d := usbtrust.Decision{ObservedDevice: usbtrust.ObservedDevice{
+		Identity: usbtrust.Identity{Name: `<b>Keyboard</b>`, VIDPID: "dead:beef"},
+	}}
+	args := usbReviewNotice(d)
+	body := args[len(args)-1]
+	if body != "&lt;b&gt;Keyboard&lt;/b&gt; (dead:beef)" {
+		t.Fatalf("device name reached notification markup: %q", body)
+	}
+}
+
+func TestUSBReviewOpensOnlyOnRequest(t *testing.T) {
+	for output, want := range map[string]bool{
+		"review\n":  true,
+		"default\n": true,
+		"keep\n":    false,
+		"":          false, // dismissed or expired: stays blocked
+	} {
+		if got := usbReviewRequested(output); got != want {
+			t.Fatalf("usbReviewRequested(%q) = %v, want %v", output, got, want)
+		}
+	}
+}

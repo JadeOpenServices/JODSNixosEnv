@@ -143,7 +143,7 @@ in
             Service = {
               ExecStart = "${pkgs.callPackage ../../pkgs/gjallarctl { }}/bin/gjallarctl usb review";
               Environment = [
-                "PATH=${lib.makeBinPath [ pkgs.zenity ]}"
+                "PATH=${lib.makeBinPath [ pkgs.zenity pkgs.libnotify ]}"
                 "SUDO_ASKPASS=${usbTrustAskpass}"
               ];
               Restart = "on-failure";
