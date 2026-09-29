@@ -807,7 +807,10 @@ func Run(ctx context.Context, args []string, in io.Reader, out, errOut io.Writer
 				out,
 				"Secure Boot is disabled; TPM2 measured-boot unlock remains disabled.",
 			)
-		} else if s.render.EndpointManagedDevice {
+		} else if tpm2FollowsRequest(
+			s.render.EndpointManagedDevice,
+			persistentInstalledHost,
+		) {
 			s.render.LUKSTPM2Enable = s.user.LUKSTPM2Enable
 		} else {
 			tpmOut, err := controlOutput(ctx, s.control, errOut, "installer", "tpm2", "--repo", root, "--hardware", hardwarePath)

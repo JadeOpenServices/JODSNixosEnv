@@ -61,3 +61,19 @@ func TestTPM2AllowedOnlyWithSecureBoot(t *testing.T) {
 		t.Fatal("TPM2 measured-boot unlock blocked while Secure Boot enabled")
 	}
 }
+
+func TestTPM2FollowsRequestOnFreshInstalls(t *testing.T) {
+	tests := []struct {
+		managed, persistent, want bool
+	}{
+		{managed: false, persistent: false, want: true},
+		{managed: true, persistent: true, want: true},
+		{managed: false, persistent: true, want: false},
+	}
+	for _, test := range tests {
+		if got := tpm2FollowsRequest(test.managed, test.persistent); got != test.want {
+			t.Errorf("tpm2FollowsRequest(managed=%t, persistent=%t) = %t, want %t",
+				test.managed, test.persistent, got, test.want)
+		}
+	}
+}
