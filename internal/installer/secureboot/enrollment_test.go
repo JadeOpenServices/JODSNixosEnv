@@ -295,3 +295,52 @@ func TestEnrollKeysArgsKeepsOptionROMCheckWithoutBuiltinDB(t *testing.T) {
 		t.Fatalf("args = %v, want %v", got, want)
 	}
 }
+
+func TestEnrollFirmwareFinishesAfterKeysAlreadyEnrolled(t *testing.T) {
+	var calls []string
+	ops := enrollmentOps{
+		inspect: func(context.Context) (Inspection, error) {
+			return Inspection{State: StateGjallarManaged, SetupMode: false}, nil
+		},
+		armed: func() (bool, error) { return true, nil },
+		command: func(_ context.Context, name string, args ...string) error {
+			calls = append(calls, name+" "+strings.Join(args, " "))
+			return nil
+		},
+		verifyArtifacts: func(context.Context) error { calls = append(calls, "verify"); return nil },
+		recordOwnership: func(_ context.Context, stage string) error {
+			calls = append(calls, "record "+stage)
+			return nil
+		},
+	}
+
+	result, err := enrollFirmware(context.Background(), enrollmentTestSnapshot(), ops)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result != EnrollmentCompleted {
+		t.Fatalf("result = %q, want completed", result)
+	}
+	joined := strings.Join(calls, "\n")
+	if strings.Contains(joined, "sbctl") {
+		t.Fatalf("resumed enrollment wrote keys again:\n%s", joined)
+	}
+	for _, want := range []string{"verify", "record enrolled", FinalMarkerPath, EnrollmentMarkerPath} {
+		if !strings.Contains(joined, want) {
+			t.Fatalf("resumed enrollment skipped %q:\n%s", want, joined)
+		}
+	}
+}
+
+func TestEnrollFirmwareLeavesCompletedOwnershipAlone(t *testing.T) {
+	ops := enrollmentOps{
+		inspect: func(context.Context) (Inspection, error) {
+			return Inspection{State: StateGjallarManaged, SetupMode: false}, nil
+		},
+		armed: func() (bool, error) { return false, nil },
+	}
+	result, err := enrollFirmware(context.Background(), enrollmentTestSnapshot(), ops)
+	if err != nil || result != EnrollmentWaitingForSetupMode {
+		t.Fatalf("result = %q, err = %v", result, err)
+	}
+}

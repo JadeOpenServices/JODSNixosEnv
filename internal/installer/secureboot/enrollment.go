@@ -25,6 +25,7 @@ type enrollmentOps struct {
 	verifyArtifacts func(context.Context) error
 	recordOwnership func(context.Context, string) error
 	glob            func(string) ([]string, error)
+	armed           func() (bool, error)
 }
 
 func EnrollFirmware(ctx context.Context) (EnrollmentResult, error) {
@@ -48,6 +49,13 @@ func EnrollFirmware(ctx context.Context) (EnrollmentResult, error) {
 		verifyArtifacts: verifyBootArtifacts,
 		recordOwnership: RecordOwnership,
 		glob:            filepath.Glob,
+		armed: func() (bool, error) {
+			_, err := os.Stat(EnrollmentMarkerPath)
+			if os.IsNotExist(err) {
+				return false, nil
+			}
+			return err == nil, err
+		},
 	}
 
 	return enrollFirmware(ctx, snapshot, ops)
@@ -68,6 +76,19 @@ func enrollFirmware(
 	}
 
 	if !inspection.SetupMode {
+		// sbctl enrolled the GjallarOS keys, which ends Setup Mode, but a
+		// later step of this transaction failed (e2e-target, 2026-09-29:
+		// sbctl verify found no lsblk). Every rerun then waited for a PK
+		// removal the firmware no longer needs; finish the transaction.
+		if inspection.State == StateGjallarManaged {
+			armed, err := ops.armed()
+			if err != nil {
+				return "", fmt.Errorf("inspect Secure Boot enrollment marker: %w", err)
+			}
+			if armed {
+				return finishEnrollment(ctx, ops)
+			}
+		}
 		return EnrollmentWaitingForSetupMode, nil
 	}
 
@@ -173,6 +194,12 @@ func enrollFirmware(
 		}
 	}
 
+	return finishEnrollment(ctx, ops)
+}
+
+// finishEnrollment verifies and records GjallarOS ownership once its keys are
+// in firmware, then hands over to final Secure Boot verification.
+func finishEnrollment(ctx context.Context, ops enrollmentOps) (EnrollmentResult, error) {
 	if err := ops.verifyArtifacts(ctx); err != nil {
 		return "", fmt.Errorf("verify Secure Boot artifacts after enrollment: %w", err)
 	}
