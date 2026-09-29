@@ -33,9 +33,9 @@ in
           "secure-boot-verification.service"
           "systemd-pcrlock-make-policy.service"
         ];
-        # The passphrase prompt needs Plymouth's password agent, and greetd
-        # quits Plymouth; started alongside, the prompt vanished behind the
-        # greeter and enrollment waited forever (e2e-target, 2026-09-29).
+        # The passphrase prompt owns tty1 until enrollment ends; started
+        # alongside greetd, the prompt vanished behind the greeter and
+        # enrollment waited forever (e2e-target, 2026-09-29).
         before = [
           "display-manager.service"
           "greetd.service"
@@ -52,6 +52,15 @@ in
         serviceConfig = {
           Type = "oneshot";
           UMask = "0077";
+          # Ask on tty1 directly. Plymouth's password agent got stopped while
+          # the question was pending, so the typed answer never arrived
+          # (e2e-target, 2026-09-29, TPM-measured boot).
+          StandardInput = "tty";
+          StandardOutput = "journal";
+          StandardError = "journal";
+          TTYPath = "/dev/tty1";
+          TTYReset = true;
+          TTYVHangup = true;
         };
         path = [
           pkgs.cryptsetup
@@ -59,6 +68,8 @@ in
           pkgs.systemd
           pkgs.coreutils
           pkgs.gnugrep
+          pkgs.kbd
+          pkgs.plymouth
           gjallarSecureBootArtifactVerifier
           gjallarSecureBootOwnershipVerifier
         ];
@@ -75,6 +86,8 @@ in
           gjallarctl installer tpm2-check-pcrlock-policy /var/lib/systemd/pcrlock.json \
             ${lib.concatMapStringsSep " " toString config.boot.lanzaboote.measuredBoot.pcrs}
 
+          plymouth quit || true
+          chvt 1 || true
           systemd-ask-password --timeout=0 -n \
             "GjallarOS: enter the human LUKS recovery passphrase to enroll measured-boot TPM2 unlock" >"$keyfile"
           chmod 0600 "$keyfile"

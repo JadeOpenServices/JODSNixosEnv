@@ -60,6 +60,11 @@ assert nixpkgs.lib.hasInfix "tpm2-check-pcrlock-policy /var/lib/systemd/pcrlock.
 # 2026-09-29: prompt hidden behind the greeter, enrollment hung).
 assert builtins.elem "display-manager.service" tpm2.before;
 assert builtins.elem "greetd.service" tpm2.before;
+# Plymouth's password agent was stopped while the TPM2 question was pending
+# and the answer was lost (e2e-target, 2026-09-29); ask on tty1 directly.
+assert tpm2.serviceConfig.StandardInput == "tty";
+assert tpm2.serviceConfig.TTYPath == "/dev/tty1";
+assert nixpkgs.lib.hasInfix "plymouth quit || true\nchvt 1 || true\nsystemd-ask-password" tpm2.script;
 # gjallarctl runs sbctl verify in-process after enrolling; without lsblk the
 # enrollment transaction failed after the keys were written (e2e-target,
 # 2026-09-29).
