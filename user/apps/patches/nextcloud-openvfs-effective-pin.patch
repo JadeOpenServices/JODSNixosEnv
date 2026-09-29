@@ -1,0 +1,24 @@
+--- a/src/libsync/vfs/openvfs/vfs_openvfs.cpp
++++ b/src/libsync/vfs/openvfs/vfs_openvfs.cpp
+@@ -591,14 +591,18 @@
+     }();
+ 
+     if (stat->type == ItemTypeFile) {
++        // Use the effective pin, as the xattr and suffix backends do. Files
++        // carry "Inherited", so checking only their own pin never dehydrated
++        // a file hydrated on demand below an OnlineOnly folder. Files without
++        // placeholder attributes are new local files: never dehydrate those.
+         const auto attribs = placeHolderAttributes(path);
+         if (attribs.state == ::OpenVFS::Constants::States::DeHydrated) {
+             stat->type = ItemTypeVirtualFile;
+-            if (attribs.pinState == convertPinState(PinState::AlwaysLocal)) {
++            if (pin && *pin == PinState::AlwaysLocal) {
+                 stat->type = ItemTypeVirtualFileDownload;
+             }
+-        } else {
+-            if (attribs.pinState == convertPinState(PinState::OnlineOnly)) {
++        } else if (attribs && attribs.state == ::OpenVFS::Constants::States::Hydrated) {
++            if (pin && *pin == PinState::OnlineOnly) {
+                 stat->type = ItemTypeVirtualFileDehydration;
+             }
+         }

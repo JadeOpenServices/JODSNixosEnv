@@ -17,6 +17,10 @@ import (
 	"strings"
 )
 
+// BuildContextName marks sources prepared by the supported deployment entrypoints.
+// This is a workflow guard, not an authorization boundary against root.
+const BuildContextName = ".gjallar-build-context.json"
+
 // excluded reports whether a repository entry is left out of the flake
 // source. .git is skipped at any depth (submodules carry a .git file).
 func excluded(rel string, entry fs.DirEntry) bool {
@@ -28,7 +32,7 @@ func excluded(rel string, entry fs.DirEntry) bool {
 		return false
 	}
 	switch {
-	case name == ".vm", name == ".claude", name == ".direnv":
+	case name == ".vm", name == ".claude", name == ".direnv", name == BuildContextName:
 		return true
 	case name == "result", strings.HasPrefix(name, "result-"):
 		return true
@@ -75,6 +79,12 @@ func Stage(repo, tmpRoot string) (Source, error) {
 	if err := copyTree(root, source.Dir); err != nil {
 		_ = source.Close()
 		return Source{}, fmt.Errorf("stage flake source: %w", err)
+	}
+	// Never reuse a checkout marker (including symlinks); create it only in the
+	// disposable source, after staging has succeeded.
+	if err := os.WriteFile(filepath.Join(source.Dir, BuildContextName), []byte("{\"schemaVersion\":1,\"entrypoint\":\"gjallarctl\"}\n"), 0o600); err != nil {
+		_ = source.Close()
+		return Source{}, fmt.Errorf("write build context: %w", err)
 	}
 	return source, nil
 }

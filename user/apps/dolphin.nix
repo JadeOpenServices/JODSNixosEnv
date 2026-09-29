@@ -9,6 +9,31 @@
 let
   dolphinTheme = import ../../themes/apps/dolphin/darkly.nix { inherit pkgs; };
   dolphinNextcloudIcons = import ../../themes/apps/dolphin/nextcloud-icons.nix;
+  dolphinClient =
+    if settings.nextcloudEnable or false then
+      pkgs.symlinkJoin {
+        name = "dolphin-openvfs";
+        paths = [ pkgs.kdePackages.dolphin ];
+        nativeBuildInputs = [ pkgs.makeWrapper ];
+        postBuild = ''
+          # In-process KIO file workers look like Dolphin to OpenVFS and are
+          # excluded from hydration along with previews. Keep file copies in
+          # identifiable workers; thumbnail workers remain excluded.
+          rm "$out/bin/dolphin"
+          makeWrapper ${lib.getExe pkgs.kdePackages.dolphin} "$out/bin/dolphin" \
+            --set KIO_ENABLE_WORKER_THREADS 0
+          service="$out/share/dbus-1/services/org.kde.dolphin.FileManager1.service"
+          cp --remove-destination "$service" "$service.tmp"
+          rm "$service"
+          mv "$service.tmp" "$service"
+          chmod u+w "$service"
+          substituteInPlace "$service" \
+            --replace-fail ${lib.escapeShellArg (lib.getExe pkgs.kdePackages.dolphin)} "$out/bin/dolphin"
+        '';
+        meta.mainProgram = "dolphin";
+      }
+    else
+      pkgs.kdePackages.dolphin;
 
   fileManager = pkgs.writeShellApplication {
     name = "file-manager";
@@ -22,7 +47,7 @@ let
       export QT_STYLE_OVERRIDE=${lib.escapeShellArg dolphinTheme.styleName}
       export QT_PLUGIN_PATH=${lib.escapeShellArg dolphinTheme.qtPluginPath}''${QT_PLUGIN_PATH:+:$QT_PLUGIN_PATH}
 
-      exec ${lib.getExe gjallarRun} ${lib.getExe pkgs.kdePackages.dolphin} --new-window "$@"
+      exec ${lib.getExe gjallarRun} ${lib.getExe dolphinClient} --new-window "$@"
     '';
   };
   ini = pkgs.formats.ini { };
@@ -62,7 +87,7 @@ in
 
   home.packages = with pkgs.kdePackages; [
     dolphinTheme.package
-    dolphin
+    dolphinClient
     dolphin-plugins
     ark
     kio-extras

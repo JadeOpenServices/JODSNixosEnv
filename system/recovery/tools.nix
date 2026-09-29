@@ -239,7 +239,15 @@ let
             exit 1
           }
           confirm_phrase REBUILD
-          nixos-enter --root "$root" -- nixos-rebuild boot --flake "$flake"
+          case "$flake" in
+            /*#*|path:/*#*) ;;
+            *) printf '%s\n' 'ERROR: recovery rebuild requires an absolute local repository path followed by #HOST.' >&2; exit 1 ;;
+          esac
+          repo="''${flake%#*}"
+          repo="''${repo#path:}"
+          host="''${flake##*#}"
+          nixos-enter --root "$root" -- /run/current-system/sw/bin/gjallarctl \
+            installer deploy --repo "$repo" --hostname "$host" --apply
           ;;
         jods-execute)
           require_root

@@ -114,6 +114,10 @@
       };
 
       checks.${system} = {
+        build-entrypoint = import ./tests/nix/build-entrypoint.nix { inherit pkgs; };
+
+        nextcloud-client-patches = import ./tests/nix/nextcloud-client-patches.nix { inherit pkgs; };
+
         m620-legacy-nvidia-policy = import ./tests/nix/m620-policy.nix {
           inherit nixpkgs system;
           graphicsModule = ./system/hardware/graphics;
@@ -183,6 +187,13 @@
 
         ${settings.hostname} = nixpkgs.lib.nixosSystem {
           modules = [
+            (import ./system/security/build-entrypoint.nix {
+              buildContext =
+                if builtins.pathExists (self.outPath + "/.gjallar-build-context.json") then
+                  builtins.fromJSON (builtins.readFile (self.outPath + "/.gjallar-build-context.json"))
+                else
+                  null;
+            })
             ./system/apps/brave-backend.nix
             ./system/security/secure-boot
             inputs.noctalia-greeter.nixosModules.default

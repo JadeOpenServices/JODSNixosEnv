@@ -62,9 +62,7 @@ in
           message = "USB trust requires a selected ODDC model.";
         }
         {
-          assertion =
-            cfg.tpmHandle == null
-            || builtins.match "^0x810[0-9a-fA-F]{5}$" cfg.tpmHandle != null;
+          assertion = cfg.tpmHandle == null || builtins.match "^0x810[0-9a-fA-F]{5}$" cfg.tpmHandle != null;
           message = "USB trust TPM handle must be a reserved owner handle in 0x81000000..0x810fffff.";
         }
         {
@@ -112,6 +110,7 @@ in
         path = [ pkgs.tpm2-tools ];
         serviceConfig = {
           Type = "simple";
+          Environment = [ "TPM2TOOLS_TCTI=device:/dev/tpmrm0" ];
           User = "root";
           Group = "usb-trust-access";
           ExecStart = start;

@@ -73,3 +73,25 @@ func TestStageRejectsNonFlakeDirectory(t *testing.T) {
 		t.Fatal("staged a directory without flake.nix")
 	}
 }
+
+func TestStageCreatesFreshBuildContextWithoutFollowingCheckoutSymlink(t *testing.T) {
+	repo := t.TempDir()
+	write(t, filepath.Join(repo, "flake.nix"), "{}", 0o644)
+	outside := filepath.Join(t.TempDir(), "untouched")
+	write(t, outside, "original", 0o644)
+	if err := os.Symlink(outside, filepath.Join(repo, BuildContextName)); err != nil {
+		t.Fatal(err)
+	}
+	source, err := Stage(repo, t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer source.Close()
+	data, err := os.ReadFile(filepath.Join(source.Dir, BuildContextName))
+	if err != nil || string(data) != "{\"schemaVersion\":1,\"entrypoint\":\"gjallarctl\"}\n" {
+		t.Fatalf("missing build context: %q, %v", data, err)
+	}
+	if data, _ := os.ReadFile(outside); string(data) != "original" {
+		t.Fatal("staging followed the checkout marker symlink")
+	}
+}

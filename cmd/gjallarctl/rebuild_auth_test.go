@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"io"
 	"os"
 	"strings"
@@ -132,6 +133,10 @@ func TestEnvironmentWithOverrideReplacesExistingValue(t *testing.T) {
 
 func TestSudoAskpassPromptsOnControllingTerminal(t *testing.T) {
 	data, err := os.ReadFile("../../pkgs/gjallarctl/default.nix")
+	if errors.Is(err, os.ErrNotExist) {
+		// The package build only receives Go sources.
+		t.Skip("package definition not in the Go build source")
+	}
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -1,0 +1,199 @@
+--- a/src/openvfsfuse/openvfsfuse.cpp
++++ b/src/openvfsfuse/openvfsfuse.cpp
+@@ -19,17 +19,20 @@
+ #include "sharedmap.h"
+ #include "socketthread.h"
+ 
++#include <atomic>
+ #include <chrono>
+ #include <cstdint>
+ #include <cstring>
+ #include <dirent.h>
+ #include <errno.h>
+ #include <format>
++#include <fstream>
+ #include <fuse3/fuse.h>
+ #include <grp.h>
+ #include <iostream>
+ #include <pwd.h>
+ #include <sstream>
++#include <string_view>
+ #include <stdarg.h>
+ #include <stdio.h>
+ #include <unistd.h>
+@@ -96,10 +99,30 @@
+ 
+     static auto &instance() { return *_instance; }
+ 
+-    bool blockedToOpen(const std::string &app)
++    bool blockedToOpen(const std::string &app, pid_t caller)
+     {
+-        return std::ranges::find(_appsNoHydrateFull, app) != _appsNoHydrateFull.cend()
+-            || std::ranges::find_if(_appsNoHydrateEndsWith, [app](const auto &a) { return app.ends_with(a); }) != _appsNoHydrateEndsWith.cend();
++        // Nix's Qt wrapper executes .dolphin-wrapped / .kioworker-wrapped.
++        // Match the configured application suffix, not the wrapper suffix.
++        auto executable = app;
++        if (executable.ends_with("-wrapped")) {
++            executable.resize(executable.size() - std::string_view("-wrapped").size());
++        }
++        const bool explicitlyBlocked = std::ranges::find(_appsNoHydrateFull, app) != _appsNoHydrateFull.cend();
++        // KIO uses the same executable for previews and user-requested copies.
++        // Exempt only its file protocol worker from the generic suffix rule.
++        // Unknown workers and thumbnail workers retain the configured exclusion.
++        if (executable.ends_with("/kioworker") || executable.ends_with("/.kioworker")) {
++            std::ifstream cmdline("/proc/" + std::to_string(caller) + "/cmdline", std::ios::binary);
++            std::string argv0, module, protocol;
++            if (std::getline(cmdline, argv0, '\0') && std::getline(cmdline, module, '\0')
++                && std::getline(cmdline, protocol, '\0')
++                && (module.ends_with("/kf6/kio/file.so") || module.ends_with("/kf6/kio/kio_file.so"))
++                && protocol == "file") {
++                return explicitlyBlocked;
++            }
++        }
++        return explicitlyBlocked
++            || std::ranges::find_if(_appsNoHydrateEndsWith, [&executable](const auto &a) { return executable.ends_with(a); }) != _appsNoHydrateEndsWith.cend();
+     }
+ 
+     bool debugEnabled() const { return _debugEnabled; }
+@@ -180,7 +203,7 @@
+ static SharedMap _jobs;
+ static SocketThread _socketThread("SocketThread", _jobs);
+ 
+-static int _transfer_id{12};
++static std::atomic<int> _transfer_id{12};
+ 
+ 
+ void openvfsfuse_log(const std::string &path, const char *action, int returncode, const char *format, ...)
+@@ -216,6 +239,8 @@
+ 
+     // use the system inodes instead of the libfuse generated
+     cfg->use_ino = 1;
++    // Deliver kernel cancellation to fuse_interrupted() in hydration waits.
++    cfg->intr = 1;
+ 
+     return nullptr;
+ }
+@@ -549,12 +574,13 @@
+         openvfsfuse_log(path, "open", res, "Desktop client tries to access, bypassing!");
+     } else {
+         if (const auto attribs = OpenVFS::PlaceHolderAttributes::fromAttributes(path)) {
+-            if (attribs->state == OpenVFS::Constants::States::DeHydrated) {
++            if (attribs->state == OpenVFS::Constants::States::DeHydrated
++                || attribs->state == OpenVFS::Constants::States::Hydrating) {
+                 // the file is virtual. It will be hydrated if the calling instance
+                 // is not on the ignore list
+ 
+                 // ignore list of apps that must not cause a hydration
+-                if (VFSFuseContext::instance().blockedToOpen(opener)) {
++                if (VFSFuseContext::instance().blockedToOpen(opener, fuse_get_context()->pid)) {
+                     openvfsfuse_log(path, "open", 0, "blocked hydration for not permitted app %s", opener.c_str());
+                     return -EPERM;
+                 }
+@@ -570,28 +596,29 @@
+                 openvfsfuse_log(path, "open", 0, "Requesting hydration %s: %d", path.c_str(), msgData->id);
+ 
+                 // push hydration request to the thread that handles the communication to the client
++                // Publish before enqueueing: the FUSE waiter can run before
++                // the socket thread has sent the request.
++                _jobs.insert(msgData->id, HydJob{.state = 1});
+                 _socketThread.PostMsg(msgData);
+ 
+                 // the socketThread now talks to the client, which downloads the file for us.
+                 // Here in this thread we enter a loop and wait for results
+-                int cnt{0};
+                 int state{1};
+-                const auto MaxCnt{20};
+-                std::chrono::duration waitTime{10ms};
+-                std::chrono::duration dur{30ms};
+-
++                const auto deadline = std::chrono::steady_clock::now() + 5min;
+                 HydJob hj;
+ 
+-                while (state == 1 && cnt++ < MaxCnt) {
+-                    std::this_thread::sleep_for(waitTime); // sleep for some time
+-                    waitTime += dur;
+-                    dur += waitTime;
+-                    // first: waittime: 10ms, dur: 30ms
+-                    // second:waittime: 40ms, dur: 70ms
+-                    // third: waittime: 110ms, dur: 180ms
+-                    // forth: waittime: 290ms, dur: 470ms
+-                    // fifth: waittime: 760ms, dur: 1230ms
+-                    // ...
++                while (state == 1) {
++                    if (fuse_interrupted()) {
++                        _jobs.remove(msgData->id);
++                        return -EINTR;
++                    }
++                    if (std::chrono::steady_clock::now() >= deadline) {
++                        state = 2;
++                        break;
++                    }
++                    // A fixed short poll keeps cancellation and replies
++                    // responsive; exponential sleeps previously grew to days.
++                    std::this_thread::sleep_for(100ms);
+ 
+                     // check shared map and see if the id has changed to 0, which means success
+                     // the value is changed in the other thread and fetched here
+@@ -623,14 +650,12 @@
+                 // remove the job regardless of the result
+                 _jobs.remove(msgData->id);
+ 
+-                if (state == -1 || state == 2) {
++                if (state == 2) {
++                    return -ETIMEDOUT;
++                }
++                if (state != 0) {
+                     // Fail, job with ID was errornous
+                     openvfsfuse_log(path, "open", 1, "ERROR while retrieving: %d", state);
+-                    return -ENOENT;
+-                }
+-
+-                if (cnt >= MaxCnt) {
+-                    openvfsfuse_log(path, "open", MaxCnt, "TIMEOUT - no answer from client");
+                     return -ENOENT;
+                 }
+ 
+--- a/src/openvfsfuse/socketthread.cpp
++++ b/src/openvfsfuse/socketthread.cpp
+@@ -119,6 +119,18 @@
+         return -1;
+     }
+ 
++#ifndef __APPLE__
++    // Nextcloud's VERSION reply has no PID. Identify the actual local socket
++    // peer before mounting, so its download threads never hydrate themselves.
++    struct ucred peer{};
++    socklen_t peerSize = sizeof(peer);
++    if (getsockopt(_socket, SOL_SOCKET, SO_PEERCRED, &peer, &peerSize) != 0 || peer.pid <= 0) {
++        std::cerr << "Cannot identify the desktop client's socket peer" << std::endl;
++        return -1;
++    }
++    _sharedMap.setDesktopClientPid(peer.pid);
++#endif
++
+     /* send  a welcome message to the SocketAPI */
+     std::shared_ptr<MsgData> msgData(new MsgData());
+     msgData->msg = "VERSION";
+@@ -234,7 +246,7 @@
+             }
+         } else if (msgType == "VERSION") {
+             vector<string> attribs = StrTools::split(msgAttr, ':');
+-            if (attribs.size() == 3) {
++            if (attribs.size() == 3 && _sharedMap.desktopClientPid() <= 0) {
+                 cout << "Got PID of the Desktop Client: " << attribs.at(2) << endl;
+                 _sharedMap.setDesktopClientPid(std::stol(attribs.at(2)));
+             }
+@@ -390,12 +402,7 @@
+ 
+             if (!socketSendMsg(msgData)) {
+                 cout << "Failed to send msg " << msgData->id << ": " << msgData->msg.c_str() << endl;
+-            } else {
+-                if (msgData->id > 0) {
+-                    const HydJob hj{.state = 1};
+-                    _sharedMap.insert(msgData->id, hj);
+-                    cout << "Storing sent message ID" << msgData->id << endl;
+-                }
++                _sharedMap.set(msgData->id, HydJob{.state = -1});
+             }
+             break;
+         }

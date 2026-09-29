@@ -48,6 +48,9 @@ let
       sha256 = "1nh1pbdb96zyyjsbjf2hfg5whxjdzf5w67yygb2z8rdzzj0chvq4";
     };
 
+    # Bound hydration waits, deliver cancellation, and recognize Nix-wrapped KIO.
+    patches = [ ./patches/openvfs-hydration-liveness.patch ];
+
     nativeBuildInputs = [
       pkgs.cmake
       pkgs.kdePackages.extra-cmake-modules
@@ -61,20 +64,12 @@ let
     ];
   };
 
+  clientSource = import ./nextcloud-client-source.nix { inherit (pkgs) fetchFromGitHub; };
+
   client = pkgs.nextcloud-client.overrideAttrs (old: {
     version = "34.0.50-openvfs";
 
-    src = pkgs.fetchFromGitHub {
-      owner = "nextcloud";
-      repo = "desktop";
-      rev = "fc07fe7474afb938dd5253aded6da0ea1f664704";
-      sha256 = "0q387p0g3n13d8rw5rp6l6y48i4vmadr843a9b8s1xzhdp9wvxqw";
-    };
-
-    # The nixpkgs patch targets the old 4.0.8 source. GjallarOS already
-    # disables upstream autostart explicitly below, so do not carry it
-    # across to this pinned development source.
-    patches = [ ];
+    inherit (clientSource) src patches;
 
     buildInputs = (old.buildInputs or [ ]) ++ [
       openvfs

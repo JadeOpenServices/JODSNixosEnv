@@ -1,0 +1,58 @@
+--- a/src/libsync/hydrationjob.cpp
++++ b/src/libsync/hydrationjob.cpp
+@@ -29,6 +29,11 @@
+ 
+ void HydrationJob::start()
+ {
++    // Multiple socket requests can share one download. Each request connects
++    // its own result handler, but must not restart or truncate that download.
++    if (_job) {
++        return;
++    }
+     const auto dbQueryResult = _vfs->params().journal->getFileRecordsByFileId(_fileId, [this](const SyncJournalFileRecord &record) {
+         Q_ASSERT(!_record.isValid());
+         _record = record;
+--- a/src/libsync/vfs/openvfs/vfs_openvfs.cpp
++++ b/src/libsync/vfs/openvfs/vfs_openvfs.cpp
+@@ -400,6 +400,8 @@
+ void OpenVFS::slotHydrateJobFinished()
+ {
+     auto *hydration = qobject_cast<HydrationJob *>(sender());
++    this->_hydrationJobs.remove(hydration->fileId());
++    hydration->deleteLater();
+ 
+     const auto targetPath = FileSystem::toFilesystemPath(hydration->targetFileName());
+     Q_ASSERT(!targetPath.empty());
+@@ -452,8 +454,6 @@
+         qCWarning(lcOpenVFS) << u"Hydration succeeded but the file appears to be moved" << targetPath.native();
+     }
+ 
+-    hydration->deleteLater();
+-    this->_hydrationJobs.remove(hydration->fileId());
+ }
+ 
+ Result<void, QString> OpenVFS::createPlaceholder(const SyncFileItem &item)
+@@ -480,8 +480,8 @@
+ {
+     qCInfo(lcOpenVFS) << u"Requesting hydration for" << fileId;
+     if (_hydrationJobs.contains(fileId)) {
+-        qCWarning(lcOpenVFS) << u"Ignoring hydration request for running hydration for fileId" << fileId;
+-        return {};
++        qCInfo(lcOpenVFS) << u"Joining running hydration for fileId" << fileId;
++        return _hydrationJobs.value(fileId);
+     }
+ 
+     if (auto attr = placeHolderAttributes(targetPath)) {
+--- a/src/gui/socketapi/socketapi.cpp
++++ b/src/gui/socketapi/socketapi.cpp
+@@ -1191,7 +1191,9 @@
+             });
+             hydJob->start();
+         } else {
+-            qCDebug(lcSocketApi) << "Hydration job for" << fileId << "already running";
++            // A null job is a setup failure, not an unanswered request.
++            job->success({{QStringLiteral("status"), QStringLiteral("ERROR")},
++                {QStringLiteral("error"), QStringLiteral("Unable to prepare hydration")}});
+         }
+     } else {
+         job->failure(QStringLiteral("cannot hydrate unknown file"));
