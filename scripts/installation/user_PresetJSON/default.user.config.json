@@ -16,6 +16,7 @@
   ],
   "email": "you@example.com",
   "endpointManagedDevice": false,
+  "firmwarePasswordLock": true,
   "forceRedeploy": false,
   "githubUsername": "UsernameHere",
   "hostname": "gjallarOS",

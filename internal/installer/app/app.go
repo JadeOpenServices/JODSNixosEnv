@@ -531,6 +531,19 @@ func Run(ctx context.Context, args []string, in io.Reader, out, errOut io.Writer
 		s.user.SecureBootPrompt &&
 		!s.user.EndpointManagedDevice &&
 		s.secureBootFirmware.Policy.Supported {
+		// Taking over firmware key ownership needs informed consent: show
+		// what is replaced, what stays trusted, and what the user must keep
+		// before asking.
+		if err := ui.SecureBootOwnershipPlan(
+			ctx,
+			secureboot.OwnershipPlan(
+				s.secureBootFirmware.Policy,
+				s.user.LUKSTPM2Enable,
+			),
+		); err != nil {
+			return fail(errOut, err)
+		}
+
 		promptText := "Prepare Secure Boot and recovery keys?"
 		if firmwareName := strings.TrimSpace(
 			s.secureBootFirmware.Policy.FirmwareName,
@@ -546,6 +559,30 @@ func Run(ctx context.Context, args []string, in io.Reader, out, errOut io.Writer
 		)
 		if err != nil {
 			return fail(errOut, err)
+		}
+
+		if s.user.SecureBootEnable {
+			s.user.FirmwarePasswordLock, err = ui.Confirm(
+				ctx,
+				"Lock firmware setup with a new supervisor password when Secure Boot gets enabled (you set it in firmware; not the disk passphrase)?",
+				true,
+			)
+			if err != nil {
+				return fail(errOut, err)
+			}
+		}
+	} else if s.user.SecureBootEnable &&
+		s.secureBootFirmware.Policy.Supported {
+		// user.config.json or endpoint management already decided; still
+		// tell the user before any key is generated.
+		fmt.Fprint(out, secureboot.OwnershipPlan(
+			s.secureBootFirmware.Policy,
+			s.user.LUKSTPM2Enable,
+		))
+		if s.user.FirmwarePasswordLock {
+			fmt.Fprintln(out, "firmwarePasswordLock=true: the final firmware step asks you to set a supervisor password.")
+		} else {
+			fmt.Fprintln(out, "firmwarePasswordLock=false: firmware setup stays without a supervisor password.")
 		}
 	}
 
@@ -1291,6 +1328,7 @@ func Run(ctx context.Context, args []string, in io.Reader, out, errOut io.Writer
 			if err := ui.SecureBootEnableHandoff(
 				ctx,
 				firmwarePolicy.FirmwareName,
+				secureboot.FirmwareLockSteps(s.user.FirmwarePasswordLock),
 			); err != nil {
 				return fail(
 					errOut,
@@ -1308,6 +1346,7 @@ func Run(ctx context.Context, args []string, in io.Reader, out, errOut io.Writer
 				ctx,
 				firmwarePolicy.FirmwareName,
 				firmwarePolicy.Instructions,
+				secureboot.FirmwareLockSteps(s.user.FirmwarePasswordLock),
 			); err != nil {
 				return fail(
 					errOut,

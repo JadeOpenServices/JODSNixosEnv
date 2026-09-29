@@ -64,6 +64,7 @@ type User struct {
 	JODSPrebootLockEnable     bool   `json:"jodsPrebootLockEnable"`
 	SecureBootEnable          bool   `json:"secureBootEnable"`
 	SecureBootPrompt          bool   `json:"secureBootPrompt"`
+	FirmwarePasswordLock      bool   `json:"firmwarePasswordLock"`
 	EndpointManagedDevice     bool   `json:"endpointManagedDevice"`
 	JODSEndpoint              string `json:"jodsEndpoint"`
 	JODSPolicySigningKey      string `json:"jodsPolicySigningPublicKey"`

@@ -232,3 +232,27 @@ func TestNewWithInjectedIODisablesGTK(t *testing.T) {
 		t.Fatal("injected prompt I/O unexpectedly enabled GTK")
 	}
 }
+
+func TestTerminalSecureBootHandoffPlacesFirmwareLockInFinalVisit(t *testing.T) {
+	lock := []string{"Set a firmware supervisor password."}
+	var out strings.Builder
+	// understood=y, show again=n
+	u := UI{Reader: bufio.NewReader(strings.NewReader("y\nn\n")), Out: &out}
+	if err := u.SecureBootFirmwareHandoff(context.Background(), "Test UEFI", []string{"Remove only PK."}, lock); err != nil {
+		t.Fatal(err)
+	}
+	shown := out.String()
+	want := "1. Enable Secure Boot.\n2. Set a firmware supervisor password.\n3. Save the firmware configuration.\n4. Boot GjallarOS.\n"
+	if !strings.Contains(shown, want) {
+		t.Fatalf("enrollment handoff does not announce the final firmware visit with the lock step:\n%s", shown)
+	}
+
+	out.Reset()
+	u = UI{Reader: bufio.NewReader(strings.NewReader("y\nn\n")), Out: &out}
+	if err := u.SecureBootEnableHandoff(context.Background(), "Test UEFI", nil); err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(out.String(), "supervisor") {
+		t.Fatalf("enable handoff asks for a firmware password the user declined:\n%s", out.String())
+	}
+}

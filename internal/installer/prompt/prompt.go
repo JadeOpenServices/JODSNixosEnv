@@ -260,9 +260,21 @@ Do not continue until you have saved both.
 	)
 }
 
+// SecureBootOwnershipPlan shows what the Secure Boot ownership transfer
+// changes before the user decides on it.
+func (u UI) SecureBootOwnershipPlan(ctx context.Context, plan string) error {
+	return u.secureTextDialog(
+		ctx,
+		"GjallarOS Secure Boot - What Will Change",
+		plan,
+		"Continue",
+	)
+}
+
 func (u UI) SecureBootEnableHandoff(
 	ctx context.Context,
 	firmwareName string,
+	lockSteps []string,
 ) error {
 	firmwareName = strings.TrimSpace(firmwareName)
 	if firmwareName == "" {
@@ -276,12 +288,9 @@ GjallarOS ownership is already enrolled and verified.
 
 Firmware: %s
 
-1. Enable Secure Boot.
-2. Save the firmware configuration.
-3. Boot GjallarOS.
-
+%s
 Do not clear, erase, reset, or replace Secure Boot keys during this final step.
-`, firmwareName)
+`, firmwareName, numberedSteps(finalFirmwareSteps(lockSteps)))
 
 	if err := u.secureTextDialog(
 		ctx,
@@ -311,6 +320,7 @@ func (u UI) SecureBootFirmwareHandoff(
 	ctx context.Context,
 	firmwareName string,
 	policyInstructions []string,
+	lockSteps []string,
 ) error {
 	firmwareName = strings.TrimSpace(firmwareName)
 	if firmwareName == "" {
@@ -345,9 +355,12 @@ After completing the firmware action:
 - leave further Secure Boot changes to the GjallarOS enrollment transaction
 
 GjallarOS will verify the expected firmware state before performing enrollment.
-`,
+After enrolling its keys it reboots into firmware setup once more. There:
+
+%s`,
 		firmwareName,
 		strings.Join(clean, "\n"),
+		numberedSteps(finalFirmwareSteps(lockSteps)),
 	)
 
 	explanation := `WHY THIS IS DEVICE-SPECIFIC
@@ -555,4 +568,21 @@ func (u UI) Multi(ctx context.Context, label string, defaults, options []string)
 		return nil, fmt.Errorf("select at least one value")
 	}
 	return values, nil
+}
+
+// finalFirmwareSteps is the firmware visit that turns Secure Boot on; the
+// optional supervisor-password steps belong to it because every later
+// firmware change then needs that password.
+func finalFirmwareSteps(lockSteps []string) []string {
+	steps := []string{"Enable Secure Boot."}
+	steps = append(steps, lockSteps...)
+	return append(steps, "Save the firmware configuration.", "Boot GjallarOS.")
+}
+
+func numberedSteps(steps []string) string {
+	var b strings.Builder
+	for i, step := range steps {
+		fmt.Fprintf(&b, "%d. %s\n", i+1, step)
+	}
+	return b.String()
 }

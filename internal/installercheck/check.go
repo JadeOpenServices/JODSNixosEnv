@@ -119,7 +119,7 @@ var presetSchema = map[string]presetValueType{
 	"nemuEnable":                       presetBool, "luksTpm2Enable": presetBool,
 	"recoveryEnable":          presetBool,
 	"recoveryPartitionEnable": presetBool, "jodsPrebootLockEnable": presetBool,
-	"secureBootEnable": presetBool, "secureBootPrompt": presetBool, "endpointManagedDevice": presetBool,
+	"secureBootEnable": presetBool, "secureBootPrompt": presetBool, "firmwarePasswordLock": presetBool, "endpointManagedDevice": presetBool,
 	"jodsEndpoint": presetString, "jodsPolicySigningPublicKey": presetString,
 	"jodsRecoveryCommandSigningPublicKey": presetString, "jodsEnrollmentMode": presetString,
 	"jodsAllowInsecureTls": presetBool, "jodsDeviceClass": presetString, "jodsDesktopProfile": presetString,
