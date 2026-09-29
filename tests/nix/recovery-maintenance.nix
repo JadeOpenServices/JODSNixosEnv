@@ -33,12 +33,16 @@ let
   };
   # specialisation.<name>.configuration is the evaluated child config.
   maintenance = evaluated.config.specialisation.gjallar-recovery-maintenance.configuration;
-  script = maintenance.boot.initrd.systemd.services.recovery-storage-setup.script;
+  unit = maintenance.boot.initrd.systemd.services.recovery-storage-setup;
+  script = unit.script;
 in
 # The maintenance initrd found no root when the credential kept the newline
 # systemd-ask-password prints by default: cryptsetup --key-file uses every
 # byte of the file (e2e-full, 2026-09-29).
 assert pkgs.lib.hasInfix "systemd-ask-password --timeout=0 -n " script;
+# systemd-cryptsetup@cryptroot took the typed credential first, so the
+# script's cryptsetup open hit EBUSY and dropped to emergency mode.
+assert builtins.elem "systemd-cryptsetup@cryptroot.service" unit.before;
 assert pkgs.lib.hasInfix "try_candidate cryptroot /dev/disk/by-partlabel/root" script;
 pkgs.runCommand "gjallar-recovery-maintenance-check"
   {

@@ -3,6 +3,7 @@
   lib,
   pkgs,
   settings,
+  utils,
   sourceRevision,
   ...
 }:
@@ -23,6 +24,15 @@ let
       ''
     ) config.boot.initrd.luks.devices
   );
+
+  # The normal initrd unlock of the same devices raced the maintenance
+  # script: systemd-cryptsetup took the typed credential, and the script's
+  # own cryptsetup open then failed with EBUSY and dropped to emergency
+  # (e2e-full, 2026-09-29). Maintenance reboots or stops before these run,
+  # so they also never TPM-unlock the root ahead of the human credential.
+  maintenanceCryptsetupUnits = map (
+    name: "systemd-cryptsetup@${utils.escapeSystemdPath name}.service"
+  ) (lib.attrNames config.boot.initrd.luks.devices);
 
   maintenanceNext = pkgs.writeShellApplication {
     name = "gjallar-recovery-maintenance-next";
@@ -125,7 +135,8 @@ lib.mkMerge [
         before = [
           "sysroot.mount"
           "initrd-root-fs.target"
-        ];
+        ]
+        ++ maintenanceCryptsetupUnits;
 
         requiredBy = [
           "sysroot.mount"
