@@ -215,7 +215,7 @@ func pendingRecovery(ctx context.Context) (Recovery, bool, error) {
 		return Recovery{}, false, nil
 	}
 
-	cmd := exec.CommandContext(
+	cmd := commandContext(
 		ctx,
 		"sudo", "cat",
 		RecoveryPassphrasePath,
@@ -303,7 +303,7 @@ func MarkRecoveryConfirmed(ctx context.Context) error {
 
 func sudoTest(ctx context.Context, args ...string) (bool, error) {
 	cmdArgs := append([]string{"test"}, args...)
-	cmd := exec.CommandContext(ctx, "sudo", cmdArgs...)
+	cmd := commandContext(ctx, "sudo", cmdArgs...)
 
 	err := cmd.Run()
 	if err == nil {
@@ -440,7 +440,7 @@ func VerifyAndArmEnrollment(
 }
 
 func verifyBootArtifacts(ctx context.Context) error {
-	cmd := exec.CommandContext(ctx, "sudo", privilegedTool("sbctl"), "verify")
+	cmd := commandContext(ctx, "sudo", privilegedTool("sbctl"), "verify")
 	cmd.Stdin = os.Stdin
 
 	out, err := cmd.CombinedOutput()
@@ -512,9 +512,22 @@ func privilegedTool(name string) string {
 }
 
 func run(ctx context.Context, name string, args ...string) error {
-	cmd := exec.CommandContext(ctx, name, args...)
+	cmd := commandContext(ctx, name, args...)
 	cmd.Stdin = os.Stdin
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
 	return cmd.Run()
+}
+
+var geteuid = os.Geteuid
+
+// commandContext is exec.CommandContext, except that a leading sudo is dropped
+// when the process already runs as root: boot-time units such as
+// secure-boot-enrollment have no sudo on PATH (e2e-target, 2026-09-29:
+// `exec: "sudo": executable file not found in $PATH`).
+func commandContext(ctx context.Context, name string, args ...string) *exec.Cmd {
+	if name == "sudo" && len(args) > 0 && geteuid() == 0 {
+		name, args = args[0], args[1:]
+	}
+	return exec.CommandContext(ctx, name, args...)
 }

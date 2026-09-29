@@ -485,7 +485,7 @@ func efivarPayload(name string) ([]byte, bool, error) {
 }
 
 func sudoTestFile(ctx context.Context, path string) (bool, error) {
-	cmd := exec.CommandContext(ctx, "sudo", "test", "-f", path)
+	cmd := commandContext(ctx, "sudo", "test", "-f", path)
 	cmd.Stdin = os.Stdin
 	err := cmd.Run()
 	if err == nil {
@@ -498,7 +498,7 @@ func sudoTestFile(ctx context.Context, path string) (bool, error) {
 }
 
 func sudoReadFile(ctx context.Context, path string) ([]byte, error) {
-	cmd := exec.CommandContext(ctx, "sudo", "cat", "--", path)
+	cmd := commandContext(ctx, "sudo", "cat", "--", path)
 	cmd.Stdin = os.Stdin
 	var stderr bytes.Buffer
 	cmd.Stderr = &stderr
@@ -510,7 +510,7 @@ func sudoReadFile(ctx context.Context, path string) ([]byte, error) {
 }
 
 func command(ctx context.Context, name string, args ...string) error {
-	cmd := exec.CommandContext(ctx, name, args...)
+	cmd := commandContext(ctx, name, args...)
 	cmd.Stdin = os.Stdin
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
