@@ -148,3 +148,30 @@ func TestWriteTPM2KeyslotRecord(t *testing.T) {
 		t.Fatalf("TPM2 token keyslots = %#v", got)
 	}
 }
+
+func TestCheckPCRLockPolicyRequiresEveryRequestedPCR(t *testing.T) {
+	dir := t.TempDir()
+	write := func(body string) string {
+		path := filepath.Join(dir, "pcrlock.json")
+		if err := os.WriteFile(path, []byte(body), 0600); err != nil {
+			t.Fatal(err)
+		}
+		return path
+	}
+
+	// e2e-target, 2026-09-29: firmware without an event log.
+	if err := CheckPCRLockPolicy(write(`{"pcrBank":"sha256","pcrValues":[]}`), []int{0, 4, 7}); err == nil {
+		t.Fatal("accepted a policy that locks no PCR")
+	}
+	partial := write(`{"pcrValues":[{"pcr":4,"values":["aa"]},{"pcr":7,"values":["bb"]}]}`)
+	if err := CheckPCRLockPolicy(partial, []int{0, 4, 7}); err == nil || !strings.Contains(err.Error(), "PCR 0") {
+		t.Fatalf("partial policy error = %v, want missing PCR 0", err)
+	}
+	if err := CheckPCRLockPolicy(partial, nil); err == nil {
+		t.Fatal("accepted an empty PCR request")
+	}
+	full := write(`{"pcrValues":[{"pcr":0,"values":["aa"]},{"pcr":4,"values":["bb"]},{"pcr":7,"values":["cc"]}]}`)
+	if err := CheckPCRLockPolicy(full, []int{0, 4, 7}); err != nil {
+		t.Fatal(err)
+	}
+}

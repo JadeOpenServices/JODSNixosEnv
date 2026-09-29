@@ -10,6 +10,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"regexp"
+	"strconv"
 	"strings"
 )
 
@@ -290,6 +291,43 @@ func ReadTPM2TokenID(metadataPath string) (string, error) {
 	}
 
 	return ids[0], nil
+}
+
+// CheckPCRLockPolicy fails unless the systemd-pcrlock policy locks every
+// requested PCR. make-policy silently drops PCRs it cannot predict; without
+// a firmware event log it wrote "pcrValues":[] and the TPM then released
+// the disk key to any boot chain (e2e-target, 2026-09-29).
+func CheckPCRLockPolicy(path string, pcrs []int) error {
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		return fmt.Errorf("read pcrlock policy: %w", err)
+	}
+	var policy struct {
+		PCRValues []struct {
+			PCR int `json:"pcr"`
+		} `json:"pcrValues"`
+	}
+	if err := json.Unmarshal(raw, &policy); err != nil {
+		return fmt.Errorf("parse pcrlock policy: %w", err)
+	}
+	locked := make(map[int]bool, len(policy.PCRValues))
+	for _, value := range policy.PCRValues {
+		locked[value.PCR] = true
+	}
+	var missing []string
+	for _, pcr := range pcrs {
+		if !locked[pcr] {
+			missing = append(missing, strconv.Itoa(pcr))
+		}
+	}
+	if len(pcrs) == 0 || len(missing) != 0 {
+		return fmt.Errorf(
+			"pcrlock policy %s does not lock PCR %s; refusing TPM2 enrollment",
+			path,
+			strings.Join(missing, ","),
+		)
+	}
+	return nil
 }
 
 func WriteTPM2KeyslotRecord(

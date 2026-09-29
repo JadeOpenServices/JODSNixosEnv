@@ -152,6 +152,9 @@ func runInstaller(args []string, stdout, stderr io.Writer) int {
 	if args[0] == "tpm2-metadata-token-id" {
 		return runTPM2MetadataTokenID(args[1:], stdout, stderr)
 	}
+	if args[0] == "tpm2-check-pcrlock-policy" {
+		return runTPM2CheckPCRLockPolicy(args[1:], stdout, stderr)
+	}
 	if args[0] == "tpm2-write-keyslot-record" {
 		return runTPM2WriteKeyslotRecord(args[1:], stdout, stderr)
 	}
@@ -580,6 +583,31 @@ func runTPM2MetadataTokenID(args []string, stdout, stderr io.Writer) int {
 	}
 
 	fmt.Fprintln(stdout, id)
+	return 0
+}
+
+func runTPM2CheckPCRLockPolicy(args []string, stdout, stderr io.Writer) int {
+	if len(args) < 2 {
+		fmt.Fprintln(stderr, "Usage: gjallarctl installer tpm2-check-pcrlock-policy <policy> <pcr>...")
+		return 2
+	}
+
+	pcrs := make([]int, 0, len(args)-1)
+	for _, arg := range args[1:] {
+		pcr, err := strconv.Atoi(arg)
+		if err != nil || pcr < 0 || pcr > 23 {
+			fmt.Fprintf(stderr, "ERROR: invalid PCR %q\n", arg)
+			return 2
+		}
+		pcrs = append(pcrs, pcr)
+	}
+
+	if err := diskcrypto.CheckPCRLockPolicy(args[0], pcrs); err != nil {
+		fmt.Fprintf(stderr, "ERROR: %v\n", err)
+		return 1
+	}
+
+	fmt.Fprintln(stdout, "pcrlock policy locks every requested PCR")
 	return 0
 }
 

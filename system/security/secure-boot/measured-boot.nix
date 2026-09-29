@@ -72,6 +72,8 @@ in
           [ ! -e "$state/secure-boot-enable-required" ] || exit 0
           gjallar-verify-secure-boot-artifacts
           gjallar-verify-secure-boot-ownership enrolled
+          gjallarctl installer tpm2-check-pcrlock-policy /var/lib/systemd/pcrlock.json \
+            ${lib.concatMapStringsSep " " toString config.boot.lanzaboote.measuredBoot.pcrs}
 
           systemd-ask-password --timeout=0 -n \
             "GjallarOS: enter the human LUKS recovery passphrase to enroll measured-boot TPM2 unlock" >"$keyfile"

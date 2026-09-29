@@ -13,6 +13,15 @@ let
       lifecycleModule
       measuredBootModule
       {
+        options.boot.lanzaboote.measuredBoot.pcrs = nixpkgs.lib.mkOption {
+          default = [
+            0
+            4
+            7
+          ];
+        };
+      }
+      {
         boot.initrd.luks.devices.cryptroot.device =
           "/dev/disk/by-uuid/00000000-0000-0000-0000-000000000000";
         system.stateVersion = "26.05";
@@ -42,6 +51,11 @@ in
 assert nixpkgs.lib.hasInfix
   (builtins.unsafeDiscardStringContext "--external-tokens-path=${evaluated.config.systemd.package}/lib/cryptsetup")
   (builtins.unsafeDiscardStringContext tpm2.script);
+# pcrlock drops PCRs it cannot predict; enrollment must refuse a policy
+# that no longer locks the measured-boot PCRs (e2e-target, 2026-09-29:
+# "pcrValues":[] bound the disk key to nothing).
+assert nixpkgs.lib.hasInfix "tpm2-check-pcrlock-policy /var/lib/systemd/pcrlock.json \\\n  0 4 7"
+  tpm2.script;
 # The TPM2 passphrase prompt needs Plymouth, which greetd quits (e2e-target,
 # 2026-09-29: prompt hidden behind the greeter, enrollment hung).
 assert builtins.elem "display-manager.service" tpm2.before;
