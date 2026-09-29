@@ -12,6 +12,14 @@ approval, the Go preflight persistently adds Go, PCI/firmware tools, Git,
 HTTPS/GTK helpers, SOPS/Age, password hashing, and disk-encryption tooling to
 `/etc/nixos/configuration.nix`, rebuilds, then resumes the installation.
 
+Clone with `git clone --recurse-submodules`. The bootstrapper initializes a
+missing Monique submodule before making system changes. When copying a checkout,
+include `pkgs/monique`; a Git archive alone omits submodule contents.
+
+On the first run, the installer creates `generated/install-state.nix`, preserving
+the existing NixOS and configured Home Manager compatibility versions. A fresh
+target starts at the pinned release. Reruns leave these historical baselines intact.
+
 ## Preset automation
 
 Copy the preset with:
@@ -93,4 +101,3 @@ Before rebuilding, make sure your own SOPS age key exists and that
 `secrets/default.yaml` is encrypted for it. The installer checks this and
 prints a warning when the secrets cannot be decrypted; it does not create or
 guess service credentials.
-

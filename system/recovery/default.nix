@@ -191,7 +191,10 @@ lib.mkMerge [
             "The installed root is not mounted as /." \
             "A human LUKS credential is required before /mnt is exposed."
 
-          systemd-ask-password --timeout=0 \
+          # cryptsetup --key-file uses every byte of the file; the newline
+          # systemd-ask-password appends by default would reject the correct
+          # passphrase.
+          systemd-ask-password --timeout=0 --newline=no \
             "GjallarOS: enter the LUKS recovery credential for storage maintenance" \
             > "$keyfile"
 

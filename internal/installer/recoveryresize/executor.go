@@ -188,7 +188,7 @@ func ExecuteFreshInstallerResize(
 	mounted, err := runner.Output(
 		ctx,
 		"findmnt",
-		"-nro",
+		"-nvro",
 		"SOURCE",
 		"--mountpoint",
 		top.RootMountpoint,

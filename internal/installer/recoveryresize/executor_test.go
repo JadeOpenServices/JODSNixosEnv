@@ -66,7 +66,7 @@ func (r *executorRunner) Output(
 		// report no mount. Model that as an empty successful output.
 		if key == commandKey(
 			"findmnt",
-			"-nro",
+			"-nvro",
 			"SOURCE",
 			"--mountpoint",
 			"/mnt",

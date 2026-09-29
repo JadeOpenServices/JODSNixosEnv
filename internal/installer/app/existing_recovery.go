@@ -30,7 +30,7 @@ var inspectCurrentRoot = func(
 	out, err := exec.CommandContext(
 		ctx,
 		"findmnt",
-		"-nro",
+		"-nvro",
 		"SOURCE,FSTYPE",
 		"--target",
 		"/",
@@ -155,7 +155,7 @@ var inspectRecoveryRoot = func(
 	return exec.CommandContext(
 		ctx,
 		"findmnt",
-		"-nro",
+		"-nvro",
 		"SOURCE,OPTIONS",
 		"--target",
 		target,

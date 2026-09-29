@@ -225,7 +225,7 @@ func provision(
 	source, err := runner.Output(
 		ctx,
 		"findmnt",
-		"-nro",
+		"-nvro",
 		"SOURCE",
 		"--mountpoint",
 		mountPoint,
@@ -340,6 +340,9 @@ func inspectPartition(
 		"-J",
 		"-b",
 		"-p",
+		// Without NAME among the columns, lsblk -J lists children (partitions,
+		// crypt mappings) as flat siblings; --tree keeps them nested.
+		"--tree",
 		"-o",
 		"PATH,TYPE,SIZE,FSTYPE,PARTUUID,MOUNTPOINTS",
 		"--",

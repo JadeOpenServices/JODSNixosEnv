@@ -4,6 +4,8 @@ import (
 	"context"
 	"errors"
 	"os"
+	"os/exec"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -290,5 +292,42 @@ func TestSavePrivilegedRejectsInvalidTarget(t *testing.T) {
 
 	if called {
 		t.Fatal("privileged command ran for invalid path")
+	}
+}
+
+// Regression: "test -e -- PATH" exits 2 (syntax error) instead of 0/1, which
+// broke every install that resolved an ODDC device model.
+func TestProtectedExistsArgsRunWithRealTest(t *testing.T) {
+	testBin, err := exec.LookPath("test")
+	if err != nil {
+		t.Skip("test(1) not available")
+	}
+	dir := t.TempDir()
+	present := filepath.Join(dir, "host-overlay.json")
+	if err := os.WriteFile(present, []byte("{}"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	for path, want := range map[string]int{
+		present:                            0,
+		filepath.Join(dir, "missing.json"): 1,
+	} {
+		args, err := protectedExistsArgs(path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		code := 0
+		if err := exec.Command(testBin, args[1:]...).Run(); err != nil {
+			exit, ok := err.(*exec.ExitError)
+			if !ok {
+				t.Fatal(err)
+			}
+			code = exit.ExitCode()
+		}
+		if code != want {
+			t.Errorf("test %v exit = %d, want %d", args[1:], code, want)
+		}
+	}
+	if _, err := protectedExistsArgs("relative/host-overlay.json"); err == nil {
+		t.Error("accepted relative path")
 	}
 }

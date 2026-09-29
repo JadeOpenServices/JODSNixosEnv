@@ -14,6 +14,9 @@ settings.nix.tmp*
 # Machine-local infrastructure mappings (IP hostname, /etc/hosts syntax).
 local/jods-hosts
 
+# Disposable installer VMs, snapshots, and test credentials.
+.vm/
+
 # BEGIN GjallarOS machine-local state
 user.config.json
 .user.config.json-*

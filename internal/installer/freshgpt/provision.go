@@ -78,6 +78,16 @@ func provision(
 
 	// Destructive authority belongs to installconfirm. This package has no
 	// prompt/bypass of its own and must only be called after that gate.
+	//
+	// sgdisk --zap-all only removes partition tables. A previously used disk
+	// (an earlier attempt, or any OS with an ESP at 1 MiB) keeps filesystem
+	// and LUKS signatures at the offsets the canonical layout reuses, which
+	// verify() then correctly refuses. Erase them while the old partitions
+	// still exist; verify() keeps rejecting anything that survives.
+	if err := eraseExistingSignatures(ctx, runner, disk); err != nil {
+		return Result{}, err
+	}
+
 	if err := runner.Run(
 		ctx,
 		"sudo",
@@ -161,6 +171,44 @@ func provision(
 	)
 
 	return result, nil
+}
+
+func eraseExistingSignatures(
+	ctx context.Context,
+	runner commandRunner,
+	disk string,
+) error {
+	raw, err := runner.Output(
+		ctx,
+		"lsblk", "-J", "-p", "--tree", "-o", "PATH,TYPE", "--", disk,
+	)
+	if err != nil {
+		return fmt.Errorf("inventory existing target partitions: %w", err)
+	}
+	var existing tree
+	if err := json.NewDecoder(bytes.NewReader(raw)).Decode(&existing); err != nil {
+		return fmt.Errorf("decode existing target partitions: %w", err)
+	}
+	if len(existing.BlockDevices) != 1 ||
+		strings.TrimSpace(existing.BlockDevices[0].Path) != disk {
+		return fmt.Errorf("existing partition inventory did not resolve %s", disk)
+	}
+
+	for _, part := range existing.BlockDevices[0].Children {
+		if part.Type != "part" {
+			continue
+		}
+		if !strings.HasPrefix(part.Path, "/dev/") {
+			return fmt.Errorf("unexpected existing partition path %q", part.Path)
+		}
+		if err := runner.Run(ctx, "sudo", "wipefs", "--all", "--", part.Path); err != nil {
+			return fmt.Errorf("erase signatures on %s: %w", part.Path, err)
+		}
+	}
+	if err := runner.Run(ctx, "sudo", "wipefs", "--all", "--", disk); err != nil {
+		return fmt.Errorf("erase signatures on %s: %w", disk, err)
+	}
+	return nil
 }
 
 func createPartition(

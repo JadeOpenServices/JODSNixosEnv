@@ -66,7 +66,7 @@ in
           gjallar-verify-secure-boot-artifacts
           gjallar-verify-secure-boot-ownership enrolled
 
-          systemd-ask-password --timeout=0 \
+          systemd-ask-password --timeout=0 --newline=no \
             "GjallarOS: enter the human LUKS recovery passphrase to enroll measured-boot TPM2 unlock" >"$keyfile"
           chmod 0600 "$keyfile"
           cryptsetup open --test-passphrase --type luks "$device" --key-file "$keyfile"

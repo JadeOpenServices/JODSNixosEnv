@@ -203,7 +203,7 @@ func TestPrepareBootAcceptsVerifiedExistingMount(t *testing.T) {
 		outputs: map[string][]byte{
 			commandKey(
 				"findmnt",
-				"-nro", "SOURCE,OPTIONS",
+				"-nvro", "SOURCE,OPTIONS",
 				"--mountpoint", target,
 			): []byte(source + " rw,relatime\n"),
 			commandKey(
@@ -250,7 +250,7 @@ func TestMountedSourceTreatsExitOneAsNotMounted(t *testing.T) {
 		errors: map[string]error{
 			commandKey(
 				"findmnt",
-				"-nro", "SOURCE,OPTIONS",
+				"-nvro", "SOURCE,OPTIONS",
 				"--mountpoint", target,
 			): fakeExitError{code: 1},
 		},
@@ -296,7 +296,7 @@ func TestPrepareBootRejectsWrongExistingMount(t *testing.T) {
 		outputs: map[string][]byte{
 			commandKey(
 				"findmnt",
-				"-nro", "SOURCE,OPTIONS",
+				"-nvro", "SOURCE,OPTIONS",
 				"--mountpoint", target,
 			): []byte(mounted + " rw,relatime\n"),
 			commandKey(
@@ -329,7 +329,7 @@ func TestPrepareBootFailsClosedWhenMountFails(t *testing.T) {
 		errors: map[string]error{
 			commandKey(
 				"findmnt",
-				"-nro", "SOURCE,OPTIONS",
+				"-nvro", "SOURCE,OPTIONS",
 				"--mountpoint", target,
 			): fakeExitError{code: 1},
 			commandKey(
@@ -353,7 +353,7 @@ func TestPrepareBootMountsAndVerifiesBoot(t *testing.T) {
 	target := filepath.Join(dir, "boot")
 	findmntKey := commandKey(
 		"findmnt",
-		"-nro", "SOURCE,OPTIONS",
+		"-nvro", "SOURCE,OPTIONS",
 		"--mountpoint", target,
 	)
 
@@ -443,7 +443,7 @@ func TestPrepareBootRejectsReadOnlyExistingMount(t *testing.T) {
 		outputs: map[string][]byte{
 			commandKey(
 				"findmnt",
-				"-nro", "SOURCE,OPTIONS",
+				"-nvro", "SOURCE,OPTIONS",
 				"--mountpoint", target,
 			): []byte(source + " ro,relatime\n"),
 			commandKey(

@@ -121,7 +121,7 @@ func runner(fs string) *fakeRunner {
 		outputs: map[string][]byte{
 			commandKey("readlink", "-f", stable): []byte(partition + "\n"),
 			commandKey(
-				"lsblk", "-J", "-b", "-p", "-o",
+				"lsblk", "-J", "-b", "-p", "--tree", "-o",
 				"PATH,TYPE,SIZE,FSTYPE,PARTUUID,MOUNTPOINTS",
 				"--", partition,
 			): []byte(fmt.Sprintf(`{
@@ -139,7 +139,7 @@ func runner(fs string) *fakeRunner {
 				testPartUUID,
 			)),
 			commandKey(
-				"findmnt", "-nro", "SOURCE",
+				"findmnt", "-nvro", "SOURCE",
 				"--mountpoint", "/mnt",
 			): []byte("/dev/mapper/cryptroot\n"),
 			commandKey(
@@ -235,7 +235,7 @@ func TestExistingSignatureIsRejectedBeforeMutation(t *testing.T) {
 	r := runner("btrfs")
 
 	k := commandKey(
-		"lsblk", "-J", "-b", "-p", "-o",
+		"lsblk", "-J", "-b", "-p", "--tree", "-o",
 		"PATH,TYPE,SIZE,FSTYPE,PARTUUID,MOUNTPOINTS",
 		"--", "/dev/nvme1n1p2",
 	)

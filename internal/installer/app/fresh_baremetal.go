@@ -165,6 +165,7 @@ func runFreshBareMetal(
 	)
 
 	if err := materializeODDCCapsule(
+		ctx,
 		repo,
 		filepath.Join(
 			rootResult.MountPoint,
@@ -186,7 +187,7 @@ func runFreshBareMetal(
 
 	fmt.Fprintln(out, "STAGE: staging account password hashes into target")
 
-	if err := stageFreshPasswordFiles(passwordFiles); err != nil {
+	if err := stageFreshPasswordFiles(ctx, passwordFiles); err != nil {
 		return freshBareMetalResult{}, fmt.Errorf(
 			"stage fresh target password hashes: %w",
 			err,
@@ -264,11 +265,13 @@ func runFreshBareMetal(
 	return result, nil
 }
 
-func stageFreshPasswordFiles(paths []string) error {
+func stageFreshPasswordFiles(ctx context.Context, paths []string) error {
 	const sourceRoot = "/var/lib/gjallarOS/passwords"
 	const targetRoot = "/mnt/var/lib/gjallarOS/passwords"
 
-	if err := os.MkdirAll(targetRoot, 0700); err != nil {
+	// Both directories are root-only; the hashes are copied root-to-root via
+	// sudo and never pass through the unprivileged installer process.
+	if _, err := privilegedCommand(ctx, "mkdir", "-p", "-m", "0700", "--", targetRoot); err != nil {
 		return fmt.Errorf("create target password directory: %w", err)
 	}
 
@@ -289,6 +292,7 @@ func stageFreshPasswordFiles(paths []string) error {
 
 		if rel == "." ||
 			filepath.IsAbs(rel) ||
+			rel == ".." ||
 			strings.HasPrefix(rel, ".."+string(filepath.Separator)) ||
 			strings.Contains(rel, string(filepath.Separator)) {
 			return fmt.Errorf(
@@ -302,90 +306,31 @@ func stageFreshPasswordFiles(paths []string) error {
 		}
 		seen[rel] = true
 
-		info, err := os.Lstat(source)
+		// find -P never follows symlinks: only a non-empty regular file without
+		// group/other permission bits is printed.
+		checked, err := privilegedCommand(
+			ctx, "find", source, "-maxdepth", "0", "-type", "f", "!", "-perm", "/077", "-size", "+0",
+		)
 		if err != nil {
 			return fmt.Errorf("inspect password hash %s: %w", source, err)
 		}
-
-		if info.Mode()&os.ModeSymlink != 0 || !info.Mode().IsRegular() {
+		if strings.TrimSpace(string(checked)) != source {
 			return fmt.Errorf(
-				"password hash must be a regular non-symlink file: %s",
+				"password hash must be a non-empty regular non-symlink file with mode 0600: %s",
 				source,
 			)
-		}
-
-		if info.Mode().Perm()&0077 != 0 {
-			return fmt.Errorf(
-				"password hash has unsafe permissions %04o: %s",
-				info.Mode().Perm(),
-				source,
-			)
-		}
-
-		data, err := os.ReadFile(source)
-		if err != nil {
-			return fmt.Errorf("read password hash %s: %w", source, err)
-		}
-
-		if len(strings.TrimSpace(string(data))) == 0 {
-			return fmt.Errorf("password hash is empty: %s", source)
 		}
 
 		destination := filepath.Join(targetRoot, rel)
-
-		tmp, err := os.CreateTemp(
-			targetRoot,
-			"."+rel+".tmp-*",
-		)
-		if err != nil {
-			return fmt.Errorf("create target password temp file: %w", err)
+		protectedTmp := filepath.Join(targetRoot, "."+rel+".tmp")
+		if _, err := privilegedCommand(
+			ctx, "install", "-m", "0600", "-o", "root", "-g", "root", "--", source, protectedTmp,
+		); err != nil {
+			return fmt.Errorf("install target password hash %s: %w", destination, err)
 		}
-
-		tmpName := tmp.Name()
-		ok := false
-
-		func() {
-			defer func() {
-				if !ok {
-					_ = os.Remove(tmpName)
-				}
-			}()
-
-			if err = tmp.Chmod(0600); err != nil {
-				_ = tmp.Close()
-				return
-			}
-
-			if _, err = tmp.Write(data); err != nil {
-				_ = tmp.Close()
-				return
-			}
-
-			if err = tmp.Sync(); err != nil {
-				_ = tmp.Close()
-				return
-			}
-
-			if err = tmp.Close(); err != nil {
-				return
-			}
-
-			err = os.Rename(tmpName, destination)
-			if err == nil {
-				ok = true
-			}
-		}()
-
-		for i := range data {
-			data[i] = 0
-		}
-
-		if err != nil {
-			return fmt.Errorf(
-				"install target password hash %s: %w",
-				destination,
-				err,
-			)
+		if _, err := privilegedCommand(ctx, "mv", "-f", "--", protectedTmp, destination); err != nil {
+			_, _ = privilegedCommand(ctx, "rm", "-f", "--", protectedTmp)
+			return fmt.Errorf("install target password hash %s: %w", destination, err)
 		}
 	}
 

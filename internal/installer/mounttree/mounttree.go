@@ -296,6 +296,9 @@ func requireFreshPartition(
 		"-J",
 		"-b",
 		"-p",
+		// Without NAME among the columns, lsblk -J lists children (partitions,
+		// crypt mappings) as flat siblings; --tree keeps them nested.
+		"--tree",
 		"-o",
 		"PATH,TYPE,SIZE,FSTYPE,PARTUUID,MOUNTPOINTS",
 		"--",
@@ -359,7 +362,7 @@ func verifyMount(
 	raw, err := runner.Output(
 		ctx,
 		"findmnt",
-		"-nro",
+		"-nvro",
 		"SOURCE,FSTYPE",
 		"--mountpoint",
 		mountPoint,

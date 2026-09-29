@@ -6,7 +6,7 @@ ODDC-backed hardware policy, generic system composition, and a reviewable instal
 ## Quick start
 
 ```bash
-git clone <your-repository-url> ~/.dotfiles
+git clone --recurse-submodules <your-repository-url> ~/.dotfiles
 cd ~/.dotfiles
 ./scripts/installation/install.sh
 ```

@@ -76,7 +76,7 @@ func DiscoverTopology(
 	mountRaw, err := runner.Output(
 		ctx,
 		"findmnt",
-		"-nro",
+		"-nvro",
 		"SOURCE,FSTYPE,OPTIONS",
 		"--target",
 		mountpoint,
@@ -576,7 +576,7 @@ func hasRootBackedSwap(
 			ctx,
 			runner,
 			"findmnt",
-			"-nro",
+			"-nvro",
 			"SOURCE",
 			"--target",
 			swapPath,

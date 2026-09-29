@@ -18,9 +18,27 @@ import (
 	"path/filepath"
 	"regexp"
 	"strings"
+
+	"github.com/bakanura/gjallarOS/internal/installer/buildlimits"
+	"github.com/bakanura/gjallarOS/internal/installer/flakesource"
 )
 
 const targetRoot = "/mnt"
+
+// buildLimits is replaced in tests so command keys stay machine independent.
+var buildLimits = buildlimits.Args
+
+// stageFlake stages a clean copy of the repository (no .git, no .vm) and
+// returns its directory. On live media the Nix store is RAM, and a path:
+// reference to the checkout itself copies gigabytes of git history into it.
+// Tests replace it so command keys keep the repository path.
+var stageFlake = func(repo string) (string, func(), error) {
+	source, err := flakesource.Stage(repo, "")
+	if err != nil {
+		return "", nil, err
+	}
+	return source.Dir, func() { _ = source.Close() }, nil
+}
 
 var hostnamePattern = regexp.MustCompile(
 	`^[A-Za-z0-9][A-Za-z0-9.-]{0,252}$`,
@@ -99,6 +117,19 @@ func install(
 		return Result{}, err
 	}
 
+	swapCleanup, err := enableInstallSwap(ctx, r, input.Out)
+	if err != nil {
+		return Result{}, err
+	}
+	defer swapCleanup()
+
+	staged, cleanup, err := stageFlake(repo)
+	if err != nil {
+		return Result{}, err
+	}
+	defer cleanup()
+	target = "path:" + staged + "#" + input.Hostname
+
 	fmt.Fprintf(
 		input.Out,
 		"STAGE: installing target=%s root=%s\n",
@@ -113,18 +144,29 @@ func install(
 	// No JODS service, endpoint, enrollment command, or installation-complete
 	// marker is touched here. Management activation happens only in its later
 	// explicitly gated lifecycle.
-	if err := r.Run(
-		ctx,
-		nil,
-		input.Out,
-		input.Out,
-		"sudo",
+	installArgs := []string{
 		"nixos-install",
 		"--root",
 		targetRoot,
 		"--flake",
 		target,
 		"--no-root-passwd",
+	}
+	if limits := buildLimits(); len(limits) > 0 {
+		fmt.Fprintf(
+			input.Out,
+			"Low memory: limiting local builds (%s).\n",
+			strings.Join(limits, " "),
+		)
+		installArgs = append(installArgs, limits...)
+	}
+	if err := r.Run(
+		ctx,
+		nil,
+		input.Out,
+		input.Out,
+		"sudo",
+		installArgs...,
 	); err != nil {
 		return Result{}, fmt.Errorf("nixos-install failed: %w", err)
 	}
@@ -171,6 +213,52 @@ func install(
 	}, nil
 }
 
+// Live media keep their Nix store and the checkout in RAM, and have no swap:
+// evaluating the GjallarOS configuration inside nixos-install was OOM-killed
+// on a 12 GiB machine. A temporary swapfile on the target avoids that. It
+// lives on the encrypted target Btrfs, so swapped pages never reach the disk
+// in clear, and is removed after the installation.
+const (
+	installSwapPath = targetRoot + "/.gjallar-install.swap"
+	installSwapSize = "8g"
+)
+
+func enableInstallSwap(ctx context.Context, r runner, out io.Writer) (func(), error) {
+	noop := func() {}
+	active, err := r.Output(ctx, "swapon", "--show=NAME", "--noheadings")
+	if err != nil {
+		return nil, fmt.Errorf("inspect active swap: %w", err)
+	}
+	if strings.TrimSpace(string(active)) != "" {
+		return noop, nil
+	}
+	fstype, err := r.Output(ctx, "findmnt", "-nro", "FSTYPE", "--mountpoint", targetRoot)
+	if err != nil {
+		return nil, fmt.Errorf("inspect target filesystem: %w", err)
+	}
+	if strings.TrimSpace(string(fstype)) != "btrfs" {
+		fmt.Fprintln(out, "No swap active and the target is not Btrfs; installing without temporary swap.")
+		return noop, nil
+	}
+	remove := func() {
+		_ = r.Run(ctx, nil, out, out, "sudo", "rm", "-f", "--", installSwapPath)
+	}
+	remove() // leftover from an interrupted attempt
+	if err := r.Run(ctx, nil, out, out, "sudo", "btrfs", "filesystem", "mkswapfile", "--size", installSwapSize, installSwapPath); err != nil {
+		remove()
+		return nil, fmt.Errorf("create temporary installation swap: %w", err)
+	}
+	if err := r.Run(ctx, nil, out, out, "sudo", "swapon", installSwapPath); err != nil {
+		remove()
+		return nil, fmt.Errorf("enable temporary installation swap: %w", err)
+	}
+	fmt.Fprintf(out, "Temporary %s swap on the encrypted target: %s\n", installSwapSize, installSwapPath)
+	return func() {
+		_ = r.Run(ctx, nil, out, out, "sudo", "swapoff", installSwapPath)
+		remove()
+	}, nil
+}
+
 func validateSource(repo, hostname string) (string, string, error) {
 	if strings.TrimSpace(repo) == "" {
 		return "", "", fmt.Errorf("repository path is required")
@@ -202,7 +290,10 @@ func validateSource(repo, hostname string) (string, string, error) {
 		)
 	}
 
-	return root, root + "#" + hostname, nil
+	// path:, not a bare directory: that resolves to git+file, which hides the
+	// untracked machine-local generated/*.nix files the flake imports. install
+	// points it at a staged copy (stageFlake).
+	return root, "path:" + root + "#" + hostname, nil
 }
 
 func verifyExactMount(

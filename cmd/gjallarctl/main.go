@@ -42,6 +42,7 @@ import (
 	"github.com/bakanura/gjallarOS/internal/installer/deploy"
 	"github.com/bakanura/gjallarOS/internal/installer/diskcrypto"
 	"github.com/bakanura/gjallarOS/internal/installer/firmware"
+	"github.com/bakanura/gjallarOS/internal/installer/flakesource"
 	"github.com/bakanura/gjallarOS/internal/installer/hardwareconfig"
 	"github.com/bakanura/gjallarOS/internal/installer/localgit"
 	"github.com/bakanura/gjallarOS/internal/installer/nixrender"
@@ -442,6 +443,7 @@ func runLocalPassword(args []string, stdout, stderr io.Writer) int {
 	f.SetOutput(stderr)
 	username := f.String("username", "", "local username")
 	apply := f.Bool("apply", false, "prompt and store a missing password hash")
+	applyAccount := f.Bool("apply-account", false, "also set a newly stored hash on the existing account")
 	if err := f.Parse(args); err != nil || f.NArg() != 0 {
 		return 2
 	}
@@ -480,6 +482,13 @@ func runLocalPassword(args []string, stdout, stderr io.Writer) int {
 	if err := credential.Store(context.Background(), target, hash); err != nil {
 		fmt.Fprintf(stderr, "ERROR: %v\n", err)
 		return 1
+	}
+	if *applyAccount {
+		if err := credential.Apply(context.Background(), *username, hash); err != nil {
+			fmt.Fprintf(stderr, "ERROR: %v\n", err)
+			return 1
+		}
+		fmt.Fprintf(stdout, "Applied password to existing account %s.\n", *username)
 	}
 	hash = ""
 	fmt.Fprintf(stdout, "Stored password hash for %s.\n%s\n", *username, target)
@@ -779,7 +788,7 @@ func runDeploy(args []string, stdout, stderr io.Writer) int {
 	if !*apply {
 		return 0
 	}
-	if err := deploy.Apply(context.Background(), target); err != nil {
+	if err := deploy.Apply(context.Background(), *repo, *hostname); err != nil {
 		fmt.Fprintf(stderr, "ERROR: %v\n", err)
 		return 1
 	}
@@ -2094,7 +2103,15 @@ func runRebuild(args []string, stdout, stderr io.Writer) int {
 	if rebuildHome == "" {
 		rebuildHome, _ = os.UserHomeDir()
 	}
-	commandArgs := rebuildCommandArgs(repo, host, rebuildHome, debug, rebuildArgs)
+	// Evaluate a staged copy: path: on the checkout copies .git (gigabytes of
+	// history) and ignored scratch such as .vm into the store on every rebuild.
+	source, err := flakesource.Stage(repo, "")
+	if err != nil {
+		fmt.Fprintf(stderr, "ERROR: %v\n", err)
+		return 1
+	}
+	defer source.Close()
+	commandArgs := rebuildCommandArgs(source.Dir, host, rebuildHome, debug, rebuildArgs)
 
 	var status int
 	if debug {

@@ -2,8 +2,10 @@ package targetdisk
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
+	"os/exec"
 	"strings"
 	"testing"
 )
@@ -353,5 +355,56 @@ func TestValidateRejectsAmbiguousLSBLKResult(t *testing.T) {
 	)
 	if err == nil || !strings.Contains(err.Error(), "expected exactly one") {
 		t.Fatalf("ambiguous lsblk result unexpectedly accepted: %v", err)
+	}
+}
+
+// A partitioned disk must decode as one device with nested children; lsblk
+// 2.42 emits a flat list without --tree and every used disk was rejected.
+func TestLSBLKArgsNestPartitionsWithRealLsblk(t *testing.T) {
+	if _, err := exec.LookPath("lsblk"); err != nil {
+		t.Skip("lsblk unavailable")
+	}
+	disks, err := exec.Command("lsblk", "-dnpo", "PATH,TYPE").Output()
+	if err != nil {
+		t.Skip("lsblk cannot list disks here")
+	}
+	for _, line := range strings.Split(string(disks), "\n") {
+		fields := strings.Fields(line)
+		if len(fields) != 2 || fields[1] != "disk" {
+			continue
+		}
+		raw, err := exec.Command("lsblk", lsblkArgs(fields[0])...).Output()
+		if err != nil {
+			continue
+		}
+		var tree lsblkTree
+		if err := json.Unmarshal(raw, &tree); err != nil {
+			t.Fatal(err)
+		}
+		if len(tree.BlockDevices[0].Children) == 0 {
+			continue
+		}
+		if len(tree.BlockDevices) != 1 {
+			t.Fatalf("%s decoded as %d top-level devices; partitions not nested", fields[0], len(tree.BlockDevices))
+		}
+		return
+	}
+	t.Skip("no partitioned disk available")
+}
+
+func TestValidateRejectsDiskInUse(t *testing.T) {
+	for name, child := range map[string]string{
+		"mounted partition": `{"path":"/dev/nvme1n1p1","type":"part","mountpoints":["/mnt/boot"]}`,
+		"open LUKS":         `{"path":"/dev/nvme1n1p2","type":"part","mountpoints":[null],"children":[{"path":"/dev/mapper/cryptroot","type":"crypt","mountpoints":[null]}]}`,
+		"swap":              `{"path":"/dev/nvme1n1p3","type":"part","mountpoints":["[SWAP]"]}`,
+	} {
+		data := `{"blockdevices":[{"path":"/dev/nvme1n1","type":"disk","serial":"S","size":1000,"mountpoints":[null],"children":[` + child + `]}]}`
+		_, err, _ := runValidation(t, data, Input{Path: "/dev/nvme1n1"})
+		if err == nil || !strings.Contains(err.Error(), "is in use") {
+			t.Fatalf("%s: accepted busy disk: %v", name, err)
+		}
+	}
+	if _, err, _ := runValidation(t, validLSBLK(), Input{Path: "/dev/nvme1n1"}); err != nil {
+		t.Fatalf("idle partitioned disk rejected: %v", err)
 	}
 }

@@ -138,7 +138,7 @@ func runner(withRecovery bool) *fakeRunner {
 		outputs: map[string][]byte{
 			key(
 				"findmnt",
-				"-nro",
+				"-nvro",
 				"SOURCE,FSTYPE",
 				"--mountpoint",
 				"/mnt",
@@ -155,6 +155,7 @@ func runner(withRecovery bool) *fakeRunner {
 				"-J",
 				"-b",
 				"-p",
+				"--tree",
 				"-o",
 				"PATH,TYPE,SIZE,FSTYPE,PARTUUID,MOUNTPOINTS",
 				"--",
@@ -167,7 +168,7 @@ func runner(withRecovery bool) *fakeRunner {
 
 			key(
 				"findmnt",
-				"-nro",
+				"-nvro",
 				"SOURCE,FSTYPE",
 				"--mountpoint",
 				"/mnt/boot",
@@ -188,6 +189,7 @@ func runner(withRecovery bool) *fakeRunner {
 			"-J",
 			"-b",
 			"-p",
+			"--tree",
 			"-o",
 			"PATH,TYPE,SIZE,FSTYPE,PARTUUID,MOUNTPOINTS",
 			"--",
@@ -200,7 +202,7 @@ func runner(withRecovery bool) *fakeRunner {
 
 		r.outputs[key(
 			"findmnt",
-			"-nro",
+			"-nvro",
 			"SOURCE,FSTYPE",
 			"--mountpoint",
 			"/mnt/recovery",
@@ -278,7 +280,7 @@ func TestRequiresExistingEncryptedRootMount(t *testing.T) {
 
 	r.outputs[key(
 		"findmnt",
-		"-nro",
+		"-nvro",
 		"SOURCE,FSTYPE",
 		"--mountpoint",
 		"/mnt",
@@ -309,6 +311,7 @@ func TestExistingESPSignatureRejectedBeforeFormat(t *testing.T) {
 		"-J",
 		"-b",
 		"-p",
+		"--tree",
 		"-o",
 		"PATH,TYPE,SIZE,FSTYPE,PARTUUID,MOUNTPOINTS",
 		"--",
@@ -343,7 +346,7 @@ func TestMountVerificationFailureStopsStage(t *testing.T) {
 
 	r.outputs[key(
 		"findmnt",
-		"-nro",
+		"-nvro",
 		"SOURCE,FSTYPE",
 		"--mountpoint",
 		"/mnt/boot",

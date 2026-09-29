@@ -206,18 +206,27 @@ func savePrivileged(
 	return nil
 }
 
+// protectedExistsArgs builds the existence probe for a protected path.
+//
+// test(1) has no "--" end-of-options marker: "test -e -- PATH" is a syntax
+// error (exit 2), not a lookup. Requiring an absolute path guarantees PATH
+// cannot be parsed as an operator instead.
+func protectedExistsArgs(path string) ([]string, error) {
+	if !filepath.IsAbs(path) {
+		return nil, fmt.Errorf("protected state path must be absolute: %q", path)
+	}
+	return []string{"test", "-e", path}, nil
+}
+
 func defaultPrivilegedReader(
 	ctx context.Context,
 	path string,
 ) ([]byte, bool, error) {
-	check := exec.CommandContext(
-		ctx,
-		"sudo",
-		"test",
-		"-e",
-		"--",
-		path,
-	)
+	existsArgs, err := protectedExistsArgs(path)
+	if err != nil {
+		return nil, false, err
+	}
+	check := exec.CommandContext(ctx, "sudo", existsArgs...)
 
 	if err := check.Run(); err != nil {
 		if exit, ok := err.(*exec.ExitError); ok &&

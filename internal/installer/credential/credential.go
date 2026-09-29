@@ -78,6 +78,33 @@ func Hash(ctx context.Context, password string) (string, error) {
 	return strings.TrimSpace(string(out)), nil
 }
 
+// Apply sets the current password hash of an existing account. With
+// users.mutableUsers=true NixOS only uses hashedPasswordFile when it creates an
+// account, so a stored hash never reaches an account that already exists.
+func Apply(ctx context.Context, username, hash string) error {
+	line, err := chpasswdLine(username, hash)
+	if err != nil {
+		return err
+	}
+	cmd := exec.CommandContext(ctx, "sudo", "chpasswd", "--encrypted")
+	cmd.Stdin = strings.NewReader(line)
+	cmd.Stderr = os.Stderr
+	if err := cmd.Run(); err != nil {
+		return fmt.Errorf("apply password hash for %s: %w", username, err)
+	}
+	return nil
+}
+
+func chpasswdLine(username, hash string) (string, error) {
+	if !usernamePattern.MatchString(username) {
+		return "", fmt.Errorf("invalid username: %q", username)
+	}
+	if !strings.HasPrefix(hash, "$") || strings.ContainsAny(hash, ":\r\n") {
+		return "", fmt.Errorf("refusing malformed password hash for %s", username)
+	}
+	return username + ":" + hash + "\n", nil
+}
+
 func Store(ctx context.Context, target, hash string) error {
 	tmp, err := os.CreateTemp("", "gjallar-password-*.hash")
 	if err != nil {
@@ -100,12 +127,24 @@ func Store(ctx context.Context, target, hash string) error {
 	if err := tmp.Close(); err != nil {
 		return err
 	}
-	cmd := exec.CommandContext(ctx, "sudo", "install", "-D", "-m", "0600", name, target)
-	cmd.Stdin = os.Stdin
-	cmd.Stdout = os.Stdout
-	cmd.Stderr = os.Stderr
-	if err := cmd.Run(); err != nil {
-		return fmt.Errorf("store password hash: %w", err)
+	for _, args := range storeCommands(name, target) {
+		cmd := exec.CommandContext(ctx, "sudo", args...)
+		cmd.Stdin = os.Stdin
+		cmd.Stdout = os.Stdout
+		cmd.Stderr = os.Stderr
+		if err := cmd.Run(); err != nil {
+			return fmt.Errorf("store password hash: %w", err)
+		}
 	}
 	return nil
+}
+
+// storeCommands installs the hash root-only. `install -D` alone would create
+// the password directory 0755 and expose which accounts have stored hashes;
+// `install -d` also tightens a directory an earlier version created.
+func storeCommands(source, target string) [][]string {
+	return [][]string{
+		{"install", "-d", "-m", "0700", "-o", "root", "-g", "root", "--", filepath.Dir(target)},
+		{"install", "-m", "0600", "-o", "root", "-g", "root", "--", source, target},
+	}
 }

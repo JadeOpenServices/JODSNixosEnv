@@ -26,9 +26,6 @@
 
     caelestia.url = "github:caelestia-dots/shell";
 
-
-
-
     plasma-manager = {
       url = "github:nix-community/plasma-manager";
       inputs.nixpkgs.follows = "nixpkgs";
@@ -125,12 +122,26 @@
         framework-battery-policy = import ./tests/nix/battery-policy.nix {
           inherit pkgs;
         };
+
+        security-baseline = import ./tests/nix/security-baseline.nix {
+          inherit nixpkgs system;
+          bootModule = ./system/hardware/boot.nix;
+          hardeningModule = ./system/security/local-hardening.nix;
+        };
+
+        recovery-maintenance = import ./tests/nix/recovery-maintenance.nix {
+          inherit nixpkgs system;
+          recoveryModule = ./system/recovery;
+          sources = [
+            ./system
+            ./scripts
+          ];
+        };
       };
 
       formatter = {
 
         x86_64-linux = nixpkgs.legacyPackages.x86_64-linux.nixfmt;
-
 
       };
 

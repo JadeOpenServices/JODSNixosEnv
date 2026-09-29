@@ -12,6 +12,20 @@ import (
 
 const freshTargetMinimumBytes uint64 = 8 * 1024 * 1024 * 1024
 
+// validateTargetDiskContext rejects --target-disk on a persistent installed
+// host. Fresh installation only runs from a live or recovery environment; an
+// installed host takes the in-place path, which would otherwise silently
+// ignore the requested disk and modify the running system instead.
+func validateTargetDiskContext(targetDisk string, persistentInstalledHost bool) error {
+	if strings.TrimSpace(targetDisk) == "" || !persistentInstalledHost {
+		return nil
+	}
+	return fmt.Errorf(
+		"--target-disk %s requests a fresh installation, which must run from the GjallarOS/NixOS live or recovery environment; this system boots from a persistent root, so nothing was changed",
+		targetDisk,
+	)
+}
+
 func selectFreshTargetDisk(
 	ctx context.Context,
 	ui prompt.UI,

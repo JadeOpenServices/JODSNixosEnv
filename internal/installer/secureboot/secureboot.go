@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
 )
 
@@ -79,7 +80,7 @@ func Provision(ctx context.Context) (Recovery, error) {
 	}
 
 	if !keyExists {
-		if err := run(ctx, "sudo", "sbctl", "create-keys"); err != nil {
+		if err := run(ctx, "sudo", privilegedTool("sbctl"), "create-keys"); err != nil {
 			return Recovery{}, fmt.Errorf(
 				"create Secure Boot keys: %w",
 				err,
@@ -129,7 +130,7 @@ func Provision(ctx context.Context) (Recovery, error) {
 
 	if err := run(
 		ctx,
-		"sudo", "openssl",
+		"sudo", privilegedTool("openssl"),
 		"enc",
 		"-aes-256-cbc",
 		"-pbkdf2",
@@ -439,7 +440,7 @@ func VerifyAndArmEnrollment(
 }
 
 func verifyBootArtifacts(ctx context.Context) error {
-	cmd := exec.CommandContext(ctx, "sudo", "sbctl", "verify")
+	cmd := exec.CommandContext(ctx, "sudo", privilegedTool("sbctl"), "verify")
 	cmd.Stdin = os.Stdin
 
 	out, err := cmd.CombinedOutput()
@@ -493,6 +494,21 @@ func generatePassphrase() (string, error) {
 		return "", err
 	}
 	return hex.EncodeToString(b), nil
+}
+
+// privilegedTool returns the binary this process resolves for name. sudo
+// replaces PATH with its secure_path, which on live media lacks the tools
+// install.sh adds through `nix shell` (sbctl, openssl); an absolute path
+// reaches them.
+func privilegedTool(name string) string {
+	path, err := exec.LookPath(name)
+	if err != nil {
+		return name
+	}
+	if abs, err := filepath.Abs(path); err == nil {
+		return abs
+	}
+	return path
 }
 
 func run(ctx context.Context, name string, args ...string) error {

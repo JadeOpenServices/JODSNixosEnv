@@ -54,7 +54,7 @@ func validDiscoveryRunner() *discoveryRunner {
 		outputs: map[string][]byte{
 			commandKey(
 				"findmnt",
-				"-nro",
+				"-nvro",
 				"SOURCE,FSTYPE,OPTIONS",
 				"--target",
 				mountpoint,
@@ -274,7 +274,7 @@ func TestDiscoverRejectsActualExt4BeforeCryptoInspection(t *testing.T) {
 
 	key := commandKey(
 		"findmnt",
-		"-nro",
+		"-nvro",
 		"SOURCE,FSTYPE,OPTIONS",
 		"--target",
 		"/mnt",
@@ -313,7 +313,7 @@ func TestDiscoverRejectsWrongMountedMapping(t *testing.T) {
 
 	key := commandKey(
 		"findmnt",
-		"-nro",
+		"-nvro",
 		"SOURCE,FSTYPE,OPTIONS",
 		"--target",
 		"/mnt",
@@ -444,7 +444,7 @@ func TestDiscoverRejectsReadOnlyBtrfs(t *testing.T) {
 
 	key := commandKey(
 		"findmnt",
-		"-nro",
+		"-nvro",
 		"SOURCE,FSTYPE,OPTIONS",
 		"--target",
 		"/mnt",
@@ -650,7 +650,7 @@ func TestDiscoverRejectsRootSwapfile(t *testing.T) {
 
 	r.outputs[commandKey(
 		"findmnt",
-		"-nro",
+		"-nvro",
 		"SOURCE",
 		"--target",
 		"/mnt/swapfile",

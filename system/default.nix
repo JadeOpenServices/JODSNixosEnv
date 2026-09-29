@@ -20,6 +20,7 @@
     ./hardware/input.nix
 
     ./security/firewall.nix
+    ./security/local-hardening.nix
     ./security/keyring.nix
     ./maintenance/storage.nix
     ./services/printing.nix

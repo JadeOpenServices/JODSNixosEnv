@@ -111,6 +111,8 @@ func mountedRunner() *fakeRunner {
 				"--mountpoint",
 				"/mnt/boot",
 			): []byte("/mnt/boot\n"),
+			commandKey("swapon", "--show=NAME", "--noheadings"):             nil,
+			commandKey("findmnt", "-nro", "FSTYPE", "--mountpoint", "/mnt"): []byte("btrfs\n"),
 		},
 		errors: map[string]error{},
 	}
@@ -167,7 +169,7 @@ func TestInstallUsesOnlyPreparedTarget(t *testing.T) {
 		"--root",
 		"/mnt",
 		"--flake",
-		repo + "#gjallarOS",
+		"path:" + repo + "#gjallarOS",
 		"--no-root-passwd",
 	}, " ")
 
@@ -395,7 +397,7 @@ func TestFailureDoesNotReportOSInstalled(t *testing.T) {
 		"--root",
 		"/mnt",
 		"--flake",
-		repo+"#gjallarOS",
+		"path:"+repo+"#gjallarOS",
 		"--no-root-passwd",
 	)] = fmt.Errorf("install failed")
 
@@ -427,4 +429,90 @@ func callsText(calls [][]string) string {
 		lines = append(lines, strings.Join(call, " "))
 	}
 	return strings.Join(lines, "\n")
+}
+
+func TestInstallEvaluatesStagedSourceAndCleansUp(t *testing.T) {
+	createInstalledProfile(t)
+	repo := testRepo(t)
+	staged := t.TempDir()
+	cleaned := false
+	previous := stageFlake
+	stageFlake = func(got string) (string, func(), error) {
+		if got != repo {
+			t.Fatalf("staged %q, want %q", got, repo)
+		}
+		return staged, func() { cleaned = true }, nil
+	}
+	t.Cleanup(func() { stageFlake = previous })
+
+	r := mountedRunner()
+	var out bytes.Buffer
+	if _, err := install(context.Background(), Input{Repo: repo, Hostname: "gjallarOS", Out: &out}, r); err != nil {
+		t.Fatal(err)
+	}
+	joined := callsText(r.calls)
+	if !strings.Contains(joined, "--flake path:"+staged+"#gjallarOS") {
+		t.Fatalf("nixos-install did not use the staged source:\n%s", joined)
+	}
+	if strings.Contains(joined, "path:"+repo+"#") {
+		t.Fatalf("nixos-install evaluated the checkout directly (copies .git):\n%s", joined)
+	}
+	if !cleaned {
+		t.Fatal("staged source not removed")
+	}
+}
+
+func callIndex(calls [][]string, prefix string) int {
+	for i, call := range calls {
+		if strings.HasPrefix(strings.Join(call, " "), prefix) {
+			return i
+		}
+	}
+	return -1
+}
+
+func TestInstallUsesTemporaryEncryptedTargetSwap(t *testing.T) {
+	createInstalledProfile(t)
+	r := mountedRunner()
+	var out bytes.Buffer
+	if _, err := install(context.Background(), Input{Repo: testRepo(t), Hostname: "gjallarOS", Out: &out}, r); err != nil {
+		t.Fatal(err)
+	}
+	mk := callIndex(r.calls, "sudo btrfs filesystem mkswapfile --size 8g /mnt/.gjallar-install.swap")
+	on := callIndex(r.calls, "sudo swapon /mnt/.gjallar-install.swap")
+	install := callIndex(r.calls, "sudo nixos-install")
+	off := callIndex(r.calls, "sudo swapoff /mnt/.gjallar-install.swap")
+	if mk < 0 || on < mk || install < on || off < install {
+		t.Fatalf("swap must exist before nixos-install and be removed after:\n%s", callsText(r.calls))
+	}
+	last := strings.Join(r.calls[len(r.calls)-1], " ")
+	if last != "sudo rm -f -- /mnt/.gjallar-install.swap" {
+		t.Fatalf("swapfile left on target, last call %q", last)
+	}
+}
+
+func TestInstallRemovesSwapWhenNixosInstallFails(t *testing.T) {
+	repo := testRepo(t)
+	r := mountedRunner()
+	r.errors[commandKey("sudo", "nixos-install", "--root", "/mnt", "--flake", "path:"+repo+"#gjallarOS", "--no-root-passwd")] = fmt.Errorf("killed")
+	var out bytes.Buffer
+	if _, err := install(context.Background(), Input{Repo: repo, Hostname: "gjallarOS", Out: &out}, r); err == nil {
+		t.Fatal("nixos-install failure ignored")
+	}
+	if callIndex(r.calls, "sudo swapoff /mnt/.gjallar-install.swap") < 0 {
+		t.Fatalf("swap not disabled after failure:\n%s", callsText(r.calls))
+	}
+}
+
+func TestInstallKeepsExistingSwap(t *testing.T) {
+	createInstalledProfile(t)
+	r := mountedRunner()
+	r.outputs[commandKey("swapon", "--show=NAME", "--noheadings")] = []byte("/dev/zram0\n")
+	var out bytes.Buffer
+	if _, err := install(context.Background(), Input{Repo: testRepo(t), Hostname: "gjallarOS", Out: &out}, r); err != nil {
+		t.Fatal(err)
+	}
+	if callIndex(r.calls, "sudo btrfs filesystem mkswapfile") >= 0 {
+		t.Fatal("created installation swap although swap is active")
+	}
 }

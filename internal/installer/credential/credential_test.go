@@ -1,6 +1,27 @@
 package credential
 
-import "testing"
+import (
+	"reflect"
+	"testing"
+)
+
+func TestChpasswdLine(t *testing.T) {
+	got, err := chpasswdLine("root", "$y$j9T$salt$hash")
+	if err != nil || got != "root:$y$j9T$salt$hash\n" {
+		t.Fatalf("%q %v", got, err)
+	}
+	for _, c := range [][2]string{
+		{"../root", "$6$a$b"},
+		{"root", ""},
+		{"root", "plaintext"},
+		{"root", "$6$a$b\nother:$6$c$d"},
+		{"root", "$6$a:b"},
+	} {
+		if _, err := chpasswdLine(c[0], c[1]); err == nil {
+			t.Fatalf("accepted %q", c)
+		}
+	}
+}
 
 func TestPath(t *testing.T) {
 	got, err := Path("testuser-corp")
@@ -11,5 +32,16 @@ func TestPath(t *testing.T) {
 		if _, err := Path(v); err == nil {
 			t.Fatalf("accepted %q", v)
 		}
+	}
+}
+
+func TestStoreCommandsKeepPasswordDirectoryRootOnly(t *testing.T) {
+	got := storeCommands("/tmp/gjallar-password-1.hash", "/var/lib/gjallarOS/passwords/root.hash")
+	want := [][]string{
+		{"install", "-d", "-m", "0700", "-o", "root", "-g", "root", "--", "/var/lib/gjallarOS/passwords"},
+		{"install", "-m", "0600", "-o", "root", "-g", "root", "--", "/tmp/gjallar-password-1.hash", "/var/lib/gjallarOS/passwords/root.hash"},
+	}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("storeCommands = %q, want %q", got, want)
 	}
 }

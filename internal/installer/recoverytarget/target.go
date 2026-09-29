@@ -320,7 +320,7 @@ func mountedSource(
 	out, err := r.Output(
 		ctx,
 		"findmnt",
-		"-nro", "SOURCE,OPTIONS",
+		"-nvro", "SOURCE,OPTIONS",
 		"--mountpoint", target,
 	)
 	if err != nil {

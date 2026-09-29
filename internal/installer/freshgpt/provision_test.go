@@ -167,6 +167,7 @@ func TestProvisionCreatesOnlyCanonicalPartitions(t *testing.T) {
 
 	r := &fakeRunner{
 		outputs: map[string][]byte{
+			inventoryKey(p): blankInventory(p),
 			key(
 				"lsblk",
 				"-J",
@@ -221,13 +222,15 @@ func TestProvisionCreatesOnlyCanonicalPartitions(t *testing.T) {
 		}
 	}
 
+	firstNew := strings.Index(joined, "--new=")
 	for _, forbidden := range []string{
 		"mkfs",
 		"cryptsetup",
 		"mount ",
 		"wipefs",
 	} {
-		if strings.Contains(joined, forbidden) {
+		if strings.Contains(joined[firstNew:], forbidden) ||
+			(forbidden != "wipefs" && strings.Contains(joined, forbidden)) {
 			t.Fatalf(
 				"fresh GPT stage performed forbidden operation %q:\n%s",
 				forbidden,
@@ -294,6 +297,7 @@ func TestProvisionRejectsFilesystemAlreadyPresent(t *testing.T) {
 
 	r := &fakeRunner{
 		outputs: map[string][]byte{
+			inventoryKey(p): blankInventory(p),
 			key(
 				"lsblk",
 				"-J",
@@ -315,5 +319,57 @@ func TestProvisionRejectsFilesystemAlreadyPresent(t *testing.T) {
 	)
 	if err == nil {
 		t.Fatal("verification accepted unexpected filesystem")
+	}
+}
+
+func inventoryKey(p diskplan.Plan) string {
+	return key("lsblk", "-J", "-p", "--tree", "-o", "PATH,TYPE", "--", p.TargetDisk.Path)
+}
+
+func blankInventory(p diskplan.Plan) []byte {
+	return []byte(fmt.Sprintf(`{"blockdevices":[{"path":%q,"type":"disk"}]}`, p.TargetDisk.Path))
+}
+
+// A used disk (earlier attempt, or another OS with an ESP at 1 MiB) must have
+// its old signatures erased before the table is zapped; otherwise verify()
+// finds them at the reused offsets and every reinstall fails.
+func TestProvisionErasesOldSignaturesBeforeZap(t *testing.T) {
+	p := plan()
+	r := &fakeRunner{outputs: map[string][]byte{
+		inventoryKey(p): []byte(fmt.Sprintf(`{"blockdevices":[{"path":%q,"type":"disk","children":[
+			{"path":"/dev/nvme1n1p1","type":"part"},
+			{"path":"/dev/nvme1n1p2","type":"part","children":[{"path":"/dev/mapper/old","type":"crypt"}]}]}]}`,
+			p.TargetDisk.Path)),
+	}}
+	var out strings.Builder
+	_, _ = provision(context.Background(), Input{Plan: p, Out: &out}, r)
+
+	var calls []string
+	for _, call := range r.calls {
+		calls = append(calls, strings.Join(call, " "))
+	}
+	index := func(want string) int {
+		for i, c := range calls {
+			if c == want {
+				return i
+			}
+		}
+		t.Fatalf("missing %q in:\n%s", want, strings.Join(calls, "\n"))
+		return -1
+	}
+	zap := index("sudo sgdisk --zap-all /dev/nvme1n1")
+	for _, want := range []string{
+		"sudo wipefs --all -- /dev/nvme1n1p1",
+		"sudo wipefs --all -- /dev/nvme1n1p2",
+		"sudo wipefs --all -- /dev/nvme1n1",
+	} {
+		if index(want) > zap {
+			t.Fatalf("%q ran after the table was zapped", want)
+		}
+	}
+	for _, c := range calls {
+		if strings.Contains(c, "/dev/mapper/old") {
+			t.Fatalf("touched stacked device: %q", c)
+		}
 	}
 }

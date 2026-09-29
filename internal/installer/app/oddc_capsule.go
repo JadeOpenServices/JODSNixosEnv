@@ -1,7 +1,9 @@
 package app
 
 import (
+	"context"
 	"fmt"
+	"os"
 	"path/filepath"
 
 	"github.com/bakanura/gjallarOS/internal/installer/deviceprofilecache"
@@ -12,6 +14,7 @@ import (
 )
 
 func materializeODDCCapsule(
+	ctx context.Context,
 	repo string,
 	destination string,
 	hardware discovery.Hardware,
@@ -42,9 +45,18 @@ func materializeODDCCapsule(
 		Integrity:  resolved.Source.Integrity,
 	}
 
+	// The destination is root-owned (/mnt/var/... or /var/...): build the
+	// capsule in a private user directory and install it via sudo.
+	stage, err := os.MkdirTemp("", "gjallar-device-profile-*")
+	if err != nil {
+		return fmt.Errorf("create device-profile staging directory: %w", err)
+	}
+	defer os.RemoveAll(stage)
+	staged := filepath.Join(stage, filepath.Base(destination))
+
 	if _, err := deviceprofilecache.Materialize(
 		deviceprofilecache.MaterializeInput{
-			Destination:       destination,
+			Destination:       staged,
 			Identity:          discovery.ODDCIdentity(hardware),
 			Resolved:          resolved,
 			Source:            source,
@@ -59,5 +71,9 @@ func materializeODDCCapsule(
 		)
 	}
 
-	return nil
+	if _, err := deviceprofilecache.Verify(staged); err != nil {
+		return fmt.Errorf("verify staged device-profile capsule: %w", err)
+	}
+
+	return installTreePrivileged(ctx, staged, destination)
 }

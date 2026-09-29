@@ -28,6 +28,7 @@ import (
 	"github.com/bakanura/gjallarOS/internal/installer/firmware"
 	"github.com/bakanura/gjallarOS/internal/installer/geolocation"
 	"github.com/bakanura/gjallarOS/internal/installer/hardwareconfig"
+	"github.com/bakanura/gjallarOS/internal/installer/installstate"
 	"github.com/bakanura/gjallarOS/internal/installer/localgit"
 	"github.com/bakanura/gjallarOS/internal/installer/nixrender"
 	"github.com/bakanura/gjallarOS/internal/installer/oddc"
@@ -207,6 +208,9 @@ func Run(ctx context.Context, args []string, in io.Reader, out, errOut io.Writer
 			return fail(errOut, err)
 		}
 	}
+	if err := validateTargetDiskContext(opt.targetDisk, persistentInstalledHost); err != nil {
+		return fail(errOut, err)
+	}
 
 	forceRedeploy := opt.forceRedeploy || s.user.ForceRedeploy
 
@@ -249,10 +253,8 @@ func Run(ctx context.Context, args []string, in io.Reader, out, errOut io.Writer
 			return 0
 		}
 	}
-	if opt.recovery {
-		// Recovery media is a purpose-built execution environment. Never mutate
-		// or rebuild the live recovery system before operating on the target.
-		fmt.Fprintln(out, "Recovery environment validated; live-host rebuild skipped.")
+	if skip := liveHostPreparationSkip(opt); skip != "" {
+		fmt.Fprintln(out, skip)
 	} else if code := prepareHost(
 		ctx,
 		ui,
@@ -666,6 +668,13 @@ func Run(ctx context.Context, args []string, in io.Reader, out, errOut io.Writer
 		fmt.Fprintln(out, "Nothing changed.")
 		return 0
 	}
+	compatibilityConfig := ""
+	if persistentInstalledHost {
+		compatibilityConfig = filepath.Join(installedRoot, "etc/nixos/configuration.nix")
+	}
+	if err := installstate.Ensure(ctx, root, compatibilityConfig, s.user.Username, pinnedRelease); err != nil {
+		return fail(errOut, fmt.Errorf("initialize installation compatibility state: %w", err))
+	}
 	if !s.preset {
 		if err := config.WriteAtomic(presetPath, s.user); err != nil {
 			return fail(errOut, err)
@@ -693,7 +702,7 @@ func Run(ctx context.Context, args []string, in io.Reader, out, errOut io.Writer
 		// Root recovery is intentionally local even on JODS-managed endpoints.
 		// Management must never remove wheel/Polkit administration before a
 		// verified local recovery credential exists.
-		path, err := controlOutput(ctx, s.control, errOut, "installer", "local-password", "--username", "root", "--apply")
+		path, err := controlOutput(ctx, s.control, errOut, rootPasswordArgs(persistentInstalledHost)...)
 		if err != nil {
 			return fail(errOut, err)
 		}
@@ -952,6 +961,7 @@ func Run(ctx context.Context, args []string, in io.Reader, out, errOut io.Writer
 
 				if needsDeviceRebind {
 					if err := materializeODDCCapsule(
+						ctx,
 						root,
 						filepath.Join(
 							installedRoot,
@@ -1009,7 +1019,7 @@ func Run(ctx context.Context, args []string, in io.Reader, out, errOut io.Writer
 					target,
 				)
 
-				if err := deploy.Apply(ctx, target); err != nil {
+				if err := deploy.Apply(ctx, root, s.user.Hostname); err != nil {
 					return fail(errOut, err)
 				}
 
@@ -1443,6 +1453,23 @@ func activateJODSEnrollment(ctx context.Context, installationSucceeded bool) err
 		return fmt.Errorf("enable JODS enrollment retry timer: %w", err)
 	}
 	return nil
+}
+
+// liveHostPreparationSkip reports why the running system must not be
+// rebuilt, staged or rebooted before the installer operates on its target.
+func liveHostPreparationSkip(opt options) string {
+	switch {
+	case opt.recovery:
+		// Recovery media is a purpose-built execution environment. Never mutate
+		// or rebuild the live recovery system before operating on the target.
+		return "Recovery environment validated; live-host rebuild skipped."
+	case opt.targetDisk != "":
+		// Fresh installs run from live media (validateTargetDiskContext).
+		// nixos-install builds the target; rebuilding the live system only
+		// fills its RAM-backed store and was OOM-killed on 12 GiB machines.
+		return "Live installation media; live-host rebuild skipped (nixos-install builds the target)."
+	}
+	return ""
 }
 
 func prepareHost(
@@ -2104,6 +2131,17 @@ func configureRecoveryProvisioning(ctx context.Context, ui prompt.UI, opt option
 	return nil
 }
 
+// mountSourceDevice returns the device of a findmnt SOURCE value. A Btrfs
+// subvolume root is reported as "/dev/mapper/cryptroot[/@]" unless findmnt
+// runs with --nofsroot; the suffix is never part of the device name.
+func mountSourceDevice(source string) string {
+	source = strings.TrimSpace(source)
+	if i := strings.IndexByte(source, '['); i > 0 && strings.HasSuffix(source, "]") {
+		source = source[:i]
+	}
+	return source
+}
+
 func discoverInstalledRecoveryTopology(
 	ctx context.Context,
 	installedRoot string,
@@ -2111,7 +2149,7 @@ func discoverInstalledRecoveryTopology(
 	mounted, err := exec.CommandContext(
 		ctx,
 		"findmnt",
-		"-nro",
+		"-nvro",
 		"SOURCE",
 		"--target",
 		installedRoot,
@@ -2123,7 +2161,7 @@ func discoverInstalledRecoveryTopology(
 		)
 	}
 
-	mapping := strings.TrimSpace(string(mounted))
+	mapping := mountSourceDevice(string(mounted))
 	if !strings.HasPrefix(mapping, "/dev/mapper/") {
 		return recoveryresize.Topology{}, fmt.Errorf(
 			"recovery partitioning currently requires an encrypted Btrfs root; mounted root source is %q",
@@ -2462,6 +2500,16 @@ func attached(ctx context.Context, name string, args ...string) error {
 }
 func privilegedFileExists(ctx context.Context, path string) bool {
 	return exec.CommandContext(ctx, "sudo", "test", "-s", path).Run() == nil
+}
+
+// rootPasswordArgs applies a new root hash to the live account on an installed
+// host: root already exists there, and mutable NixOS users keep their old hash.
+func rootPasswordArgs(persistentInstalledHost bool) []string {
+	args := []string{"installer", "local-password", "--username", "root", "--apply"}
+	if persistentInstalledHost {
+		args = append(args, "--apply-account")
+	}
+	return args
 }
 func secureBootNeedsFirmwareReboot(next secureboot.Continuation) bool {
 	return next == secureboot.ContinuationEnroll || next == secureboot.ContinuationEnable

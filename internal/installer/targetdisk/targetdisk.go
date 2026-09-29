@@ -75,17 +75,7 @@ func validate(ctx context.Context, input Input, runner commandRunner) (Result, e
 		)
 	}
 
-	raw, err := runner.Output(
-		ctx,
-		"lsblk",
-		"-J",
-		"-b",
-		"-p",
-		"-o",
-		"PATH,TYPE,MODEL,SERIAL,WWN,SIZE,LABEL,MOUNTPOINTS",
-		"--",
-		path,
-	)
+	raw, err := runner.Output(ctx, "lsblk", lsblkArgs(path)...)
 	if err != nil {
 		return Result{}, fmt.Errorf("inspect target disk %q with lsblk: %w", path, err)
 	}
@@ -128,6 +118,16 @@ func validate(ctx context.Context, input Input, runner commandRunner) (Result, e
 		)
 	}
 
+	if active := activeUse(disk); len(active) > 0 {
+		return Result{}, fmt.Errorf(
+			"target disk %q is in use (%s); unmount its filesystems and close "+
+				"crypt/LVM/swap users first, e.g. after a failed attempt: "+
+				"sudo umount -R /mnt; sudo cryptsetup close cryptroot",
+			disk.Path,
+			strings.Join(active, ", "),
+		)
+	}
+
 	model := strings.TrimSpace(disk.Model)
 	serial := strings.TrimSpace(disk.Serial)
 	wwn := strings.TrimSpace(disk.WWN)
@@ -159,6 +159,21 @@ func validate(ctx context.Context, input Input, runner commandRunner) (Result, e
 	}, nil
 }
 
+func lsblkArgs(path string) []string {
+	return []string{
+		"-J",
+		"-b",
+		"-p",
+		// Without NAME among the columns, lsblk -J lists children (partitions,
+		// crypt mappings) as flat siblings; --tree keeps them nested.
+		"--tree",
+		"-o",
+		"PATH,TYPE,MODEL,SERIAL,WWN,SIZE,LABEL,MOUNTPOINTS",
+		"--",
+		path,
+	}
+}
+
 type lsblkTree struct {
 	BlockDevices []blockDevice `json:"blockdevices"`
 }
@@ -187,6 +202,27 @@ func containsRootMount(device blockDevice) bool {
 		}
 	}
 	return false
+}
+
+// activeUse lists mounted filesystems, swap and stacked block devices
+// (crypt, LVM, RAID) on the disk: erasing it underneath them would corrupt
+// live state instead of producing a fresh layout.
+func activeUse(device blockDevice) []string {
+	var active []string
+	for _, mount := range device.MountPoints {
+		if mount = strings.TrimSpace(mount); mount != "" {
+			active = append(active, device.Path+" mounted at "+mount)
+		}
+	}
+	switch strings.TrimSpace(device.Type) {
+	case "disk", "part":
+	default:
+		active = append(active, device.Path+" active "+device.Type)
+	}
+	for _, child := range device.Children {
+		active = append(active, activeUse(child)...)
+	}
+	return active
 }
 
 func containsInstallationMedia(device blockDevice) bool {
