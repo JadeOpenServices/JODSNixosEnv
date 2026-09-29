@@ -2680,9 +2680,29 @@ func privilegePasswordCommand(
 	cmd.Stdout = tty
 	cmd.Stderr = tty
 	cmd.Env = environmentWithOverride("SUDO_ASKPASS", askpass)
-	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
+
+	// The askpass helper prompts on the terminal and turns echo off, which a
+	// background process group cannot do. Make sudo the foreground job; fd 1
+	// is the terminal in the child.
+	cmd.SysProcAttr = &syscall.SysProcAttr{
+		Setpgid:    true,
+		Foreground: true,
+		Ctty:       1,
+	}
 
 	return cmd
+}
+
+// reclaimTerminalForeground makes this process group the terminal's
+// foreground job again after a foreground child exits.
+func reclaimTerminalForeground(tty *os.File) {
+	pgrp := int32(syscall.Getpgrp())
+	_, _, _ = syscall.Syscall(
+		syscall.SYS_IOCTL,
+		tty.Fd(),
+		uintptr(syscall.TIOCSPGRP),
+		uintptr(unsafe.Pointer(&pgrp)),
+	)
 }
 
 func authenticationCommandStatus(
@@ -2764,6 +2784,12 @@ func runPrivilegeAuthentication(ctx context.Context, stderr io.Writer) int {
 		askpass,
 		authHelper,
 	)
+
+	// Handing the terminal to sudo and taking it back both change the
+	// foreground job; SIGTTOU would stop us while we are in the background.
+	signal.Ignore(syscall.SIGTTOU)
+	defer signal.Reset(syscall.SIGTTOU)
+	defer reclaimTerminalForeground(tty)
 
 	return authenticationCommandStatus(
 		ctx,

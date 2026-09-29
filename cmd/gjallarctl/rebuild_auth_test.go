@@ -82,6 +82,11 @@ func TestPrivilegePasswordCommandUsesAskpassWithoutStdin(t *testing.T) {
 	if cmd.SysProcAttr == nil || !cmd.SysProcAttr.Setpgid {
 		t.Fatal("password authentication process group isolation missing")
 	}
+	// The askpass prompt needs the terminal; a background job would stop on
+	// SIGTTOU/SIGTTIN and the fallback would hang silently.
+	if !cmd.SysProcAttr.Foreground || cmd.SysProcAttr.Ctty != 1 {
+		t.Fatal("password authentication must run as the terminal foreground job")
+	}
 
 	var values []string
 	for _, entry := range cmd.Env {
@@ -121,5 +126,27 @@ func TestEnvironmentWithOverrideReplacesExistingValue(t *testing.T) {
 	if matches[0] !=
 		"SUDO_ASKPASS=/nix/store/new/bin/gjallar-sudo-askpass" {
 		t.Fatalf("unexpected override: %q", matches[0])
+	}
+}
+
+func TestSudoAskpassPromptsOnControllingTerminal(t *testing.T) {
+	data, err := os.ReadFile("../../pkgs/gjallarctl/default.nix")
+	if err != nil {
+		t.Fatal(err)
+	}
+	start := strings.Index(string(data), "<<'ASKPASS'")
+	end := strings.Index(string(data), "\nASKPASS\n")
+	if start < 0 || end < start {
+		t.Fatal("gjallar-sudo-askpass script not found")
+	}
+	script := string(data)[start:end]
+
+	// sudo hands askpass the detached stdin. Without the terminal redirect,
+	// systemd-ask-password waits forever for a user agent.
+	if !strings.Contains(script, `"$@" </dev/tty`) {
+		t.Fatal("askpass must read from the controlling terminal")
+	}
+	if strings.Contains(script, "--user") {
+		t.Fatal("askpass must not wait for a user password agent")
 	}
 }
