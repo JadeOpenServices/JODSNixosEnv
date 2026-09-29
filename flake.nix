@@ -135,6 +135,11 @@
           secureBootModule = ./system/security/secure-boot/lanzaboote.nix;
         };
 
+        secure-boot-lifecycle = import ./tests/nix/secure-boot-lifecycle.nix {
+          inherit nixpkgs system;
+          lifecycleModule = ./system/security/secure-boot/lifecycle.nix;
+        };
+
         recovery-maintenance = import ./tests/nix/recovery-maintenance.nix {
           inherit nixpkgs system;
           recoveryModule = ./system/recovery;

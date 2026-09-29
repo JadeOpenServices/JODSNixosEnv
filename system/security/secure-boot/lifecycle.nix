@@ -113,9 +113,13 @@
 
     wantedBy = [ "multi-user.target" ];
 
+    # Enrollment decides whether this boot continues at all: started in
+    # parallel, this unit told the user to remove PK while firmware already
+    # was in Setup Mode (e2e-target, 2026-09-29).
     after = [
       "local-fs.target"
       "systemd-remount-fs.service"
+      "secure-boot-enrollment.service"
       "secure-boot-verification.service"
     ]
     ++ lib.optional settings.luksTpm2Enable "measured-boot-tpm2-enrollment.service";
