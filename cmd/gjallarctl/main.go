@@ -93,6 +93,8 @@ func run(args []string, stdout, stderr io.Writer) int {
 		return runNormalize(args[1:], stdout, stderr)
 	case "preset":
 		return runPreset(args[1:], stdout, stderr)
+	case "auth":
+		return runAuth(args[1:], stderr)
 	case "rebuild":
 		return runRebuild(args[1:], stdout, stderr)
 	case "update":
@@ -1938,6 +1940,7 @@ func printUsage(out io.Writer) {
 	fmt.Fprintln(out, "Usage: gjallarctl check [--repo PATH] [--timeout DURATION]")
 	fmt.Fprintln(out, "       gjallarctl preflight [--repo PATH]")
 	fmt.Fprintln(out, "       gjallarctl oddc validate-device [--repo PATH]")
+	fmt.Fprintln(out, "       gjallarctl auth")
 	fmt.Fprintln(out, "       gjallarctl rebuild [--repo PATH] [--host HOST] [-d|--debug] [-n|--no-cleanup] [NIXOS-REBUILD-ARGS...]")
 	fmt.Fprintln(out, "       gjallarctl device-probe refresh [--output PATH]")
 	fmt.Fprintln(out, "       gjallarctl fan {status|list|reconcile}")
@@ -2727,6 +2730,26 @@ func authenticationCommandStatus(
 
 	fmt.Fprintf(stderr, "ERROR: %s: %v\n", label, err)
 	return 1
+}
+
+// runAuth refreshes the sudo timestamp through the GjallarOS fingerprint-first
+// flow so a following plain sudo does not start its own PAM conversation.
+func runAuth(args []string, stderr io.Writer) int {
+	if len(args) != 0 {
+		fmt.Fprintln(stderr, "Usage: gjallarctl auth")
+		return 2
+	}
+	if os.Geteuid() == 0 {
+		return 0
+	}
+
+	cached := exec.Command("sudo", "-n", "-v")
+	cached.Stdin, cached.Stdout, cached.Stderr = nil, nil, nil
+	if cached.Run() == nil {
+		return 0
+	}
+
+	return runPrivilegeAuthentication(context.Background(), stderr)
 }
 
 func runPrivilegeAuthentication(ctx context.Context, stderr io.Writer) int {

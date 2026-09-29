@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"io"
 	"os"
 	"strings"
 	"testing"
@@ -148,5 +149,15 @@ func TestSudoAskpassPromptsOnControllingTerminal(t *testing.T) {
 	}
 	if strings.Contains(script, "--user") {
 		t.Fatal("askpass must not wait for a user password agent")
+	}
+}
+
+func TestAuthRejectsArguments(t *testing.T) {
+	var stderr strings.Builder
+	if status := run([]string{"auth", "ls"}, io.Discard, &stderr); status != 2 {
+		t.Fatalf("auth with arguments returned %d", status)
+	}
+	if !strings.Contains(stderr.String(), "Usage: gjallarctl auth") {
+		t.Fatalf("missing usage: %q", stderr.String())
 	}
 }
