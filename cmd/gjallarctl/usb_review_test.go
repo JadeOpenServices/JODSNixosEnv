@@ -189,3 +189,13 @@ func TestUSBReviewTechnicalPreferenceToggles(t *testing.T) {
 		t.Fatal("technical view was not switched off")
 	}
 }
+
+func TestUnpluggedConnectionIsInactive(t *testing.T) {
+	policy := []usbtrust.Decision{{Connection: "a"}, {Connection: "b"}}
+	if !usbConnectionActive(policy, "b") {
+		t.Fatal("present connection reported inactive")
+	}
+	if usbConnectionActive(policy, "c") || usbConnectionActive(nil, "a") {
+		t.Fatal("unplugged connection reported active")
+	}
+}

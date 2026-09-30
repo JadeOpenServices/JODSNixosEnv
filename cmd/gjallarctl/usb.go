@@ -110,49 +110,7 @@ func runUSBReview(args []string, stderr io.Writer) int {
 					continue
 				}
 				seen[d.Connection] = true
-				rows, available := usbReviewChoices(d)
-				if len(rows) == 0 {
-					continue
-				}
-				// Announce the block quietly; the review dialog opens only on
-				// request. Dismissing the notice keeps the device blocked.
-				notice := exec.CommandContext(ctx, "notify-send", usbReviewNotice(d, response.Enforcing)...)
-				picked, err := notice.Output()
-				if err != nil || !usbReviewRequested(string(picked)) {
-					continue
-				}
-				action, ok := usbReviewDialog(ctx, d, response.Enforcing, rows)
-				if !ok {
-					continue
-				}
-				if !available[action] {
-					continue
-				}
-				// Rejecting a device never requires authentication. The derived
-				// policy is already block; keeping it blocked only dismisses this
-				// review for the current connection.
-				if action == string(usbtrust.ActionKeepBlocked) {
-					continue
-				}
-				request := []string{"usb", action, "--runtime-id", d.RuntimeID, "--connection", d.Connection}
-				switch action {
-				case "accept-replacement":
-					request = append(request, "--trusted-id", d.TrustedID)
-				case "enroll-internal":
-					request = append(request, "--role", d.Role)
-				case "trust-permanent":
-					portability, err := exec.CommandContext(ctx, "zenity", "--list", "--radiolist", "--title=Permanent USB trust", "--text=Choose whether this device may move between ports and docks on this machine.", "--column=Choose", "--column=Portable", "--column=Meaning", "--hide-column=2", "--print-column=2", "TRUE", "false", "Bind to this topology", "FALSE", "true", "Allow on other ports and docks").Output()
-					if err != nil {
-						continue
-					}
-					value := strings.TrimSpace(string(portability))
-					if value != "true" && value != "false" {
-						continue
-					}
-					request = append(request, "--portable="+value)
-				}
-				if output, err := usbAuthorize(ctx, d.Identity.Name, append([]string{executable}, request...)); err != nil {
-					_, _ = exec.CommandContext(ctx, "zenity", "--error", "--title=USB decision failed", "--text="+html.EscapeString(string(output))).Output()
+				if !usbReviewDecision(ctx, executable, d, response.Enforcing) {
 					delete(seen, d.Connection)
 				}
 			}
@@ -168,6 +126,96 @@ func runUSBReview(args []string, stderr io.Writer) int {
 		}
 	}
 	return 0
+}
+
+// usbReviewDecision announces one blocked device and carries out the chosen
+// action. Every prompt closes as soon as the device is unplugged. It reports
+// false when a failed decision should be offered again.
+func usbReviewDecision(ctx context.Context, executable string, d usbtrust.Decision, enforcing bool) bool {
+	rows, available := usbReviewChoices(d)
+	if len(rows) == 0 {
+		return true
+	}
+	ctx, cancel := usbWhilePresent(ctx, d.Connection)
+	defer cancel()
+
+	// Announce the block quietly; the review dialog opens only on request.
+	// Dismissing the notice keeps the device blocked.
+	notice := exec.CommandContext(ctx, "notify-send", usbReviewNotice(d, enforcing)...)
+	// SIGINT makes notify-send close the notice it is waiting on.
+	notice.Cancel = func() error { return notice.Process.Signal(os.Interrupt) }
+	picked, err := notice.Output()
+	if err != nil || ctx.Err() != nil || !usbReviewRequested(string(picked)) {
+		return true
+	}
+	action, ok := usbReviewDialog(ctx, d, enforcing, rows)
+	if !ok || !available[action] {
+		return true
+	}
+	// Rejecting a device never requires authentication. The derived policy is
+	// already block; keeping it blocked only dismisses this review for the
+	// current connection.
+	if action == string(usbtrust.ActionKeepBlocked) {
+		return true
+	}
+	request := []string{"usb", action, "--runtime-id", d.RuntimeID, "--connection", d.Connection}
+	switch action {
+	case "accept-replacement":
+		request = append(request, "--trusted-id", d.TrustedID)
+	case "enroll-internal":
+		request = append(request, "--role", d.Role)
+	case "trust-permanent":
+		portability, err := exec.CommandContext(ctx, "zenity", "--list", "--radiolist", "--title=Permanent USB trust", "--text=Choose whether this device may move between ports and docks on this machine.", "--column=Choose", "--column=Portable", "--column=Meaning", "--hide-column=2", "--print-column=2", "TRUE", "false", "Bind to this topology", "FALSE", "true", "Allow on other ports and docks").Output()
+		if err != nil {
+			return true
+		}
+		value := strings.TrimSpace(string(portability))
+		if value != "true" && value != "false" {
+			return true
+		}
+		request = append(request, "--portable="+value)
+	}
+	output, err := usbAuthorize(ctx, d.Identity.Name, append([]string{executable}, request...))
+	if err == nil || ctx.Err() != nil {
+		return true
+	}
+	_, _ = exec.Command("zenity", "--error", "--title=USB decision failed", "--text="+html.EscapeString(string(output))).Output()
+	return false
+}
+
+// usbWhilePresent returns a context that ends once the review connection
+// leaves the policy, so prompts for an unplugged device close within a second.
+func usbWhilePresent(ctx context.Context, connection string) (context.Context, context.CancelFunc) {
+	ctx, cancel := context.WithCancel(ctx)
+	go func() {
+		ticker := time.NewTicker(time.Second)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-ticker.C:
+			}
+			callCtx, done := context.WithTimeout(ctx, 2*time.Second)
+			response, err := broker.Call(callCtx, broker.DefaultSocket, broker.Request{Action: broker.ActionPolicy})
+			done()
+			// An unreachable broker is not proof of removal.
+			if err == nil && !usbConnectionActive(response.Policy, connection) {
+				cancel()
+				return
+			}
+		}
+	}()
+	return ctx, cancel
+}
+
+func usbConnectionActive(policy []usbtrust.Decision, connection string) bool {
+	for _, d := range policy {
+		if d.Connection == connection {
+			return true
+		}
+	}
+	return false
 }
 
 // usbReviewNotice builds the notify-send arguments announcing a device that
@@ -444,8 +492,12 @@ func usbAuthorize(ctx context.Context, name string, command []string) ([]byte, e
 		// A scan that finished after "Use password" may have cached a
 		// timestamp; drop it so the password prompt really appears.
 		_ = exec.CommandContext(ctx, sudo, "-k").Run()
-		// pam_askpass_service limits this phase to the password.
-		if output, err := exec.CommandContext(ctx, sudo, "-A", authHelper).CombinedOutput(); err != nil {
+		// pam_askpass_service limits this phase to the password. The askpass
+		// dialog is a child of sudo, so cancelling kills the whole group.
+		password := exec.CommandContext(ctx, sudo, "-A", authHelper)
+		password.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
+		password.Cancel = func() error { return syscall.Kill(-password.Process.Pid, syscall.SIGKILL) }
+		if output, err := password.CombinedOutput(); err != nil {
 			return append([]byte("Authentication failed.\n"), output...), err
 		}
 	}
