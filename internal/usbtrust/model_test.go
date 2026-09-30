@@ -1,6 +1,9 @@
 package usbtrust
 
-import "testing"
+import (
+	"strings"
+	"testing"
+)
 
 func TestDocumentRejectsDuplicateInternalRole(t *testing.T) {
 	first := internalTrusted()
@@ -28,5 +31,24 @@ func TestDocumentRejectsUnknownIdentityStrength(t *testing.T) {
 	doc := *trustedDocument(device)
 	if err := doc.Validate(); err == nil {
 		t.Fatal("accepted unknown identity strength")
+	}
+}
+
+func TestLegacyDocumentCanonicalFormIsUnchanged(t *testing.T) {
+	// Existing TPM signatures cover documents without enforcement state.
+	payload, err := Canonical(*trustedDocument(internalTrusted()))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(payload), "enforcement") {
+		t.Fatalf("legacy canonical form changed: %s", payload)
+	}
+}
+
+func TestDocumentRejectsUndatedEnforcement(t *testing.T) {
+	doc := *trustedDocument(internalTrusted())
+	doc.Enforcement = &Enforcement{Armed: true}
+	if err := doc.Validate(); err == nil {
+		t.Fatal("accepted enforcement state without times")
 	}
 }

@@ -56,12 +56,22 @@ type Device struct {
 	LastAccepted   string           `json:"lastAccepted"`
 }
 
+// Enforcement is signed with the trust records so that switching blocking off
+// is a TPM-signed decision, not a configuration flag.
+type Enforcement struct {
+	Armed bool `json:"armed"`
+	// EnrolledAt records the one-time automatic internal enrollment.
+	EnrolledAt string `json:"enrolledAt"`
+	ChangedAt  string `json:"changedAt"`
+}
+
 type Document struct {
-	Schema    int      `json:"schema"`
-	MachineID string   `json:"machineId"`
-	ODDCModel string   `json:"oddcModel"`
-	Revision  uint64   `json:"revision"`
-	Devices   []Device `json:"devices"`
+	Schema      int          `json:"schema"`
+	MachineID   string       `json:"machineId"`
+	ODDCModel   string       `json:"oddcModel"`
+	Revision    uint64       `json:"revision"`
+	Devices     []Device     `json:"devices"`
+	Enforcement *Enforcement `json:"enforcement,omitempty"`
 }
 
 func (d *Document) Normalize() {
@@ -89,6 +99,10 @@ func (d Document) Validate() error {
 
 	if d.Revision == 0 {
 		return errors.New("revision must be greater than zero")
+	}
+
+	if d.Enforcement != nil && (strings.TrimSpace(d.Enforcement.EnrolledAt) == "" || strings.TrimSpace(d.Enforcement.ChangedAt) == "") {
+		return errors.New("enforcement state requires enrollment and change times")
 	}
 
 	seen := make(map[string]struct{}, len(d.Devices))
