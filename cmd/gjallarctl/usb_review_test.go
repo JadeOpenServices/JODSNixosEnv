@@ -42,7 +42,7 @@ func TestUSBReviewUsesOnlyDomainActions(t *testing.T) {
 			rows, available := usbReviewChoices(tc.decision)
 			wantRows := []string{
 				"TRUE", "keep-blocked", "Keep blocked",
-				"FALSE", "allow-once", "Allow once, until disconnect",
+				"FALSE", "allow-once", "Allow until unplugged",
 			}
 			if !reflect.DeepEqual(rows, wantRows) {
 				t.Fatalf("review invented or mislabeled an action: got %q, want %q", rows, wantRows)
@@ -147,7 +147,7 @@ func TestUSBReviewSummaryFlagsAttackPatternsFirst(t *testing.T) {
 	if d.Risks, err = usbtrust.AssessIdentityRisk(d.Identity); err != nil {
 		t.Fatal(err)
 	}
-	summary := usbReviewSummary(d, true)
+	summary := usbReviewSummary(d, true, true)
 	if strings.Contains(summary, "<i>stick") {
 		t.Fatalf("device name reached dialog markup: %q", summary)
 	}
@@ -155,5 +155,37 @@ func TestUSBReviewSummaryFlagsAttackPatternsFirst(t *testing.T) {
 	fine := strings.Index(summary, usbFine+`">●</span> Has its own serial number`)
 	if bad < 0 || fine < 0 || bad > fine {
 		t.Fatalf("attack pattern missing or listed after reassurance:\n%s", summary)
+	}
+}
+
+func TestUSBReviewSimpleViewStaysPlain(t *testing.T) {
+	d := usbtrust.Decision{ObservedDevice: usbtrust.ObservedDevice{
+		Identity: usbtrust.Identity{Name: "stick", VIDPID: "dead:beef", Interfaces: []string{"03:01:01", "08:06:50"}},
+	}, Reason: string(usbtrust.CodeUnknownExternal)}
+	var err error
+	if d.Risks, err = usbtrust.AssessIdentityRisk(d.Identity); err != nil {
+		t.Fatal(err)
+	}
+	summary := usbReviewSummary(d, true, false)
+	if !strings.Contains(summary, usbBad+`">●</span> This device may be unsafe`) {
+		t.Fatalf("simple view hides the attack pattern:\n%s", summary)
+	}
+	if strings.Contains(summary, "dead:beef") || strings.Contains(summary, "Can type") {
+		t.Fatalf("simple view is not plain:\n%s", summary)
+	}
+}
+
+func TestUSBReviewTechnicalPreferenceToggles(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	if usbReviewTechnical() {
+		t.Fatal("technical view must be off by default")
+	}
+	setUSBReviewTechnical(true)
+	if !usbReviewTechnical() {
+		t.Fatal("technical view was not remembered")
+	}
+	setUSBReviewTechnical(false)
+	if usbReviewTechnical() {
+		t.Fatal("technical view was not switched off")
 	}
 }

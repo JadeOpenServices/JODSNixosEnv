@@ -10,6 +10,7 @@ import (
 	"os"
 	"os/exec"
 	"os/signal"
+	"path/filepath"
 	"sort"
 	"strconv"
 	"strings"
@@ -101,9 +102,6 @@ func runUSBReview(args []string, stderr io.Writer) int {
 					continue
 				}
 				seen[d.Connection] = true
-				text := usbReviewSummary(d, response.Enforcing)
-
-				dialog := []string{"--list", "--radiolist", "--title=USB device review", "--text=" + text, "--column=", "--column=Action", "--column=What to do", "--hide-column=2", "--print-column=2"}
 				rows, available := usbReviewChoices(d)
 				if len(rows) == 0 {
 					continue
@@ -115,12 +113,10 @@ func runUSBReview(args []string, stderr io.Writer) int {
 				if err != nil || !usbReviewRequested(string(picked)) {
 					continue
 				}
-				dialog = append(dialog, rows...)
-				choice, err := exec.CommandContext(ctx, "zenity", dialog...).Output()
-				if err != nil {
+				action, ok := usbReviewDialog(ctx, d, response.Enforcing, rows)
+				if !ok {
 					continue
 				}
-				action := strings.TrimSpace(string(choice))
 				if !available[action] {
 					continue
 				}
@@ -221,6 +217,8 @@ const (
 	usbBad     = "#d93b3b"
 )
 
+var usbReviewLegend = fmt.Sprintf("\n<small><span foreground=%q>●</span> fine   <span foreground=%q>●</span> unknown, check it   <span foreground=%q>●</span> known attack pattern</small>\n", usbFine, usbUnknown, usbBad)
+
 type usbFact struct {
 	colour string
 	text   string
@@ -300,15 +298,100 @@ func usbReviewFacts(d usbtrust.Decision) []usbFact {
 	return facts
 }
 
+// The review view button toggles between these labels. The choice is a
+// per-user presentation preference; the decision itself is unaffected.
+const (
+	usbTechyView  = "Techy view"
+	usbSimpleView = "Simple view"
+)
+
+// usbReviewDialog shows the review until an action is chosen or the dialog
+// is closed. It returns the chosen action.
+func usbReviewDialog(ctx context.Context, d usbtrust.Decision, enforcing bool, rows []string) (string, bool) {
+	for {
+		technical := usbReviewTechnical()
+		toggle := usbTechyView
+		if technical {
+			toggle = usbSimpleView
+		}
+		dialog := []string{"--list", "--radiolist", "--title=USB device review", "--text=" + usbReviewSummary(d, enforcing, technical), "--extra-button=" + toggle, "--column=", "--column=Action", "--column=What to do", "--hide-column=2", "--print-column=2"}
+		choice, err := exec.CommandContext(ctx, "zenity", append(dialog, rows...)...).Output()
+		picked := strings.TrimSpace(string(choice))
+		if err == nil {
+			return picked, true
+		}
+		// Zenity reports the extra button as a non-zero exit with its label.
+		if picked != toggle || ctx.Err() != nil {
+			return "", false
+		}
+		setUSBReviewTechnical(!technical)
+	}
+}
+
+func usbReviewTechnicalPath() string {
+	dir, err := os.UserConfigDir()
+	if err != nil {
+		return ""
+	}
+	return filepath.Join(dir, "gjallar", "usb-review-technical")
+}
+
+// usbReviewTechnical reports whether the user chose the detailed view.
+func usbReviewTechnical() bool {
+	path := usbReviewTechnicalPath()
+	if path == "" {
+		return false
+	}
+	_, err := os.Stat(path)
+	return err == nil
+}
+
+func setUSBReviewTechnical(on bool) {
+	path := usbReviewTechnicalPath()
+	if path == "" {
+		return
+	}
+	if !on {
+		_ = os.Remove(path)
+		return
+	}
+	if os.MkdirAll(filepath.Dir(path), 0o700) == nil {
+		_ = os.WriteFile(path, nil, 0o600)
+	}
+}
+
+// usbReviewVerdict condenses the facts into one plain statement for the
+// simple view. Any attack pattern wins over everything else.
+func usbReviewVerdict(d usbtrust.Decision) (colour, headline, advice string) {
+	for _, fact := range usbReviewFacts(d) {
+		if fact.colour == usbBad {
+			return usbBad, "This device may be unsafe", "Keep it blocked unless you know exactly what it is."
+		}
+	}
+	if usbtrust.AuditCode(d.Reason) == usbtrust.CodeInternalUnvalidated {
+		return usbFine, "Built-in part of this computer", "Trust it once and you will not be asked again."
+	}
+	return usbUnknown, "New device", "Allow it if you just plugged it in yourself."
+}
+
 // usbReviewSummary renders the review text as Pango markup for zenity.
 // Device strings are untrusted and always escaped.
-func usbReviewSummary(d usbtrust.Decision, enforcing bool) string {
+func usbReviewSummary(d usbtrust.Decision, enforcing, technical bool) string {
 	var b strings.Builder
 	name := d.Identity.Name
 	if name == "" {
 		name = "Unknown device"
 	}
 	fmt.Fprintf(&b, "<b>%s</b>\n", html.EscapeString(name))
+	if !technical {
+		colour, headline, advice := usbReviewVerdict(d)
+		fmt.Fprintf(&b, "\n<span foreground=%q>●</span> %s\n%s\n", colour, headline, advice)
+		b.WriteString(usbReviewLegend)
+		if !enforcing {
+			b.WriteString("<small>Blocking is off right now, so it already works.</small>")
+		}
+		return b.String()
+	}
 	if !enforcing {
 		b.WriteString(html.EscapeString(wrapUSBReviewText("Audit mode: this device already works. Your choice is saved for when blocking is on.", 72)) + "\n")
 	}
@@ -320,7 +403,7 @@ func usbReviewSummary(d usbtrust.Decision, enforcing bool) string {
 	for _, fact := range facts {
 		fmt.Fprintf(&b, "<span foreground=%q>●</span> %s\n", fact.colour, html.EscapeString(fact.text))
 	}
-	fmt.Fprintf(&b, "\n<small><span foreground=%q>●</span> fine   <span foreground=%q>●</span> unknown, check it   <span foreground=%q>●</span> known attack pattern</small>\n", usbFine, usbUnknown, usbBad)
+	b.WriteString(usbReviewLegend)
 	details := fmt.Sprintf("ID %s · serial %s · port %s · interfaces %s", d.Identity.VIDPID, usbOrNone(d.Identity.Serial), usbOrNone(d.Identity.Port), usbOrNone(strings.Join(d.Identity.Interfaces, ", ")))
 	if d.TrustedID != "" {
 		details += " · record " + d.TrustedID
@@ -430,9 +513,9 @@ func usbReviewChoices(d usbtrust.Decision) ([]string, map[string]bool) {
 		case usbtrust.ActionKeepBlocked:
 			label, selected = "Keep blocked", "TRUE"
 		case usbtrust.ActionAllowOnce:
-			label = "Allow once, until disconnect"
+			label = "Allow until unplugged"
 		case usbtrust.ActionTrustPermanent:
-			label = "Trust permanently on this machine"
+			label = "Always allow on this computer"
 		case usbtrust.ActionEnrollInternal:
 			label = "Enroll as expected internal role " + d.Role
 		case usbtrust.ActionAcceptReplacement:
