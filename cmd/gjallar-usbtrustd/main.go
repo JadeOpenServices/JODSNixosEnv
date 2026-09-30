@@ -33,6 +33,8 @@ type config struct {
 	stateDir       string
 	tpmHandle      string
 	usbguardBinary string
+	cryptsetup     string
+	luksDevices    []string
 	requestTimeout time.Duration
 }
 
@@ -103,9 +105,14 @@ func run(
 		cancel()
 	}
 	source := usbguardsource.LiveSource{Runner: usbguardsource.ExecRunner{}, Binary: cfg.usbguardBinary}
-	if cfg.enforce {
-		control.Apply = source.Apply
-	}
+	// The signed armed state decides whether Apply runs; --enforce only asks
+	// for the first arming.
+	control.Apply = source.Apply
+	control.Release = source.AllowAll
+	control.SetImplicitTarget = source.SetImplicitTarget
+	control.ArmOnStart = cfg.enforce
+	control.VerifyRecoveryKey = luksVerifier(cfg.cryptsetup, cfg.luksDevices)
+	control.DisarmDelay = 3 * time.Second
 	loopCtx, stopLoop := context.WithCancel(ctx)
 	defer stopLoop()
 	go func() {
@@ -113,7 +120,7 @@ func run(
 			requestCtx, cancel := context.WithTimeout(loopCtx, cfg.requestTimeout)
 			if err := control.Reconcile(requestCtx); err != nil {
 				fmt.Fprintf(stderr, "WARN: USB trust reconciliation: %v\n", err)
-				if cfg.enforce {
+				if control.EnforcementEnabled() {
 					// Use a fresh timeout so a failed verification cannot exhaust
 					// the time available to revoke previous authorizations.
 					blockCtx, blockCancel := context.WithTimeout(loopCtx, cfg.requestTimeout)
@@ -183,7 +190,15 @@ func parseConfig(
 	)
 	flags.SetOutput(stderr)
 	flags.StringVar(&cfg.resolvedFile, "oddc-resolved", "", "absolute JSON path of the resolved NixOS ODDC view")
-	flags.BoolVar(&cfg.enforce, "enforce", false, "apply derived runtime decisions to USBGuard")
+	flags.BoolVar(&cfg.enforce, "enforce", false, "arm USB enforcement; the first arming enrolls internal devices")
+	flags.StringVar(&cfg.cryptsetup, "cryptsetup-binary", "cryptsetup", "cryptsetup CLI binary")
+	flags.Func("luks-device", "LUKS device whose passphrase may disarm enforcement (repeatable)", func(value string) error {
+		if !filepath.IsAbs(value) {
+			return fmt.Errorf("must be absolute")
+		}
+		cfg.luksDevices = append(cfg.luksDevices, value)
+		return nil
+	})
 
 	flags.StringVar(
 		&cfg.socketPath,

@@ -242,7 +242,8 @@ func (c *Controller) syncImplicit(ctx context.Context) error {
 	if c.EnforcementEnabled() {
 		target = usbtrust.TargetBlock
 	}
-	if c.implicit == target {
+	// Audit mode leaves the configured fallback alone until blocking was on.
+	if c.implicit == target || (c.implicit == "" && target == usbtrust.TargetAllow) {
 		return nil
 	}
 	if err := c.SetImplicitTarget(ctx, target); err != nil {

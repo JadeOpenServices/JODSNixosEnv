@@ -30,6 +30,10 @@ let
       --request-timeout 30s \
       ${lib.optionalString (cfg.tpmHandle != null) "--tpm-handle ${lib.escapeShellArg cfg.tpmHandle}"} \
       ${lib.optionalString cfg.enforce "--enforce"} \
+      --cryptsetup-binary ${pkgs.cryptsetup}/bin/cryptsetup \
+      ${lib.concatMapStringsSep " " (
+        luks: "--luks-device ${lib.escapeShellArg luks.device}"
+      ) (lib.attrValues config.boot.initrd.luks.devices)} \
       --usbguard-binary ${pkgs.usbguard}/bin/usbguard
   '';
 in
@@ -43,7 +47,7 @@ in
     enforce = lib.mkOption {
       type = lib.types.bool;
       default = settings.usbTrustEnforce or false;
-      description = "Apply derived USB decisions. Leave false until enrollment and hardware validation are complete.";
+      description = "Arm USB blocking. The first arming enrolls ODDC internal devices; once armed, only the disk encryption passphrase (gjallarctl usb disarm) turns it off again.";
     };
     tpmHandle = lib.mkOption {
       type = lib.types.nullOr lib.types.str;

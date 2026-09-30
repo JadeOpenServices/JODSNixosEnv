@@ -58,3 +58,17 @@ func TestRevocationsPrecedeAllows(t *testing.T) {
 		t.Fatal(r.calls)
 	}
 }
+
+func TestImplicitTargetIsRuntimeOnly(t *testing.T) {
+	r := &enforcementRunner{}
+	s := LiveSource{Runner: r, Binary: "usbguard"}
+	if err := s.SetImplicitTarget(context.Background(), usbtrust.TargetBlock); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.SetImplicitTarget(context.Background(), usbtrust.Target("reject")); err == nil {
+		t.Fatal("accepted unsupported target")
+	}
+	if !reflect.DeepEqual(r.calls, [][]string{{"set-parameter", "ImplicitPolicyTarget", "block"}}) {
+		t.Fatal(r.calls)
+	}
+}

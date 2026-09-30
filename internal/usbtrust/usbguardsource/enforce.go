@@ -75,6 +75,31 @@ func (s LiveSource) BlockAll(ctx context.Context) error {
 	return errors.Join(failures...)
 }
 
+// AllowAll releases every present device after enforcement is disarmed.
+func (s LiveSource) AllowAll(ctx context.Context) error {
+	devices, err := s.Observed(ctx)
+	if err != nil {
+		return err
+	}
+	var failures []error
+	for _, d := range devices {
+		if _, err := s.Runner.Output(ctx, s.Binary, "allow-device", d.RuntimeID); err != nil {
+			failures = append(failures, err)
+		}
+	}
+	return errors.Join(failures...)
+}
+
+// SetImplicitTarget changes USBGuard's runtime fallback for devices that have
+// no rule yet. The daemon configuration file is left untouched.
+func (s LiveSource) SetImplicitTarget(ctx context.Context, target usbtrust.Target) error {
+	if target != usbtrust.TargetAllow && target != usbtrust.TargetBlock {
+		return fmt.Errorf("invalid implicit policy target")
+	}
+	_, err := s.Runner.Output(ctx, s.Binary, "set-parameter", "ImplicitPolicyTarget", string(target))
+	return err
+}
+
 func sameIdentity(a, b usbtrust.Identity) bool {
 	a.Interfaces = append([]string(nil), a.Interfaces...)
 	b.Interfaces = append([]string(nil), b.Interfaces...)
