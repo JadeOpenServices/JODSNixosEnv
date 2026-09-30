@@ -117,14 +117,14 @@ func runUSBReview(args []string, stderr io.Writer) int {
 					text = "AUDIT MODE: USB blocking is not active. Keep blocked leaves the derived blocked decision unchanged; Allow once is memory-only for this connection; signed trust and enrollment choices persist but are not enforced until enforcement is enabled.\n\n" + text
 				}
 
-				dialog := []string{"--list", "--radiolist", "--title=USB device review", "--text=" + html.EscapeString(text), "--column=Choose", "--column=Action", "--column=Meaning", "--hide-column=2", "--print-column=2"}
+				dialog := []string{"--list", "--radiolist", "--title=USB device review", "--text=" + html.EscapeString(wrapUSBReviewText(text, 72)), "--column=Choose", "--column=Action", "--column=Meaning", "--hide-column=2", "--print-column=2"}
 				rows, available := usbReviewChoices(d)
 				if len(rows) == 0 {
 					continue
 				}
 				// Announce the block quietly; the review dialog opens only on
 				// request. Dismissing the notice keeps the device blocked.
-				notice := exec.CommandContext(ctx, "notify-send", usbReviewNotice(d)...)
+				notice := exec.CommandContext(ctx, "notify-send", usbReviewNotice(d, response.Enforcing)...)
 				picked, err := notice.Output()
 				if err != nil || !usbReviewRequested(string(picked)) {
 					continue
@@ -161,15 +161,7 @@ func runUSBReview(args []string, stderr io.Writer) int {
 					}
 					request = append(request, "--portable="+value)
 				}
-				// USB trust mutations require fresh authentication for every
-				// decision. GjallarOS sudo PAM tries an enrolled fingerprint
-				// first and falls back to a fresh password conversation.
-				command := exec.CommandContext(
-					ctx,
-					"/run/wrappers/bin/sudo",
-					append([]string{"-k", "-A", "--", executable}, request...)...,
-				)
-				if output, err := command.CombinedOutput(); err != nil {
+				if output, err := usbAuthorize(ctx, d.Identity.Name, append([]string{executable}, request...)); err != nil {
 					_, _ = exec.CommandContext(ctx, "zenity", "--error", "--title=USB decision failed", "--text="+html.EscapeString(string(output))).Output()
 					delete(seen, d.Connection)
 				}
@@ -188,11 +180,17 @@ func runUSBReview(args []string, stderr io.Writer) int {
 	return 0
 }
 
-// usbReviewNotice builds the notify-send arguments announcing a blocked device.
-func usbReviewNotice(d usbtrust.Decision) []string {
+// usbReviewNotice builds the notify-send arguments announcing a device that
+// needs a decision. In audit mode the device already works, so the notice
+// must not claim it is blocked.
+func usbReviewNotice(d usbtrust.Decision, enforcing bool) []string {
 	name := d.Identity.Name
 	if name == "" {
 		name = "Unknown device"
+	}
+	summary, dismiss := "USB device blocked", "--action=keep=Keep blocked"
+	if !enforcing {
+		summary, dismiss = "Untrusted USB device (audit mode, not blocked)", "--action=keep=Ignore"
 	}
 	return []string{
 		"--app-name=USB Guard",
@@ -200,10 +198,106 @@ func usbReviewNotice(d usbtrust.Decision) []string {
 		"--expire-time=0",
 		"--action=default=Review",
 		"--action=review=Review…",
-		"--action=keep=Keep blocked",
-		"USB device blocked",
+		dismiss,
+		summary,
 		// Notification bodies may carry markup; device strings are untrusted.
 		html.EscapeString(fmt.Sprintf("%s (%s)", name, d.Identity.VIDPID)),
+	}
+}
+
+// wrapUSBReviewText breaks long lines at spaces. Zenity never wraps the list
+// dialog text, so one long line would set a minimum width wider than the
+// screen and override the compositor's size rule.
+func wrapUSBReviewText(text string, width int) string {
+	var out []string
+	for _, line := range strings.Split(text, "\n") {
+		current := ""
+		for _, word := range strings.Fields(line) {
+			if current != "" && len([]rune(current))+1+len([]rune(word)) > width {
+				out = append(out, current)
+				current = ""
+			}
+			if current != "" {
+				current += " "
+			}
+			current += word
+		}
+		out = append(out, current)
+	}
+	return strings.Join(out, "\n")
+}
+
+// usbAuthorize runs one USB trust mutation behind fresh authentication. The
+// fingerprint is tried first while a notice offers the password instead; a
+// failed or skipped scan opens the password prompt at once. The credential
+// cached for the command is dropped again afterwards.
+func usbAuthorize(ctx context.Context, name string, command []string) ([]byte, error) {
+	const sudo = "/run/wrappers/bin/sudo"
+	authHelper, err := siblingExecutable("gjallar-sudo-auth")
+	if err != nil {
+		return []byte(err.Error()), err
+	}
+	_ = exec.CommandContext(ctx, sudo, "-k").Run()
+	defer func() { _ = exec.Command(sudo, "-k").Run() }()
+
+	if !usbFingerprintAuth(ctx, sudo, authHelper, name) {
+		// pam_askpass_service limits this phase to the password.
+		if output, err := exec.CommandContext(ctx, sudo, "-A", authHelper).CombinedOutput(); err != nil {
+			return append([]byte("Authentication failed.\n"), output...), err
+		}
+	}
+	return exec.CommandContext(ctx, sudo, append([]string{"-n", "--"}, command...)...).CombinedOutput()
+}
+
+// usbFingerprintAuth waits for the fingerprint-only sudo phase while a notice
+// explains what is happening. Choosing "Use password" cancels the scan.
+func usbFingerprintAuth(ctx context.Context, sudo, authHelper, name string) bool {
+	scanCtx, cancel := context.WithCancel(ctx)
+	defer cancel()
+
+	scan := exec.CommandContext(scanCtx, sudo, authHelper)
+	scan.Cancel = func() error { return scan.Process.Signal(syscall.SIGTERM) }
+	if err := scan.Start(); err != nil {
+		return false
+	}
+	scanned := make(chan error, 1)
+	go func() { scanned <- scan.Wait() }()
+
+	// SIGINT makes notify-send close the notice it is waiting on.
+	notice := exec.CommandContext(scanCtx, "notify-send", usbFingerprintNotice(name)...)
+	notice.Cancel = func() error { return notice.Process.Signal(os.Interrupt) }
+	picked := make(chan string, 1)
+	go func() {
+		output, _ := notice.Output()
+		picked <- string(output)
+	}()
+
+	select {
+	case err := <-scanned:
+		return err == nil
+	case output := <-picked:
+		if strings.TrimSpace(output) == "password" {
+			cancel()
+			<-scanned
+			return false
+		}
+		// A dismissed notice leaves the scan running.
+		return <-scanned == nil
+	}
+}
+
+// usbFingerprintNotice builds the notify-send arguments for the scan prompt.
+func usbFingerprintNotice(name string) []string {
+	if name == "" {
+		name = "this USB device"
+	}
+	return []string{
+		"--app-name=USB Guard",
+		"--icon=fingerprint",
+		"--expire-time=0",
+		"--action=password=Use password",
+		"Touch the fingerprint reader",
+		html.EscapeString("to authorize " + name),
 	}
 }
 

@@ -2,6 +2,7 @@ package main
 
 import (
 	"reflect"
+	"strings"
 	"testing"
 
 	"github.com/bakanura/gjallarOS/internal/usbtrust"
@@ -97,7 +98,7 @@ func TestUSBReviewNoticeEscapesDeviceStrings(t *testing.T) {
 	d := usbtrust.Decision{ObservedDevice: usbtrust.ObservedDevice{
 		Identity: usbtrust.Identity{Name: `<b>Keyboard</b>`, VIDPID: "dead:beef"},
 	}}
-	args := usbReviewNotice(d)
+	args := usbReviewNotice(d, true)
 	body := args[len(args)-1]
 	if body != "&lt;b&gt;Keyboard&lt;/b&gt; (dead:beef)" {
 		t.Fatalf("device name reached notification markup: %q", body)
@@ -114,5 +115,26 @@ func TestUSBReviewOpensOnlyOnRequest(t *testing.T) {
 		if got := usbReviewRequested(output); got != want {
 			t.Fatalf("usbReviewRequested(%q) = %v, want %v", output, got, want)
 		}
+	}
+}
+
+func TestUSBReviewNoticeDoesNotClaimBlockInAuditMode(t *testing.T) {
+	args := usbReviewNotice(usbtrust.Decision{}, false)
+	for _, arg := range args {
+		if arg == "USB device blocked" || arg == "--action=keep=Keep blocked" {
+			t.Fatalf("audit-mode notice claims the device is blocked: %q", args)
+		}
+	}
+}
+
+func TestUSBReviewTextWrapsLongLines(t *testing.T) {
+	long := strings.Repeat("word ", 40) + "\n\nshort"
+	for _, line := range strings.Split(wrapUSBReviewText(long, 30), "\n") {
+		if len(line) > 30 {
+			t.Fatalf("line exceeds width: %q", line)
+		}
+	}
+	if !strings.HasSuffix(wrapUSBReviewText(long, 30), "\n\nshort") {
+		t.Fatal("wrapping dropped paragraph breaks")
 	}
 }
