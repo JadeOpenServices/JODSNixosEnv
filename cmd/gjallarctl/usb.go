@@ -23,7 +23,7 @@ import (
 
 func runUSB(args []string, stdout, stderr io.Writer) int {
 	if len(args) == 0 {
-		fmt.Fprintln(stderr, "Usage: gjallarctl usb {status|audit|policy|review|provision-key|allow-once|trust-permanent|keep-blocked|enroll-internal|accept-replacement|forget} [--runtime-id ID --connection TOKEN] [--trusted-id ID] [--role ROLE] [--portable=true|false]")
+		fmt.Fprintln(stderr, "Usage: gjallarctl usb {status|audit|policy|review|provision-key|allow-once|trust-permanent|keep-blocked|enroll-internal|accept-replacement|forget|disarm} [--runtime-id ID --connection TOKEN] [--trusted-id ID] [--role ROLE] [--portable=true|false]")
 		return 2
 	}
 	if args[0] == "review" {
@@ -52,6 +52,14 @@ func runUSB(args []string, stdout, stderr io.Writer) int {
 			return 2
 		}
 		r.Portable = &value
+	}
+	if r.Action == broker.ActionDisarm {
+		key, err := usbReadRecoveryKey(os.Stdin, stderr)
+		if err != nil {
+			fmt.Fprintf(stderr, "FAIL: %v\n", err)
+			return 2
+		}
+		r.RecoveryKey = key
 	}
 	if err := broker.ValidateRequest(r); err != nil {
 		fmt.Fprintf(stderr, "FAIL: %v\n", err)
