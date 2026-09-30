@@ -138,3 +138,22 @@ func TestUSBReviewTextWrapsLongLines(t *testing.T) {
 		t.Fatal("wrapping dropped paragraph breaks")
 	}
 }
+
+func TestUSBReviewSummaryFlagsAttackPatternsFirst(t *testing.T) {
+	d := usbtrust.Decision{ObservedDevice: usbtrust.ObservedDevice{
+		Identity: usbtrust.Identity{Name: "<i>stick</i>", VIDPID: "dead:beef", Serial: "S1", Interfaces: []string{"03:01:01", "08:06:50"}},
+	}, Reason: string(usbtrust.CodeUnknownExternal)}
+	var err error
+	if d.Risks, err = usbtrust.AssessIdentityRisk(d.Identity); err != nil {
+		t.Fatal(err)
+	}
+	summary := usbReviewSummary(d, true)
+	if strings.Contains(summary, "<i>stick") {
+		t.Fatalf("device name reached dialog markup: %q", summary)
+	}
+	bad := strings.Index(summary, usbBad+`">●</span> Stores files and can type`)
+	fine := strings.Index(summary, usbFine+`">●</span> Has its own serial number`)
+	if bad < 0 || fine < 0 || bad > fine {
+		t.Fatalf("attack pattern missing or listed after reassurance:\n%s", summary)
+	}
+}

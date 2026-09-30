@@ -10,6 +10,7 @@ import (
 	"os"
 	"os/exec"
 	"os/signal"
+	"sort"
 	"strconv"
 	"strings"
 	"syscall"
@@ -100,24 +101,9 @@ func runUSBReview(args []string, stderr io.Writer) int {
 					continue
 				}
 				seen[d.Connection] = true
-				text := fmt.Sprintf("%s (%s)\nSerial: %s\nPort: %s\nParent: %s\nInterfaces: %s\nReason: %s\n", d.Identity.Name, d.Identity.VIDPID, d.Identity.Serial, d.Identity.Port, d.Identity.ParentHash, strings.Join(d.Identity.Interfaces, ", "), d.Reason)
-				if d.Role != "" {
-					text += "ODDC role: " + d.Role + "\n"
-				}
-				if d.TrustedID != "" {
-					text += "Trusted record: " + d.TrustedID + "\n"
-				}
-				text += "\nUSB descriptors and serials can be spoofed.\n"
-				for _, risk := range d.Risks {
-					// Risk text is presentation only; decisions remain daemon-owned.
-					text += "\n" + string(risk.Severity) + ": " + risk.Detail
-				}
+				text := usbReviewSummary(d, response.Enforcing)
 
-				if !response.Enforcing {
-					text = "AUDIT MODE: USB blocking is not active. Keep blocked leaves the derived blocked decision unchanged; Allow once is memory-only for this connection; signed trust and enrollment choices persist but are not enforced until enforcement is enabled.\n\n" + text
-				}
-
-				dialog := []string{"--list", "--radiolist", "--title=USB device review", "--text=" + html.EscapeString(wrapUSBReviewText(text, 72)), "--column=Choose", "--column=Action", "--column=Meaning", "--hide-column=2", "--print-column=2"}
+				dialog := []string{"--list", "--radiolist", "--title=USB device review", "--text=" + text, "--column=", "--column=Action", "--column=What to do", "--hide-column=2", "--print-column=2"}
 				rows, available := usbReviewChoices(d)
 				if len(rows) == 0 {
 					continue
@@ -225,6 +211,129 @@ func wrapUSBReviewText(text string, width int) string {
 		out = append(out, current)
 	}
 	return strings.Join(out, "\n")
+}
+
+// USB review markers. Red is reserved for known attack patterns; the
+// daemon never classifies products, so nothing is claimed as proven malware.
+const (
+	usbFine    = "#2e9d4f"
+	usbUnknown = "#8e5bd6"
+	usbBad     = "#d93b3b"
+)
+
+type usbFact struct {
+	colour string
+	text   string
+}
+
+// usbReviewFacts translates the daemon's decision into plain statements.
+// Every risk finding is shown; unknown codes fall back to their detail text.
+func usbReviewFacts(d usbtrust.Decision) []usbFact {
+	var facts []usbFact
+	add := func(colour, text string) { facts = append(facts, usbFact{colour, text}) }
+	role := d.Role
+	if role == "" {
+		role = "part"
+	}
+	switch usbtrust.AuditCode(d.Reason) {
+	case usbtrust.CodeInternalUnvalidated:
+		add(usbFine, "Looks like this computer's built-in "+role)
+		add(usbUnknown, "Not yet confirmed as the built-in "+role)
+	case usbtrust.CodeInternalChanged:
+		add(usbBad, "Differs from the built-in "+role+" trusted before")
+	case usbtrust.CodeTrustedExternalChanged:
+		add(usbBad, "Claims to be a trusted device, but its details changed")
+	case usbtrust.CodeUnexpectedInternal:
+		add(usbBad, "Unexpected device inside this computer")
+	case usbtrust.CodeInternalAmbiguous:
+		add(usbUnknown, "Cannot tell which built-in part this is")
+	default:
+		add(usbUnknown, "Never trusted on this computer")
+	}
+	if d.Identity.Serial == "" {
+		add(usbUnknown, "No serial number, so copies look identical")
+	} else {
+		add(usbFine, "Has its own serial number")
+	}
+	codes := map[string]bool{}
+	for _, risk := range d.Risks {
+		codes[risk.Code] = true
+	}
+	if !codes[usbtrust.RiskHIDInput] {
+		add(usbFine, "Cannot type or move the pointer")
+	}
+	if !codes[usbtrust.RiskNetwork] {
+		add(usbFine, "No network connection")
+	}
+	for _, risk := range d.Risks {
+		switch risk.Code {
+		case "descriptor-only":
+			// Covered by the serial number statement.
+		case usbtrust.RiskHIDInput:
+			add(usbUnknown, "Can type like a keyboard (normal for keyboards and passkeys)")
+		case usbtrust.RiskMassStorage:
+			add(usbUnknown, "Stores files")
+		case usbtrust.RiskNetwork:
+			add(usbUnknown, "Can act as a network adapter")
+		case usbtrust.RiskWirelessController:
+			add(usbUnknown, "Wireless controller, such as Bluetooth")
+		case usbtrust.RiskVendorSpecific:
+			add(usbUnknown, "Has a maker-specific function that cannot be inspected")
+		case usbtrust.RiskHub:
+			add(usbFine, "USB hub")
+		case usbtrust.RiskBillboard:
+			add(usbFine, "Adapter information only")
+		case usbtrust.RiskComposite:
+			add(usbUnknown, "Combines several functions")
+		case usbtrust.RiskHIDStorageComposite:
+			add(usbBad, "Stores files and can type: a known attack trick")
+		case usbtrust.RiskHIDNetworkComposite:
+			add(usbBad, "Can type and act as a network adapter: a known attack trick")
+		default:
+			colour := usbUnknown
+			if risk.Severity == usbtrust.RiskHigh {
+				colour = usbBad
+			}
+			add(colour, risk.Detail)
+		}
+	}
+	return facts
+}
+
+// usbReviewSummary renders the review text as Pango markup for zenity.
+// Device strings are untrusted and always escaped.
+func usbReviewSummary(d usbtrust.Decision, enforcing bool) string {
+	var b strings.Builder
+	name := d.Identity.Name
+	if name == "" {
+		name = "Unknown device"
+	}
+	fmt.Fprintf(&b, "<b>%s</b>\n", html.EscapeString(name))
+	if !enforcing {
+		b.WriteString(html.EscapeString(wrapUSBReviewText("Audit mode: this device already works. Your choice is saved for when blocking is on.", 72)) + "\n")
+	}
+	b.WriteString("\n")
+	facts := usbReviewFacts(d)
+	// Warnings first, reassurance last.
+	rank := map[string]int{usbBad: 0, usbUnknown: 1, usbFine: 2}
+	sort.SliceStable(facts, func(i, j int) bool { return rank[facts[i].colour] < rank[facts[j].colour] })
+	for _, fact := range facts {
+		fmt.Fprintf(&b, "<span foreground=%q>●</span> %s\n", fact.colour, html.EscapeString(fact.text))
+	}
+	fmt.Fprintf(&b, "\n<small><span foreground=%q>●</span> fine   <span foreground=%q>●</span> unknown, check it   <span foreground=%q>●</span> known attack pattern</small>\n", usbFine, usbUnknown, usbBad)
+	details := fmt.Sprintf("ID %s · serial %s · port %s · interfaces %s", d.Identity.VIDPID, usbOrNone(d.Identity.Serial), usbOrNone(d.Identity.Port), usbOrNone(strings.Join(d.Identity.Interfaces, ", ")))
+	if d.TrustedID != "" {
+		details += " · record " + d.TrustedID
+	}
+	fmt.Fprintf(&b, "<small><span foreground=\"gray\">%s</span></small>", html.EscapeString(wrapUSBReviewText(details, 90)))
+	return b.String()
+}
+
+func usbOrNone(value string) string {
+	if value == "" {
+		return "none"
+	}
+	return value
 }
 
 // usbAuthorize runs one USB trust mutation behind fresh authentication. The
