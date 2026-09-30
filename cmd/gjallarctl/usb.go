@@ -433,6 +433,9 @@ func usbAuthorize(ctx context.Context, name string, command []string) ([]byte, e
 	defer func() { _ = exec.Command(sudo, "-k").Run() }()
 
 	if !usbFingerprintAuth(ctx, sudo, authHelper, name) {
+		// A scan that finished after "Use password" may have cached a
+		// timestamp; drop it so the password prompt really appears.
+		_ = exec.CommandContext(ctx, sudo, "-k").Run()
 		// pam_askpass_service limits this phase to the password.
 		if output, err := exec.CommandContext(ctx, sudo, "-A", authHelper).CombinedOutput(); err != nil {
 			return append([]byte("Authentication failed.\n"), output...), err
@@ -447,8 +450,9 @@ func usbFingerprintAuth(ctx context.Context, sudo, authHelper, name string) bool
 	scanCtx, cancel := context.WithCancel(ctx)
 	defer cancel()
 
+	// sudo ignores SIGTERM while pam_fprintd waits for a finger, so the
+	// scan has to be killed for "Use password" to take effect at once.
 	scan := exec.CommandContext(scanCtx, sudo, authHelper)
-	scan.Cancel = func() error { return scan.Process.Signal(syscall.SIGTERM) }
 	if err := scan.Start(); err != nil {
 		return false
 	}
