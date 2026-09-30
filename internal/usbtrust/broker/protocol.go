@@ -22,6 +22,7 @@ const (
 	ActionForget            = usbtrust.ActionForget
 	ActionAcceptReplacement = usbtrust.ActionAcceptReplacement
 	ActionEnrollInternal    = usbtrust.ActionEnrollInternal
+	ActionDisarm            = usbtrust.ActionDisarm
 )
 
 type Request struct {
@@ -34,11 +35,15 @@ type Request struct {
 	// Portable is explicit for permanent external trust.
 	// nil means the caller did not make a portability decision.
 	Portable *bool `json:"portable,omitempty"`
+
+	// RecoveryKey is the disk encryption passphrase that authorizes disarm.
+	RecoveryKey string `json:"recoveryKey,omitempty"`
 }
 
 type Status struct {
 	Devices             []usbtrust.Device `json:"devices,omitempty"`
 	Enforcing           bool              `json:"enforcing"`
+	Armed               bool              `json:"armed"`
 	PermanentTrustReady bool              `json:"permanentTrustReady"`
 	StatePresent        bool              `json:"statePresent"`
 	Revision            uint64            `json:"revision,omitempty"`
@@ -76,6 +81,9 @@ func ValidateRequest(request Request) error {
 		}
 		if request.Portable != nil && request.Action != ActionTrustPermanent {
 			return fmt.Errorf("%s does not accept portable", request.Action)
+		}
+		if request.RecoveryKey != "" && request.Action != ActionDisarm {
+			return fmt.Errorf("%s does not accept recoveryKey", request.Action)
 		}
 		if request.Action == ActionForget && (request.RuntimeID != "" || request.Connection != "") {
 			return fmt.Errorf("forget does not accept a connection")
@@ -124,6 +132,14 @@ func ValidateRequest(request Request) error {
 			)
 		}
 
+	case ActionDisarm:
+		if request.RuntimeID != "" || request.TrustedID != "" || request.Connection != "" {
+			return fmt.Errorf("%s does not accept device arguments", request.Action)
+		}
+		if request.RecoveryKey == "" {
+			return fmt.Errorf("%s requires the disk encryption passphrase", request.Action)
+		}
+
 	case ActionEnrollInternal:
 		if err := requireCurrentConnection(request); err != nil {
 			return err
@@ -156,7 +172,8 @@ func noMutationArguments(request Request) error {
 		request.TrustedID != "" ||
 		request.Role != "" ||
 		request.Connection != "" ||
-		request.Portable != nil {
+		request.Portable != nil ||
+		request.RecoveryKey != "" {
 		return fmt.Errorf(
 			"%s does not accept mutation arguments",
 			request.Action,

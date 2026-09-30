@@ -13,6 +13,7 @@ const (
 	ActionForget            Action = "forget"
 	ActionAcceptReplacement Action = "accept-replacement"
 	ActionEnrollInternal    Action = "enroll-internal"
+	ActionDisarm            Action = "disarm"
 )
 
 func (a Action) Valid() bool {
@@ -26,7 +27,8 @@ func (a Action) Valid() bool {
 		ActionTrustPermanent,
 		ActionForget,
 		ActionAcceptReplacement,
-		ActionEnrollInternal:
+		ActionEnrollInternal,
+		ActionDisarm:
 		return true
 	default:
 		return false
@@ -42,7 +44,8 @@ func (a Action) Mutation() bool {
 		ActionTrustPermanent,
 		ActionForget,
 		ActionAcceptReplacement,
-		ActionEnrollInternal:
+		ActionEnrollInternal,
+		ActionDisarm:
 		return true
 	default:
 		return false

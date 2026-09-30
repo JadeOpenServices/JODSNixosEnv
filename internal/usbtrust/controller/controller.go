@@ -8,6 +8,7 @@ import (
 	"encoding/hex"
 	"fmt"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/bakanura/gjallarOS/internal/usbtrust"
@@ -21,15 +22,35 @@ type Controller struct {
 	MachineID, ModelID, StateDir string
 	Signer                       usbtrust.Signer
 	// Apply receives derived policy only; no adapter may create trust records.
-	Apply            func(context.Context, []usbtrust.Decision) error
-	Commit           func(context.Context, usbtrust.Document) error
-	Provision        func(context.Context) error
+	Apply     func(context.Context, []usbtrust.Decision) error
+	Commit    func(context.Context, usbtrust.Document) error
+	Provision func(context.Context) error
+	// ArmOnStart arms enforcement once signed state can be written. The first
+	// arming also enrolls every unvalidated ODDC internal device.
+	ArmOnStart bool
+	// SetImplicitTarget keeps USBGuard's fallback in step with the armed state.
+	SetImplicitTarget func(context.Context, usbtrust.Target) error
+	// Release allows present devices again after a verified disarm.
+	Release func(context.Context) error
+	// VerifyRecoveryKey checks the disk encryption passphrase for disarm.
+	VerifyRecoveryKey func(context.Context, []byte) error
+	// DisarmDelay slows repeated passphrase guesses.
+	DisarmDelay      time.Duration
 	mu               sync.Mutex
 	sessions         usbtrust.Sessions
 	persistenceReady bool
+	implicit         usbtrust.Target
+	// armed mirrors the last verified document; disarmed withdraws ArmOnStart
+	// until the daemon restarts.
+	armed, disarmed atomic.Bool
 }
 
-func (c *Controller) EnforcementEnabled() bool { return c.Apply != nil }
+func (c *Controller) EnforcementEnabled() bool {
+	if c.Apply == nil {
+		return false
+	}
+	return c.armed.Load() || (c.ArmOnStart && !c.disarmed.Load())
+}
 
 func (c *Controller) SetPersistenceReady(ready bool) {
 	c.mu.Lock()
@@ -51,6 +72,7 @@ func (c *Controller) Status(ctx context.Context) (broker.Status, error) {
 		ObservedDevices:     len(input.Observed),
 	}
 	s.Enforcing = c.EnforcementEnabled()
+	s.Armed = c.armed.Load()
 	if input.Trusted != nil {
 		s.Revision = input.Trusted.Revision
 		s.TrustedDevices = len(input.Trusted.Devices)
@@ -93,7 +115,141 @@ func (c *Controller) Reconcile(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
+	if c.ArmOnStart && !c.disarmed.Load() && !c.armed.Load() && c.persistenceReady {
+		if err := c.arm(ctx, &input); err != nil {
+			return fmt.Errorf("arm USB enforcement: %w", err)
+		}
+	}
 	return c.apply(ctx, input)
+}
+
+// arm signs the armed state. Automatic internal enrollment happens only the
+// first time; re-arming after a disarm trusts nothing new.
+func (c *Controller) arm(ctx context.Context, input *usbtrust.AuditInput) error {
+	doc, err := c.next(input.Trusted)
+	if err != nil {
+		return err
+	}
+	now := time.Now().UTC().Format(time.RFC3339)
+	state := usbtrust.Enforcement{Armed: true, EnrolledAt: now, ChangedAt: now}
+	if doc.Enforcement != nil {
+		state.EnrolledAt = doc.Enforcement.EnrolledAt
+	} else {
+		audit, err := usbtrust.Audit(*input)
+		if err != nil {
+			return err
+		}
+		for _, finding := range audit.Findings {
+			if finding.Code != usbtrust.CodeInternalUnvalidated {
+				continue
+			}
+			for _, observed := range input.Observed {
+				if observed.RuntimeID != finding.RuntimeID || !hasTopology(observed.Identity) {
+					continue
+				}
+				device, err := newDevice(observed.Identity, now)
+				if err != nil {
+					return err
+				}
+				device.Class, device.Role, device.ExpectedByODDC = usbtrust.ClassInternal, finding.Role, true
+				if device.Identity.Serial != "" {
+					device.Strength = usbtrust.StrengthSerialDescriptorTopology
+				}
+				doc.Devices = append(doc.Devices, device)
+			}
+		}
+	}
+	doc.Enforcement = &state
+	if err := doc.Validate(); err != nil {
+		return err
+	}
+	if err := c.commit(ctx, doc); err != nil {
+		return err
+	}
+	input.Trusted = &doc
+	c.armed.Store(true)
+	return c.sessions.Observe(input.Observed)
+}
+
+// disarm needs the disk encryption passphrase, so a stolen sudo session alone
+// cannot switch blocking off.
+func (c *Controller) disarm(ctx context.Context, key []byte) (broker.Response, error) {
+	input, err := c.snapshot(ctx)
+	if err != nil {
+		return broker.Response{}, err
+	}
+	if input.Trusted == nil || input.Trusted.Enforcement == nil || !input.Trusted.Enforcement.Armed {
+		return broker.Response{}, fmt.Errorf("USB enforcement is not armed")
+	}
+	if c.VerifyRecoveryKey == nil {
+		return broker.Response{}, fmt.Errorf("disk encryption passphrase verification is not configured")
+	}
+	if err := c.VerifyRecoveryKey(ctx, key); err != nil {
+		select {
+		case <-ctx.Done():
+		case <-time.After(c.DisarmDelay):
+		}
+		return broker.Response{}, fmt.Errorf("disk encryption passphrase rejected")
+	}
+	doc, err := c.next(input.Trusted)
+	if err != nil {
+		return broker.Response{}, err
+	}
+	state := *doc.Enforcement
+	state.Armed, state.ChangedAt = false, time.Now().UTC().Format(time.RFC3339)
+	doc.Enforcement = &state
+	if err := c.commit(ctx, doc); err != nil {
+		return broker.Response{}, fmt.Errorf("commit USB trust: %w", err)
+	}
+	c.armed.Store(false)
+	c.disarmed.Store(true)
+	if err := c.syncImplicit(ctx); err != nil {
+		return broker.Response{}, fmt.Errorf("enforcement disarmed; USBGuard fallback: %w", err)
+	}
+	if c.Release != nil && c.Apply != nil {
+		if err := c.Release(ctx); err != nil {
+			return broker.Response{}, fmt.Errorf("enforcement disarmed; releasing devices: %w", err)
+		}
+	}
+	return broker.Response{OK: true, Revision: doc.Revision, Message: "USB enforcement disarmed"}, nil
+}
+
+func (c *Controller) next(trusted *usbtrust.Document) (usbtrust.Document, error) {
+	doc := usbtrust.Document{Schema: usbtrust.SchemaVersion, MachineID: c.MachineID, ODDCModel: c.ModelID}
+	if trusted != nil {
+		doc = *trusted
+		doc.Devices = append([]usbtrust.Device(nil), doc.Devices...)
+	}
+	if doc.Revision == ^uint64(0) {
+		return doc, fmt.Errorf("USB trust revision exhausted")
+	}
+	doc.Revision++
+	return doc, nil
+}
+
+func (c *Controller) commit(ctx context.Context, doc usbtrust.Document) error {
+	if c.Commit != nil {
+		return c.Commit(ctx, doc)
+	}
+	return usbtrust.CommitSigned(ctx, c.StateDir, doc, c.Signer)
+}
+
+func (c *Controller) syncImplicit(ctx context.Context) error {
+	if c.SetImplicitTarget == nil {
+		return nil
+	}
+	target := usbtrust.TargetAllow
+	if c.EnforcementEnabled() {
+		target = usbtrust.TargetBlock
+	}
+	if c.implicit == target {
+		return nil
+	}
+	if err := c.SetImplicitTarget(ctx, target); err != nil {
+		return err
+	}
+	c.implicit = target
+	return nil
 }
 
 func (c *Controller) snapshot(ctx context.Context) (input usbtrust.AuditInput, err error) {
@@ -125,6 +281,7 @@ func (c *Controller) snapshot(ctx context.Context) (input usbtrust.AuditInput, e
 			return input, fmt.Errorf("USB trust state belongs to a different machine or ODDC model")
 		}
 	}
+	c.armed.Store(input.Trusted != nil && input.Trusted.Enforcement != nil && input.Trusted.Enforcement.Armed)
 	input.Observed, err = c.Reader.Observations.Observed(ctx)
 	if err != nil {
 		return input, err
@@ -152,6 +309,9 @@ func (c *Controller) Mutate(ctx context.Context, request broker.Request) (broker
 	if persistentMutation(request.Action) && !c.persistenceReady {
 		return broker.Response{}, fmt.Errorf("permanent USB trust is unavailable until the TPM signing key is provisioned and verified")
 	}
+	if request.Action == broker.ActionDisarm {
+		return c.disarm(ctx, []byte(request.RecoveryKey))
+	}
 	input, err := c.snapshot(ctx)
 	if err != nil {
 		return broker.Response{}, err
@@ -178,13 +338,7 @@ func (c *Controller) Mutate(ctx context.Context, request broker.Request) (broker
 		if err != nil {
 			return broker.Response{}, err
 		}
-		commit := c.Commit
-		if commit == nil {
-			commit = func(ctx context.Context, doc usbtrust.Document) error {
-				return usbtrust.CommitSigned(ctx, c.StateDir, doc, c.Signer)
-			}
-		}
-		if err := commit(ctx, document); err != nil {
+		if err := c.commit(ctx, document); err != nil {
 			return broker.Response{}, fmt.Errorf("commit USB trust: %w", err)
 		}
 		input.Trusted = &document
@@ -210,7 +364,8 @@ func persistentMutation(action broker.Action) bool {
 	case broker.ActionTrustPermanent,
 		broker.ActionForget,
 		broker.ActionAcceptReplacement,
-		broker.ActionEnrollInternal:
+		broker.ActionEnrollInternal,
+		broker.ActionDisarm:
 		return true
 	default:
 		return false
@@ -233,22 +388,20 @@ func (c *Controller) apply(ctx context.Context, input usbtrust.AuditInput) error
 	if err != nil {
 		return err
 	}
-	if c.Apply != nil {
+	if err := c.syncImplicit(ctx); err != nil {
+		return err
+	}
+	if c.EnforcementEnabled() {
 		return c.Apply(ctx, policy)
 	}
 	return nil
 }
 
 func (c *Controller) change(input usbtrust.AuditInput, request broker.Request) (usbtrust.Document, error) {
-	doc := usbtrust.Document{Schema: usbtrust.SchemaVersion, MachineID: c.MachineID, ODDCModel: c.ModelID}
-	if input.Trusted != nil {
-		doc = *input.Trusted
-		doc.Devices = append([]usbtrust.Device(nil), doc.Devices...)
+	doc, err := c.next(input.Trusted)
+	if err != nil {
+		return doc, err
 	}
-	if doc.Revision == ^uint64(0) {
-		return doc, fmt.Errorf("USB trust revision exhausted")
-	}
-	doc.Revision++
 	index := -1
 	for i, device := range doc.Devices {
 		if device.ID == request.TrustedID {
@@ -289,14 +442,9 @@ func (c *Controller) change(input usbtrust.AuditInput, request broker.Request) (
 			decision.Reason = string(finding.Code)
 		}
 	}
-	var id [16]byte
-	if _, err := rand.Read(id[:]); err != nil {
+	device, err := newDevice(observed.Identity, time.Now().UTC().Format(time.RFC3339))
+	if err != nil {
 		return doc, err
-	}
-	now := time.Now().UTC().Format(time.RFC3339)
-	device := usbtrust.Device{ID: "device:" + hex.EncodeToString(id[:]), Class: usbtrust.ClassExternal, Identity: observed.Identity, FirstAccepted: now, LastAccepted: now, Strength: usbtrust.StrengthDescriptor}
-	if device.Identity.Serial != "" {
-		device.Strength = usbtrust.StrengthSerialDescriptor
 	}
 	switch request.Action {
 	case broker.ActionTrustPermanent:
@@ -324,7 +472,7 @@ func (c *Controller) change(input usbtrust.AuditInput, request broker.Request) (
 	default:
 		return doc, fmt.Errorf("unsupported USB trust mutation %q", request.Action)
 	}
-	if !device.Portable && device.Identity.ParentHash == "" && device.Identity.Port == "" {
+	if !device.Portable && !hasTopology(device.Identity) {
 		return doc, fmt.Errorf("non-portable trust requires observed topology")
 	}
 	if !device.Portable && device.Identity.Serial != "" {
@@ -336,6 +484,22 @@ func (c *Controller) change(input usbtrust.AuditInput, request broker.Request) (
 		doc.Devices = append(doc.Devices, device)
 	}
 	return doc, doc.Validate()
+}
+
+func newDevice(identity usbtrust.Identity, now string) (usbtrust.Device, error) {
+	var id [16]byte
+	if _, err := rand.Read(id[:]); err != nil {
+		return usbtrust.Device{}, err
+	}
+	device := usbtrust.Device{ID: "device:" + hex.EncodeToString(id[:]), Class: usbtrust.ClassExternal, Identity: identity, FirstAccepted: now, LastAccepted: now, Strength: usbtrust.StrengthDescriptor}
+	if identity.Serial != "" {
+		device.Strength = usbtrust.StrengthSerialDescriptor
+	}
+	return device, nil
+}
+
+func hasTopology(identity usbtrust.Identity) bool {
+	return identity.ParentHash != "" || identity.Port != ""
 }
 
 func revision(input usbtrust.AuditInput) uint64 {
