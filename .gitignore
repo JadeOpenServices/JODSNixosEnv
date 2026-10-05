@@ -22,3 +22,5 @@ user.config.json
 .user.config.json-*
 generated/
 # END GjallarOS machine-local state
+/result
+/result-*
