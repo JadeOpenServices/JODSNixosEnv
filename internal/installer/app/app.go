@@ -1115,11 +1115,61 @@ func run(ctx context.Context, args []string, in io.Reader, out, errOut io.Writer
 			}
 
 			if maintenanceRequired {
+				// The maintenance boot already ran for this transaction and
+				// still left no JODS-RECOVERY; another one would loop.
+				if os.Getenv("GJALLAR_INSTALLER_RESUME_STATE") == installerresume.StateMaintenanceReboot {
+					return fail(
+						errOut,
+						errors.New("recovery-storage maintenance did not provision JODS-RECOVERY; automatic retry disabled"),
+					)
+				}
+
 				fmt.Fprintln(
 					out,
 					"PASS: one-shot recovery-storage maintenance environment installed",
 				)
 
+				// The rerun after maintenance formats and fills JODS-RECOVERY
+				// and finishes Secure Boot; it stopped here before (e2e-target,
+				// 2026-10-05). It runs without a terminal, so only presets
+				// continue on their own.
+				if s.preset && installedRoot == "/" {
+					executable, err := os.Executable()
+					if err != nil {
+						return fail(
+							errOut,
+							fmt.Errorf(
+								"resolve installer executable for maintenance continuation: %w",
+								err,
+							),
+						)
+					}
+
+					if err := installerresume.ArmMaintenance(
+						ctx,
+						executable,
+						opt.repo,
+						originalArgs,
+					); err != nil {
+						return fail(
+							errOut,
+							fmt.Errorf(
+								"arm installer maintenance continuation: %w",
+								err,
+							),
+						)
+					}
+
+					fmt.Fprintln(
+						out,
+						"PASS: installer continuation armed; installation resumes after maintenance",
+					)
+				} else {
+					fmt.Fprintln(
+						out,
+						"ACTION: after maintenance, run the installer again to finish recovery setup",
+					)
+				}
 				fmt.Fprintln(
 					out,
 					"STAGE: arming one-shot maintenance boot",
