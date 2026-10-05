@@ -60,15 +60,39 @@ func ValidateTailscale(t *TailscaleIntent) error {
 	return nil
 }
 
-// SplitList parses a comma-separated prompt answer.
-func SplitList(raw string) []string {
+// SplitList parses a comma-separated prompt answer. An item in single or
+// double quotes is taken verbatim, so Wi-Fi names may hold commas or
+// surrounding spaces.
+func SplitList(raw string) ([]string, error) {
 	out := []string{}
-	for _, item := range strings.Split(raw, ",") {
-		if item = strings.TrimSpace(item); item != "" {
+	for i := 0; i < len(raw); {
+		switch raw[i] {
+		case ' ', '\t', ',':
+			i++
+			continue
+		case '"', '\'':
+			end := strings.IndexByte(raw[i+1:], raw[i])
+			if end < 0 {
+				return nil, fmt.Errorf("missing closing %c in %q", raw[i], raw)
+			}
+			item := raw[i+1 : i+1+end]
+			i += end + 2
+			if rest := strings.TrimLeft(raw[i:], " \t"); rest != "" && rest[0] != ',' {
+				return nil, fmt.Errorf("put a comma after the quoted %q", item)
+			}
 			out = append(out, item)
+		default:
+			end := strings.IndexByte(raw[i:], ',')
+			if end < 0 {
+				end = len(raw) - i
+			}
+			if item := strings.TrimSpace(raw[i : i+end]); item != "" {
+				out = append(out, item)
+			}
+			i += end
 		}
 	}
-	return out
+	return out, nil
 }
 
 // DefaultSiteRouterTarget suggests the first host of the first home subnet,

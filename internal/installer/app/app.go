@@ -1980,14 +1980,17 @@ func collectTailscale(ctx context.Context, ui prompt.UI, u *config.User) error {
 		return nil
 	}
 
-	ask := func(label, def string, set func(string)) error {
+	ask := func(label, def string, set func(string) error) error {
 		for {
 			value, err := ui.Value(ctx, label, def)
 			if err != nil {
 				return err
 			}
-			set(value)
-			if err := config.ValidateTailscale(t); err != nil {
+			err = set(value)
+			if err == nil {
+				err = config.ValidateTailscale(t)
+			}
+			if err != nil {
 				fmt.Fprintf(ui.Out, "%v\n", err)
 				continue
 			}
@@ -1995,8 +1998,9 @@ func collectTailscale(ctx context.Context, ui prompt.UI, u *config.User) error {
 		}
 	}
 
-	if err := ask("Home LAN subnets kept out of the tunnel at home (comma-separated)", "192.168.8.0/24", func(v string) {
-		t.HomeSubnets = config.SplitList(v)
+	if err := ask("Home LAN subnets kept out of the tunnel at home (comma-separated)", "192.168.8.0/24", func(v string) (err error) {
+		t.HomeSubnets, err = config.SplitList(v)
+		return err
 	}); err != nil {
 		return err
 	}
@@ -2006,14 +2010,16 @@ func collectTailscale(ctx context.Context, ui prompt.UI, u *config.User) error {
 		return err
 	}
 	for t.ExitNode == "" {
-		if err := ask("Exit node (tailnet host name or 100.x address)", "", func(v string) {
+		if err := ask("Exit node (tailnet host name or 100.x address)", "", func(v string) error {
 			t.ExitNode = strings.TrimSpace(v)
+			return nil
 		}); err != nil {
 			return err
 		}
 	}
-	if err := ask("Your Wi-Fi names where no VPN is needed, comma-separated (e.g. home-5Ghz, home-2.4Ghz, family-wifi)", "", func(v string) {
-		t.TrustedWifis = config.SplitList(v)
+	if err := ask("Your Wi-Fi names where no VPN is needed, comma-separated, quote names with commas (e.g. home-5Ghz, home-2.4Ghz, \"cafe, upstairs\")", "", func(v string) (err error) {
+		t.TrustedWifis, err = config.SplitList(v)
+		return err
 	}); err != nil {
 		return err
 	}
@@ -2021,8 +2027,9 @@ func collectTailscale(ctx context.Context, ui prompt.UI, u *config.User) error {
 	if err != nil || !t.SiteRouterTrust {
 		return err
 	}
-	return ask("Home hosts that router must reach (host:port, comma-separated)", config.DefaultSiteRouterTarget(t.HomeSubnets), func(v string) {
-		t.SiteRouterTargets = config.SplitList(v)
+	return ask("Home hosts that router must reach (host:port, comma-separated)", config.DefaultSiteRouterTarget(t.HomeSubnets), func(v string) (err error) {
+		t.SiteRouterTargets, err = config.SplitList(v)
+		return err
 	})
 }
 

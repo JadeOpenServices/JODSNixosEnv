@@ -70,6 +70,21 @@ func TestCollectTailscaleReasksInvalidAnswers(t *testing.T) {
 	}
 }
 
+func TestCollectTailscaleQuotedWifiNames(t *testing.T) {
+	got, out := collectTailscaleAnswers(t,
+		"y", "", "y", "OpenWrt",
+		`"cafe, upstairs`, // unterminated quote is asked again
+		`bakasifu-5ghz, "cafe, upstairs", fizzlipuzzli`,
+		"n",
+	)
+	if !strings.Contains(out, "missing closing") {
+		t.Fatalf("missing quote error:\n%s", out)
+	}
+	if !slices.Equal(got.TrustedWifis, []string{"bakasifu-5ghz", "cafe, upstairs", "fizzlipuzzli"}) {
+		t.Fatalf("trustedWifis = %q", got.TrustedWifis)
+	}
+}
+
 func TestCollectTailscaleWithoutVPNKeepsHomeBypassOnly(t *testing.T) {
 	got, _ := collectTailscaleAnswers(t, "y", "", "n")
 	if !got.Enable || got.ExitNode != "" || got.SiteRouterTrust || len(got.TrustedWifis) != 0 {
