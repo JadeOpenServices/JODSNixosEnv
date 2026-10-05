@@ -1908,6 +1908,9 @@ func collectInteractive(ctx context.Context, ui prompt.UI, root string, hardware
 			return err
 		}
 	}
+	if err := collectTailscale(ctx, ui, u); err != nil {
+		return err
+	}
 	u.ContainersEnable, err = ui.Confirm(ctx, "Enable rootless container tooling with Docker-compatible commands?", false)
 	if err != nil {
 		return err
@@ -1964,6 +1967,63 @@ func collectInteractive(ctx context.Context, ui prompt.UI, root string, hardware
 	u.WriteConfig = true
 	u.RunRebuild = true
 	return nil
+}
+
+func collectTailscale(ctx context.Context, ui prompt.UI, u *config.User) error {
+	enable, err := ui.Confirm(ctx, "Enable Tailscale?", true)
+	if err != nil {
+		return err
+	}
+	t := &config.TailscaleIntent{Enable: enable, HomeSubnets: []string{}, TrustedWifis: []string{}, SiteRouterTargets: []string{}}
+	u.Tailscale = t
+	if !enable {
+		return nil
+	}
+
+	ask := func(label, def string, set func(string)) error {
+		for {
+			value, err := ui.Value(ctx, label, def)
+			if err != nil {
+				return err
+			}
+			set(value)
+			if err := config.ValidateTailscale(t); err != nil {
+				fmt.Fprintf(ui.Out, "%v\n", err)
+				continue
+			}
+			return nil
+		}
+	}
+
+	if err := ask("Home LAN subnets kept out of the tunnel at home (comma-separated)", "192.168.8.0/24", func(v string) {
+		t.HomeSubnets = config.SplitList(v)
+	}); err != nil {
+		return err
+	}
+
+	vpn, err := ui.Confirm(ctx, "Use a Tailscale exit node as VPN on networks that are not yours?", false)
+	if err != nil || !vpn {
+		return err
+	}
+	for t.ExitNode == "" {
+		if err := ask("Exit node (tailnet host name or 100.x address)", "", func(v string) {
+			t.ExitNode = strings.TrimSpace(v)
+		}); err != nil {
+			return err
+		}
+	}
+	if err := ask("Your Wi-Fi names where no VPN is needed, comma-separated (e.g. home-5Ghz, home-2.4Ghz, family-wifi)", "", func(v string) {
+		t.TrustedWifis = config.SplitList(v)
+	}); err != nil {
+		return err
+	}
+	t.SiteRouterTrust, err = ui.Confirm(ctx, "Also switch the VPN off near a Tailscale subnet router of your tailnet when that router reaches your home LAN?", true)
+	if err != nil || !t.SiteRouterTrust {
+		return err
+	}
+	return ask("Home hosts that router must reach (host:port, comma-separated)", config.DefaultSiteRouterTarget(t.HomeSubnets), func(v string) {
+		t.SiteRouterTargets = config.SplitList(v)
+	})
 }
 
 func collectProjectTools(ctx context.Context, ui prompt.UI, u *config.User) error {

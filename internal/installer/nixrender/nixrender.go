@@ -47,6 +47,23 @@ func WebApplications(values []config.WebApplicationIntent) string {
 	return "[ " + strings.Join(rendered, " ") + " ]"
 }
 
+// Tailscale renders the intent on one line so SyncUserIntent can replace
+// it; null keeps the pre-installer defaults.
+func Tailscale(t *config.TailscaleIntent) string {
+	if t == nil {
+		return "null"
+	}
+	return fmt.Sprintf(
+		"{ enable = %t; homeSubnets = %s; trustedWifis = %s; exitNode = %s; siteRouterTrust = %t; siteRouterTargets = %s; }",
+		t.Enable,
+		Strings(t.HomeSubnets),
+		Strings(t.TrustedWifis),
+		String(t.ExitNode),
+		t.SiteRouterTrust,
+		Strings(t.SiteRouterTargets),
+	)
+}
+
 // Settings contains only values written to generated/state.nix. Values are rendered
 // as literals; none are evaluated as Nix source.
 type Settings struct {
@@ -65,6 +82,7 @@ type Settings struct {
 	Editors, Browsers                                                                       []string
 	PreferredEditor, PreferredBrowser                                                       string
 	WebApplications                                                                         []config.WebApplicationIntent
+	Tailscale                                                                               *config.TailscaleIntent
 	NextcloudHost                                                                           string
 	NextcloudEnable                                                                         bool
 	BackgroundNormal                                                                        string
@@ -122,6 +140,7 @@ func FromUser(user config.User) Settings {
 		PreferredEditor:                     user.PreferredEditor,
 		PreferredBrowser:                    user.PreferredBrowser,
 		WebApplications:                     user.WebApplications,
+		Tailscale:                           user.Tailscale,
 		NextcloudEnable:                     user.NextcloudEnable,
 		NextcloudHost:                       user.NextcloudHost,
 		BackgroundNormal:                    user.BackgroundNormal,
@@ -200,6 +219,7 @@ var userIntentKeys = []string{
 	"preferredEditor",
 	"preferredBrowser",
 	"webApplications",
+	"tailscale",
 	"nextcloudEnable",
 	"nextcloudHost",
 	"backgroundNormal",
@@ -371,6 +391,7 @@ func Render(s Settings) []byte {
 	str("preferredEditor", s.PreferredEditor)
 	str("preferredBrowser", s.PreferredBrowser)
 	fmt.Fprintf(&b, "    webApplications = %s;\n", WebApplications(s.WebApplications))
+	fmt.Fprintf(&b, "    tailscale = %s;\n", Tailscale(s.Tailscale))
 	boolean("nextcloudEnable", s.NextcloudEnable)
 	str("nextcloudHost", s.NextcloudHost)
 	str("backgroundNormal", s.BackgroundNormal)

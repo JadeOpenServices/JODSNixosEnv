@@ -98,6 +98,7 @@ const (
 	presetBool
 	presetStringList
 	presetWebApplicationList
+	presetTailscale
 )
 
 var presetSchema = map[string]presetValueType{
@@ -111,7 +112,8 @@ var presetSchema = map[string]presetValueType{
 	"preferredEditor": presetString, "preferredBrowser": presetString, "theme": presetString,
 	"weatherCity": presetString, "weatherCountry": presetString,
 	"webApplications": presetWebApplicationList,
-	"planeEnable": presetBool, "planeHost": presetString, "drawioEnable": presetBool, "drawioSelfHosted": presetBool, "drawioHost": presetString, "nextcloudEnable": presetBool, "nextcloudHost": presetString,
+	"tailscale":       presetTailscale,
+	"planeEnable":     presetBool, "planeHost": presetString, "drawioEnable": presetBool, "drawioSelfHosted": presetBool, "drawioHost": presetString, "nextcloudEnable": presetBool, "nextcloudHost": presetString,
 	"backgroundNormal": presetString,
 	"containersEnable": presetBool, "debugFunctions": presetBool, "aiEnable": presetBool,
 	"overrideAiSelection": presetBool, "overrideModelWith": presetString, "aiAgentMode": presetString,
@@ -156,6 +158,8 @@ func matchesPresetType(raw json.RawMessage, expected presetValueType) bool {
 		return json.Unmarshal(raw, &value) == nil
 	case presetWebApplicationList:
 		return matchesPresetWebApplicationList(raw)
+	case presetTailscale:
+		return matchesPresetTailscale(raw)
 	default:
 		return false
 	}

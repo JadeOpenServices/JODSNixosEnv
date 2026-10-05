@@ -1,0 +1,85 @@
+package config
+
+import (
+	"fmt"
+	"net"
+	"net/netip"
+	"strconv"
+	"strings"
+)
+
+// TailscaleIntent configures Tailscale and when its exit node acts as a VPN.
+// A nil intent keeps the behaviour from before the installer asked: Tailscale
+// on and 192.168.8.0/24 always kept local.
+type TailscaleIntent struct {
+	Enable bool `json:"enable"`
+	// HomeSubnets are the LANs behind the home router, kept local at home.
+	HomeSubnets []string `json:"homeSubnets"`
+	// TrustedWifis are Wi-Fi names where no VPN is needed. A trusted name
+	// only counts on a network that needed a key to join.
+	TrustedWifis []string `json:"trustedWifis"`
+	// ExitNode is the tailnet node used as VPN on untrusted networks; empty
+	// leaves the exit node alone.
+	ExitNode string `json:"exitNode"`
+	// SiteRouterTrust trusts a LAN whose tailnet router is nearby and
+	// reaches every SiteRouterTargets entry.
+	SiteRouterTrust   bool     `json:"siteRouterTrust"`
+	SiteRouterTargets []string `json:"siteRouterTargets"`
+}
+
+func ValidateTailscale(t *TailscaleIntent) error {
+	if t == nil {
+		return nil
+	}
+	for _, raw := range t.HomeSubnets {
+		prefix, err := netip.ParsePrefix(raw)
+		if err != nil {
+			return fmt.Errorf("tailscale.homeSubnets: %q is not a CIDR subnet", raw)
+		}
+		if prefix.Bits() == 0 {
+			return fmt.Errorf("tailscale.homeSubnets: %q would keep all traffic out of the VPN", raw)
+		}
+	}
+	for _, ssid := range t.TrustedWifis {
+		if ssid == "" || len(ssid) > 32 {
+			return fmt.Errorf("tailscale.trustedWifis: %q is not a Wi-Fi name (1-32 bytes)", ssid)
+		}
+	}
+	if strings.ContainsAny(t.ExitNode, " \t\n") {
+		return fmt.Errorf("tailscale.exitNode: %q is not a node name or address", t.ExitNode)
+	}
+	for _, target := range t.SiteRouterTargets {
+		host, port, err := net.SplitHostPort(target)
+		if n, perr := strconv.Atoi(port); err != nil || host == "" || perr != nil || n < 1 || n > 65535 {
+			return fmt.Errorf("tailscale.siteRouterTargets: %q is not host:port", target)
+		}
+	}
+	if t.SiteRouterTrust && len(t.SiteRouterTargets) == 0 {
+		return fmt.Errorf("tailscale.siteRouterTrust needs siteRouterTargets, the home hosts a site router must reach")
+	}
+	return nil
+}
+
+// SplitList parses a comma-separated prompt answer.
+func SplitList(raw string) []string {
+	out := []string{}
+	for _, item := range strings.Split(raw, ",") {
+		if item = strings.TrimSpace(item); item != "" {
+			out = append(out, item)
+		}
+	}
+	return out
+}
+
+// DefaultSiteRouterTarget suggests the first host of the first home subnet,
+// which is the home router on most LANs, on the DNS port.
+func DefaultSiteRouterTarget(homeSubnets []string) string {
+	for _, raw := range homeSubnets {
+		prefix, err := netip.ParsePrefix(raw)
+		if err != nil || !prefix.Addr().Is4() {
+			continue
+		}
+		return net.JoinHostPort(prefix.Masked().Addr().Next().String(), "53")
+	}
+	return ""
+}

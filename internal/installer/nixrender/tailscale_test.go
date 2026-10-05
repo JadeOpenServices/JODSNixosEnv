@@ -1,0 +1,59 @@
+package nixrender
+
+import (
+	"os"
+	"path/filepath"
+	"strings"
+	"testing"
+
+	"github.com/bakanura/gjallarOS/internal/installer/config"
+)
+
+func TestTailscaleRender(t *testing.T) {
+	if got := Tailscale(nil); got != "null" {
+		t.Fatalf("nil intent = %s", got)
+	}
+	got := Tailscale(&config.TailscaleIntent{
+		Enable:            true,
+		HomeSubnets:       []string{"192.168.8.0/24"},
+		TrustedWifis:      []string{"bakasifu-5Ghz", "${evil}"},
+		ExitNode:          "home-router",
+		SiteRouterTrust:   true,
+		SiteRouterTargets: []string{"192.168.8.1:53"},
+	})
+	want := `{ enable = true; homeSubnets = [ "192.168.8.0/24" ]; trustedWifis = [ "bakasifu-5Ghz" "\${evil}" ]; exitNode = "home-router"; siteRouterTrust = true; siteRouterTargets = [ "192.168.8.1:53" ]; }`
+	if got != want {
+		t.Fatalf("got  %s\nwant %s", got, want)
+	}
+}
+
+func TestSyncUserIntentAddsTailscaleToOldState(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "state.nix")
+	before := `{pkgs, inputs, ...}:
+rec {
+    hostname = "old";
+    theme = "old-theme";
+    themeDetails = import (./. + "/../themes/${theme}.nix") {inherit pkgs;};
+}
+`
+	if err := os.WriteFile(path, []byte(before), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	user := config.User{
+		Hostname:           "gjallarOS",
+		Theme:              "noctalia",
+		AIAgentMode:        "workspace",
+		JODSEnrollmentMode: "manual",
+		Tailscale:          &config.TailscaleIntent{Enable: true, ExitNode: "home-router"},
+	}
+	if err := SyncUserIntent(path, user); err != nil {
+		t.Fatal(err)
+	}
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(data), `tailscale = { enable = true; homeSubnets = [  ]; trustedWifis = [  ]; exitNode = "home-router";`) {
+		t.Fatalf("tailscale not synced:\n%s", data)
+	}
+}

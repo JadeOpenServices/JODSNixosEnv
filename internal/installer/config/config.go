@@ -39,6 +39,7 @@ type User struct {
 	PreferredEditor        string                 `json:"preferredEditor"`
 	PreferredBrowser       string                 `json:"preferredBrowser"`
 	WebApplications        []WebApplicationIntent `json:"webApplications"`
+	Tailscale              *TailscaleIntent       `json:"tailscale,omitempty"`
 
 	// Compatibility fields retained while the installer prompt and generated
 	// Nix settings migrate to the generic webApplications contract.
@@ -182,6 +183,9 @@ func Validate(user User) error {
 		return err
 	}
 	if err := ValidateProjectTools(user); err != nil {
+		return err
+	}
+	if err := ValidateTailscale(user.Tailscale); err != nil {
 		return err
 	}
 

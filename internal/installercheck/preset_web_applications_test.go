@@ -101,3 +101,19 @@ func TestPresetSchemaAcceptsCanonicalAndLegacyWebApplications(t *testing.T) {
 		}
 	}
 }
+
+func TestPresetTailscaleSchema(t *testing.T) {
+	for raw, want := range map[string]bool{
+		`{"enable":true,"homeSubnets":["192.168.8.0/24"],"trustedWifis":["bakasifu-5Ghz"],"exitNode":"r","siteRouterTrust":true,"siteRouterTargets":["192.168.8.1:53"]}`: true,
+		`{"enable":false}`:           true,
+		`{"enable":"yes"}`:           false,
+		`{"trustedWifis":"home"}`:    false,
+		`{"enable":true,"vpn":true}`: false,
+		`null`:                       false,
+		`[]`:                         false,
+	} {
+		if got := matchesPresetType(json.RawMessage(raw), presetTailscale); got != want {
+			t.Errorf("%s: got %v, want %v", raw, got, want)
+		}
+	}
+}
