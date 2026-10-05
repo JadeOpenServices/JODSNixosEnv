@@ -17,6 +17,11 @@ These patches apply to the source revisions pinned in `../nextcloud.nix` and
 - OpenVFS registers requests before sending them, uses atomic request IDs,
   waits for files already being hydrated, and releases waiters on errors,
   cancellation, or a five-minute deadline.
+- OpenVFS placeholders always report themselves in sync. Upstream marked every
+  unchanged file for a metadata update on each sync run, but OpenVFS cannot
+  record that it finished, so tens of thousands of no-op jobs repeated forever.
+  Missing placeholder attributes are still repaired by the separate metadata
+  check.
 - Ignore-app suffix matching recognizes Nix's `-wrapped` executables. The
   upstream ignore list therefore also applies to wrapped previews. KIO file
   protocol workers are exempt from the generic suffix rule so intentional copies

@@ -63,6 +63,45 @@ and readers with no media are excluded. Formatting uses UDisks/Polkit and
 requires confirmation; lack of a recognized filesystem does not prove a disk
 contains no valuable data.
 
+## Tailscale VPN and network trust
+
+The installer can enable Tailscale and use a tailnet exit node as VPN.
+`gjallar-vpn-trust` then decides on every network change, tailnet change, and
+every five minutes how far to trust the current network:
+
+| Network | Recognized by | Local subnets | Exit node |
+| --- | --- | --- | --- |
+| home | a home subnet, proven by a trusted Wi-Fi name or your tailnet router answering on it | home subnets | off |
+| site | `siteRouterTrust`: a tailnet subnet router on this LAN that reaches every `siteRouterTargets` host | this LAN | off |
+| trusted-wifi | a `trustedWifis` name on a network that needs a key | this LAN | off, or its `wifiExitNodes` entry |
+| untrusted | anything else | none | `exitNode` |
+| offline | no default route | none | unchanged |
+
+A trusted name on an open network only produces a warning, since anyone can
+clone it. `exitNode` is a tailnet host name or 100.x address; `auto` picks an
+online exit node, preferring one that routes a home subnet; `off` keeps it off
+everywhere; empty leaves the exit node to you unless `wifiExitNodes` is set.
+LAN access stays on while an exit node is active so captive portals and
+printers keep working. DNS then goes to the exit node, so a home router's
+filtering also applies away from home unless the tailnet's admin console
+overrides DNS. `gjallarctl vpn status` shows the current decision.
+
+Change trust at runtime, as root:
+
+```bash
+gjallarctl vpn trust-wifi                       # the current Wi-Fi
+gjallarctl vpn trust-wifi "Shi 2,4" --exit-node OpenWrt   # trusted LAN, internet via OpenWrt
+gjallarctl vpn trust-wifi "Shi 2,4" --exit-node default   # trusted LAN, exit node off
+gjallarctl vpn untrust-wifi "Shi 2,4"
+gjallarctl vpn exit-node auto                   # or off, NAME, default
+```
+
+Changes apply at once and are kept in `/var/lib/gjallar/vpn-trust-override.json`,
+layered over the built-in policy in `/etc/gjallar/vpn-trust.json`, so they
+survive rebuilds. To make them permanent, replace the `tailscale = { ... };`
+line in `generated/state.nix` with the output of `gjallarctl vpn export`,
+rebuild, then delete the override file.
+
 ## Credits
 
 GjallarOS builds on the ideas and groundwork of
