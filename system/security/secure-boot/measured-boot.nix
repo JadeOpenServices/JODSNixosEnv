@@ -11,9 +11,102 @@
 let
   luksMappings = builtins.attrValues config.boot.initrd.luks.devices;
   luksDevice = if builtins.length luksMappings == 1 then (builtins.head luksMappings).device else "";
+  tpm2Enabled = settings.secureBootEnable && settings.luksTpm2Enable;
+
+  enrollmentPath = [
+    pkgs.cryptsetup
+    gjallarctlPackage
+    pkgs.systemd
+    pkgs.coreutils
+    pkgs.gnugrep
+    pkgs.kbd
+    pkgs.plymouth
+    gjallarSecureBootArtifactVerifier
+    gjallarSecureBootOwnershipVerifier
+  ];
+
+  checkPolicy = ''
+    gjallarctl installer tpm2-check-pcrlock-policy /var/lib/systemd/pcrlock.json \
+      ${lib.concatMapStringsSep " " toString config.boot.lanzaboote.measuredBoot.pcrs}
+  '';
+
+  # Verifies the new token and records the keyslots; expects $device,
+  # $state and $keyfile.
+  recordEnrollment = ''
+    mkdir -p "$state/luks"
+    cryptsetup luksDump --dump-json-metadata "$device" >"$state/luks/metadata.json.tmp"
+    token_id="$(
+      gjallarctl installer tpm2-metadata-token-id \
+        "$state/luks/metadata.json.tmp"
+    )"
+    # systemd ships the TPM2 token plugin, and NixOS cryptsetup dlopens
+    # it by bare name, ignoring its external tokens path (e2e-target,
+    # 2026-09-29: "No usable token is available" after enrollment).
+    LD_LIBRARY_PATH=${config.systemd.package}/lib/cryptsetup \
+      cryptsetup open --test-passphrase --token-only --token-id "$token_id" "$device"
+    gjallarctl installer tpm2-write-keyslot-record \
+      "$state/luks/metadata.json.tmp" \
+      "$state/luks/keyslots.json" \
+      "$device" \
+      /var/lib/systemd/pcrlock.json
+    rm -f -- "$state/luks/metadata.json.tmp"
+    chmod 0600 "$state/luks/keyslots.json"
+  '';
+
+  # Rebinds TPM2 unlock after the measured state changed on purpose
+  # (firmware update, Secure Boot database change). make-policy cannot
+  # rewrite a PCRLock NV index whose old policy no longer matches the TPM,
+  # and the first-boot enrollment refuses existing tokens, so neither path
+  # recovered such a machine (e2e-target, 2026-10-05: PCR 4 PolicyOR
+  # mismatch).
+  tpm2Reenroll = pkgs.writeShellApplication {
+    name = "gjallar-tpm2-reenroll";
+    runtimeInputs = enrollmentPath;
+    text = ''
+      device=${lib.escapeShellArg luksDevice}
+      state=/var/lib/gjallarOS
+
+      if [ "$(id -u)" -ne 0 ]; then
+        printf '%s\n' 'ERROR: run as root: sudo gjallar-tpm2-reenroll' >&2
+        exit 1
+      fi
+      if [ ! -e "$state/tpm2-enrollment-complete" ]; then
+        printf '%s\n' 'ERROR: no completed TPM2 enrollment to replace; the first enrollment runs at boot.' >&2
+        exit 1
+      fi
+
+      keyfile="$(mktemp /run/gjallar-luks-key.XXXXXX)"
+      trap 'rm -f -- "$keyfile"' EXIT
+
+      gjallar-verify-secure-boot-artifacts
+      gjallar-verify-secure-boot-ownership enrolled
+
+      systemd-ask-password --timeout=0 -n \
+        "GjallarOS: enter the human LUKS recovery passphrase to re-enroll TPM2 unlock" >"$keyfile"
+      chmod 0600 "$keyfile"
+      # Check the passphrase before anything is removed.
+      cryptsetup open --test-passphrase --type luks "$device" --key-file "$keyfile"
+
+      if [ -e /var/lib/systemd/pcrlock.json ]; then
+        ${config.systemd.package}/lib/systemd/systemd-pcrlock remove-policy
+      fi
+      systemctl restart systemd-pcrlock-make-policy.service
+      ${checkPolicy}
+      systemd-cryptenroll --wipe-slot=tpm2 --unlock-key-file="$keyfile" \
+        --tpm2-device=auto --tpm2-pcrlock=/var/lib/systemd/pcrlock.json "$device"
+      ${recordEnrollment}
+      printf '%s\n' 'GjallarOS TPM2 unlock re-enrolled; human recovery keyslots were preserved.'
+    '';
+  };
 in
 {
-  assertions = lib.optionals settings.luksTpm2Enable [
+  # Without tpm2-device=auto, systemd-cryptsetup takes its generic token
+  # path, and a failed TPM unlock asks for a "LUKS2 token PIN" although the
+  # human passphrase is what it accepts (e2e-target, 2026-10-05). Extending
+  # the submodule sets it on every device without reading the attrset back.
+  config.environment.systemPackages = lib.mkIf tpm2Enabled [ tpm2Reenroll ];
+
+  config.assertions = lib.optionals settings.luksTpm2Enable [
     {
       assertion = settings.secureBootEnable;
       message = "GjallarOS TPM2 unlock requires Secure Boot.";
@@ -24,105 +117,75 @@ in
     }
   ];
 
-  systemd.services.measured-boot-tpm2-enrollment =
-    lib.mkIf (settings.secureBootEnable && settings.luksTpm2Enable)
-      {
-        description = "Enroll measured-boot TPM2 LUKS token";
-        wantedBy = [ "multi-user.target" ];
-        after = [
-          "secure-boot-verification.service"
-          "systemd-pcrlock-make-policy.service"
-        ];
-        # The passphrase prompt owns tty1 until enrollment ends; started
-        # alongside greetd, the prompt vanished behind the greeter and
-        # enrollment waited forever (e2e-target, 2026-09-29).
-        before = [
-          "display-manager.service"
-          "greetd.service"
-        ];
-        requires = [ "systemd-pcrlock-make-policy.service" ];
-        unitConfig = {
-          ConditionSecurity = "uefi-secureboot";
-          ConditionPathExists = [
-            "!/var/lib/gjallarOS/tpm2-enrollment-complete"
-            "/var/lib/systemd/pcrlock.json"
-            "/var/lib/gjallarOS/secure-boot/ownership.json"
-          ];
-        };
-        serviceConfig = {
-          Type = "oneshot";
-          UMask = "0077";
-          # Ask on tty1 directly. Plymouth's password agent got stopped while
-          # the question was pending, so the typed answer never arrived
-          # (e2e-target, 2026-09-29, TPM-measured boot).
-          StandardInput = "tty";
-          StandardOutput = "journal";
-          StandardError = "journal";
-          TTYPath = "/dev/tty1";
-          TTYReset = true;
-          TTYVHangup = true;
-        };
-        path = [
-          pkgs.cryptsetup
-          gjallarctlPackage
-          pkgs.systemd
-          pkgs.coreutils
-          pkgs.gnugrep
-          pkgs.kbd
-          pkgs.plymouth
-          gjallarSecureBootArtifactVerifier
-          gjallarSecureBootOwnershipVerifier
-        ];
-        script = ''
-          set -euo pipefail
-          device=${lib.escapeShellArg luksDevice}
-          state=/var/lib/gjallarOS
-          keyfile="$(mktemp /run/gjallar-luks-key.XXXXXX)"
-          trap 'rm -f -- "$keyfile"' EXIT
+  config.systemd.services.measured-boot-tpm2-enrollment = lib.mkIf tpm2Enabled {
+    description = "Enroll measured-boot TPM2 LUKS token";
+    wantedBy = [ "multi-user.target" ];
+    after = [
+      "secure-boot-verification.service"
+      "systemd-pcrlock-make-policy.service"
+    ];
+    # The passphrase prompt owns tty1 until enrollment ends; started
+    # alongside greetd, the prompt vanished behind the greeter and
+    # enrollment waited forever (e2e-target, 2026-09-29).
+    before = [
+      "display-manager.service"
+      "greetd.service"
+    ];
+    requires = [ "systemd-pcrlock-make-policy.service" ];
+    unitConfig = {
+      ConditionSecurity = "uefi-secureboot";
+      ConditionPathExists = [
+        "!/var/lib/gjallarOS/tpm2-enrollment-complete"
+        "/var/lib/systemd/pcrlock.json"
+        "/var/lib/gjallarOS/secure-boot/ownership.json"
+      ];
+    };
+    serviceConfig = {
+      Type = "oneshot";
+      UMask = "0077";
+      # Ask on tty1 directly. Plymouth's password agent got stopped while
+      # the question was pending, so the typed answer never arrived
+      # (e2e-target, 2026-09-29, TPM-measured boot).
+      StandardInput = "tty";
+      StandardOutput = "journal";
+      StandardError = "journal";
+      TTYPath = "/dev/tty1";
+      TTYReset = true;
+      TTYVHangup = true;
+    };
+    path = enrollmentPath;
+    script = ''
+      set -euo pipefail
+      device=${lib.escapeShellArg luksDevice}
+      state=/var/lib/gjallarOS
+      keyfile="$(mktemp /run/gjallar-luks-key.XXXXXX)"
+      trap 'rm -f -- "$keyfile"' EXIT
 
-          [ ! -e "$state/secure-boot-enable-required" ] || exit 0
-          gjallar-verify-secure-boot-artifacts
-          gjallar-verify-secure-boot-ownership enrolled
-          gjallarctl installer tpm2-check-pcrlock-policy /var/lib/systemd/pcrlock.json \
-            ${lib.concatMapStringsSep " " toString config.boot.lanzaboote.measuredBoot.pcrs}
+      [ ! -e "$state/secure-boot-enable-required" ] || exit 0
+      gjallar-verify-secure-boot-artifacts
+      gjallar-verify-secure-boot-ownership enrolled
+      ${checkPolicy}
 
-          plymouth quit || true
-          chvt 1 || true
-          systemd-ask-password --timeout=0 -n \
-            "GjallarOS: enter the human LUKS recovery passphrase to enroll measured-boot TPM2 unlock" >"$keyfile"
-          chmod 0600 "$keyfile"
-          cryptsetup open --test-passphrase --type luks "$device" --key-file "$keyfile"
+      plymouth quit || true
+      chvt 1 || true
+      systemd-ask-password --timeout=0 -n \
+        "GjallarOS: enter the human LUKS recovery passphrase to enroll measured-boot TPM2 unlock" >"$keyfile"
+      chmod 0600 "$keyfile"
+      cryptsetup open --test-passphrase --type luks "$device" --key-file "$keyfile"
 
-          before="$(cryptsetup luksDump --dump-json-metadata "$device")"
-          if printf '%s' "$before" | grep -q 'systemd-tpm2'; then
-            printf '%s\n' 'ERROR: an existing TPM2 token needs explicit audited migration; no slot was changed.' >&2
-            exit 1
-          fi
+      before="$(cryptsetup luksDump --dump-json-metadata "$device")"
+      if printf '%s' "$before" | grep -q 'systemd-tpm2'; then
+        printf '%s\n' 'ERROR: an existing TPM2 token must be replaced with: sudo gjallarctl tpm2 reenroll; no slot was changed.' >&2
+        exit 1
+      fi
 
-          systemd-cryptenroll --unlock-key-file="$keyfile" --tpm2-device=auto \
-            --tpm2-pcrlock=/var/lib/systemd/pcrlock.json "$device"
+      systemd-cryptenroll --unlock-key-file="$keyfile" --tpm2-device=auto \
+        --tpm2-pcrlock=/var/lib/systemd/pcrlock.json "$device"
 
-          mkdir -p "$state/luks"
-          cryptsetup luksDump --dump-json-metadata "$device" >"$state/luks/metadata.json.tmp"
-          token_id="$(
-            gjallarctl installer tpm2-metadata-token-id \
-              "$state/luks/metadata.json.tmp"
-          )"
-          # systemd ships the TPM2 token plugin, and NixOS cryptsetup dlopens
-          # it by bare name, ignoring its external tokens path (e2e-target,
-          # 2026-09-29: "No usable token is available" after enrollment).
-          LD_LIBRARY_PATH=${config.systemd.package}/lib/cryptsetup \
-            cryptsetup open --test-passphrase --token-only --token-id "$token_id" "$device"
-          gjallarctl installer tpm2-write-keyslot-record \
-            "$state/luks/metadata.json.tmp" \
-            "$state/luks/keyslots.json" \
-            "$device" \
-            /var/lib/systemd/pcrlock.json
-          rm -f -- "$state/luks/metadata.json.tmp"
-          chmod 0600 "$state/luks/keyslots.json"
-          install -m 0600 /dev/null "$state/tpm2-enrollment-complete"
-          printf '%s\n' 'GjallarOS measured-boot TPM2 enrollment completed; human recovery keyslots were preserved.'
-        '';
-      };
+      ${recordEnrollment}
+      install -m 0600 /dev/null "$state/tpm2-enrollment-complete"
+      printf '%s\n' 'GjallarOS measured-boot TPM2 enrollment completed; human recovery keyslots were preserved.'
+    '';
+  };
 
 }

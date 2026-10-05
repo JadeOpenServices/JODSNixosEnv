@@ -66,7 +66,8 @@ assert builtins.elem "greetd.service" tpm2.before;
 # and the answer was lost (e2e-target, 2026-09-29); ask on tty1 directly.
 assert tpm2.serviceConfig.StandardInput == "tty";
 assert tpm2.serviceConfig.TTYPath == "/dev/tty1";
-assert nixpkgs.lib.hasInfix "plymouth quit || true\nchvt 1 || true\nsystemd-ask-password" tpm2.script;
+assert nixpkgs.lib.hasInfix "plymouth quit || true\nchvt 1 || true\nsystemd-ask-password"
+  tpm2.script;
 # gjallarctl runs sbctl verify in-process after enrolling; without lsblk the
 # enrollment transaction failed after the keys were written (e2e-target,
 # 2026-09-29).
@@ -74,4 +75,9 @@ assert builtins.elem pkgs.util-linux enrollment.path;
 # Started in parallel with enrollment, the continuation told the user to
 # remove PK while firmware already was in Setup Mode (e2e-target, 2026-09-29).
 assert builtins.elem "secure-boot-enrollment.service" post.after;
+# A PCRLock policy that no longer matches the TPM had no way back to TPM2
+# unlock (e2e-target, 2026-10-05).
+assert builtins.any (
+  p: (p.name or "") == "gjallar-tpm2-reenroll"
+) evaluated.config.environment.systemPackages;
 pkgs.runCommand "gjallar-secure-boot-lifecycle-check" { } "touch $out"

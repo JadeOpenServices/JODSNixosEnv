@@ -109,6 +109,8 @@ func run(args []string, stdout, stderr io.Writer) int {
 		return runThermalTest(args[1:], stdout, stderr)
 	case "helpme":
 		return runHelpme(args[1:], stdout, stderr)
+	case "tpm2":
+		return runTPM2Reenroll(args[1:], stderr)
 	default:
 		fmt.Fprintf(stderr, "ERROR: unknown command %q\n", args[0])
 		printUsage(stderr)
@@ -1947,6 +1949,7 @@ func printUsage(out io.Writer) {
 	fmt.Fprintln(out, "       gjallarctl ai profile [--config PATH]")
 	fmt.Fprintln(out, "       gjallarctl normalize keyboard --layout VALUE")
 	fmt.Fprintln(out, "       gjallarctl preset {validate|get|list|bool} --config PATH [--key NAME]")
+	fmt.Fprintln(out, "       gjallarctl tpm2 reenroll")
 	fmt.Fprintln(out)
 	fmt.Fprintln(out, "Safe GjallarOS maintenance commands. Rebuild invokes sudo explicitly.")
 }
@@ -2388,6 +2391,39 @@ func runThermalTest(args []string, stdout, stderr io.Writer) int {
 		fmt.Fprintf(stderr, "Unknown action: %s\n", args[0])
 		return 2
 	}
+}
+
+const tpm2ReenrollTool = "gjallar-tpm2-reenroll"
+
+// runTPM2Reenroll hands the terminal to the re-enrollment tool, which asks
+// for the LUKS passphrase; runCommand starts children in their own process
+// group, where reading the terminal stops them.
+func runTPM2Reenroll(args []string, stderr io.Writer) int {
+	if len(args) != 1 || args[0] != "reenroll" {
+		fmt.Fprintln(stderr, "Usage: gjallarctl tpm2 reenroll")
+		return 2
+	}
+	if _, err := exec.LookPath(tpm2ReenrollTool); err != nil {
+		fmt.Fprintf(stderr, "ERROR: %s not found; TPM2 unlock is not enabled on this system\n", tpm2ReenrollTool)
+		return 1
+	}
+
+	argv := tpm2ReenrollArgv(os.Geteuid())
+	path, err := exec.LookPath(argv[0])
+	if err != nil {
+		fmt.Fprintf(stderr, "ERROR: %v\n", err)
+		return 1
+	}
+	err = syscall.Exec(path, argv, os.Environ())
+	fmt.Fprintf(stderr, "ERROR: %s: %v\n", argv[0], err)
+	return 1
+}
+
+func tpm2ReenrollArgv(euid int) []string {
+	if euid == 0 {
+		return []string{tpm2ReenrollTool}
+	}
+	return []string{"sudo", tpm2ReenrollTool}
 }
 
 func runHelpme(args []string, stdout, stderr io.Writer) int {
