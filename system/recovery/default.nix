@@ -106,6 +106,13 @@ lib.mkMerge [
       services.openssh.enable = lib.mkForce false;
       networking.firewall.enable = lib.mkForce true;
 
+      # The normal boot hands Plymouth to greetd, which this multi-user
+      # entry never starts: the splash stayed up over a tty1 without a
+      # login (e2e-target, 2026-10-05).
+      systemd.services.plymouth-quit.enable = lib.mkForce true;
+      systemd.services.plymouth-quit-wait.enable = lib.mkForce true;
+      systemd.targets.getty.wants = [ "getty@tty1.service" ];
+
       environment.etc."gjallar/recovery".text = ''
         Trusted GjallarOS recovery entry.
         Sign in locally and run: sudo gjallar-recover audit
