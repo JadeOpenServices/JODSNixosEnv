@@ -7,17 +7,34 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"os/exec"
 	"strings"
 	"time"
 
 	"github.com/bakanura/gjallarOS/internal/nettrust"
 )
 
-const vpnStatusPath = "/run/gjallar/vpn-trust.json"
+var (
+	vpnStatusPath   = "/run/gjallar/vpn-trust.json"
+	vpnPolicyPath   = "/etc/gjallar/vpn-trust.json"
+	vpnOverridePath = "/var/lib/gjallar/vpn-trust-override.json"
+	// vpnReapply runs the trust decision again after an override change.
+	vpnReapply = func() error {
+		return exec.Command("systemctl", "restart", "gjallar-vpn-trust.service").Run()
+	}
+	vpnEUID = os.Geteuid
+)
+
+const vpnUsage = `usage: gjallarctl vpn status
+       gjallarctl vpn trust-wifi [NAME]    trust NAME, or the current Wi-Fi
+       gjallarctl vpn untrust-wifi [NAME]
+       gjallarctl vpn exit-node NAME|auto|off|default
+       gjallarctl vpn export               print the state.nix line for these changes
+       gjallarctl vpn apply --policy FILE [--override FILE]`
 
 func runVPN(args []string, stdout, stderr io.Writer) int {
 	if len(args) == 0 {
-		fmt.Fprintln(stderr, "usage: gjallarctl vpn apply --policy FILE | status")
+		fmt.Fprintln(stderr, vpnUsage)
 		return 2
 	}
 	switch args[0] {
@@ -25,6 +42,10 @@ func runVPN(args []string, stdout, stderr io.Writer) int {
 		return runVPNApply(args[1:], stdout, stderr)
 	case "status":
 		return runVPNStatus(stdout, stderr)
+	case "trust-wifi", "untrust-wifi", "exit-node":
+		return runVPNOverride(args[0], args[1:], stdout, stderr)
+	case "export":
+		return runVPNExport(stdout, stderr)
 	default:
 		fmt.Fprintf(stderr, "ERROR: unknown vpn command %q\n", args[0])
 		return 2
@@ -35,6 +56,7 @@ func runVPNApply(args []string, stdout, stderr io.Writer) int {
 	flags := flag.NewFlagSet("vpn apply", flag.ContinueOnError)
 	flags.SetOutput(stderr)
 	policyPath := flags.String("policy", "", "network trust policy JSON")
+	overridePath := flags.String("override", "", "runtime override JSON layered over the policy")
 	if err := flags.Parse(args); err != nil {
 		return 2
 	}
@@ -54,6 +76,14 @@ func runVPNApply(args []string, stdout, stderr io.Writer) int {
 	if err != nil {
 		fmt.Fprintf(stderr, "ERROR: %v\n", err)
 		return 1
+	}
+	if *overridePath != "" {
+		// A broken override must not leave the network undecided.
+		if override, err := nettrust.LoadOverride(*overridePath); err != nil {
+			fmt.Fprintf(stderr, "WARN: ignoring override: %v\n", err)
+		} else {
+			policy = override.Apply(policy)
+		}
 	}
 
 	sys := nettrust.NewSystem()
@@ -135,8 +165,116 @@ func runVPNStatus(stdout, stderr io.Writer) int {
 		}
 	}
 	fmt.Fprintf(stdout, "exit node: %s\nlocal:     %s\n", exit, strings.Join(v.Bypass, " "))
+	if o, err := nettrust.LoadOverride(vpnOverridePath); err != nil {
+		fmt.Fprintf(stdout, "override:  unreadable: %v\n", err)
+	} else if !o.Empty() {
+		fmt.Fprintf(stdout, "override:  %s (gjallarctl vpn export)\n", describeOverride(o))
+	}
 	for _, w := range v.Warnings {
 		fmt.Fprintf(stdout, "warning:   %s\n", w)
 	}
+	return 0
+}
+
+func describeOverride(o nettrust.Override) string {
+	var parts []string
+	for _, ssid := range o.TrustWifis {
+		parts = append(parts, fmt.Sprintf("trust %q", ssid))
+	}
+	for _, ssid := range o.UntrustWifis {
+		parts = append(parts, fmt.Sprintf("untrust %q", ssid))
+	}
+	if o.ExitNode != nil {
+		parts = append(parts, "exit node "+*o.ExitNode)
+	}
+	return strings.Join(parts, ", ")
+}
+
+func runVPNOverride(cmd string, args []string, stdout, stderr io.Writer) int {
+	if len(args) > 1 || (cmd == "exit-node" && len(args) != 1) {
+		fmt.Fprintln(stderr, vpnUsage)
+		return 2
+	}
+	if vpnEUID() != 0 {
+		fmt.Fprintf(stderr, "ERROR: gjallarctl vpn %s changes network trust and must run as root\n", cmd)
+		return 1
+	}
+	base, err := nettrust.LoadPolicy(vpnPolicyPath)
+	if err != nil {
+		fmt.Fprintf(stderr, "ERROR: %v\n", err)
+		return 1
+	}
+	override, err := nettrust.LoadOverride(vpnOverridePath)
+	if err != nil {
+		fmt.Fprintf(stderr, "ERROR: %v\n", err)
+		return 1
+	}
+
+	switch cmd {
+	case "exit-node":
+		if err := override.SetExitNode(base, args[0]); err != nil {
+			fmt.Fprintf(stderr, "ERROR: %v\n", err)
+			return 2
+		}
+	default:
+		ssid, err := wifiArg(args)
+		if err != nil {
+			fmt.Fprintf(stderr, "ERROR: %v\n", err)
+			return 1
+		}
+		if cmd == "trust-wifi" {
+			override.Trust(base, ssid)
+		} else {
+			override.Untrust(base, ssid)
+		}
+	}
+
+	if err := nettrust.SaveOverride(vpnOverridePath, override); err != nil {
+		fmt.Fprintf(stderr, "ERROR: save %s: %v\n", vpnOverridePath, err)
+		return 1
+	}
+	if err := vpnReapply(); err != nil {
+		fmt.Fprintf(stderr, "ERROR: reapply network trust: %v\n", err)
+		return 1
+	}
+	return runVPNStatus(stdout, stderr)
+}
+
+// wifiArg returns the named Wi-Fi, or the current one when none is named.
+func wifiArg(args []string) (string, error) {
+	if len(args) == 1 {
+		if ssid := args[0]; ssid != "" && len(ssid) <= 32 {
+			return ssid, nil
+		}
+		return "", fmt.Errorf("%q is not a Wi-Fi name (1-32 bytes)", args[0])
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	network, err := nettrust.NewSystem().Network(ctx)
+	if err != nil {
+		return "", fmt.Errorf("observe network: %w", err)
+	}
+	if network == nil || network.SSID == "" {
+		return "", fmt.Errorf("not on Wi-Fi; name the network")
+	}
+	if !network.Secured() {
+		return "", fmt.Errorf("Wi-Fi %q is open; a trusted name only counts on a network that needs a key", network.SSID)
+	}
+	return network.SSID, nil
+}
+
+func runVPNExport(stdout, stderr io.Writer) int {
+	base, err := nettrust.LoadPolicy(vpnPolicyPath)
+	if err != nil {
+		fmt.Fprintf(stderr, "ERROR: %v\n", err)
+		return 1
+	}
+	override, err := nettrust.LoadOverride(vpnOverridePath)
+	if err != nil {
+		fmt.Fprintf(stderr, "ERROR: %v\n", err)
+		return 1
+	}
+	fmt.Fprintln(stdout, nettrust.NixState(override.Apply(base)))
+	fmt.Fprintf(stderr, "Replace the tailscale line in generated/state.nix with this, rebuild, then remove %s.\n", vpnOverridePath)
 	return 0
 }

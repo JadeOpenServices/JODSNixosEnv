@@ -24,9 +24,20 @@ import (
 	"strings"
 )
 
+// Exit node policy values besides a node name or address.
+const (
+	// ExitNodeAuto picks an online exit node, preferring one that routes a
+	// home subnet: the home router.
+	ExitNodeAuto = "auto"
+	// ExitNodeOff keeps the exit node off on every network.
+	ExitNodeOff = "off"
+)
+
 type Policy struct {
-	HomeSubnets       []string `json:"homeSubnets"`
-	TrustedWifis      []string `json:"trustedWifis"`
+	HomeSubnets  []string `json:"homeSubnets"`
+	TrustedWifis []string `json:"trustedWifis"`
+	// ExitNode is used on untrusted networks: a node name or address,
+	// ExitNodeAuto or ExitNodeOff. Empty leaves the exit node alone.
 	ExitNode          string   `json:"exitNode"`
 	SiteRouterTrust   bool     `json:"siteRouterTrust"`
 	SiteRouterTargets []string `json:"siteRouterTargets"`
@@ -91,6 +102,8 @@ type Peer struct {
 	Online   bool
 	Routes   []netip.Prefix
 	ExitNode bool // currently used as this machine's exit node
+	// ExitNodeOption: the peer offers itself as an exit node.
+	ExitNodeOption bool
 }
 
 // Matches reports whether name refers to this peer by host name, MagicDNS
@@ -247,7 +260,17 @@ func Decide(ctx context.Context, p Policy, net *Network, tn Tailnet, pr Prober) 
 	v.Trust = TrustUntrusted
 	v.Reason = "no trusted Wi-Fi and no tailnet router proof"
 	v.Bypass = []string{}
-	v.ExitNode = p.ExitNode
+	switch p.ExitNode {
+	case ExitNodeOff:
+	case ExitNodeAuto:
+		if peer := autoExitNode(tn, home); peer != nil {
+			v.ExitNode = peer.HostName
+		} else if v.ManageExitNode {
+			v.ExitNodeError = "auto: no online exit node in this tailnet"
+		}
+	default:
+		v.ExitNode = p.ExitNode
+	}
 	if len(localHome) > 0 {
 		v.Warnings = append(v.Warnings, fmt.Sprintf(
 			"local subnet collides with home subnet %s; home traffic stays in the tunnel",
@@ -255,6 +278,25 @@ func Decide(ctx context.Context, p Policy, net *Network, tn Tailnet, pr Prober) 
 		))
 	}
 	return v, nil
+}
+
+// autoExitNode picks an online exit node, preferring one that routes a home
+// subnet. Peers are sorted by host name, so the pick is stable.
+func autoExitNode(tn Tailnet, home []netip.Prefix) *Peer {
+	var fallback *Peer
+	for i := range tn.Peers {
+		peer := &tn.Peers[i]
+		if !peer.Online || !peer.ExitNodeOption || len(peer.IPs) == 0 {
+			continue
+		}
+		if len(overlapping(home, peer.Routes)) > 0 {
+			return peer
+		}
+		if fallback == nil {
+			fallback = peer
+		}
+	}
+	return fallback
 }
 
 func proof(router *Peer, wifiTrusted bool) string {

@@ -193,12 +193,13 @@ func parseTailnet(data []byte) (Tailnet, error) {
 	var status struct {
 		BackendState string
 		Peer         map[string]struct {
-			HostName      string
-			DNSName       string
-			TailscaleIPs  []string
-			Online        bool
-			PrimaryRoutes []string
-			ExitNode      bool
+			HostName       string
+			DNSName        string
+			TailscaleIPs   []string
+			Online         bool
+			PrimaryRoutes  []string
+			ExitNode       bool
+			ExitNodeOption bool
 		}
 	}
 	if err := json.Unmarshal(data, &status); err != nil {
@@ -206,7 +207,7 @@ func parseTailnet(data []byte) (Tailnet, error) {
 	}
 	t := Tailnet{Running: status.BackendState == "Running"}
 	for _, p := range status.Peer {
-		peer := Peer{HostName: p.HostName, DNSName: p.DNSName, Online: p.Online, ExitNode: p.ExitNode}
+		peer := Peer{HostName: p.HostName, DNSName: p.DNSName, Online: p.Online, ExitNode: p.ExitNode, ExitNodeOption: p.ExitNodeOption}
 		for _, raw := range p.TailscaleIPs {
 			if ip, err := netip.ParseAddr(raw); err == nil {
 				peer.IPs = append(peer.IPs, ip)

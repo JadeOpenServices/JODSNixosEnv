@@ -35,8 +35,9 @@ let
 in
 lib.mkIf (intent.enable or true) {
   services.tailscale.enable = true;
-  # Using an exit node needs loose reverse-path filtering.
-  services.tailscale.useRoutingFeatures = lib.mkIf (policy.exitNode != "") "client";
+  # Using an exit node needs loose reverse-path filtering, and
+  # gjallarctl vpn exit-node can turn one on at runtime.
+  services.tailscale.useRoutingFeatures = "client";
 
   # Decide whether this network is trusted, then keep the home LAN bypass
   # and the exit node in line with it. See internal/nettrust.
@@ -57,9 +58,12 @@ lib.mkIf (intent.enable or true) {
     unitConfig.StartLimitIntervalSec = 0;
     serviceConfig = {
       Type = "oneshot";
-      ExecStart = "${gjallarctl}/bin/gjallarctl vpn apply --policy ${policyFile}";
+      ExecStart = "${gjallarctl}/bin/gjallarctl vpn apply --policy ${policyFile} --override /var/lib/gjallar/vpn-trust-override.json";
     };
   };
+
+  # The built-in policy, for gjallarctl vpn trust-wifi/exit-node/export.
+  environment.etc."gjallar/vpn-trust.json".source = policyFile;
 
   networking.networkmanager.dispatcherScripts = [
     {

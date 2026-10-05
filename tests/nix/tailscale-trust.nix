@@ -27,8 +27,12 @@ let
     cfg:
     let
       exec = cfg.systemd.services.gjallar-vpn-trust.serviceConfig.ExecStart;
-      file = builtins.elemAt (builtins.split "--policy " exec) 2;
+      file = cfg.environment.etc."gjallar/vpn-trust.json".source;
     in
+    # The CLI's copy must be the policy the service applies.
+    assert nixpkgs.lib.hasInfix "--policy ${builtins.unsafeDiscardStringContext file} " (
+      builtins.unsafeDiscardStringContext exec
+    );
     builtins.fromJSON (builtins.readFile file);
 
   # Generated state from before the installer asked: the old live behaviour.
@@ -68,7 +72,9 @@ assert
     siteRouterTargets = [ ];
   };
 assert policyOf legacyNull == policyOf legacy;
-assert legacy.services.tailscale.useRoutingFeatures == "none";
+assert legacy.services.tailscale.useRoutingFeatures == "client";
+assert nixpkgs.lib.hasInfix "--override /var/lib/gjallar/vpn-trust-override.json"
+  vpn.systemd.services.gjallar-vpn-trust.serviceConfig.ExecStart;
 assert !(legacy.systemd.services ? tailscale-local-lan-bypass);
 assert
   (policyOf vpn).trustedWifis == [
