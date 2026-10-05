@@ -2010,7 +2010,9 @@ func collectTailscale(ctx context.Context, ui prompt.UI, u *config.User) error {
 		return err
 	}
 	for t.ExitNode == "" {
-		if err := ask("Exit node (tailnet host name or 100.x address)", "", func(v string) error {
+		// The tailnet is not reachable before the first login, so "auto"
+		// picks the home router's exit node at runtime.
+		if err := ask("Exit node (auto = your home router's, or a tailnet host name or 100.x address)", "auto", func(v string) error {
 			t.ExitNode = strings.TrimSpace(v)
 			return nil
 		}); err != nil {

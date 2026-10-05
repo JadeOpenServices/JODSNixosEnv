@@ -54,7 +54,7 @@ func TestCollectTailscaleReasksInvalidAnswers(t *testing.T) {
 		"192.168.8.0", // not a CIDR
 		"10.0.0.0/24",
 		"y",
-		"", // exit node is required
+		"bad name", // not a node name
 		"exit-1",
 		"",
 		"y",
@@ -95,6 +95,13 @@ func TestCollectTailscaleWithoutVPNKeepsHomeBypassOnly(t *testing.T) {
 func TestCollectTailscaleDisabled(t *testing.T) {
 	got, _ := collectTailscaleAnswers(t, "n")
 	if got == nil || got.Enable {
+		t.Fatalf("tailscale = %#v", got)
+	}
+}
+
+func TestCollectTailscaleExitNodeDefaultsToAuto(t *testing.T) {
+	got, _ := collectTailscaleAnswers(t, "y", "", "y", "", "home", "n")
+	if got.ExitNode != "auto" || !slices.Equal(got.TrustedWifis, []string{"home"}) {
 		t.Fatalf("tailscale = %#v", got)
 	}
 }
