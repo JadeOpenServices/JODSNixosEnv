@@ -279,7 +279,7 @@ func Module() string {
 		"      wants = [ \"network-online.target\" ];\n" +
 		"      after = [ \"local-fs.target\" \"network-online.target\" ];\n" +
 		"      before = [ \"display-manager.service\" \"greetd.service\" ];\n" +
-		"      path = [ \"/run/wrappers\" \"/run/current-system/sw\" ];\n" +
+		"      path = [ \"/run/wrappers\" \"/run/current-system/sw\" pkgs.sbctl pkgs.efibootmgr pkgs.gptfdisk pkgs.parted ];\n" +
 		"      unitConfig = {\n" +
 		"        ConditionPathExists = [ \"|" + PendingPath + "\" \"|" + ActivePath + "\" ];\n" +
 		"        ConditionFileIsExecutable = \"" + InstallerPath + "\";\n" +

@@ -37,10 +37,16 @@ in
     ];
 
     # The installer calls sudo and system tools that the default unit PATH
-    # does not provide.
+    # does not provide. The interactive installer gets sbctl, efibootmgr,
+    # sgdisk and parted from its bootstrap configuration; the installed
+    # system does not ship them (e2e-full, 2026-10-05).
     path = [
       "/run/wrappers"
       "/run/current-system/sw"
+      pkgs.sbctl
+      pkgs.efibootmgr
+      pkgs.gptfdisk
+      pkgs.parted
     ];
 
     unitConfig = {

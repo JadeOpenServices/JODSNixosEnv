@@ -44,6 +44,8 @@ assert has "StandardInput=tty" permanent;
 assert has "StandardOutput=tty" permanent;
 assert has "TTYPath=/dev/tty1" permanent;
 assert has "Before=display-manager.service greetd.service" permanent;
+# The installed system does not ship the bootstrap-only tools.
+assert has "-sbctl-" permanent;
 assert has "ExecStart=/var/lib/gjallarOS/installer-resume/gjallar-installer --resume-transaction /var/lib/gjallarOS/installer-resume\n" permanent;
 assert builtins.elem "multi-user.target" (evaluate [ resumeModule ]).config.systemd.services.installer-resume.wantedBy;
 assert both == permanent;

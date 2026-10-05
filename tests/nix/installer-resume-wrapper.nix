@@ -7,7 +7,7 @@
       wants = [ "network-online.target" ];
       after = [ "local-fs.target" "network-online.target" ];
       before = [ "display-manager.service" "greetd.service" ];
-      path = [ "/run/wrappers" "/run/current-system/sw" ];
+      path = [ "/run/wrappers" "/run/current-system/sw" pkgs.sbctl pkgs.efibootmgr pkgs.gptfdisk pkgs.parted ];
       unitConfig = {
         ConditionPathExists = [ "|/var/lib/gjallarOS/installer-resume/pending.json" "|/var/lib/gjallarOS/installer-resume/active.json" ];
         ConditionFileIsExecutable = "/var/lib/gjallarOS/installer-resume/gjallar-installer";
