@@ -173,10 +173,13 @@ func Apply(ctx context.Context, configPath string, updated []byte, now time.Time
 		return backup, err
 	}
 	if err := run(ctx, "sudo", "nixos-rebuild", "switch", "-I", "nixos-config="+configPath); err != nil {
-		if restore := run(ctx, "sudo", "cp", "-a", "--", backup, configPath); restore != nil {
+		// A stop of the calling service cancels ctx; the restore must still
+		// run or the edited config stays (e2e-full, 2026-10-05).
+		restoreCtx := context.WithoutCancel(ctx)
+		if restore := run(restoreCtx, "sudo", "cp", "-a", "--", backup, configPath); restore != nil {
 			return backup, fmt.Errorf("rebuild failed: %v; restore failed: %v", err, restore)
 		}
-		_ = run(ctx, "sudo", "rm", "-f", "--", backup)
+		_ = run(restoreCtx, "sudo", "rm", "-f", "--", backup)
 		return "", fmt.Errorf("rebuild failed; previous configuration restored: %w", err)
 	}
 	if err := run(ctx, "sudo", "rm", "-f", "--", backup); err != nil {
