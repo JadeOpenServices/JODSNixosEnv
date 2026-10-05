@@ -1,54 +1,71 @@
-{ pkgs, ... }:
+{
+  config,
+  lib,
+  pkgs,
+  settings,
+  ...
+}:
 
 let
-  applyLocalLanBypass = pkgs.writeShellScript "tailscale-local-lan-bypass" ''
-    HOME_SUBNET="192.168.8.0/24"
-    RULE_PRIORITY="2500"
+  # null: generated state from before the installer asked about Tailscale.
+  # Keep Tailscale on and 192.168.8.0/24 local everywhere, as before.
+  intent =
+    if (settings.tailscale or null) == null then
+      {
+        enable = true;
+        homeSubnets = [ "192.168.8.0/24" ];
+      }
+    else
+      settings.tailscale;
 
-    # Keep the local-LAN preference rule permanently present.
-    #
-    # suppress_prefixlength 0 is the fail-safe:
-    #
-    # - At home, main contains the real 192.168.8.0/24 connected route,
-    #   so traffic stays directly on the LAN.
-    #
-    # - Away from home, main would otherwise return its default route.
-    #   Prefix length 0 is suppressed, causing policy lookup to continue
-    #   to Tailscale table 52 instead.
-    #
-    # Therefore a roaming Wi-Fi default gateway can never steal the
-    # OpenJade home subnet.
+  policy = {
+    homeSubnets = intent.homeSubnets or [ ];
+    trustedWifis = intent.trustedWifis or [ ];
+    exitNode = intent.exitNode or "";
+    siteRouterTrust = intent.siteRouterTrust or false;
+    siteRouterTargets = intent.siteRouterTargets or [ ];
+  };
 
-    while ${pkgs.iproute2}/bin/ip -4 rule del \
-      priority "$RULE_PRIORITY" \
-      2>/dev/null
-    do
-      :
-    done
+  policyFile = builtins.toFile "gjallar-vpn-trust.json" (builtins.toJSON policy);
+  gjallarctl = pkgs.callPackage ../../pkgs/gjallarctl { };
 
-    ${pkgs.iproute2}/bin/ip -4 rule add \
-      priority "$RULE_PRIORITY" \
-      to "$HOME_SUBNET" \
-      lookup main \
-      suppress_prefixlength 0
-
-    ${pkgs.iproute2}/bin/ip -4 route flush cache
-
-    echo "tailscale-local-lan-bypass: fail-safe home LAN preference active"
-  '';
+  # restart, not start: a decision still probing the previous network is
+  # stale and the new one must not wait behind it.
+  reapply = "${config.systemd.package}/bin/systemctl restart --no-block gjallar-vpn-trust.service";
 in
-{
+lib.mkIf (intent.enable or true) {
   services.tailscale.enable = true;
+  # Using an exit node needs loose reverse-path filtering.
+  services.tailscale.useRoutingFeatures = lib.mkIf (policy.exitNode != "") "client";
 
-  # Re-evaluate the local-LAN preference whenever NetworkManager changes
-  # connectivity. This keeps the 192.168.8.0/24 bypass active at home and
-  # automatically yields to Tailscale's table 52 while roaming.
+  # Decide whether this network is trusted, then keep the home LAN bypass
+  # and the exit node in line with it. See internal/nettrust.
+  systemd.services.gjallar-vpn-trust = {
+    description = "Switch the Tailscale VPN by network trust";
+    after = [
+      "tailscaled.service"
+      "NetworkManager.service"
+    ];
+    wants = [ "tailscaled.service" ];
+    path = [
+      pkgs.iproute2
+      pkgs.networkmanager
+      config.services.tailscale.package
+    ];
+    # The dispatcher, tailscaled and its state file can fire in bursts.
+    unitConfig.StartLimitIntervalSec = 0;
+    serviceConfig = {
+      Type = "oneshot";
+      ExecStart = "${gjallarctl}/bin/gjallarctl vpn apply --policy ${policyFile}";
+    };
+  };
+
   networking.networkmanager.dispatcherScripts = [
     {
-      source = pkgs.writeShellScript "tailscale-local-lan-bypass-dispatcher" ''
+      source = pkgs.writeShellScript "gjallar-vpn-trust-dispatcher" ''
         case "$2" in
-          up|down|dhcp4-change|dhcp6-change|connectivity-change)
-            ${applyLocalLanBypass}
+          up|down|dhcp4-change|dhcp6-change|connectivity-change|reapply)
+            ${reapply}
             ;;
         esac
       '';
@@ -56,28 +73,24 @@ in
     }
   ];
 
-  systemd.services.tailscaled.postStart = ''
-    ${applyLocalLanBypass}
-  '';
+  systemd.services.tailscaled.postStart = reapply;
 
-  systemd.services.tailscale-local-lan-bypass = {
-    description = "Prefer local 192.168.8.0/24 over Tailscale policy routing";
-    after = [ "tailscaled.service" ];
-    wants = [ "tailscaled.service" ];
-
-    serviceConfig = {
-      Type = "oneshot";
-      ExecStart = applyLocalLanBypass;
+  # Login, logout and tailnet route changes land in the state file.
+  systemd.paths.gjallar-vpn-trust = {
+    description = "Watch Tailscale state for network trust changes";
+    wantedBy = [ "multi-user.target" ];
+    pathConfig = {
+      PathChanged = "/var/lib/tailscale/tailscaled.state";
+      Unit = "gjallar-vpn-trust.service";
     };
   };
 
-  systemd.paths.tailscale-local-lan-bypass = {
-    description = "Watch Tailscale state for local-LAN routing changes";
-    wantedBy = [ "multi-user.target" ];
-
-    pathConfig = {
-      PathChanged = "/var/lib/tailscale/tailscaled.state";
-      Unit = "tailscale-local-lan-bypass.service";
+  # Routers come online and go offline without a local network event.
+  systemd.timers.gjallar-vpn-trust = {
+    wantedBy = [ "timers.target" ];
+    timerConfig = {
+      OnBootSec = "1min";
+      OnUnitActiveSec = "5min";
     };
   };
 }

@@ -151,6 +151,11 @@
           wrapperModule = ./tests/nix/installer-resume-wrapper.nix;
         };
 
+        tailscale-trust = import ./tests/nix/tailscale-trust.nix {
+          inherit nixpkgs system;
+          tailscaleModule = ./system/services/tailscale.nix;
+        };
+
         recovery-maintenance = import ./tests/nix/recovery-maintenance.nix {
           inherit nixpkgs system;
           recoveryModule = ./system/recovery;
