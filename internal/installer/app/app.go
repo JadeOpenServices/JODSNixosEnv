@@ -288,7 +288,10 @@ func run(ctx context.Context, args []string, in io.Reader, out, errOut io.Writer
 			return 0
 		}
 	}
-	if skip := liveHostPreparationSkip(opt); skip != "" {
+	if skip := liveHostPreparationSkip(
+		opt,
+		os.Getenv("GJALLAR_INSTALLER_RESUME_STATE"),
+	); skip != "" {
 		fmt.Fprintln(out, skip)
 	} else if code := prepareHost(
 		ctx,
@@ -1587,8 +1590,13 @@ func activateJODSEnrollment(ctx context.Context, installationSucceeded bool) err
 
 // liveHostPreparationSkip reports why the running system must not be
 // rebuilt, staged or rebooted before the installer operates on its target.
-func liveHostPreparationSkip(opt options) string {
+func liveHostPreparationSkip(opt options, resumeState string) string {
 	switch {
+	case resumeState == installerresume.StateMaintenanceReboot:
+		// The GjallarOS generation was deployed before the maintenance boot.
+		// The bootstrap /etc/nixos config lacks the flake's helpers, so it
+		// rebuilt and switched to the bare base system (e2e-full, 2026-10-05).
+		return "Resumed after maintenance; GjallarOS already deployed, live-host rebuild skipped."
 	case opt.recovery:
 		// Recovery media is a purpose-built execution environment. Never mutate
 		// or rebuild the live recovery system before operating on the target.
