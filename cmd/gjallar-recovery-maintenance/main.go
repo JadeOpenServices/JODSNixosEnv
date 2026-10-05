@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"context"
+	"errors"
 	"flag"
 	"fmt"
 	"io"
@@ -10,6 +11,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/bakanura/gjallarOS/internal/installer/diskplan"
 	"github.com/bakanura/gjallarOS/internal/installer/prompt"
 	"github.com/bakanura/gjallarOS/internal/installer/recoveryprovision"
 	"github.com/bakanura/gjallarOS/internal/installer/recoveryresize"
@@ -243,13 +245,70 @@ func run(
 		runner,
 		topology,
 	)
-	if err != nil {
+	if err != nil && !errors.As(err, new(*recoveryprovision.RecoveryPresentError)) {
 		return fmt.Errorf(
 			"build existing-layout recovery plan: %w",
 			err,
 		)
 	}
 
+	var present *recoveryprovision.RecoveryPresentError
+	if errors.As(err, &present) {
+		fmt.Fprintf(
+			out,
+			"PASS: JODS-RECOVERY already present at %s; no storage changes were made\n",
+			present.Partition,
+		)
+	} else if err := provision(ctx, runner, out, topology, plan, secret); err != nil {
+		return err
+	}
+
+	stateDir := filepath.Join(
+		targetRoot,
+		"var/lib/gjallarOS",
+	)
+
+	if err := os.MkdirAll(stateDir, 0700); err != nil {
+		return fmt.Errorf(
+			"create maintenance completion directory: %w",
+			err,
+		)
+	}
+
+	if err := os.WriteFile(
+		filepath.Join(
+			stateDir,
+			"recovery-maintenance-complete",
+		),
+		[]byte("JODS-RECOVERY ready\n"),
+		0600,
+	); err != nil {
+		return fmt.Errorf(
+			"record maintenance completion: %w",
+			err,
+		)
+	}
+
+	fmt.Fprintln(
+		out,
+		"PASS: installed encrypted Btrfs root remained mounted only at /mnt",
+	)
+	fmt.Fprintln(
+		out,
+		"PASS: maintenance completion recorded",
+	)
+
+	return nil
+}
+
+func provision(
+	ctx context.Context,
+	runner recoveryresize.ExecutorRunner,
+	out io.Writer,
+	topology recoveryresize.Topology,
+	plan diskplan.Plan,
+	secret []byte,
+) error {
 	prepared, err := recoveryprovision.Prepare(
 		ctx,
 		runner,
@@ -304,41 +363,6 @@ func run(
 			prepared.Status,
 		)
 	}
-
-	stateDir := filepath.Join(
-		targetRoot,
-		"var/lib/gjallarOS",
-	)
-
-	if err := os.MkdirAll(stateDir, 0700); err != nil {
-		return fmt.Errorf(
-			"create maintenance completion directory: %w",
-			err,
-		)
-	}
-
-	if err := os.WriteFile(
-		filepath.Join(
-			stateDir,
-			"recovery-maintenance-complete",
-		),
-		[]byte("JODS-RECOVERY ready\n"),
-		0600,
-	); err != nil {
-		return fmt.Errorf(
-			"record maintenance completion: %w",
-			err,
-		)
-	}
-
-	fmt.Fprintln(
-		out,
-		"PASS: installed encrypted Btrfs root remained mounted only at /mnt",
-	)
-	fmt.Fprintln(
-		out,
-		"PASS: maintenance completion recorded",
-	)
 
 	return nil
 }

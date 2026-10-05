@@ -20,6 +20,18 @@ const (
 	xbootldrType           = "bc13c2ff-59e6-4262-a352-b275fd6f7172"
 )
 
+// RecoveryPresentError reports that the target disk already carries recovery
+// storage, so no plan (and no root shrink) is needed. Without this check the
+// maintenance entry shrank root by 12 GiB on a disk that already had
+// JODS-RECOVERY (e2e-target, 2026-10-05).
+type RecoveryPresentError struct {
+	Partition string
+}
+
+func (e *RecoveryPresentError) Error() string {
+	return "JODS-RECOVERY already present at " + e.Partition
+}
+
 type existingTree struct {
 	BlockDevices []existingDevice `json:"blockdevices"`
 }
@@ -99,6 +111,7 @@ func BuildExistingPlan(
 
 	used := map[uint]bool{}
 	var esp *existingDevice
+	existingRecovery := ""
 
 	var walk func([]existingDevice) error
 	walk = func(devices []existingDevice) error {
@@ -122,6 +135,12 @@ func BuildExistingPlan(
 					copy := *dev
 					esp = &copy
 				}
+
+				if existingRecovery == "" &&
+					(strings.EqualFold(strings.TrimSpace(dev.PartType), xbootldrType) ||
+						strings.EqualFold(strings.TrimSpace(dev.PartLabel), "JODS-RECOVERY")) {
+					existingRecovery = dev.Path
+				}
 			}
 
 			if err := walk(dev.Children); err != nil {
@@ -134,6 +153,10 @@ func BuildExistingPlan(
 
 	if err := walk(disk.Children); err != nil {
 		return diskplan.Plan{}, err
+	}
+
+	if existingRecovery != "" {
+		return diskplan.Plan{}, &RecoveryPresentError{Partition: existingRecovery}
 	}
 
 	if esp == nil {

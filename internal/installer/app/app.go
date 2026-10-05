@@ -2319,6 +2319,16 @@ func prepareInstalledRecoveryStorage(
 		recoveryresize.SystemRunner(),
 		topology,
 	)
+	var present *recoveryprovision.RecoveryPresentError
+	if errors.As(err, &present) {
+		s.recoveryPartition = present.Partition
+		fmt.Fprintf(
+			out,
+			"PASS: JODS-RECOVERY already present at %s; no storage changes were made\n",
+			present.Partition,
+		)
+		return false, nil
+	}
 	if err != nil {
 		return false, fmt.Errorf(
 			"build existing-layout recovery plan: %w",
