@@ -90,6 +90,9 @@ lib.mkMerge [
 
   (lib.mkIf settings.recoveryEnable {
     boot.loader.timeout = lib.mkForce 5;
+    # The menu offers only the newest generation and its recovery entries;
+    # older ones stay installed and are chosen with gjallar-recover rollback.
+    boot.loader.systemd-boot.configurationLimit = 1;
 
     specialisation.gjallar-recovery.configuration = {
       system.nixos.tags = [ "trusted-recovery" ];

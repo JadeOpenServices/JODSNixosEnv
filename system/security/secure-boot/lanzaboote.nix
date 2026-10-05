@@ -27,8 +27,15 @@ in
   boot.lanzaboote = lib.mkIf settings.secureBootEnable {
     enable = true;
     pkiBundle = "/var/lib/sbctl";
+    # With recovery, older generations are chosen there (gjallar-recover
+    # rollback), not in the boot menu.
     configurationLimit =
-      if settings.luksTpm2Enable then lib.max 1 (pcrlockAlternatives / ukisPerGeneration) else 8;
+      if settings.recoveryEnable or false then
+        1
+      else if settings.luksTpm2Enable then
+        lib.max 1 (pcrlockAlternatives / ukisPerGeneration)
+      else
+        8;
 
     measuredBoot = lib.mkIf settings.luksTpm2Enable {
       enable = true;

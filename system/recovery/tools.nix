@@ -41,6 +41,7 @@ let
           '  gjallar-recover mount DEVICE MOUNTPOINT' \
           '  gjallar-recover open-root DEVICE [NAME]' \
           '  gjallar-recover generations ROOT' \
+          '  gjallar-recover rollback ROOT GENERATION' \
           '  gjallar-recover repair-boot ROOT' \
           '  gjallar-recover rebuild ROOT FLAKE#HOST' \
           '  gjallar-recover jods {repair|reinstall|fresh}'
@@ -218,6 +219,32 @@ let
         generations)
           root="''${2:?installed ROOT mountpoint required}"
           nix-env --list-generations --profile "$root/nix/var/nix/profiles/system"
+          ;;
+        rollback)
+          require_root
+          root="''${2:?installed ROOT mountpoint required}"
+          generation="''${3:?GENERATION required, see gjallar-recover generations ROOT}"
+          [ -e "$root/etc/NIXOS" ] || {
+            printf '%s\n' 'ERROR: target is not a mounted NixOS installation.' >&2
+            exit 1
+          }
+          case "$generation" in
+            ""|*[!0-9]*) printf '%s\n' 'ERROR: GENERATION must be a number.' >&2; exit 1 ;;
+          esac
+          toplevel="$(readlink "$root/nix/var/nix/profiles/system-$generation-link")" || {
+            printf '%s\n' "ERROR: generation $generation does not exist." >&2
+            exit 1
+          }
+          confirm_phrase ROLLBACK
+          # A new generation with the old system: the boot menu lists only
+          # the newest one, and nothing newer is deleted.
+          switch="/nix/var/nix/profiles/system/sw/bin/nix-env -p /nix/var/nix/profiles/system --set $toplevel && /nix/var/nix/profiles/system/bin/switch-to-configuration boot"
+          if [ "$(realpath "$root")" = / ]; then
+            sh -c "$switch"
+          else
+            nixos-enter --root "$root" -c "$switch"
+          fi
+          printf '%s\n' "PASS: generation $generation is the next boot."
           ;;
         repair-boot)
           require_root

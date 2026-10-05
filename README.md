@@ -52,6 +52,12 @@ that staging path. This prevents skipping the normal preparation workflow. It
 is not an authorization boundary against root or someone who can change the
 source. Package builds and recovery ISO builds remain available directly.
 
+With `recoveryEnable`, the boot menu lists only the newest generation and its
+recovery entries. To boot an older generation, start trusted recovery (or the
+recovery ISO, with the root mounted at `/mnt`) and run
+`sudo gjallar-recover generations /` then `sudo gjallar-recover rollback / N`.
+This adds a new generation with that system; nothing newer is deleted.
+
 USB review offers permanent trust after a configured, unused TPM signing handle
 has been provisioned with `sudo gjallarctl usb provision-key`. Existing TPM
 objects are never overwritten. Provisioning does not automatically trust devices

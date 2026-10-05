@@ -34,6 +34,8 @@ assert measured.measuredBoot.enable;
 assert measured.configurationLimit * 3 <= 8;
 assert measured.configurationLimit == 2;
 assert unmeasured.configurationLimit == 8;
+# With recovery, older generations are picked there, not in the boot menu.
+assert recovery.boot.lanzaboote.configurationLimit == 1;
 # The wrapped hook also drops systemd-boot's stale entries.
 assert nixpkgs.lib.hasInfix "install-lanzaboote" "${recovery.system.build.installBootLoader}";
 nixpkgs.legacyPackages.${system}.runCommand "gjallar-measured-boot-limit-check" { } ''
