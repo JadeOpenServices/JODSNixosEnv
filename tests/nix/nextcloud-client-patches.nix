@@ -18,6 +18,9 @@ pkgs.stdenvNoCC.mkDerivation {
     # they must never be classified for dehydration.
     grep -Fq '} else if (attribs && attribs.state == ::OpenVFS::Constants::States::Hydrated) {' "$f"
     ! grep -Fq 'attribs.pinState == convertPinState(PinState::OnlineOnly)' "$f"
+    # Reporting placeholders out of sync re-ran a no-op job on ~18k unchanged
+    # files every sync run, a full core for hours (2026-10-05).
+    grep -A6 'bool OpenVFS::isPlaceHolderInSync' "$f" | grep -Fq 'return true;'
     touch $out
   '';
 }

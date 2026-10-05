@@ -16,5 +16,7 @@
     ./patches/nextcloud-hydration-liveness.patch
     # Dehydrate files hydrated on demand below an OnlineOnly folder again.
     ./patches/nextcloud-openvfs-effective-pin.patch
+    # Skip the no-op VFS metadata job for every unchanged file on each sync.
+    ./patches/nextcloud-openvfs-in-sync.patch
   ];
 }

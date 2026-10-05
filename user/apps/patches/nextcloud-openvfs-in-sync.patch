@@ -1,0 +1,14 @@
+--- a/src/libsync/vfs/openvfs/vfs_openvfs.cpp
++++ b/src/libsync/vfs/openvfs/vfs_openvfs.cpp
+@@ -525,7 +525,10 @@ Result<Vfs::ConvertToPlaceholderResult, QString> OpenVFS::updatePlaceholderMarkI
+ 
+ bool OpenVFS::isPlaceHolderInSync([[maybe_unused]] const QString &filePath) const
+ {
+-    return false;
++    // OpenVFS keeps no separate in-sync mark: updatePlaceholderMarkInSync()
++    // is a no-op. Reporting false queued an UPDATE_VFS_METADATA job for every
++    // unchanged file on every sync run, a full core for hours on large trees.
++    return true;
+ }
+ 
+ Result<void, QString> OpenVFS::createPlaceholders([[maybe_unused]] const QList<SyncFileItemPtr> &items)
