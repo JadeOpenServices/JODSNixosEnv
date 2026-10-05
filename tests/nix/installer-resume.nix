@@ -38,7 +38,11 @@ in
 # generation (e2e-target, 2026-10-05).
 assert has "ConditionPathExists=|/var/lib/gjallarOS/installer-resume/pending.json" permanent;
 assert has "ConditionPathExists=|/var/lib/gjallarOS/installer-resume/active.json" permanent;
-assert !(has "ExecStartPre" permanent);
+assert !(has "mv " permanent);
+# The continuation prompts; it needs tty1 before the greeter takes it.
+assert has "StandardInput=tty" permanent;
+assert has "TTYPath=/dev/tty1" permanent;
+assert has "Before=display-manager.service greetd.service" permanent;
 assert has "ExecStart=/var/lib/gjallarOS/installer-resume/gjallar-installer --resume-transaction /var/lib/gjallarOS/installer-resume\n" permanent;
 assert builtins.elem "multi-user.target" (evaluate [ resumeModule ]).config.systemd.services.installer-resume.wantedBy;
 assert both == permanent;

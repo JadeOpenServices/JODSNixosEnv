@@ -270,7 +270,7 @@ func Arm(
 // system/maintenance/installer-resume.nix and steps aside when that module
 // is already part of the configuration.
 func Module() string {
-	return "{ lib, options, ... }:\n" +
+	return "{ lib, options, pkgs, ... }:\n" +
 		"{\n" +
 		"  config = lib.mkIf (!(options ? gjallar && options.gjallar ? installerResume)) {\n" +
 		"    systemd.services.installer-resume = {\n" +
@@ -278,6 +278,7 @@ func Module() string {
 		"      wantedBy = [ \"multi-user.target\" ];\n" +
 		"      wants = [ \"network-online.target\" ];\n" +
 		"      after = [ \"local-fs.target\" \"network-online.target\" ];\n" +
+		"      before = [ \"display-manager.service\" \"greetd.service\" ];\n" +
 		"      path = [ \"/run/wrappers\" \"/run/current-system/sw\" ];\n" +
 		"      unitConfig = {\n" +
 		"        ConditionPathExists = [ \"|" + PendingPath + "\" \"|" + ActivePath + "\" ];\n" +
@@ -287,6 +288,13 @@ func Module() string {
 		"        Type = \"oneshot\";\n" +
 		"        UMask = \"0077\";\n" +
 		"        TimeoutStartSec = 0;\n" +
+		"        StandardInput = \"tty\";\n" +
+		"        StandardOutput = \"journal+console\";\n" +
+		"        StandardError = \"journal+console\";\n" +
+		"        TTYPath = \"/dev/tty1\";\n" +
+		"        TTYReset = true;\n" +
+		"        TTYVHangup = true;\n" +
+		"        ExecStartPre = [ \"-${pkgs.plymouth}/bin/plymouth quit\" \"-${pkgs.kbd}/bin/chvt 1\" ];\n" +
 		"        ExecStart = \"" + InstallerPath + " --resume-transaction " + StateDir + "\";\n" +
 		"      };\n" +
 		"    };\n" +

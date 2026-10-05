@@ -1,4 +1,4 @@
-{ lib, ... }:
+{ lib, pkgs, ... }:
 
 # Keep in sync with internal/installer/resume: the installer arms
 # pending.json before a planned reboot and claims it as active.json, so a
@@ -28,6 +28,13 @@ in
       "local-fs.target"
       "network-online.target"
     ];
+    # The continuation asks on tty1 (ODDC review, TPM2 consent); started
+    # alongside the greeter it had no terminal and failed (e2e-full,
+    # 2026-10-05).
+    before = [
+      "display-manager.service"
+      "greetd.service"
+    ];
 
     # The installer calls sudo and system tools that the default unit PATH
     # does not provide.
@@ -48,6 +55,16 @@ in
       Type = "oneshot";
       UMask = "0077";
       TimeoutStartSec = 0;
+      StandardInput = "tty";
+      StandardOutput = "journal+console";
+      StandardError = "journal+console";
+      TTYPath = "/dev/tty1";
+      TTYReset = true;
+      TTYVHangup = true;
+      ExecStartPre = [
+        "-${pkgs.plymouth}/bin/plymouth quit"
+        "-${pkgs.kbd}/bin/chvt 1"
+      ];
       ExecStart = "${installer} --resume-transaction ${stateDir}";
     };
   };
