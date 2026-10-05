@@ -5,12 +5,15 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"path/filepath"
 
 	"github.com/bakanura/gjallarOS/internal/installer/diskplan"
 	"github.com/bakanura/gjallarOS/internal/installer/gptprovision"
 	"github.com/bakanura/gjallarOS/internal/installer/prompt"
 	"github.com/bakanura/gjallarOS/internal/installer/recoveryresize"
 )
+
+var evalSymlinks = filepath.EvalSymlinks
 
 type MaintenanceInput struct {
 	Plan       diskplan.Plan
@@ -42,8 +45,18 @@ func ExecuteMaintenance(
 		)
 	}
 
-	rootPart := "/dev/disk/by-partuuid/" +
-		input.Plan.Root.Partition.PARTUUID
+	// cryptsetup status reports the kernel node (/dev/vda2), so the stable
+	// by-partuuid link must be resolved before discovery compares them
+	// (e2e-target, 2026-10-05: `LUKS backing-device mismatch`).
+	rootPart, err := evalSymlinks(
+		"/dev/disk/by-partuuid/" + input.Plan.Root.Partition.PARTUUID,
+	)
+	if err != nil {
+		return MaintenanceResult{}, fmt.Errorf(
+			"resolve root partition: %w",
+			err,
+		)
+	}
 
 	mapping := "/dev/mapper/" +
 		input.Plan.Root.Encryption.MappingName
