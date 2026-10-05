@@ -252,12 +252,43 @@ Store BOTH items somewhere safe and offline.
 Do not continue until you have saved both.
 `, archivePath, passphrase)
 
+	if !u.GTK {
+		out, done, err := u.secretOut()
+		if err != nil {
+			return err
+		}
+		defer done()
+		fmt.Fprintln(out)
+		fmt.Fprintln(out, text)
+		fmt.Fprintln(out)
+		return nil
+	}
 	return u.secureTextDialog(
 		ctx,
 		"GjallarOS Secure Boot Recovery Key",
 		text,
 		"I have saved this recovery material",
 	)
+}
+
+// secretOut returns where secret recovery material may be shown. When the
+// output file is not a terminal it is a log: installer-resume.service sends
+// stdout to the journal, which kept the Secure Boot recovery passphrase
+// (e2e-full, 2026-10-05). The secret then goes to the controlling terminal
+// only, or nowhere.
+func (u UI) secretOut() (io.Writer, func(), error) {
+	file, ok := u.Out.(*os.File)
+	if !ok {
+		return u.Out, func() {}, nil
+	}
+	if info, err := file.Stat(); err == nil && info.Mode()&os.ModeCharDevice != 0 {
+		return u.Out, func() {}, nil
+	}
+	tty, err := os.OpenFile("/dev/tty", os.O_WRONLY, 0)
+	if err != nil {
+		return nil, nil, fmt.Errorf("Secure Boot recovery material needs a terminal; output is not one: %w", err)
+	}
+	return tty, func() { tty.Close() }, nil
 }
 
 // SecureBootOwnershipPlan shows what the Secure Boot ownership transfer

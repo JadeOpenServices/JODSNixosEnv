@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"bytes"
 	"context"
+	"os"
 	"strings"
 	"testing"
 )
@@ -254,5 +255,23 @@ func TestTerminalSecureBootHandoffPlacesFirmwareLockInFinalVisit(t *testing.T) {
 	}
 	if strings.Contains(out.String(), "supervisor") {
 		t.Fatalf("enable handoff asks for a firmware password the user declined:\n%s", out.String())
+	}
+}
+
+func TestShowSecureBootRecoveryKeepsSecretOutOfLogs(t *testing.T) {
+	log, err := os.CreateTemp(t.TempDir(), "journal")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer log.Close()
+	// Without /dev/tty (as in most test sandboxes) the call fails; with
+	// one the secret goes there. The log never receives it.
+	_ = UI{Out: log}.ShowSecureBootRecovery(context.Background(), "/archive", "passphrase-secret")
+	data, err := os.ReadFile(log.Name())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(data), "passphrase-secret") {
+		t.Fatalf("recovery passphrase written to non-terminal output: %q", data)
 	}
 }
