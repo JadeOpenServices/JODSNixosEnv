@@ -6,8 +6,10 @@ import (
 	"flag"
 	"fmt"
 	"io"
+	"maps"
 	"os"
 	"os/exec"
+	"slices"
 	"strings"
 	"time"
 
@@ -26,7 +28,10 @@ var (
 )
 
 const vpnUsage = `usage: gjallarctl vpn status
-       gjallarctl vpn trust-wifi [NAME]    trust NAME, or the current Wi-Fi
+       gjallarctl vpn trust-wifi [NAME] [--exit-node NODE|auto|default]
+                                           trust NAME, or the current Wi-Fi;
+                                           --exit-node still sends its internet
+                                           through NODE
        gjallarctl vpn untrust-wifi [NAME]
        gjallarctl vpn exit-node NAME|auto|off|default
        gjallarctl vpn export               print the state.nix line for these changes
@@ -187,10 +192,25 @@ func describeOverride(o nettrust.Override) string {
 	if o.ExitNode != nil {
 		parts = append(parts, "exit node "+*o.ExitNode)
 	}
+	for _, ssid := range slices.Sorted(maps.Keys(o.WifiExitNodes)) {
+		node := o.WifiExitNodes[ssid]
+		if node == "" {
+			node = "off"
+		}
+		parts = append(parts, fmt.Sprintf("exit node %s on %q", node, ssid))
+	}
 	return strings.Join(parts, ", ")
 }
 
 func runVPNOverride(cmd string, args []string, stdout, stderr io.Writer) int {
+	var wifiExitNode *string
+	if cmd == "trust-wifi" {
+		var ok bool
+		if args, wifiExitNode, ok = exitNodeFlag(args); !ok {
+			fmt.Fprintln(stderr, vpnUsage)
+			return 2
+		}
+	}
 	if len(args) > 1 || (cmd == "exit-node" && len(args) != 1) {
 		fmt.Fprintln(stderr, vpnUsage)
 		return 2
@@ -224,6 +244,12 @@ func runVPNOverride(cmd string, args []string, stdout, stderr io.Writer) int {
 		}
 		if cmd == "trust-wifi" {
 			override.Trust(base, ssid)
+			if wifiExitNode != nil {
+				if err := override.SetWifiExitNode(base, ssid, *wifiExitNode); err != nil {
+					fmt.Fprintf(stderr, "ERROR: %v\n", err)
+					return 2
+				}
+			}
 		} else {
 			override.Untrust(base, ssid)
 		}
@@ -238,6 +264,33 @@ func runVPNOverride(cmd string, args []string, stdout, stderr io.Writer) int {
 		return 1
 	}
 	return runVPNStatus(stdout, stderr)
+}
+
+// exitNodeFlag takes --exit-node NODE or --exit-node=NODE out of args, so
+// it may come before or after the Wi-Fi name.
+func exitNodeFlag(args []string) (rest []string, node *string, ok bool) {
+	for i := 0; i < len(args); i++ {
+		arg := args[i]
+		switch {
+		case arg == "--exit-node" || arg == "-exit-node":
+			if i+1 == len(args) || node != nil {
+				return nil, nil, false
+			}
+			i++
+			node = &args[i]
+		case strings.HasPrefix(arg, "--exit-node=") || strings.HasPrefix(arg, "-exit-node="):
+			if node != nil {
+				return nil, nil, false
+			}
+			value := arg[strings.IndexByte(arg, '=')+1:]
+			node = &value
+		case strings.HasPrefix(arg, "-") && arg != "-":
+			return nil, nil, false
+		default:
+			rest = append(rest, arg)
+		}
+	}
+	return rest, node, true
 }
 
 // wifiArg returns the named Wi-Fi, or the current one when none is named.

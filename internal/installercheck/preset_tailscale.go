@@ -17,6 +17,8 @@ func matchesPresetTailscale(raw json.RawMessage) bool {
 			expected = presetString
 		case "homeSubnets", "trustedWifis", "siteRouterTargets":
 			expected = presetStringList
+		case "wifiExitNodes":
+			expected = presetStringMap
 		default:
 			return false
 		}

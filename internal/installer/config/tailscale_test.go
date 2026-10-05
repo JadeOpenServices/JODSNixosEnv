@@ -13,6 +13,7 @@ func TestValidateTailscale(t *testing.T) {
 		HomeSubnets:       []string{"192.168.8.0/24", "fd00::/64"},
 		TrustedWifis:      []string{"bakasifu-5Ghz", "fizzlipuzzli"},
 		ExitNode:          "home-router",
+		WifiExitNodes:     map[string]string{"fizzlipuzzli": "auto"},
 		SiteRouterTrust:   true,
 		SiteRouterTargets: []string{"192.168.8.1:53", "[fd00::1]:22", "nas.lan:445"},
 	}
@@ -24,13 +25,15 @@ func TestValidateTailscale(t *testing.T) {
 	}
 
 	for name, mutate := range map[string]func(*TailscaleIntent){
-		"default route":   func(t *TailscaleIntent) { t.HomeSubnets = []string{"0.0.0.0/0"} },
-		"bare address":    func(t *TailscaleIntent) { t.HomeSubnets = []string{"192.168.8.1"} },
-		"long ssid":       func(t *TailscaleIntent) { t.TrustedWifis = []string{strings.Repeat("x", 33)} },
-		"exit node space": func(t *TailscaleIntent) { t.ExitNode = "home router" },
-		"target no port":  func(t *TailscaleIntent) { t.SiteRouterTargets = []string{"192.168.8.1"} },
-		"target port 0":   func(t *TailscaleIntent) { t.SiteRouterTargets = []string{"192.168.8.1:0"} },
-		"no targets":      func(t *TailscaleIntent) { t.SiteRouterTargets = nil },
+		"default route":                        func(t *TailscaleIntent) { t.HomeSubnets = []string{"0.0.0.0/0"} },
+		"bare address":                         func(t *TailscaleIntent) { t.HomeSubnets = []string{"192.168.8.1"} },
+		"long ssid":                            func(t *TailscaleIntent) { t.TrustedWifis = []string{strings.Repeat("x", 33)} },
+		"exit node space":                      func(t *TailscaleIntent) { t.ExitNode = "home router" },
+		"wifi exit node for an untrusted wifi": func(t *TailscaleIntent) { t.WifiExitNodes = map[string]string{"cafe": "auto"} },
+		"empty wifi exit node":                 func(t *TailscaleIntent) { t.WifiExitNodes = map[string]string{"fizzlipuzzli": ""} },
+		"target no port":                       func(t *TailscaleIntent) { t.SiteRouterTargets = []string{"192.168.8.1"} },
+		"target port 0":                        func(t *TailscaleIntent) { t.SiteRouterTargets = []string{"192.168.8.1:0"} },
+		"no targets":                           func(t *TailscaleIntent) { t.SiteRouterTargets = nil },
 	} {
 		bad := good
 		mutate(&bad)

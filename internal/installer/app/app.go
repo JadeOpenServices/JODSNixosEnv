@@ -2025,6 +2025,24 @@ func collectTailscale(ctx context.Context, ui prompt.UI, u *config.User) error {
 	}); err != nil {
 		return err
 	}
+	if len(t.TrustedWifis) > 0 {
+		// e.g. a relative's Wi-Fi: its printer stays usable while the
+		// internet still goes through home. gjallarctl vpn trust-wifi
+		// --exit-node picks another node per Wi-Fi later.
+		if err := ask("Of these, Wi-Fis that still send the internet through the exit node (comma-separated, empty = none)", "", func(v string) error {
+			names, err := config.SplitList(v)
+			t.WifiExitNodes = nil
+			for _, ssid := range names {
+				if t.WifiExitNodes == nil {
+					t.WifiExitNodes = map[string]string{}
+				}
+				t.WifiExitNodes[ssid] = t.ExitNode
+			}
+			return err
+		}); err != nil {
+			return err
+		}
+	}
 	t.SiteRouterTrust, err = ui.Confirm(ctx, "Also switch the VPN off near a Tailscale subnet router of your tailnet when that router reaches your home LAN?", true)
 	if err != nil || !t.SiteRouterTrust {
 		return err

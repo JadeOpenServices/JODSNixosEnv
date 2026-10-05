@@ -22,6 +22,7 @@ let
     homeSubnets = intent.homeSubnets or [ ];
     trustedWifis = intent.trustedWifis or [ ];
     exitNode = intent.exitNode or "";
+    wifiExitNodes = intent.wifiExitNodes or { };
     siteRouterTrust = intent.siteRouterTrust or false;
     siteRouterTargets = intent.siteRouterTargets or [ ];
   };

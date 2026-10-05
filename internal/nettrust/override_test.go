@@ -110,11 +110,12 @@ func TestOverrideFileRoundTrip(t *testing.T) {
 
 func TestNixStateQuotesNames(t *testing.T) {
 	got := NixState(Policy{
-		HomeSubnets:  []string{"192.168.8.0/24"},
-		TrustedWifis: []string{`Shi 2,4`, `a"b`, "${x}"},
-		ExitNode:     ExitNodeAuto,
+		HomeSubnets:   []string{"192.168.8.0/24"},
+		TrustedWifis:  []string{`Shi 2,4`, `a"b`, "${x}"},
+		ExitNode:      ExitNodeAuto,
+		WifiExitNodes: map[string]string{"Shi 2,4": "OpenWrt", `a"b`: ExitNodeAuto},
 	})
-	want := `tailscale = { enable = true; homeSubnets = [ "192.168.8.0/24" ]; trustedWifis = [ "Shi 2,4" "a\"b" "\${x}" ]; exitNode = "auto"; siteRouterTrust = false; siteRouterTargets = [ ]; };`
+	want := `tailscale = { enable = true; homeSubnets = [ "192.168.8.0/24" ]; trustedWifis = [ "Shi 2,4" "a\"b" "\${x}" ]; exitNode = "auto"; wifiExitNodes = { "Shi 2,4" = "OpenWrt"; "a\"b" = "auto"; }; siteRouterTrust = false; siteRouterTargets = [ ]; };`
 	if got != want {
 		t.Fatalf("got\n%s\nwant\n%s", got, want)
 	}
@@ -128,5 +129,58 @@ func TestParseTailnetExitNodeOption(t *testing.T) {
 	}
 	if autoExitNode(tn, []netip.Prefix{netip.MustParsePrefix("192.168.8.0/24")}) == nil {
 		t.Fatal("no auto exit node")
+	}
+}
+
+func TestTrustedWifiWithExitNodeKeepsLANLocal(t *testing.T) {
+	p := policy
+	p.WifiExitNodes = map[string]string{"fizzlipuzzli": ExitNodeAuto}
+	tn := Tailnet{Running: true, Peers: []Peer{exitOption("home-router", "192.168.8.0/24", true)}}
+	v := decide(t, p, wifi("fizzlipuzzli", "wpa-psk", "10.1.0.0/24"), tn, fakeProber{})
+	if v.Trust != TrustTrustedWifi || !v.ManageExitNode || v.ExitNode != "home-router" ||
+		!slices.Equal(v.Bypass, []string{"10.1.0.0/24"}) {
+		t.Fatalf("verdict = %+v", v)
+	}
+
+	// Other trusted Wi-Fis keep the exit node off.
+	if v := decide(t, p, wifi("bakasifu-5Ghz", "wpa-psk", "10.2.0.0/24"), tn, fakeProber{}); v.ExitNode != "" || !v.ManageExitNode {
+		t.Fatalf("verdict = %+v", v)
+	}
+
+	// A per-Wi-Fi exit node alone makes the exit node managed: off elsewhere.
+	p = Policy{TrustedWifis: []string{"mum"}, WifiExitNodes: map[string]string{"mum": "home-router"}}
+	if v := decide(t, p, wifi("cafe", "wpa-psk", "172.16.5.0/24"), tn, fakeProber{}); v.Trust != TrustUntrusted || !v.ManageExitNode || v.ExitNode != "" {
+		t.Fatalf("verdict = %+v", v)
+	}
+	if v := decide(t, p, wifi("mum", "wpa-psk", "172.16.6.0/24"), tn, fakeProber{}); v.ExitNode != "home-router" {
+		t.Fatalf("verdict = %+v", v)
+	}
+}
+
+func TestOverrideWifiExitNodes(t *testing.T) {
+	base := Policy{TrustedWifis: []string{"home", "mum"}, WifiExitNodes: map[string]string{"mum": "OpenWrt"}}
+	var o Override
+	if err := o.SetWifiExitNode(base, "home", "two words"); err == nil {
+		t.Fatal("accepted a name with a space")
+	}
+	if err := o.SetWifiExitNode(base, "home", ExitNodeAuto); err != nil {
+		t.Fatal(err)
+	}
+	if err := o.SetWifiExitNode(base, "mum", "default"); err != nil {
+		t.Fatal(err)
+	}
+	got := o.Apply(base).WifiExitNodes
+	if len(got) != 1 || got["home"] != ExitNodeAuto {
+		t.Fatalf("wifiExitNodes = %v", got)
+	}
+
+	// Only trusted Wi-Fis keep one.
+	o.Untrust(base, "home")
+	if got := o.Apply(base).WifiExitNodes; len(got) != 0 {
+		t.Fatalf("wifiExitNodes = %v", got)
+	}
+	o.Trust(base, "home")
+	if err := o.SetWifiExitNode(base, "mum", "OpenWrt"); err != nil || !o.Empty() {
+		t.Fatalf("override not back to empty: %v %+v", err, o)
 	}
 }

@@ -29,6 +29,7 @@ func TestCollectTailscaleHomeWifisAndSiteRouter(t *testing.T) {
 		"y",
 		"home-router",
 		"bakasifu-5Ghz, bakasifu-2.4Ghz,fizzlipuzzli",
+		"", // no trusted Wi-Fi uses the exit node
 		"", // site router trust
 		"", // targets: default
 	)
@@ -75,13 +76,18 @@ func TestCollectTailscaleQuotedWifiNames(t *testing.T) {
 		"y", "", "y", "OpenWrt",
 		`"cafe, upstairs`, // unterminated quote is asked again
 		`bakasifu-5ghz, "cafe, upstairs", fizzlipuzzli`,
+		"elsewhere", // not a trusted Wi-Fi: asked again
+		`"cafe, upstairs"`,
 		"n",
 	)
-	if !strings.Contains(out, "missing closing") {
-		t.Fatalf("missing quote error:\n%s", out)
+	if !strings.Contains(out, "missing closing") || !strings.Contains(out, `"elsewhere" is not a trusted Wi-Fi`) {
+		t.Fatalf("missing validation messages:\n%s", out)
 	}
 	if !slices.Equal(got.TrustedWifis, []string{"bakasifu-5ghz", "cafe, upstairs", "fizzlipuzzli"}) {
 		t.Fatalf("trustedWifis = %q", got.TrustedWifis)
+	}
+	if len(got.WifiExitNodes) != 1 || got.WifiExitNodes["cafe, upstairs"] != "OpenWrt" {
+		t.Fatalf("wifiExitNodes = %q", got.WifiExitNodes)
 	}
 }
 
@@ -100,8 +106,8 @@ func TestCollectTailscaleDisabled(t *testing.T) {
 }
 
 func TestCollectTailscaleExitNodeDefaultsToAuto(t *testing.T) {
-	got, _ := collectTailscaleAnswers(t, "y", "", "y", "", "home", "n")
-	if got.ExitNode != "auto" || !slices.Equal(got.TrustedWifis, []string{"home"}) {
+	got, _ := collectTailscaleAnswers(t, "y", "", "y", "", "home", "", "n")
+	if got.ExitNode != "auto" || !slices.Equal(got.TrustedWifis, []string{"home"}) || got.WifiExitNodes != nil {
 		t.Fatalf("tailscale = %#v", got)
 	}
 }

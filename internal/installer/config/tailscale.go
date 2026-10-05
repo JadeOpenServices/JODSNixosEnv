@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"net"
 	"net/netip"
+	"slices"
 	"strconv"
 	"strings"
 )
@@ -21,6 +22,9 @@ type TailscaleIntent struct {
 	// ExitNode is the tailnet node used as VPN on untrusted networks; empty
 	// leaves the exit node alone.
 	ExitNode string `json:"exitNode"`
+	// WifiExitNodes still send the internet through an exit node on these
+	// trusted Wi-Fis, keeping their LAN reachable.
+	WifiExitNodes map[string]string `json:"wifiExitNodes,omitempty"`
 	// SiteRouterTrust trusts a LAN whose tailnet router is nearby and
 	// reaches every SiteRouterTargets entry.
 	SiteRouterTrust   bool     `json:"siteRouterTrust"`
@@ -47,6 +51,14 @@ func ValidateTailscale(t *TailscaleIntent) error {
 	}
 	if strings.ContainsAny(t.ExitNode, " \t\n") {
 		return fmt.Errorf("tailscale.exitNode: %q is not a node name or address", t.ExitNode)
+	}
+	for ssid, node := range t.WifiExitNodes {
+		if !slices.Contains(t.TrustedWifis, ssid) {
+			return fmt.Errorf("tailscale.wifiExitNodes: %q is not a trusted Wi-Fi", ssid)
+		}
+		if node == "" || strings.ContainsAny(node, " \t\n") {
+			return fmt.Errorf("tailscale.wifiExitNodes: %q is not a node name or address", node)
+		}
 	}
 	for _, target := range t.SiteRouterTargets {
 		host, port, err := net.SplitHostPort(target)

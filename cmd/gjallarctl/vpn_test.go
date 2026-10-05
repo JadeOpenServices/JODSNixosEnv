@@ -54,7 +54,7 @@ func TestVPNOverrideCommands(t *testing.T) {
 	if code := runVPN([]string{"export"}, &out, &errOut); code != 0 {
 		t.Fatalf("export: %s", errOut.String())
 	}
-	want := `tailscale = { enable = true; homeSubnets = [ "192.168.8.0/24" ]; trustedWifis = [ "Shi 2,4" ]; exitNode = "auto"; siteRouterTrust = false; siteRouterTargets = [ ]; };`
+	want := `tailscale = { enable = true; homeSubnets = [ "192.168.8.0/24" ]; trustedWifis = [ "Shi 2,4" ]; exitNode = "auto"; wifiExitNodes = { }; siteRouterTrust = false; siteRouterTargets = [ ]; };`
 	if strings.TrimSpace(out.String()) != want {
 		t.Fatalf("export = %s", out.String())
 	}
@@ -66,6 +66,52 @@ func TestVPNOverrideCommands(t *testing.T) {
 	}
 	if _, err := os.Stat(vpnOverridePath); !os.IsNotExist(err) {
 		t.Fatalf("override left behind after undoing every change: %v", err)
+	}
+}
+
+func TestVPNTrustWifiWithExitNode(t *testing.T) {
+	fakeVPNPaths(t)
+	var out, errOut bytes.Buffer
+	for _, args := range [][]string{
+		{"trust-wifi", "--exit-node", "OpenWrt", "Shi 2,4"},
+		{"trust-wifi", "home", "--exit-node=auto"},
+	} {
+		if code := runVPN(args, &out, &errOut); code != 0 {
+			t.Fatalf("%q: code %d: %s", args, code, errOut.String())
+		}
+	}
+	if !strings.Contains(out.String(), `exit node OpenWrt on "Shi 2,4", exit node auto on "home"`) {
+		t.Fatalf("status:\n%s", out.String())
+	}
+	out.Reset()
+	if code := runVPN([]string{"export"}, &out, &errOut); code != 0 {
+		t.Fatalf("export: %s", errOut.String())
+	}
+	if !strings.Contains(out.String(), `trustedWifis = [ "home" "Shi 2,4" ]; exitNode = "OpenWrt"; wifiExitNodes = { "Shi 2,4" = "OpenWrt"; "home" = "auto"; };`) {
+		t.Fatalf("export = %s", out.String())
+	}
+
+	for _, args := range [][]string{
+		{"trust-wifi", "home", "--exit-node", "default"},
+		{"untrust-wifi", "Shi 2,4"},
+	} {
+		if code := runVPN(args, &out, &errOut); code != 0 {
+			t.Fatalf("%q: %s", args, errOut.String())
+		}
+	}
+	if _, err := os.Stat(vpnOverridePath); !os.IsNotExist(err) {
+		t.Fatalf("override left behind: %v", err)
+	}
+
+	for _, args := range [][]string{
+		{"trust-wifi", "home", "--exit-node"},
+		{"trust-wifi", "home", "--exit-node", "a", "--exit-node", "b"},
+		{"trust-wifi", "home", "--bogus"},
+		{"untrust-wifi", "home", "--exit-node", "a"},
+	} {
+		if code := runVPN(args, &out, &errOut); code != 2 {
+			t.Fatalf("%q: code %d, want 2", args, code)
+		}
 	}
 }
 

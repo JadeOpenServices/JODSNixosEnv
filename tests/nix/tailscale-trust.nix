@@ -47,6 +47,7 @@ let
         "fizzlipuzzli"
       ];
       exitNode = "home-router";
+      wifiExitNodes.fizzlipuzzli = "auto";
       siteRouterTrust = true;
       siteRouterTargets = [ "192.168.8.1:53" ];
     };
@@ -68,6 +69,7 @@ assert
     homeSubnets = [ "192.168.8.0/24" ];
     trustedWifis = [ ];
     exitNode = "";
+    wifiExitNodes = { };
     siteRouterTrust = false;
     siteRouterTargets = [ ];
   };
@@ -82,6 +84,7 @@ assert
     "fizzlipuzzli"
   ];
 assert (policyOf vpn).exitNode == "home-router";
+assert (policyOf vpn).wifiExitNodes == { fizzlipuzzli = "auto"; };
 assert vpn.services.tailscale.useRoutingFeatures == "client";
 assert vpn.systemd.paths.gjallar-vpn-trust.pathConfig.Unit == "gjallar-vpn-trust.service";
 assert builtins.elem "timers.target" vpn.systemd.timers.gjallar-vpn-trust.wantedBy;

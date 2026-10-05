@@ -37,16 +37,21 @@ type Policy struct {
 	HomeSubnets  []string `json:"homeSubnets"`
 	TrustedWifis []string `json:"trustedWifis"`
 	// ExitNode is used on untrusted networks: a node name or address,
-	// ExitNodeAuto or ExitNodeOff. Empty leaves the exit node alone.
-	ExitNode          string   `json:"exitNode"`
-	SiteRouterTrust   bool     `json:"siteRouterTrust"`
-	SiteRouterTargets []string `json:"siteRouterTargets"`
+	// ExitNodeAuto or ExitNodeOff. Empty leaves the exit node alone, or
+	// keeps it off when WifiExitNodes needs it managed.
+	ExitNode string `json:"exitNode"`
+	// WifiExitNodes sends the internet through an exit node on these
+	// trusted Wi-Fis too, keeping their LAN reachable. Keys are Wi-Fi
+	// names, values are like ExitNode.
+	WifiExitNodes     map[string]string `json:"wifiExitNodes,omitempty"`
+	SiteRouterTrust   bool              `json:"siteRouterTrust"`
+	SiteRouterTargets []string          `json:"siteRouterTargets"`
 }
 
 // Managed reports whether the policy asks for trust decisions. Without
 // one, the home subnets stay bypassed everywhere, as before nettrust.
 func (p Policy) Managed() bool {
-	return len(p.TrustedWifis) > 0 || p.ExitNode != "" || p.SiteRouterTrust
+	return len(p.TrustedWifis) > 0 || p.ExitNode != "" || len(p.WifiExitNodes) > 0 || p.SiteRouterTrust
 }
 
 func LoadPolicy(path string) (Policy, error) {
@@ -205,7 +210,7 @@ func Decide(ctx context.Context, p Policy, net *Network, tn Tailnet, pr Prober) 
 		}, nil
 	}
 
-	v := Verdict{ManageExitNode: p.ExitNode != "" && tn.Running}
+	v := Verdict{ManageExitNode: (p.ExitNode != "" || len(p.WifiExitNodes) > 0) && tn.Running}
 
 	if net == nil {
 		// Leave the exit node as it is: clearing it between two untrusted
@@ -254,23 +259,17 @@ func Decide(ctx context.Context, p Policy, net *Network, tn Tailnet, pr Prober) 
 		v.Trust = TrustTrustedWifi
 		v.Reason = fmt.Sprintf("trusted Wi-Fi %q (%s)", net.SSID, net.KeyMgmt)
 		v.Bypass = strs(net.Subnets)
+		if node := p.WifiExitNodes[net.SSID]; node != "" {
+			v.Reason += ", internet through an exit node"
+			v.ExitNode, v.ExitNodeError = pickExitNode(node, tn, home, v.ManageExitNode)
+		}
 		return v, nil
 	}
 
 	v.Trust = TrustUntrusted
 	v.Reason = "no trusted Wi-Fi and no tailnet router proof"
 	v.Bypass = []string{}
-	switch p.ExitNode {
-	case ExitNodeOff:
-	case ExitNodeAuto:
-		if peer := autoExitNode(tn, home); peer != nil {
-			v.ExitNode = peer.HostName
-		} else if v.ManageExitNode {
-			v.ExitNodeError = "auto: no online exit node in this tailnet"
-		}
-	default:
-		v.ExitNode = p.ExitNode
-	}
+	v.ExitNode, v.ExitNodeError = pickExitNode(p.ExitNode, tn, home, v.ManageExitNode)
 	if len(localHome) > 0 {
 		v.Warnings = append(v.Warnings, fmt.Sprintf(
 			"local subnet collides with home subnet %s; home traffic stays in the tunnel",
@@ -278,6 +277,24 @@ func Decide(ctx context.Context, p Policy, net *Network, tn Tailnet, pr Prober) 
 		))
 	}
 	return v, nil
+}
+
+// pickExitNode resolves a policy exit node choice to the node to use.
+func pickExitNode(choice string, tn Tailnet, home []netip.Prefix, managed bool) (node, failure string) {
+	switch choice {
+	case "", ExitNodeOff:
+		return "", ""
+	case ExitNodeAuto:
+		if peer := autoExitNode(tn, home); peer != nil {
+			return peer.HostName, ""
+		}
+		if managed {
+			return "", "auto: no online exit node in this tailnet"
+		}
+		return "", ""
+	default:
+		return choice, ""
+	}
 }
 
 // autoExitNode picks an online exit node, preferring one that routes a home

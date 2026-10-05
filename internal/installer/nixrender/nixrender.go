@@ -5,8 +5,10 @@ package nixrender
 import (
 	"bytes"
 	"fmt"
+	"maps"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 
 	"github.com/bakanura/gjallarOS/internal/installer/config"
@@ -47,6 +49,17 @@ func WebApplications(values []config.WebApplicationIntent) string {
 	return "[ " + strings.Join(rendered, " ") + " ]"
 }
 
+// StringAttrs renders an attribute set of strings, sorted by name.
+func StringAttrs(attrs map[string]string) string {
+	var b strings.Builder
+	b.WriteString("{ ")
+	for _, name := range slices.Sorted(maps.Keys(attrs)) {
+		b.WriteString(String(name) + " = " + String(attrs[name]) + "; ")
+	}
+	b.WriteString("}")
+	return b.String()
+}
+
 // Tailscale renders the intent on one line so SyncUserIntent can replace
 // it; null keeps the pre-installer defaults.
 func Tailscale(t *config.TailscaleIntent) string {
@@ -54,11 +67,12 @@ func Tailscale(t *config.TailscaleIntent) string {
 		return "null"
 	}
 	return fmt.Sprintf(
-		"{ enable = %t; homeSubnets = %s; trustedWifis = %s; exitNode = %s; siteRouterTrust = %t; siteRouterTargets = %s; }",
+		"{ enable = %t; homeSubnets = %s; trustedWifis = %s; exitNode = %s; wifiExitNodes = %s; siteRouterTrust = %t; siteRouterTargets = %s; }",
 		t.Enable,
 		Strings(t.HomeSubnets),
 		Strings(t.TrustedWifis),
 		String(t.ExitNode),
+		StringAttrs(t.WifiExitNodes),
 		t.SiteRouterTrust,
 		Strings(t.SiteRouterTargets),
 	)

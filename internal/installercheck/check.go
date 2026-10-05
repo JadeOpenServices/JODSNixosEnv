@@ -99,6 +99,7 @@ const (
 	presetStringList
 	presetWebApplicationList
 	presetTailscale
+	presetStringMap
 )
 
 var presetSchema = map[string]presetValueType{
@@ -160,6 +161,9 @@ func matchesPresetType(raw json.RawMessage, expected presetValueType) bool {
 		return matchesPresetWebApplicationList(raw)
 	case presetTailscale:
 		return matchesPresetTailscale(raw)
+	case presetStringMap:
+		var value map[string]string
+		return json.Unmarshal(raw, &value) == nil
 	default:
 		return false
 	}
