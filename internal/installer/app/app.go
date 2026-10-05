@@ -2640,7 +2640,6 @@ func provisionRecoveryPartition(ctx context.Context, root string, s state) error
 		return nil
 	}
 	createScript := filepath.Join(root, "scripts", "recovery", "create-partition.sh")
-	installScript := filepath.Join(root, "scripts", "recovery", "install-partition.sh")
 	signScript := filepath.Join(root, "scripts", "recovery", "sign-image.sh")
 	if s.recoveryDisk != "" {
 		if err := attached(ctx, "sudo", createScript, s.recoveryDisk); err != nil {
@@ -2661,13 +2660,17 @@ func provisionRecoveryPartition(ctx context.Context, root string, s state) error
 		return fmt.Errorf("build recovery image: %w", err)
 	}
 	defer source.Close()
-	cmd := exec.CommandContext(ctx, "nix", "build", source.Ref("gjallar-recovery-iso"), "--no-link", "--print-out-paths")
-	cmd.Stderr = os.Stderr
-	output, err := cmd.Output()
+	storePath, err := buildStaged(ctx, source, "gjallar-recovery-iso")
 	if err != nil {
 		return fmt.Errorf("build recovery image: %w", err)
 	}
-	storePath := strings.TrimSpace(string(output))
+	// install-partition.sh with its tools pinned: the running system need
+	// not have xorriso, sbctl, or mkfs.vfat in PATH.
+	installTool, err := buildStaged(ctx, source, "gjallar-recovery-install")
+	if err != nil {
+		return fmt.Errorf("build recovery installer: %w", err)
+	}
+	installScript := filepath.Join(installTool, "bin", "gjallar-recovery-install")
 	images, err := filepath.Glob(filepath.Join(storePath, "iso", "*.iso"))
 	if err != nil || len(images) != 1 {
 		return fmt.Errorf("recovery build produced %d ISO images", len(images))
@@ -2695,6 +2698,16 @@ func provisionRecoveryPartition(ctx context.Context, root string, s state) error
 		return fmt.Errorf("install recovery partition: %w", err)
 	}
 	return nil
+}
+
+func buildStaged(ctx context.Context, source flakesource.Source, attr string) (string, error) {
+	cmd := exec.CommandContext(ctx, "nix", "build", source.Ref(attr), "--no-link", "--print-out-paths")
+	cmd.Stderr = os.Stderr
+	output, err := cmd.Output()
+	if err != nil {
+		return "", err
+	}
+	return strings.TrimSpace(string(output)), nil
 }
 
 func detectAndRenderState(

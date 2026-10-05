@@ -103,6 +103,7 @@
       packages.${system} = rec {
         gjallarctl = pkgs.callPackage ./pkgs/gjallarctl { };
         "gjallar-usbtrustd" = pkgs.callPackage ./pkgs/gjallar-usbtrustd { };
+        "gjallar-recovery-install" = pkgs.callPackage ./pkgs/gjallar-recovery-install { };
         "gjallar-installer" = gjallarctl.overrideAttrs (old: {
           meta = old.meta // {
             mainProgram = "gjallar-installer";
