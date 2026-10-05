@@ -41,6 +41,7 @@ assert has "ConditionPathExists=|/var/lib/gjallarOS/installer-resume/active.json
 assert !(has "mv " permanent);
 # The continuation prompts; it needs tty1 before the greeter takes it.
 assert has "StandardInput=tty" permanent;
+assert has "StandardOutput=tty" permanent;
 assert has "TTYPath=/dev/tty1" permanent;
 assert has "Before=display-manager.service greetd.service" permanent;
 assert has "ExecStart=/var/lib/gjallarOS/installer-resume/gjallar-installer --resume-transaction /var/lib/gjallarOS/installer-resume\n" permanent;

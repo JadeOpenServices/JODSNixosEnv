@@ -218,7 +218,7 @@ func TestModuleMatchesPermanentUnit(t *testing.T) {
 	if strings.Contains(module, "mv ") {
 		t.Fatal("module still moves the transaction before the run")
 	}
-	for _, want := range []string{`StandardInput = "tty"`, `TTYPath = "/dev/tty1"`, `"greetd.service"`} {
+	for _, want := range []string{`StandardInput = "tty"`, `StandardOutput = "tty"`, `TTYPath = "/dev/tty1"`, `"greetd.service"`} {
 		if !strings.Contains(module, want) {
 			t.Fatalf("continuation lacks tty1 before the greeter: %q", want)
 		}

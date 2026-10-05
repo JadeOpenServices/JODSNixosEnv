@@ -56,7 +56,11 @@ in
       UMask = "0077";
       TimeoutStartSec = 0;
       StandardInput = "tty";
-      StandardOutput = "journal+console";
+      # Prompts end without a newline and journald holds partial lines, so
+      # they never reached tty1; stdout also carries the Secure Boot
+      # recovery passphrase, which must stay out of the journal (e2e-full,
+      # 2026-10-05). Errors and build logs on stderr stay in the journal.
+      StandardOutput = "tty";
       StandardError = "journal+console";
       TTYPath = "/dev/tty1";
       TTYReset = true;

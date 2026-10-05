@@ -289,7 +289,7 @@ func Module() string {
 		"        UMask = \"0077\";\n" +
 		"        TimeoutStartSec = 0;\n" +
 		"        StandardInput = \"tty\";\n" +
-		"        StandardOutput = \"journal+console\";\n" +
+		"        StandardOutput = \"tty\";\n" +
 		"        StandardError = \"journal+console\";\n" +
 		"        TTYPath = \"/dev/tty1\";\n" +
 		"        TTYReset = true;\n" +

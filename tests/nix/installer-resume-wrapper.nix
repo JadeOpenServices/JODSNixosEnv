@@ -17,7 +17,7 @@
         UMask = "0077";
         TimeoutStartSec = 0;
         StandardInput = "tty";
-        StandardOutput = "journal+console";
+        StandardOutput = "tty";
         StandardError = "journal+console";
         TTYPath = "/dev/tty1";
         TTYReset = true;
