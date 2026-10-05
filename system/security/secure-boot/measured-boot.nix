@@ -104,6 +104,14 @@ in
   # path, and a failed TPM unlock asks for a "LUKS2 token PIN" although the
   # human passphrase is what it accepts (e2e-target, 2026-10-05). Extending
   # the submodule sets it on every device without reading the attrset back.
+  options.boot.initrd.luks.devices = lib.mkOption {
+    type = lib.types.attrsOf (
+      lib.types.submodule {
+        config.crypttabExtraOpts = lib.mkIf tpm2Enabled [ "tpm2-device=auto" ];
+      }
+    );
+  };
+
   config.environment.systemPackages = lib.mkIf tpm2Enabled [ tpm2Reenroll ];
 
   config.assertions = lib.optionals settings.luksTpm2Enable [

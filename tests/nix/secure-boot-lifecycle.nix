@@ -75,6 +75,11 @@ assert builtins.elem pkgs.util-linux enrollment.path;
 # Started in parallel with enrollment, the continuation told the user to
 # remove PK while firmware already was in Setup Mode (e2e-target, 2026-09-29).
 assert builtins.elem "secure-boot-enrollment.service" post.after;
+# Without tpm2-device=auto, systemd-cryptsetup took its generic token path
+# and a failed TPM unlock asked for a "LUKS2 token PIN" although only the
+# passphrase works (e2e-target, 2026-10-05).
+assert
+  evaluated.config.boot.initrd.luks.devices.cryptroot.crypttabExtraOpts == [ "tpm2-device=auto" ];
 # A PCRLock policy that no longer matches the TPM had no way back to TPM2
 # unlock (e2e-target, 2026-10-05).
 assert builtins.any (
