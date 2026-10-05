@@ -27,6 +27,7 @@ import (
 	"github.com/bakanura/gjallarOS/internal/installer/discovery"
 	"github.com/bakanura/gjallarOS/internal/installer/diskcrypto"
 	"github.com/bakanura/gjallarOS/internal/installer/firmware"
+	"github.com/bakanura/gjallarOS/internal/installer/flakesource"
 	"github.com/bakanura/gjallarOS/internal/installer/geolocation"
 	"github.com/bakanura/gjallarOS/internal/installer/hardwareconfig"
 	"github.com/bakanura/gjallarOS/internal/installer/installstate"
@@ -2650,7 +2651,18 @@ func provisionRecoveryPartition(ctx context.Context, root string, s state) error
 			return errors.New("recovery partition creation completed but JODS-RECOVERY was not detected")
 		}
 	}
-	cmd := exec.CommandContext(ctx, "nix", "build", root+"#gjallar-recovery-iso", "--no-link", "--print-out-paths")
+	// The recovery configuration imports untracked generated/state.nix, so a
+	// git+file build never evaluates; build from the staged source as
+	// deploy.Apply does. That also works when installer-resume.service runs
+	// as root, where Nix refuses the user-owned Git repository (e2e-full,
+	// 2026-10-05).
+	source, err := flakesource.Stage(root, "")
+	if err != nil {
+		return fmt.Errorf("build recovery image: %w", err)
+	}
+	defer source.Close()
+	cmd := exec.CommandContext(ctx, "nix", "build", source.Ref("gjallar-recovery-iso"), "--no-link", "--print-out-paths")
+	cmd.Stderr = os.Stderr
 	output, err := cmd.Output()
 	if err != nil {
 		return fmt.Errorf("build recovery image: %w", err)
