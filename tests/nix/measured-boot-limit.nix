@@ -6,7 +6,7 @@
 }:
 let
   evaluate =
-    luksTpm2Enable:
+    luksTpm2Enable: recoveryEnable:
     (nixpkgs.lib.nixosSystem {
       inherit system;
       modules = [
@@ -22,17 +22,20 @@ let
       ];
       specialArgs.settings = {
         secureBootEnable = true;
-        inherit luksTpm2Enable;
+        inherit luksTpm2Enable recoveryEnable;
       };
-    }).config.boot.lanzaboote;
-  measured = evaluate true;
-  unmeasured = evaluate false;
+    }).config;
+  measured = (evaluate true false).boot.lanzaboote;
+  unmeasured = (evaluate false false).boot.lanzaboote;
+  recovery = evaluate true true;
 in
 # systemd-pcrlock: at most 8 alternatives per PCR; PCR 4 sees every UKI.
 assert measured.measuredBoot.enable;
 assert measured.configurationLimit * 3 <= 8;
 assert measured.configurationLimit == 2;
 assert unmeasured.configurationLimit == 8;
+# The wrapped hook also drops systemd-boot's stale entries.
+assert nixpkgs.lib.hasInfix "install-lanzaboote" "${recovery.system.build.installBootLoader}";
 nixpkgs.legacyPackages.${system}.runCommand "gjallar-measured-boot-limit-check" { } ''
   touch "$out"
 ''

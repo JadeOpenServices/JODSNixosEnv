@@ -1,6 +1,7 @@
 {
   config,
   lib,
+  pkgs,
   settings,
   ...
 }:
@@ -12,6 +13,7 @@ let
   # policy: Argument list too long"), e2e-full, 2026-09-29.
   pcrlockAlternatives = 8;
   ukisPerGeneration = 1 + builtins.length (builtins.attrNames config.specialisation);
+  esp = lib.escapeShellArg config.boot.loader.efi.efiSysMountPoint;
 in
 {
   assertions = lib.optional settings.luksTpm2Enable {
@@ -38,4 +40,16 @@ in
       ];
     };
   };
+
+  # systemd-boot's entries outlive a switch to Secure Boot, and lanzaboote
+  # already removed the kernels they load.
+  system.build.installBootLoader = lib.mkIf settings.secureBootEnable (
+    lib.mkForce (
+      pkgs.writeShellScript "install-lanzaboote" ''
+        set -euo pipefail
+        ${config.boot.loader.external.installHook} "$@"
+        ${pkgs.coreutils}/bin/rm -f ${esp}/loader/entries/nixos*-generation-*.conf
+      ''
+    )
+  );
 }

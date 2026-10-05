@@ -21,6 +21,9 @@ let
   sysctl = config.boot.kernel.sysctl;
 in
 assert config.boot.loader.systemd-boot.editor == false;
+# Leftover Secure Boot UKIs panic once their closures are collected.
+assert nixpkgs.lib.hasInfix "/boot/EFI/Linux/nixos-generation-*.efi"
+  config.boot.loader.systemd-boot.extraInstallCommands;
 assert sysctl."net.ipv4.conf.all.accept_redirects" == 0;
 assert sysctl."net.ipv6.conf.all.accept_redirects" == 0;
 assert sysctl."net.ipv4.conf.all.send_redirects" == 0;
