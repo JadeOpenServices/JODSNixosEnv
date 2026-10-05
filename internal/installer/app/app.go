@@ -11,6 +11,7 @@ import (
 	"os/user"
 	"path/filepath"
 	"runtime"
+	"strconv"
 	"strings"
 	"time"
 
@@ -114,6 +115,10 @@ func runResumed(ctx context.Context, path string, in io.Reader, out, errOut io.W
 		}
 	}
 
+	if err := trustResumeRepository(tx.Repo); err != nil {
+		return fail(errOut, err)
+	}
+
 	code := run(ctx, tx.Args, in, out, errOut)
 
 	// A shutdown that stops the service mid-run is an unplanned reboot:
@@ -123,6 +128,34 @@ func runResumed(ctx context.Context, path string, in io.Reader, out, errOut io.W
 	}
 
 	return code
+}
+
+// trustResumeRepository lets git, run as root by installer-resume.service,
+// read the repository the installing user owns; it refused that as dubious
+// ownership (e2e-full, 2026-10-05). The root-owned transaction names the
+// repository that user already deployed as root, so this trusts nothing new.
+func trustResumeRepository(repo string) error {
+	count := 0
+	if value := os.Getenv("GIT_CONFIG_COUNT"); value != "" {
+		parsed, err := strconv.Atoi(value)
+		if err != nil || parsed < 0 {
+			return fmt.Errorf("invalid GIT_CONFIG_COUNT %q", value)
+		}
+		count = parsed
+	}
+
+	index := strconv.Itoa(count)
+	for key, value := range map[string]string{
+		"GIT_CONFIG_KEY_" + index:   "safe.directory",
+		"GIT_CONFIG_VALUE_" + index: repo,
+		"GIT_CONFIG_COUNT":          strconv.Itoa(count + 1),
+	} {
+		if err := os.Setenv(key, value); err != nil {
+			return fmt.Errorf("trust resumed GjallarOS repository: %w", err)
+		}
+	}
+
+	return nil
 }
 
 func validateResume(tx installerresume.Transaction) error {
