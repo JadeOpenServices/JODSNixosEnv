@@ -238,6 +238,20 @@ func TestCreatesOnlyRecoveryGPTEntry(t *testing.T) {
 		t.Fatalf("unexpected status %q", result.Status)
 	}
 
+	updated := false
+	for _, call := range wrapped.calls() {
+		joined := strings.Join(call, " ")
+		if strings.Contains(joined, "--rereadpt") {
+			t.Fatalf("whole-disk reread fails while root is open: %v", call)
+		}
+		if strings.HasPrefix(joined, "sudo partx --update --nr ") {
+			updated = true
+		}
+	}
+	if !updated {
+		t.Fatal("new recovery partition was not added to the kernel table")
+	}
+
 	for _, call := range wrapped.calls() {
 		joined := strings.Join(call, " ")
 		for _, forbidden := range []string{

@@ -280,14 +280,19 @@ func provision(
 		return Result{}, fmt.Errorf("create canonical recovery GPT entry: %w", err)
 	}
 
+	// Recovery-storage maintenance runs with the root LUKS mapping open on
+	// this disk, where blockdev --rereadpt fails with EBUSY (e2e-target,
+	// 2026-10-05); partx adds only the new partition.
 	if err := privilegedRun(
 		ctx,
 		runner,
-		"blockdev",
-		"--rereadpt",
+		"partx",
+		"--update",
+		"--nr",
+		number,
 		input.Plan.TargetDisk.Path,
 	); err != nil {
-		return Result{}, fmt.Errorf("reread partition table: %w", err)
+		return Result{}, fmt.Errorf("add recovery partition to kernel table: %w", err)
 	}
 
 	if err := privilegedRun(
