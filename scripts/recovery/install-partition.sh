@@ -3,18 +3,30 @@ set -euo pipefail
 
 usage() {
   echo "usage: $0 PARTITION IMAGE MANIFEST SIGNATURE PINNED_PUBLIC_KEY" >&2
+  echo "       $0 --local-build PARTITION IMAGE" >&2
   echo "PARTITION must be a dedicated, unmounted exactly-12-GiB partition." >&2
   echo "This command never accepts, creates, shrinks, or formats a whole disk." >&2
+  echo "--local-build installs an image this host just built with Nix; it has" >&2
+  echo "no release signature, and the endpoint Secure Boot key signs its boot chain." >&2
   exit 2
 }
 
-[ "$#" -eq 5 ] || usage
+local_build=false
+if [ "${1:-}" = --local-build ]; then
+  local_build=true
+  shift
+  [ "$#" -eq 2 ] || usage
+else
+  [ "$#" -eq 5 ] || usage
+fi
 [ "$(id -u)" -eq 0 ] || { echo "ERROR: run as root" >&2; exit 1; }
 partition=$(realpath "$1")
 image=$(realpath "$2")
-manifest=$(realpath "$3")
-signature=$(realpath "$4")
-public_key=$(realpath "$5")
+if ! $local_build; then
+  manifest=$(realpath "$3")
+  signature=$(realpath "$4")
+  public_key=$(realpath "$5")
+fi
 
 [ "$(lsblk -dnro TYPE "$partition")" = part ] || {
   echo "ERROR: target must be a partition, never a whole disk" >&2
@@ -40,7 +52,14 @@ size=$(blockdev --getsize64 "$partition")
   exit 1
 }
 
-"$(dirname "$0")/verify-image.sh" "$image" "$manifest" "$signature" "$public_key"
+if $local_build; then
+  case "$image" in
+    /nix/store/*) ;;
+    *) echo "ERROR: --local-build image must be a Nix store path" >&2; exit 1 ;;
+  esac
+else
+  "$(dirname "$0")/verify-image.sh" "$image" "$manifest" "$signature" "$public_key"
+fi
 for command in mkfs.vfat xorriso sbctl findmnt efibootmgr; do
   command -v "$command" >/dev/null || {
     echo "ERROR: required command not found: $command" >&2
@@ -63,9 +82,15 @@ parent="/dev/$parent_name"
   exit 1
 }
 echo "Target: $partition ($(numfmt --to=iec "$size"))"
-printf 'Type FORMAT-JODS-RECOVERY to erase that partition: '
-read -r answer
-[ "$answer" = FORMAT-JODS-RECOVERY ] || { echo "Cancelled." >&2; exit 1; }
+# The installer creates JODS-RECOVERY empty or as vfat JODSRECOV and asks
+# before it gets here; anything else on the partition needs typed consent.
+fs_type=$(blkid -p -o value -s TYPE "$partition" 2>/dev/null || true)
+fs_label=$(blkid -p -o value -s LABEL "$partition" 2>/dev/null || true)
+if ! $local_build || { [ -n "$fs_type" ] && [ "$fs_type:$fs_label" != vfat:JODSRECOV ]; }; then
+  printf 'Type FORMAT-JODS-RECOVERY to erase that partition: '
+  read -r answer
+  [ "$answer" = FORMAT-JODS-RECOVERY ] || { echo "Cancelled." >&2; exit 1; }
+fi
 
 # Preserve the XBOOTLDR GUID validated above. Changing it to an ESP here would
 # make discovery inconsistent and could cause firmware/bootloader ambiguity.
@@ -92,9 +117,16 @@ while IFS= read -r -d '' executable; do
 done < <(find "$mount_dir/EFI" -type f -iname '*.efi' -print0)
 
 install -d -m 0700 "$mount_dir/.gjallar-release"
-install -m 0600 "$manifest" "$mount_dir/.gjallar-release/manifest"
-install -m 0600 "$signature" "$mount_dir/.gjallar-release/manifest.sig"
-install -m 0644 "$public_key" "$mount_dir/.gjallar-release/recovery-signing-public.pem"
+if $local_build; then
+  printf 'schema=1\nimage=%s\nsha256=%s\nsize=%s\nsource=local-nix-build\nstore-path=%s\n' \
+    "$(basename "$image")" "$(sha256sum "$image" | cut -d' ' -f1)" \
+    "$(stat -c '%s' "$image")" "$image" > "$mount_dir/.gjallar-release/manifest"
+  chmod 0600 "$mount_dir/.gjallar-release/manifest"
+else
+  install -m 0600 "$manifest" "$mount_dir/.gjallar-release/manifest"
+  install -m 0600 "$signature" "$mount_dir/.gjallar-release/manifest.sig"
+  install -m 0644 "$public_key" "$mount_dir/.gjallar-release/recovery-signing-public.pem"
+fi
 sync -f "$mount_dir/EFI/BOOT/BOOTX64.EFI"
 
 # Give firmware an explicit independent recovery target. Never delete or

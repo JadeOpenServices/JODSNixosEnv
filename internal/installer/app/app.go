@@ -2672,6 +2672,16 @@ func provisionRecoveryPartition(ctx context.Context, root string, s state) error
 	if err != nil || len(images) != 1 {
 		return fmt.Errorf("recovery build produced %d ISO images", len(images))
 	}
+	// Canonical provisioning never asks for offline release keys: the image
+	// was just built here from the installed source, and install-partition.sh
+	// signs its boot chain with this endpoint's Secure Boot key. Release
+	// signing applies only when an operator supplied the release key pair.
+	if s.recoverySigningKey == "" && s.recoverySigningPublicKey == "" {
+		if err := attached(ctx, "sudo", installScript, "--local-build", s.recoveryPartition, images[0]); err != nil {
+			return fmt.Errorf("install recovery partition: %w", err)
+		}
+		return nil
+	}
 	releaseDir, err := os.MkdirTemp("", "gjallar-recovery-release-")
 	if err != nil {
 		return err
