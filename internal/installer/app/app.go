@@ -66,6 +66,7 @@ type state struct {
 	recoverySigningKey       string
 	recoverySigningPublicKey string
 	secureBootFirmware       oddc.EffectiveSecureBootFirmwarePolicy
+	deviceGate               string
 }
 
 const (
@@ -103,6 +104,7 @@ func runResumed(ctx context.Context, path string, in io.Reader, out, errOut io.W
 	for key, value := range map[string]string{
 		"GJALLAR_INSTALLER_RESUMED":      "1",
 		"GJALLAR_INSTALLER_RESUME_STATE": tx.State,
+		resumedDeviceGateEnv:             tx.DeviceGate,
 	} {
 		if err := os.Setenv(key, value); err != nil {
 			return fail(
@@ -506,6 +508,7 @@ func run(ctx context.Context, args []string, in io.Reader, out, errOut io.Writer
 	); err != nil {
 		return fail(errOut, err)
 	}
+	s.deviceGate = deviceGate(resolvedDevice, pinnedRelease, sourceRevision)
 
 	s.secureBootFirmware, err = oddc.ResolveSecureBootFirmwarePolicy(resolvedDevice)
 	if err != nil {
@@ -1186,6 +1189,7 @@ func run(ctx context.Context, args []string, in io.Reader, out, errOut io.Writer
 						executable,
 						opt.repo,
 						originalArgs,
+						s.deviceGate,
 					); err != nil {
 						return fail(
 							errOut,

@@ -42,6 +42,8 @@ type Transaction struct {
 	Args            []string
 	CreatedUTC      string
 	Attempts        int
+	// DeviceGate is the ODDC validation target the arming run passed.
+	DeviceGate string `json:",omitempty"`
 }
 
 func Load(path string) (Transaction, error) {
@@ -200,13 +202,15 @@ func ArmMaintenance(
 	executable string,
 	repo string,
 	args []string,
+	deviceGate string,
 ) error {
 	return arm(ctx, executable, Transaction{
-		Schema: Schema,
-		State:  StateMaintenanceReboot,
-		Reason: "recovery-storage-maintenance",
-		Repo:   repo,
-		Args:   append([]string(nil), args...),
+		Schema:     Schema,
+		State:      StateMaintenanceReboot,
+		Reason:     "recovery-storage-maintenance",
+		Repo:       repo,
+		Args:       append([]string(nil), args...),
+		DeviceGate: deviceGate,
 	})
 }
 

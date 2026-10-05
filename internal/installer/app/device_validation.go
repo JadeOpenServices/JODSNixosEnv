@@ -3,6 +3,7 @@ package app
 import (
 	"context"
 	"fmt"
+	"os"
 
 	"github.com/bakanura/gjallarOS/internal/installer/config"
 	"github.com/bakanura/gjallarOS/internal/installer/oddc"
@@ -11,6 +12,36 @@ import (
 )
 
 var localValidationMatches = oddcvalidation.LocalValidationMatches
+
+// resumedDeviceGateEnv carries the gate the run that armed a maintenance
+// continuation passed. The continuation has no terminal and failed on this
+// prompt with EOF (e2e-full, 2026-10-05).
+const resumedDeviceGateEnv = "GJALLAR_INSTALLER_DEVICE_GATE"
+
+// deviceGateKey names one validation target; a changed model, release or
+// revision asks again.
+func deviceGateKey(target oddc.ValidationTarget) string {
+	return fmt.Sprintf(
+		"%s|%s|%s|%s",
+		target.DeviceID,
+		target.NixOSRelease,
+		target.GjallarOSRevision,
+		target.ODDCRevision,
+	)
+}
+
+func deviceGate(
+	resolved oddc.Resolved,
+	nixOSRelease string,
+	gjallarOSRevision string,
+) string {
+	return deviceGateKey(oddc.ValidationTarget{
+		NixOSRelease:      nixOSRelease,
+		GjallarOSRevision: gjallarOSRevision,
+		DeviceID:          resolved.ModelID,
+		ODDCRevision:      resolved.Source.Revision,
+	})
+}
 
 func enforceDeviceValidation(
 	ctx context.Context,
@@ -50,6 +81,10 @@ func enforceDeviceValidation(
 	}
 
 	if user.AllowUnvalidatedODDCModel {
+		return nil
+	}
+
+	if passed := os.Getenv(resumedDeviceGateEnv); passed != "" && passed == deviceGateKey(target) {
 		return nil
 	}
 

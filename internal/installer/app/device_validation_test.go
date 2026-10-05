@@ -215,3 +215,26 @@ func TestDeviceValidationGateAcceptsMatchingLocalRecord(t *testing.T) {
 		t.Fatalf("matching local validation unexpectedly prompted: %q", out.String())
 	}
 }
+
+func TestDeviceValidationGateCarriesIntoMaintenanceContinuation(t *testing.T) {
+	resolved := validationFixture(t)
+	resolved.Validations[0].LastValidatedNixOS = "25.11"
+
+	t.Setenv(resumedDeviceGateEnv, deviceGate(resolved, "26.05", "git:gjallar"))
+	ui, out := validationTestUI("")
+	if err := enforceDeviceValidation(context.Background(), ui, config.User{}, resolved, "26.05", "git:gjallar"); err != nil {
+		t.Fatal(err)
+	}
+	if out.Len() != 0 {
+		t.Fatalf("passed gate prompted again: %q", out.String())
+	}
+
+	// A repository that moved on since arming is a new target: ask again.
+	ui, out = validationTestUI("")
+	if err := enforceDeviceValidation(context.Background(), ui, config.User{}, resolved, "26.05", "git:newer"); err == nil {
+		t.Fatal("changed revision reused the earlier approval")
+	}
+	if !strings.Contains(out.String(), "WARNING:") {
+		t.Fatalf("changed revision did not prompt: %q", out.String())
+	}
+}
