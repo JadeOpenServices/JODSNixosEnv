@@ -111,6 +111,8 @@ func run(args []string, stdout, stderr io.Writer) int {
 		return runHelpme(args[1:], stdout, stderr)
 	case "tpm2":
 		return runTPM2Reenroll(args[1:], stderr)
+	case "vpn":
+		return runVPN(args[1:], stdout, stderr)
 	default:
 		fmt.Fprintf(stderr, "ERROR: unknown command %q\n", args[0])
 		printUsage(stderr)
@@ -1950,6 +1952,7 @@ func printUsage(out io.Writer) {
 	fmt.Fprintln(out, "       gjallarctl normalize keyboard --layout VALUE")
 	fmt.Fprintln(out, "       gjallarctl preset {validate|get|list|bool} --config PATH [--key NAME]")
 	fmt.Fprintln(out, "       gjallarctl tpm2 reenroll")
+	fmt.Fprintln(out, "       gjallarctl vpn status")
 	fmt.Fprintln(out)
 	fmt.Fprintln(out, "Safe GjallarOS maintenance commands. Rebuild invokes sudo explicitly.")
 }

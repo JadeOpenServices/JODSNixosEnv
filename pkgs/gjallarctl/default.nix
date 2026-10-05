@@ -22,6 +22,7 @@ buildGoModule {
       ../../internal/input
       ../../internal/installercheck
       ../../internal/installer
+      ../../internal/nettrust
       ../../internal/preset
       ../../internal/usbtrust
       ../../oddc

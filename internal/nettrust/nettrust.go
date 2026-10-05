@@ -1,0 +1,332 @@
+// Package nettrust decides whether the current network is trusted and keeps
+// the Tailscale exit node and the home-LAN routing bypass in line with it.
+//
+// A network is trusted when one of these holds:
+//
+//   - home: a local subnet is a home subnet, and either a tailnet router
+//     proves it is on this LAN or the Wi-Fi is a trusted, secured network.
+//   - site: a tailnet router proves it is on this LAN, advertises this LAN,
+//     and the required targets answer through it outside the tunnel.
+//   - trusted-wifi: the Wi-Fi name is trusted and the connection is secured.
+//
+// Router proof is a direct Tailscale disco ping answered from an address in
+// the local subnet. Disco pings are signed with the peer's node key, so a
+// foreign network cannot fake it by copying a subnet or a Wi-Fi name.
+package nettrust
+
+import (
+	"context"
+	"encoding/json"
+	"fmt"
+	"net/netip"
+	"os"
+	"slices"
+	"strings"
+)
+
+type Policy struct {
+	HomeSubnets       []string `json:"homeSubnets"`
+	TrustedWifis      []string `json:"trustedWifis"`
+	ExitNode          string   `json:"exitNode"`
+	SiteRouterTrust   bool     `json:"siteRouterTrust"`
+	SiteRouterTargets []string `json:"siteRouterTargets"`
+}
+
+// Managed reports whether the policy asks for trust decisions. Without
+// one, the home subnets stay bypassed everywhere, as before nettrust.
+func (p Policy) Managed() bool {
+	return len(p.TrustedWifis) > 0 || p.ExitNode != "" || p.SiteRouterTrust
+}
+
+func LoadPolicy(path string) (Policy, error) {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return Policy{}, fmt.Errorf("read network trust policy: %w", err)
+	}
+	var p Policy
+	if err := json.Unmarshal(data, &p); err != nil {
+		return Policy{}, fmt.Errorf("parse network trust policy: %w", err)
+	}
+	if _, err := p.homePrefixes(); err != nil {
+		return Policy{}, err
+	}
+	return p, nil
+}
+
+func (p Policy) homePrefixes() ([]netip.Prefix, error) {
+	prefixes := make([]netip.Prefix, 0, len(p.HomeSubnets))
+	for _, raw := range p.HomeSubnets {
+		prefix, err := netip.ParsePrefix(strings.TrimSpace(raw))
+		if err != nil {
+			return nil, fmt.Errorf("invalid home subnet %q: %w", raw, err)
+		}
+		prefixes = append(prefixes, prefix.Masked())
+	}
+	return prefixes, nil
+}
+
+// Network is the connection that carries the default route.
+type Network struct {
+	Device  string
+	Gateway netip.Addr
+	Subnets []netip.Prefix
+	SSID    string // empty when the device is not Wi-Fi
+	KeyMgmt string // NetworkManager key-mgmt; empty for an open network
+}
+
+// Secured reports whether joining the Wi-Fi needed a credential the access
+// point had to know. Open and OWE networks can be cloned by anyone.
+func (n Network) Secured() bool {
+	switch n.KeyMgmt {
+	case "wpa-psk", "sae", "wpa-eap", "wpa-eap-suite-b-192":
+		return true
+	}
+	return false
+}
+
+type Peer struct {
+	HostName string
+	DNSName  string
+	IPs      []netip.Addr
+	Online   bool
+	Routes   []netip.Prefix
+	ExitNode bool // currently used as this machine's exit node
+}
+
+// Matches reports whether name refers to this peer by host name, MagicDNS
+// name or Tailscale address.
+func (p Peer) Matches(name string) bool {
+	name = strings.TrimSuffix(strings.ToLower(strings.TrimSpace(name)), ".")
+	if name == "" {
+		return false
+	}
+	dns := strings.TrimSuffix(strings.ToLower(p.DNSName), ".")
+	if name == strings.ToLower(p.HostName) || name == dns {
+		return true
+	}
+	if short, _, ok := strings.Cut(dns, "."); ok && name == short {
+		return true
+	}
+	for _, ip := range p.IPs {
+		if name == ip.String() {
+			return true
+		}
+	}
+	return false
+}
+
+type Tailnet struct {
+	Running bool
+	Peers   []Peer
+}
+
+func (t Tailnet) CurrentExitNode() *Peer {
+	for i := range t.Peers {
+		if t.Peers[i].ExitNode {
+			return &t.Peers[i]
+		}
+	}
+	return nil
+}
+
+// Prober runs the checks that touch the network.
+type Prober interface {
+	// DirectVia pings peer over Tailscale and returns the LAN endpoint that
+	// answered, if the path is direct.
+	DirectVia(ctx context.Context, peer Peer) (netip.Addr, bool)
+	// Reach connects to a host:port target outside the Tailscale tunnel.
+	Reach(ctx context.Context, target string) error
+}
+
+const (
+	TrustOffline     = "offline"
+	TrustLegacy      = "legacy"
+	TrustHome        = "home"
+	TrustSite        = "site"
+	TrustTrustedWifi = "trusted-wifi"
+	TrustUntrusted   = "untrusted"
+)
+
+type Verdict struct {
+	Trust    string   `json:"trust"`
+	Reason   string   `json:"reason"`
+	Device   string   `json:"device,omitempty"`
+	SSID     string   `json:"ssid,omitempty"`
+	Router   string   `json:"router,omitempty"`
+	Bypass   []string `json:"bypass"`
+	ExitNode string   `json:"exitNode"`
+	// ManageExitNode is false when the policy names no exit node or
+	// Tailscale is not running; the exit node is then left alone.
+	ManageExitNode bool     `json:"manageExitNode"`
+	Warnings       []string `json:"warnings,omitempty"`
+}
+
+func (v Verdict) Trusted() bool {
+	switch v.Trust {
+	case TrustHome, TrustSite, TrustTrustedWifi:
+		return true
+	}
+	return false
+}
+
+// Decide maps the observed network to a verdict. net is nil when no
+// connection carries a default route.
+func Decide(ctx context.Context, p Policy, net *Network, tn Tailnet, pr Prober) (Verdict, error) {
+	home, err := p.homePrefixes()
+	if err != nil {
+		return Verdict{}, err
+	}
+
+	if !p.Managed() {
+		return Verdict{
+			Trust:  TrustLegacy,
+			Reason: "no trust policy configured; home subnets stay local",
+			Bypass: strs(home),
+		}, nil
+	}
+
+	v := Verdict{ManageExitNode: p.ExitNode != "" && tn.Running}
+
+	if net == nil {
+		v.Trust = TrustOffline
+		v.Reason = "no default route"
+		v.Bypass = []string{}
+		return v, nil
+	}
+	v.Device, v.SSID = net.Device, net.SSID
+
+	localHome := overlapping(home, net.Subnets)
+	wifiTrusted := net.SSID != "" && slices.Contains(p.TrustedWifis, net.SSID) && net.Secured()
+	if net.SSID != "" && slices.Contains(p.TrustedWifis, net.SSID) && !net.Secured() {
+		v.Warnings = append(v.Warnings, fmt.Sprintf(
+			"Wi-Fi %q is trusted by name but open (key-mgmt %q); anyone can clone it",
+			net.SSID, net.KeyMgmt,
+		))
+	}
+
+	router, via := provenRouter(ctx, net, tn, pr)
+	if router != nil {
+		v.Router = router.HostName + " via " + via.String()
+	}
+
+	switch {
+	case len(localHome) > 0 && (router != nil || wifiTrusted):
+		v.Trust = TrustHome
+		v.Reason = "on a home subnet, proven by " + proof(router, wifiTrusted)
+		v.Bypass = strs(localHome)
+		return v, nil
+
+	case router != nil && p.SiteRouterTrust:
+		if missing := unreachable(ctx, p.SiteRouterTargets, pr); missing != "" {
+			v.Warnings = append(v.Warnings, "site router "+router.HostName+" does not reach "+missing)
+			break
+		}
+		v.Trust = TrustSite
+		v.Reason = "tailnet router " + router.HostName + " is on this LAN and reaches every required target"
+		v.Bypass = strs(net.Subnets)
+		return v, nil
+	}
+
+	if wifiTrusted {
+		v.Trust = TrustTrustedWifi
+		v.Reason = fmt.Sprintf("trusted Wi-Fi %q (%s)", net.SSID, net.KeyMgmt)
+		v.Bypass = strs(net.Subnets)
+		return v, nil
+	}
+
+	v.Trust = TrustUntrusted
+	v.Reason = "no trusted Wi-Fi and no tailnet router proof"
+	v.Bypass = []string{}
+	v.ExitNode = p.ExitNode
+	if len(localHome) > 0 {
+		v.Warnings = append(v.Warnings, fmt.Sprintf(
+			"local subnet collides with home subnet %s; home traffic stays in the tunnel",
+			strings.Join(strs(localHome), ", "),
+		))
+	}
+	return v, nil
+}
+
+func proof(router *Peer, wifiTrusted bool) string {
+	switch {
+	case router != nil && wifiTrusted:
+		return "tailnet router " + router.HostName + " and trusted Wi-Fi"
+	case router != nil:
+		return "tailnet router " + router.HostName
+	default:
+		return "trusted Wi-Fi"
+	}
+}
+
+// provenRouter returns an online peer that advertises a local subnet and
+// answers a direct ping from inside it.
+func provenRouter(ctx context.Context, net *Network, tn Tailnet, pr Prober) (*Peer, netip.Addr) {
+	if !tn.Running {
+		return nil, netip.Addr{}
+	}
+	for i := range tn.Peers {
+		peer := &tn.Peers[i]
+		if !peer.Online || !advertisesLocal(peer.Routes, net.Subnets) {
+			continue
+		}
+		via, ok := pr.DirectVia(ctx, *peer)
+		if !ok {
+			continue
+		}
+		for _, subnet := range net.Subnets {
+			if subnet.Contains(via) {
+				return peer, via
+			}
+		}
+	}
+	return nil, netip.Addr{}
+}
+
+// advertisesLocal ignores exit-node default routes, which cover every
+// subnet and say nothing about where the peer is.
+func advertisesLocal(routes, local []netip.Prefix) bool {
+	for _, route := range routes {
+		if route.Bits() == 0 {
+			continue
+		}
+		for _, subnet := range local {
+			if route.Bits() <= subnet.Bits() && route.Contains(subnet.Addr()) {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+func unreachable(ctx context.Context, targets []string, pr Prober) string {
+	if len(targets) == 0 {
+		return "any target (siteRouterTargets is empty)"
+	}
+	for _, target := range targets {
+		if err := pr.Reach(ctx, target); err != nil {
+			return target + ": " + err.Error()
+		}
+	}
+	return ""
+}
+
+func overlapping(home, local []netip.Prefix) []netip.Prefix {
+	var out []netip.Prefix
+	for _, h := range home {
+		for _, l := range local {
+			if h.Overlaps(l) {
+				out = append(out, h)
+				break
+			}
+		}
+	}
+	return out
+}
+
+func strs(prefixes []netip.Prefix) []string {
+	out := make([]string, 0, len(prefixes))
+	for _, p := range prefixes {
+		out = append(out, p.Masked().String())
+	}
+	return out
+}
