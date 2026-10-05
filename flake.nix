@@ -145,6 +145,12 @@
           measuredBootModule = ./system/security/secure-boot/measured-boot.nix;
         };
 
+        installer-resume = import ./tests/nix/installer-resume.nix {
+          inherit nixpkgs system;
+          resumeModule = ./system/maintenance/installer-resume.nix;
+          wrapperModule = ./tests/nix/installer-resume-wrapper.nix;
+        };
+
         recovery-maintenance = import ./tests/nix/recovery-maintenance.nix {
           inherit nixpkgs system;
           recoveryModule = ./system/recovery;

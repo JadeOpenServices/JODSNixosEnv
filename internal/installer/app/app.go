@@ -77,50 +77,33 @@ var runJODSCommand = attached
 
 func Run(ctx context.Context, args []string, in io.Reader, out, errOut io.Writer) int {
 	if len(args) == 2 && args[0] == "--resume-transaction" {
-		tx, err := installerresume.Load(args[1])
-		if err != nil {
-			return fail(errOut, err)
-		}
+		return runResumed(ctx, args[1], in, out, errOut)
+	}
+	return run(ctx, args, in, out, errOut)
+}
 
-		expected, active, err := release.Inspect(
-			tx.Repo,
-			"/run/current-system/etc/os-release",
-		)
-		if err != nil {
-			return fail(errOut, err)
-		}
+// runResumed runs the transaction installer-resume.service hands over. The
+// argument is the state directory; older wrapper units pass active.json.
+func runResumed(ctx context.Context, path string, in io.Reader, out, errOut io.Writer) int {
+	dir := path
+	if info, err := os.Stat(path); err == nil && !info.IsDir() {
+		dir = filepath.Dir(path)
+	}
 
-		if expected != tx.ExpectedRelease {
-			return fail(
-				errOut,
-				fmt.Errorf(
-					"resume expected NixOS %s but repository policy now expects %s",
-					tx.ExpectedRelease,
-					expected,
-				),
-			)
-		}
+	tx, err := installerresume.Claim(dir)
+	if err != nil {
+		return fail(errOut, err)
+	}
 
-		if active != tx.ExpectedRelease {
-			return fail(
-				errOut,
-				fmt.Errorf(
-					"staged NixOS %s did not become active; current release is %s; automatic retry disabled",
-					tx.ExpectedRelease,
-					active,
-				),
-			)
-		}
+	if err := validateResume(tx); err != nil {
+		return fail(errOut, errors.Join(err, installerresume.Finish(dir, false, false)))
+	}
 
-		fmt.Fprintf(
-			out,
-			"PASS: installer resumed on pinned NixOS %s\n",
-			active,
-		)
-
-		args = append([]string(nil), tx.Args...)
-
-		if err := os.Setenv("GJALLAR_INSTALLER_RESUMED", "1"); err != nil {
+	for key, value := range map[string]string{
+		"GJALLAR_INSTALLER_RESUMED":      "1",
+		"GJALLAR_INSTALLER_RESUME_STATE": tx.State,
+	} {
+		if err := os.Setenv(key, value); err != nil {
 			return fail(
 				errOut,
 				fmt.Errorf(
@@ -129,6 +112,58 @@ func Run(ctx context.Context, args []string, in io.Reader, out, errOut io.Writer
 				),
 			)
 		}
+	}
+
+	code := run(ctx, tx.Args, in, out, errOut)
+
+	// A shutdown that stops the service mid-run is an unplanned reboot:
+	// keep the transaction so the next boot resumes it.
+	if err := installerresume.Finish(dir, code == 0, ctx.Err() != nil); err != nil {
+		fmt.Fprintf(errOut, "WARNING: %v\n", err)
+	}
+
+	return code
+}
+
+func validateResume(tx installerresume.Transaction) error {
+	if tx.State == installerresume.StateMaintenanceReboot {
+		return nil
+	}
+
+	expected, active, err := release.Inspect(
+		tx.Repo,
+		"/run/current-system/etc/os-release",
+	)
+	if err != nil {
+		return err
+	}
+
+	if expected != tx.ExpectedRelease {
+		return fmt.Errorf(
+			"resume expected NixOS %s but repository policy now expects %s",
+			tx.ExpectedRelease,
+			expected,
+		)
+	}
+
+	if active != tx.ExpectedRelease {
+		return fmt.Errorf(
+			"staged NixOS %s did not become active; current release is %s; automatic retry disabled",
+			tx.ExpectedRelease,
+			active,
+		)
+	}
+
+	return nil
+}
+
+func run(ctx context.Context, args []string, in io.Reader, out, errOut io.Writer) int {
+	if os.Getenv("GJALLAR_INSTALLER_RESUMED") == "1" {
+		fmt.Fprintf(
+			out,
+			"PASS: installer resumed (%s)\n",
+			os.Getenv("GJALLAR_INSTALLER_RESUME_STATE"),
+		)
 	}
 
 	originalArgs := append([]string(nil), args...)
@@ -1084,6 +1119,7 @@ func Run(ctx context.Context, args []string, in io.Reader, out, errOut io.Writer
 					out,
 					"PASS: one-shot recovery-storage maintenance environment installed",
 				)
+
 				fmt.Fprintln(
 					out,
 					"STAGE: arming one-shot maintenance boot",

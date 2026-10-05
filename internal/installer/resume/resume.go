@@ -3,7 +3,9 @@ package resume
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"io/fs"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -16,11 +18,19 @@ const (
 	StateDir      = "/var/lib/gjallarOS/installer-resume"
 	PendingPath   = StateDir + "/pending.json"
 	ActivePath    = StateDir + "/active.json"
+	FailedPath    = StateDir + "/failed.json"
 	InstallerPath = StateDir + "/gjallar-installer"
 	ControlPath   = StateDir + "/gjallarctl"
 	ModulePath    = StateDir + "/resume-module.nix"
 	WrapperPath   = StateDir + "/configuration.nix"
 	ServiceName   = "installer-resume.service"
+
+	StateReleaseReboot     = "waiting-for-release-reboot"
+	StateMaintenanceReboot = "waiting-for-maintenance-reboot"
+
+	// MaxAttempts bounds how often a resume that never finished runs again,
+	// so a transaction that crashes the boot cannot loop forever.
+	MaxAttempts = 3
 )
 
 type Transaction struct {
@@ -31,6 +41,7 @@ type Transaction struct {
 	Repo            string
 	Args            []string
 	CreatedUTC      string
+	Attempts        int
 }
 
 func Load(path string) (Transaction, error) {
@@ -51,14 +62,16 @@ func Load(path string) (Transaction, error) {
 		)
 	}
 
-	if tx.State != "waiting-for-release-reboot" {
+	switch tx.State {
+	case StateReleaseReboot, StateMaintenanceReboot:
+	default:
 		return Transaction{}, fmt.Errorf(
 			"installer resume transaction is not resumable: %s",
 			tx.State,
 		)
 	}
 
-	if strings.TrimSpace(tx.ExpectedRelease) == "" {
+	if tx.State == StateReleaseReboot && strings.TrimSpace(tx.ExpectedRelease) == "" {
 		return Transaction{}, fmt.Errorf(
 			"installer resume transaction has no expected release",
 		)
@@ -74,6 +87,132 @@ func Load(path string) (Transaction, error) {
 	return tx, nil
 }
 
+// Claim takes the transaction in dir for this boot. A freshly armed
+// pending.json becomes active.json; an active.json left by a boot that died
+// mid-resume is run again until MaxAttempts.
+func Claim(dir string) (Transaction, error) {
+	pending := filepath.Join(dir, "pending.json")
+	active := filepath.Join(dir, "active.json")
+
+	if err := os.Rename(pending, active); err != nil && !errors.Is(err, fs.ErrNotExist) {
+		return Transaction{}, fmt.Errorf("claim installer resume transaction: %w", err)
+	}
+
+	tx, err := Load(active)
+	if err != nil {
+		return Transaction{}, errors.Join(err, retire(dir))
+	}
+
+	tx.Attempts++
+	if tx.Attempts > MaxAttempts {
+		return Transaction{}, errors.Join(
+			fmt.Errorf(
+				"installer resume was interrupted %d times; automatic retry disabled",
+				MaxAttempts,
+			),
+			retire(dir),
+		)
+	}
+
+	data, err := encode(tx)
+	if err != nil {
+		return Transaction{}, err
+	}
+
+	if err := writeDurable(active, data); err != nil {
+		return Transaction{}, fmt.Errorf("record installer resume attempt: %w", err)
+	}
+
+	return tx, nil
+}
+
+// Finish ends a claimed run. An interrupted run keeps active.json for the
+// next boot; a failed run is kept as failed.json and not retried.
+func Finish(dir string, succeeded, interrupted bool) error {
+	if interrupted {
+		return nil
+	}
+
+	if succeeded {
+		err := os.Remove(filepath.Join(dir, "active.json"))
+		if err != nil && !errors.Is(err, fs.ErrNotExist) {
+			return fmt.Errorf("remove finished installer resume transaction: %w", err)
+		}
+		return nil
+	}
+
+	return retire(dir)
+}
+
+func retire(dir string) error {
+	err := os.Rename(filepath.Join(dir, "active.json"), filepath.Join(dir, "failed.json"))
+	if err != nil && !errors.Is(err, fs.ErrNotExist) {
+		return fmt.Errorf("retire failed installer resume transaction: %w", err)
+	}
+	return nil
+}
+
+func encode(tx Transaction) ([]byte, error) {
+	data, err := json.MarshalIndent(tx, "", "  ")
+	if err != nil {
+		return nil, fmt.Errorf("encode installer resume transaction: %w", err)
+	}
+	return append(data, '\n'), nil
+}
+
+// writeDurable replaces path so that a power loss leaves either the old or
+// the new transaction, never a truncated one.
+func writeDurable(path string, data []byte) error {
+	temp, err := os.CreateTemp(filepath.Dir(path), ".transaction-*")
+	if err != nil {
+		return err
+	}
+	defer os.Remove(temp.Name())
+
+	if _, err := temp.Write(data); err != nil {
+		temp.Close()
+		return err
+	}
+	if err := temp.Sync(); err != nil {
+		temp.Close()
+		return err
+	}
+	if err := temp.Close(); err != nil {
+		return err
+	}
+	if err := os.Rename(temp.Name(), path); err != nil {
+		return err
+	}
+
+	parent, err := os.Open(filepath.Dir(path))
+	if err != nil {
+		return err
+	}
+	defer parent.Close()
+	return parent.Sync()
+}
+
+// ArmMaintenance arms a continuation for after the one-shot recovery-storage
+// maintenance boot. The installed GjallarOS configuration already carries
+// the installer-resume unit.
+func ArmMaintenance(
+	ctx context.Context,
+	executable string,
+	repo string,
+	args []string,
+) error {
+	return arm(ctx, executable, Transaction{
+		Schema: Schema,
+		State:  StateMaintenanceReboot,
+		Reason: "recovery-storage-maintenance",
+		Repo:   repo,
+		Args:   append([]string(nil), args...),
+	})
+}
+
+// Arm arms a continuation for after the staged NixOS release boot. The
+// staged generation is built from WrapperPath, which adds the resume unit
+// to a configuration that is not GjallarOS yet.
 func Arm(
 	ctx context.Context,
 	executable string,
@@ -81,68 +220,27 @@ func Arm(
 	args []string,
 	expectedRelease string,
 ) error {
-	if !filepath.IsAbs(executable) {
-		return fmt.Errorf("installer executable must be absolute")
-	}
-
-	if !filepath.IsAbs(repo) {
-		return fmt.Errorf("installer repository must be absolute")
-	}
-
 	if strings.TrimSpace(expectedRelease) == "" {
 		return fmt.Errorf("expected release must not be empty")
 	}
 
-	tx := Transaction{
+	if err := arm(ctx, executable, Transaction{
 		Schema:          Schema,
-		State:           "waiting-for-release-reboot",
+		State:           StateReleaseReboot,
 		Reason:          "nixos-release-alignment",
 		ExpectedRelease: expectedRelease,
 		Repo:            repo,
 		Args:            append([]string(nil), args...),
-		CreatedUTC:      time.Now().UTC().Format(time.RFC3339),
-	}
-
-	data, err := json.MarshalIndent(tx, "", "  ")
-	if err != nil {
-		return fmt.Errorf("encode installer resume transaction: %w", err)
-	}
-	data = append(data, '\n')
-
-	tempDir, err := os.MkdirTemp("", "gjallar-installer-resume-*")
-	if err != nil {
-		return err
-	}
-	defer os.RemoveAll(tempDir)
-
-	transactionTemp := filepath.Join(tempDir, "pending.json")
-	unitTemp := filepath.Join(tempDir, ServiceName)
-
-	if err := os.WriteFile(transactionTemp, data, 0600); err != nil {
+	}); err != nil {
 		return err
 	}
 
-	module :=
-		"{ lib, ... }:\n" +
-			"{\n" +
-			"  systemd.services.installer-resume = {\n" +
-			"    description = \"Resume installer after staged NixOS release boot\";\n" +
-			"    wantedBy = [ \"multi-user.target\" ];\n" +
-			"    after = [ \"local-fs.target\" ];\n" +
-			"    unitConfig.ConditionPathExists = \"" + PendingPath + "\";\n" +
-			"    serviceConfig = {\n" +
-			"      Type = \"oneshot\";\n" +
-			"      UMask = \"0077\";\n" +
-			"      TimeoutStartSec = 0;\n" +
-			"      ExecStartPre = \"/run/current-system/sw/bin/mv " +
-			PendingPath + " " + ActivePath + "\";\n" +
-			"      ExecStart = \"" + InstallerPath +
-			" --resume-transaction " + ActivePath + "\";\n" +
-			"      ExecStartPost = \"/run/current-system/sw/bin/rm -f " +
-			ActivePath + "\";\n" +
-			"    };\n" +
-			"  };\n" +
-			"}\n"
+	if _, err := os.Stat("/etc/nixos/configuration.nix"); err != nil {
+		return fmt.Errorf(
+			"current NixOS configuration is unavailable at /etc/nixos/configuration.nix: %w",
+			err,
+		)
+	}
 
 	wrapper :=
 		"{ ... }:\n" +
@@ -153,12 +251,58 @@ func Arm(
 			"  ];\n" +
 			"}\n"
 
-	if err := os.WriteFile(unitTemp, []byte(module), 0644); err != nil {
-		return err
+	if err := sudoWrite(ctx, []byte(Module()), "0644", ModulePath); err != nil {
+		return fmt.Errorf("install resume NixOS module: %w", err)
 	}
 
-	wrapperTemp := filepath.Join(tempDir, "configuration.nix")
-	if err := os.WriteFile(wrapperTemp, []byte(wrapper), 0644); err != nil {
+	if err := sudoWrite(ctx, []byte(wrapper), "0644", WrapperPath); err != nil {
+		return fmt.Errorf("install resume NixOS wrapper: %w", err)
+	}
+
+	return nil
+}
+
+// Module is the unit the release-alignment wrapper adds. It matches
+// system/maintenance/installer-resume.nix and steps aside when that module
+// is already part of the configuration.
+func Module() string {
+	return "{ lib, options, ... }:\n" +
+		"{\n" +
+		"  config = lib.mkIf (!(options ? gjallar && options.gjallar ? installerResume)) {\n" +
+		"    systemd.services.installer-resume = {\n" +
+		"      description = \"Resume the GjallarOS installer after a planned or interrupted reboot\";\n" +
+		"      wantedBy = [ \"multi-user.target\" ];\n" +
+		"      wants = [ \"network-online.target\" ];\n" +
+		"      after = [ \"local-fs.target\" \"network-online.target\" ];\n" +
+		"      path = [ \"/run/wrappers\" \"/run/current-system/sw\" ];\n" +
+		"      unitConfig = {\n" +
+		"        ConditionPathExists = [ \"|" + PendingPath + "\" \"|" + ActivePath + "\" ];\n" +
+		"        ConditionFileIsExecutable = \"" + InstallerPath + "\";\n" +
+		"      };\n" +
+		"      serviceConfig = {\n" +
+		"        Type = \"oneshot\";\n" +
+		"        UMask = \"0077\";\n" +
+		"        TimeoutStartSec = 0;\n" +
+		"        ExecStart = \"" + InstallerPath + " --resume-transaction " + StateDir + "\";\n" +
+		"      };\n" +
+		"    };\n" +
+		"  };\n" +
+		"}\n"
+}
+
+func arm(ctx context.Context, executable string, tx Transaction) error {
+	if !filepath.IsAbs(executable) {
+		return fmt.Errorf("installer executable must be absolute")
+	}
+
+	if !filepath.IsAbs(tx.Repo) {
+		return fmt.Errorf("installer repository must be absolute")
+	}
+
+	tx.CreatedUTC = time.Now().UTC().Format(time.RFC3339)
+
+	data, err := encode(tx)
+	if err != nil {
 		return err
 	}
 
@@ -189,44 +333,36 @@ func Arm(
 		}
 	}
 
-	if err := sudo(
-		ctx,
-		"install",
-		"-m", "0600",
-		transactionTemp,
-		PendingPath,
-	); err != nil {
+	if err := sudoWrite(ctx, data, "0600", PendingPath); err != nil {
 		return fmt.Errorf("install resume transaction: %w", err)
 	}
 
-	if _, err := os.Stat("/etc/nixos/configuration.nix"); err != nil {
-		return fmt.Errorf(
-			"current NixOS configuration is unavailable at /etc/nixos/configuration.nix: %w",
-			err,
-		)
+	// A resumed run that arms the next continuation hands over to it;
+	// otherwise the reboot it schedules would also retry the old one.
+	if err := sudo(ctx, "rm", "-f", ActivePath); err != nil {
+		return fmt.Errorf("hand over installer resume transaction: %w", err)
 	}
 
-	if err := sudo(
-		ctx,
-		"install",
-		"-m", "0644",
-		unitTemp,
-		ModulePath,
-	); err != nil {
-		return fmt.Errorf("install resume NixOS module: %w", err)
-	}
-
-	if err := sudo(
-		ctx,
-		"install",
-		"-m", "0644",
-		wrapperTemp,
-		WrapperPath,
-	); err != nil {
-		return fmt.Errorf("install resume NixOS wrapper: %w", err)
+	if err := sudo(ctx, "sync"); err != nil {
+		return fmt.Errorf("flush installer resume transaction: %w", err)
 	}
 
 	return nil
+}
+
+func sudoWrite(ctx context.Context, data []byte, mode, path string) error {
+	tempDir, err := os.MkdirTemp("", "gjallar-installer-resume-*")
+	if err != nil {
+		return err
+	}
+	defer os.RemoveAll(tempDir)
+
+	temp := filepath.Join(tempDir, filepath.Base(path))
+	if err := os.WriteFile(temp, data, 0600); err != nil {
+		return err
+	}
+
+	return sudo(ctx, "install", "-m", mode, temp, path)
 }
 
 func sudo(ctx context.Context, args ...string) error {

@@ -23,6 +23,7 @@
     ./security/local-hardening.nix
     ./security/keyring.nix
     ./maintenance/storage.nix
+    ./maintenance/installer-resume.nix
     ./services/printing.nix
     ./services/removable-media.nix
     ./services/tailscale.nix

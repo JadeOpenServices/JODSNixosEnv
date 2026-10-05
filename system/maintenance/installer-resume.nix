@@ -1,0 +1,54 @@
+{ lib, ... }:
+
+# Keep in sync with internal/installer/resume: the installer arms
+# pending.json before a planned reboot and claims it as active.json, so a
+# boot that dies mid-resume runs the same transaction again.
+let
+  stateDir = "/var/lib/gjallarOS/installer-resume";
+  installer = "${stateDir}/gjallar-installer";
+in
+{
+  # The release-alignment wrapper adds its own copy of this unit only when
+  # the target configuration lacks this module.
+  options.gjallar.installerResume.enable = lib.mkOption {
+    type = lib.types.bool;
+    default = true;
+    internal = true;
+    description = "Whether the permanent installer-resume unit is defined.";
+  };
+
+  # The unit existed only in the wrapper generation built for release
+  # alignment; installing GjallarOS or a later rebuild dropped it, and a
+  # reboot mid-resume lost the transaction (e2e-target, 2026-10-05).
+  config.systemd.services.installer-resume = {
+    description = "Resume the GjallarOS installer after a planned or interrupted reboot";
+    wantedBy = [ "multi-user.target" ];
+    wants = [ "network-online.target" ];
+    after = [
+      "local-fs.target"
+      "network-online.target"
+    ];
+
+    # The installer calls sudo and system tools that the default unit PATH
+    # does not provide.
+    path = [
+      "/run/wrappers"
+      "/run/current-system/sw"
+    ];
+
+    unitConfig = {
+      ConditionPathExists = [
+        "|${stateDir}/pending.json"
+        "|${stateDir}/active.json"
+      ];
+      ConditionFileIsExecutable = installer;
+    };
+
+    serviceConfig = {
+      Type = "oneshot";
+      UMask = "0077";
+      TimeoutStartSec = 0;
+      ExecStart = "${installer} --resume-transaction ${stateDir}";
+    };
+  };
+}
