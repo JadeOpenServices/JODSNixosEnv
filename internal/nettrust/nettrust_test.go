@@ -5,12 +5,19 @@ import (
 	"errors"
 	"net/netip"
 	"slices"
+	"strings"
 	"testing"
+	"time"
 )
 
 type fakeProber struct {
-	via   map[string]string // host name -> answering LAN address
-	reach map[string]bool
+	via     map[string]string // host name -> answering LAN address
+	reach   map[string]bool
+	gateway map[string]bool // addresses the local gateway answers for
+}
+
+func (f fakeProber) GatewayOwns(_ context.Context, _ *Network, addr netip.Addr) bool {
+	return f.gateway[addr.String()]
 }
 
 func (f fakeProber) DirectVia(_ context.Context, p Peer) (netip.Addr, bool) {
@@ -194,5 +201,94 @@ func TestApplyExitNodeOnlyChangesOnDifference(t *testing.T) {
 	}
 	if changed, _ := s.ApplyExitNode(context.Background(), tn, ""); !changed || !slices.Equal(calls[0], []string{"tailscale", "set", "--exit-node="}) {
 		t.Fatalf("calls = %v", calls)
+	}
+}
+
+func TestRouterProofViaGatewayWANAddress(t *testing.T) {
+	n := wifi("bakasifu-5ghz", "wpa-psk", "192.168.8.0/24")
+	n.Gateway = netip.MustParseAddr("192.168.8.1")
+	tn := Tailnet{Running: true, Peers: []Peer{router("OpenWrt", "192.168.8.0/24")}}
+	pr := fakeProber{via: map[string]string{"OpenWrt": "192.168.9.1"}, gateway: map[string]bool{"192.168.9.1": true}}
+	v := decide(t, Policy{HomeSubnets: []string{"192.168.8.0/24"}, ExitNode: "OpenWrt"}, n, tn, pr)
+	if v.Trust != TrustHome || v.Router != "OpenWrt via 192.168.9.1" || !v.ManageExitNode || v.ExitNode != "" {
+		t.Fatalf("verdict = %+v", v)
+	}
+	pr.gateway = nil // a direct path to some other host behind the gateway
+	if v := decide(t, Policy{HomeSubnets: []string{"192.168.8.0/24"}, ExitNode: "OpenWrt"}, n, tn, pr); v.Trust != TrustUntrusted {
+		t.Fatalf("verdict = %+v", v)
+	}
+}
+
+func TestOfflineLeavesExitNodeAlone(t *testing.T) {
+	v := decide(t, policy, nil, Tailnet{Running: true}, fakeProber{})
+	if v.Trust != TrustOffline || v.ManageExitNode {
+		t.Fatalf("verdict = %+v", v)
+	}
+}
+
+func TestApplyExitNodeUsesTailscaleAddress(t *testing.T) {
+	var calls [][]string
+	s := System{run: func(_ context.Context, name string, args ...string) ([]byte, error) {
+		calls = append(calls, append([]string{name}, args...))
+		return nil, nil
+	}}
+	tn, _ := parseTailnet([]byte(`{"BackendState":"Running","Peer":{"k":{"HostName":"OpenWrt","DNSName":"openwrt.tail1.ts.net.","TailscaleIPs":["100.64.0.1","fd7a::1"]}}}`))
+	if changed, err := s.ApplyExitNode(context.Background(), tn, "OpenWrt"); !changed || err != nil ||
+		!slices.Equal(calls[0], []string{"tailscale", "set", "--exit-node=100.64.0.1", "--exit-node-allow-lan-access=true"}) {
+		t.Fatalf("changed=%v err=%v calls=%v", changed, err, calls)
+	}
+	if _, err := s.ApplyExitNode(context.Background(), tn, "gone"); err == nil || len(calls) != 1 {
+		t.Fatalf("unknown exit node: err=%v calls=%v", err, calls)
+	}
+}
+
+func TestTailnetWaitsForStartingTailscaled(t *testing.T) {
+	old := tailnetSettle
+	tailnetSettle = 5 * time.Second
+	defer func() { tailnetSettle = old }()
+	answers := []string{"", `{"BackendState":"Starting"}`, `{"BackendState":"Running"}`}
+	s := System{run: func(context.Context, string, ...string) ([]byte, error) {
+		a := answers[0]
+		answers = answers[1:]
+		if a == "" {
+			return nil, errors.New("no tailscaled socket")
+		}
+		return []byte(a), nil
+	}}
+	tn, err := s.Tailnet(context.Background())
+	if err != nil || !tn.Running {
+		t.Fatalf("tailnet = %+v, %v", tn, err)
+	}
+	stopped := System{run: func(context.Context, string, ...string) ([]byte, error) {
+		return []byte(`{"BackendState":"NeedsLogin"}`), nil
+	}}
+	if tn, _ := stopped.Tailnet(context.Background()); tn.Running {
+		t.Fatal("NeedsLogin reported running")
+	}
+}
+
+func TestGatewayOwnsProbesOutsideTheTunnel(t *testing.T) {
+	var calls []string
+	s := System{run: func(_ context.Context, name string, args ...string) ([]byte, error) {
+		calls = append(calls, name+" "+strings.Join(args, " "))
+		if name == "ip" {
+			return []byte(`[{"dst":"192.168.9.1","gateway":"192.168.8.1","dev":"wlan0"}]`), nil
+		}
+		return nil, nil
+	}}
+	n := &Network{Device: "wlan0", Gateway: netip.MustParseAddr("192.168.8.1")}
+	if !s.GatewayOwns(context.Background(), n, netip.MustParseAddr("192.168.9.1")) {
+		t.Fatalf("calls = %q", calls)
+	}
+	want := []string{
+		"ip -j route get 192.168.9.1 mark 524288",
+		"ping -n -q -c 2 -W 1 -t 1 -m 524288 -I wlan0 192.168.9.1",
+	}
+	if !slices.Equal(calls, want) {
+		t.Fatalf("calls = %q", calls)
+	}
+	n.Device = "eth0" // routed out of another device: not this gateway
+	if s.GatewayOwns(context.Background(), n, netip.MustParseAddr("192.168.9.1")) {
+		t.Fatal("route via another device accepted")
 	}
 }

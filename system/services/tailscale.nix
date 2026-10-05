@@ -49,6 +49,7 @@ lib.mkIf (intent.enable or true) {
     wants = [ "tailscaled.service" ];
     path = [
       pkgs.iproute2
+      pkgs.iputils
       pkgs.networkmanager
       config.services.tailscale.package
     ];

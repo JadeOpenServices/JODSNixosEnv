@@ -12,6 +12,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"slices"
+	"strconv"
 	"strings"
 	"syscall"
 	"time"
@@ -155,13 +156,37 @@ func parseSubnets(data []byte) ([]netip.Prefix, error) {
 	return out, nil
 }
 
+// tailnetSettle bounds the wait for a starting tailscaled. Every start
+// triggers a decision, and one made before Running would leave the exit
+// node unmanaged until the next trigger.
+var tailnetSettle = 30 * time.Second
+
 func (s System) Tailnet(ctx context.Context) (Tailnet, error) {
-	out, err := s.run(ctx, "tailscale", "status", "--json")
-	if err != nil && len(out) == 0 {
-		// A stopped or logged-out tailscaled is not an error for us.
-		return Tailnet{}, nil
+	deadline := time.Now().Add(tailnetSettle)
+	for {
+		out, err := s.run(ctx, "tailscale", "status", "--json")
+		state := ""
+		if len(out) > 0 {
+			var head struct{ BackendState string }
+			_ = json.Unmarshal(out, &head)
+			state = head.BackendState
+		}
+		// No answer yet, NoState and Starting settle by themselves;
+		// Stopped, NeedsLogin and NeedsMachineAuth wait for a person.
+		starting := (err != nil && len(out) == 0) || state == "" || state == "NoState" || state == "Starting"
+		if !starting || !time.Now().Before(deadline) {
+			if err != nil && len(out) == 0 {
+				// A stopped or logged-out tailscaled is not an error for us.
+				return Tailnet{}, nil
+			}
+			return parseTailnet(out)
+		}
+		select {
+		case <-ctx.Done():
+			return Tailnet{}, nil
+		case <-time.After(time.Second):
+		}
 	}
-	return parseTailnet(out)
 }
 
 func parseTailnet(data []byte) (Tailnet, error) {
@@ -222,6 +247,31 @@ func parsePongVia(out []byte) (netip.Addr, bool) {
 		via, found = ap.Addr().Unmap(), true
 	}
 	return via, found
+}
+
+// GatewayOwns sends one-hop echoes: a router answers for its own
+// addresses, and forwards anything else into an expired TTL.
+func (s System) GatewayOwns(ctx context.Context, n *Network, addr netip.Addr) bool {
+	if n == nil || !n.Gateway.IsValid() || !addr.IsValid() {
+		return false
+	}
+	// With the bypass mark, as tailscaled's own packets: an exit node left
+	// on from the previous network must not route the probe into the tunnel.
+	mark := strconv.Itoa(tailscaleBypassMark)
+	out, err := s.run(ctx, "ip", "-j", "route", "get", addr.String(), "mark", mark)
+	if err != nil {
+		return false
+	}
+	var routes []struct {
+		Gateway string `json:"gateway"`
+		Dev     string `json:"dev"`
+	}
+	if json.Unmarshal(out, &routes) != nil || len(routes) == 0 ||
+		routes[0].Gateway != n.Gateway.String() || routes[0].Dev != n.Device {
+		return false
+	}
+	_, err = s.run(ctx, "ping", "-n", "-q", "-c", "2", "-W", "1", "-t", "1", "-m", mark, "-I", n.Device, addr.String())
+	return err == nil
 }
 
 // Reach connects with tailscaled's bypass mark so the probe takes the main
@@ -288,8 +338,20 @@ func (s System) ApplyExitNode(ctx context.Context, tn Tailnet, want string) (boo
 		_, err := s.run(ctx, "tailscale", "set", "--exit-node=")
 		return err == nil, err
 	default:
+		// tailscale set takes an address or the MagicDNS name, not the
+		// host name people see in the admin console.
+		var peer *Peer
+		for i := range tn.Peers {
+			if tn.Peers[i].Matches(want) && len(tn.Peers[i].IPs) > 0 {
+				peer = &tn.Peers[i]
+				break
+			}
+		}
+		if peer == nil {
+			return false, fmt.Errorf("exit node %q is not in this tailnet", want)
+		}
 		// LAN access keeps captive portals and local printers usable.
-		_, err := s.run(ctx, "tailscale", "set", "--exit-node="+want, "--exit-node-allow-lan-access=true")
+		_, err := s.run(ctx, "tailscale", "set", "--exit-node="+peer.IPs[0].String(), "--exit-node-allow-lan-access=true")
 		return err == nil, err
 	}
 }

@@ -136,6 +136,10 @@ type Prober interface {
 	DirectVia(ctx context.Context, peer Peer) (netip.Addr, bool)
 	// Reach connects to a host:port target outside the Tailscale tunnel.
 	Reach(ctx context.Context, target string) error
+	// GatewayOwns reports whether addr belongs to the local gateway itself:
+	// routed via it on this device and answering at one hop. A router's
+	// direct path may use its WAN address instead of its LAN one.
+	GatewayOwns(ctx context.Context, net *Network, addr netip.Addr) bool
 }
 
 const (
@@ -157,8 +161,11 @@ type Verdict struct {
 	ExitNode string   `json:"exitNode"`
 	// ManageExitNode is false when the policy names no exit node or
 	// Tailscale is not running; the exit node is then left alone.
-	ManageExitNode bool     `json:"manageExitNode"`
-	Warnings       []string `json:"warnings,omitempty"`
+	ManageExitNode bool `json:"manageExitNode"`
+	// ExitNodeError is why the wanted exit node could not be set; the
+	// tunnel is then not protecting this network.
+	ExitNodeError string   `json:"exitNodeError,omitempty"`
+	Warnings      []string `json:"warnings,omitempty"`
 }
 
 func (v Verdict) Trusted() bool {
@@ -188,6 +195,9 @@ func Decide(ctx context.Context, p Policy, net *Network, tn Tailnet, pr Prober) 
 	v := Verdict{ManageExitNode: p.ExitNode != "" && tn.Running}
 
 	if net == nil {
+		// Leave the exit node as it is: clearing it between two untrusted
+		// networks would only widen the window before the next decision.
+		v.ManageExitNode = false
 		v.Trust = TrustOffline
 		v.Reason = "no default route"
 		v.Bypass = []string{}
@@ -259,7 +269,7 @@ func proof(router *Peer, wifiTrusted bool) string {
 }
 
 // provenRouter returns an online peer that advertises a local subnet and
-// answers a direct ping from inside it.
+// answers a direct ping from inside it or from the local gateway.
 func provenRouter(ctx context.Context, net *Network, tn Tailnet, pr Prober) (*Peer, netip.Addr) {
 	if !tn.Running {
 		return nil, netip.Addr{}
@@ -277,6 +287,9 @@ func provenRouter(ctx context.Context, net *Network, tn Tailnet, pr Prober) (*Pe
 			if subnet.Contains(via) {
 				return peer, via
 			}
+		}
+		if pr.GatewayOwns(ctx, net, via) {
+			return peer, via
 		}
 	}
 	return nil, netip.Addr{}

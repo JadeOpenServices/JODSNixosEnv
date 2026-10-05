@@ -88,6 +88,7 @@ func runVPNApply(args []string, stdout, stderr io.Writer) int {
 		switch {
 		case err != nil:
 			fmt.Fprintf(stderr, "ERROR: set exit node: %v\n", err)
+			verdict.ExitNodeError = err.Error()
 			code = 1
 		case changed && verdict.ExitNode == "":
 			fmt.Fprintln(stdout, "VPN: exit node off")
@@ -128,6 +129,9 @@ func runVPNStatus(stdout, stderr io.Writer) int {
 		exit = "off"
 		if v.ExitNode != "" {
 			exit = v.ExitNode
+		}
+		if v.ExitNodeError != "" {
+			exit += " (NOT ACTIVE: " + v.ExitNodeError + ")"
 		}
 	}
 	fmt.Fprintf(stdout, "exit node: %s\nlocal:     %s\n", exit, strings.Join(v.Bypass, " "))
