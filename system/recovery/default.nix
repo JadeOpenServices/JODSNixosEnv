@@ -167,6 +167,8 @@ lib.mkMerge [
           pkgs.coreutils
           pkgs.cryptsetup
           pkgs.gptfdisk
+          # executor shortens the root partition with parted resizepart.
+          pkgs.parted
           pkgs.systemd
           pkgs.util-linux
           gjallarctl
