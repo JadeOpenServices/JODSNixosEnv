@@ -51,3 +51,22 @@ func TestODDCRejectsUnknownCommand(t *testing.T) {
 		t.Fatalf("oddcctl ran: %q", stdout.String())
 	}
 }
+
+func TestODDCResolveDefaultsToDeployedModel(t *testing.T) {
+	fakeODDCctl(t)
+	root := t.TempDir()
+	oddcRoot = root
+	if err := os.WriteFile(filepath.Join(root, "resolved.json"), []byte(`{"model":{"id":"model/framework/laptop-13-amd-ryzen-7040"}}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	overlay := filepath.Join(root, "host-overlay.json")
+	if err := os.WriteFile(overlay, []byte(`{}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	var stdout, stderr bytes.Buffer
+	runODDC([]string{"resolve"}, &stdout, &stderr)
+	want := "resolve --root " + root + " --device model/framework/laptop-13-amd-ryzen-7040 --host " + overlay
+	if got := strings.TrimSpace(stdout.String()); got != want {
+		t.Fatalf("argv = %q, want %q", got, want)
+	}
+}

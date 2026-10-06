@@ -48,11 +48,13 @@ Hyprland bindings are maintained in
 
 [ODDC](https://github.com/JadeOpenServices/oddc) is a separate project,
 vendored here as a git subtree at `oddc/` so installs work offline. The
-installer picks the model whose DMI identity matches the machine; other models
-stay in the catalog but configure nothing. Inspect the whole catalog with
-`gjallarctl oddc list`, `gjallarctl oddc resolve --device MODEL` and
-`gjallarctl oddc explain --device MODEL --path PATH`. Update the vendored copy
-with:
+installer carries the full catalog and picks the model whose DMI identity
+matches the machine. The installed system receives only that model under
+`/etc/oddc`: its referenced entities, evidence, host overlay and resolved view.
+`gjallarctl oddc list`, `gjallarctl oddc resolve` and
+`gjallarctl oddc explain --path PATH` read that deployment and default to this
+machine's model. Browse the full catalog in a checkout with
+`gjallarctl oddc list --root oddc`. Update the vendored copy with:
 
     git subtree pull --prefix=oddc https://github.com/JadeOpenServices/oddc main --squash
 

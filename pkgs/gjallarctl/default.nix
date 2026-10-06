@@ -49,7 +49,7 @@ buildGoModule {
     "-s"
     "-w"
     "-X main.oddcctlPath=${lib.getExe oddcctl}"
-    "-X main.oddcRoot=${oddcctl}/share/oddc"
+    "-X main.oddcRoot=/etc/oddc"
   ];
 
   postInstall = ''

@@ -26,11 +26,6 @@ buildGoModule {
     "cmd/gjallar-usbtrustd"
   ];
 
-  postInstall = ''
-    mkdir -p "$out/share/gjallarOS"
-    cp -R "$src/oddc" "$out/share/gjallarOS/oddc"
-  '';
-
   meta = {
     description = "GjallarOS privileged USB trust broker";
     license = lib.licenses.mit;

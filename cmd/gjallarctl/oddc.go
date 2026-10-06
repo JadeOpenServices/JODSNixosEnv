@@ -1,10 +1,13 @@
 package main
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
+	"os"
 	"os/exec"
+	"path/filepath"
 	"slices"
 	"strings"
 )
@@ -16,17 +19,52 @@ var (
 	oddcRoot    = "oddc"
 )
 
-// oddcctlCommands pass through to oddcctl, which owns them. gjallarctl only
-// points them at the catalog shipped with this system, so every model is
-// visible, including ones this machine does not use.
+// oddcctlCommands pass through to oddcctl, which owns them. gjallarctl
+// points them at the ODDC deployment of this system: only the selected
+// model's closure, not the catalog. resolve and explain default to that
+// model and its host overlay.
 var oddcctlCommands = []string{"validate", "list", "resolve", "explain"}
+
+func hasFlag(args []string, name string) bool {
+	return slices.ContainsFunc(args, func(arg string) bool {
+		return arg == name || strings.HasPrefix(arg, name+"=")
+	})
+}
+
+func deployedModel(root string) string {
+	data, err := os.ReadFile(filepath.Join(root, "resolved.json"))
+	if err != nil {
+		return ""
+	}
+	var resolved struct {
+		Model struct {
+			ID string `json:"id"`
+		} `json:"model"`
+	}
+	if json.Unmarshal(data, &resolved) != nil {
+		return ""
+	}
+	return resolved.Model.ID
+}
 
 func runODDCctl(args []string, stdout, stderr io.Writer) int {
 	argv := slices.Clone(args)
-	if !slices.ContainsFunc(argv, func(arg string) bool {
-		return arg == "--root" || strings.HasPrefix(arg, "--root=")
-	}) {
+	root := oddcRoot
+	if !hasFlag(argv, "--root") {
 		argv = append(argv, "--root", oddcRoot)
+	} else {
+		root = ""
+	}
+	if root != "" && (args[0] == "resolve" || args[0] == "explain") {
+		if !hasFlag(argv, "--device") {
+			if model := deployedModel(root); model != "" {
+				argv = append(argv, "--device", model)
+			}
+		}
+		overlay := filepath.Join(root, "host-overlay.json")
+		if _, err := os.Stat(overlay); err == nil && !hasFlag(argv, "--host") {
+			argv = append(argv, "--host", overlay)
+		}
 	}
 
 	cmd := exec.Command(oddcctlPath, argv...)
