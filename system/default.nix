@@ -73,7 +73,8 @@
     isNormalUser = true;
     shell = pkgs.${settings.shell};
     description = settings.username;
-    extraGroups = [ "networkmanager" ] ++ lib.optionals (!settings.endpointManagedDevice) [ "wheel" ];
+    extraGroups = [ "networkmanager" ]
+    ++ lib.optionals (!settings.endpointManagedDevice) [ "wheel" ];
   };
 
   programs.nix-ld = {

@@ -172,9 +172,7 @@
       nixosConfigurations = {
         gjallar-recovery = nixpkgs.lib.nixosSystem {
           inherit system;
-          modules = [
-            ./system/recovery/image.nix
-          ];
+          modules = [ ./system/recovery/image.nix ];
           specialArgs = {
             releaseVersion = releasePolicy.release;
             repoSource = self.outPath;

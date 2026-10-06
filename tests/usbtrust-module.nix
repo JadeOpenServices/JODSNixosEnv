@@ -48,8 +48,7 @@ let
       start = if enabled then c.systemd.services.usb-trust-broker.serviceConfig.ExecStart else null;
       desktopGroups = if enabled then c.users.users.testuser.extraGroups else [ ];
       brokerGroup = if enabled then c.systemd.services.usb-trust-broker.serviceConfig.Group else null;
-      stateDirectory =
-        if enabled then c.systemd.services.usb-trust-broker.serviceConfig.StateDirectory else null;
+      stateDirectory = if enabled then c.systemd.services.usb-trust-broker.serviceConfig.StateDirectory else null;
       startsWithBackend =
         !enabled || builtins.elem "usbguard.service" c.systemd.services.usb-trust-broker.wantedBy;
       review =
@@ -86,10 +85,5 @@ assert audit.startsWithBackend && enforcing.startsWithBackend;
 assert audit.review != null;
 assert managedAudit.review == null;
 {
-  inherit
-    dormant
-    audit
-    enforcing
-    managedAudit
-    ;
+  inherit dormant audit enforcing managedAudit;
 }

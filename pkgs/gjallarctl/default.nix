@@ -47,23 +47,23 @@ buildGoModule {
   ];
 
   postInstall = ''
-            cat > "$out/bin/gjallar-sudo-askpass" <<'ASKPASS'
-    #!${runtimeShell}
-    # sudo runs askpass with its own stdin, which gjallarctl detaches. Prompt on
-    # the controlling terminal; without one, fail instead of waiting forever for
-    # a password agent that does not exist.
-    exec ${lib.getExe' systemd "systemd-ask-password"} \
-      --echo=no \
-      --timeout=0 \
-      "$@" </dev/tty
-    ASKPASS
-        chmod 0555 "$out/bin/gjallar-sudo-askpass"
+    cat > "$out/bin/gjallar-sudo-askpass" <<'ASKPASS'
+#!${runtimeShell}
+# sudo runs askpass with its own stdin, which gjallarctl detaches. Prompt on
+# the controlling terminal; without one, fail instead of waiting forever for
+# a password agent that does not exist.
+exec ${lib.getExe' systemd "systemd-ask-password"} \
+  --echo=no \
+  --timeout=0 \
+  "$@" </dev/tty
+ASKPASS
+    chmod 0555 "$out/bin/gjallar-sudo-askpass"
 
-        cat > "$out/bin/gjallar-sudo-auth" <<'AUTH'
-    #!${runtimeShell}
-    exit 0
-    AUTH
-        chmod 0555 "$out/bin/gjallar-sudo-auth"
+    cat > "$out/bin/gjallar-sudo-auth" <<'AUTH'
+#!${runtimeShell}
+exit 0
+AUTH
+    chmod 0555 "$out/bin/gjallar-sudo-auth"
   '';
 
   meta = {

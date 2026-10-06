@@ -9,12 +9,7 @@
 let
   graphics = import (inputs.oddc + "/nixos/lib/graphics.nix") { inherit lib; } config.oddc.resolved;
   vendor = graphics.vendor;
-  driverBranch = lib.attrByPath [
-    "policy"
-    "graphics"
-    "discrete"
-    "driverBranch"
-  ] "stable" config.oddc.resolved;
+  driverBranch = lib.attrByPath [ "policy" "graphics" "discrete" "driverBranch" ] "stable" config.oddc.resolved;
   legacy580 = vendor == "nvidia" && driverBranch == "legacy_580";
   hybrid = graphics.type == "hybrid";
 
@@ -28,111 +23,111 @@ let
     if vendor == "nvidia" && lib.hasPrefix "580." selectedNvidiaPackage.version then
       selectedNvidiaPackage.overrideAttrs (old: {
         postPatch = (if old.postPatch == null then "" else old.postPatch) + ''
-                target=""
+          target=""
 
-                for candidate in \
-                  nvidia/os-interface.c \
-                  kernel/nvidia/os-interface.c \
-                  kernel-open/nvidia/os-interface.c
-                do
-                  if [ -f "$candidate" ]; then
-                    target="$candidate"
-                    break
-                  fi
-                done
+          for candidate in \
+            nvidia/os-interface.c \
+            kernel/nvidia/os-interface.c \
+            kernel-open/nvidia/os-interface.c
+          do
+            if [ -f "$candidate" ]; then
+              target="$candidate"
+              break
+            fi
+          done
 
-                if [ -z "$target" ]; then
-                  echo "ERROR: NVIDIA 580 os-interface.c not found" >&2
-                  false
-                fi
+          if [ -z "$target" ]; then
+            echo "ERROR: NVIDIA 580 os-interface.c not found" >&2
+            false
+          fi
 
-                substituteInPlace "$target" \
-                  --replace-fail \
-                    '    strncpy(buf, current->comm, len - 1);' \
-                    '    strscpy(buf, current->comm, len);'
+          substituteInPlace "$target" \
+            --replace-fail \
+              '    strncpy(buf, current->comm, len - 1);' \
+              '    strscpy(buf, current->comm, len);'
 
-                nvswitch=""
-                for candidate in \
-                  nvidia/linux_nvswitch.c \
-                  kernel/nvidia/linux_nvswitch.c \
-                  kernel-open/nvidia/linux_nvswitch.c
-                do
-                  if [ -f "$candidate" ]; then
-                    nvswitch="$candidate"
-                    break
-                  fi
-                done
+          nvswitch=""
+          for candidate in \
+            nvidia/linux_nvswitch.c \
+            kernel/nvidia/linux_nvswitch.c \
+            kernel-open/nvidia/linux_nvswitch.c
+          do
+            if [ -f "$candidate" ]; then
+              nvswitch="$candidate"
+              break
+            fi
+          done
 
-                if [ -z "$nvswitch" ]; then
-                  echo "ERROR: NVIDIA 580 linux_nvswitch.c not found" >&2
-                  false
-                fi
+          if [ -z "$nvswitch" ]; then
+            echo "ERROR: NVIDIA 580 linux_nvswitch.c not found" >&2
+            false
+          fi
 
-                substituteInPlace "$nvswitch" \
-                  --replace-fail \
-                    '    strncpy(regkey_val, regkey_val_start, regkey_val_len);' \
-                    '    memcpy(regkey_val, regkey_val_start, regkey_val_len);' \
-                  --replace-fail \
-                    '    return strncpy(dest, src, length);' \
-                    '    NvLength copy_len = strnlen(src, length);
-          memcpy(dest, src, copy_len);
-          if (copy_len < length)
-          {
-              memset(dest + copy_len, 0, length - copy_len);
-          }
-          return dest;'
-
-
-                uvm_pmm=""
-                for candidate in \
-                  nvidia-uvm/uvm_pmm_gpu.c \
-                  kernel/nvidia-uvm/uvm_pmm_gpu.c \
-                  kernel-open/nvidia-uvm/uvm_pmm_gpu.c
-                do
-                  if [ -f "$candidate" ]; then
-                    uvm_pmm="$candidate"
-                    break
-                  fi
-                done
-
-                if [ -z "$uvm_pmm" ]; then
-                  echo "ERROR: NVIDIA 580 uvm_pmm_gpu.c not found" >&2
-                  false
-                fi
-
-                substituteInPlace "$uvm_pmm" \
-                  --replace-fail \
-                    '                strncpy(chunk_split_cache[level].name, "uvm_gpu_chunk_t", sizeof(chunk_split_cache[level].name) - 1);' \
-                    '                strscpy(chunk_split_cache[level].name, "uvm_gpu_chunk_t", sizeof(chunk_split_cache[level].name));'
+          substituteInPlace "$nvswitch" \
+            --replace-fail \
+              '    strncpy(regkey_val, regkey_val_start, regkey_val_len);' \
+              '    memcpy(regkey_val, regkey_val_start, regkey_val_len);' \
+            --replace-fail \
+              '    return strncpy(dest, src, length);' \
+              '    NvLength copy_len = strnlen(src, length);
+    memcpy(dest, src, copy_len);
+    if (copy_len < length)
+    {
+        memset(dest + copy_len, 0, length - copy_len);
+    }
+    return dest;'
 
 
-                modeset=""
-                for candidate in \
-                  nvidia-modeset/nvidia-modeset-linux.c \
-                  kernel/nvidia-modeset/nvidia-modeset-linux.c \
-                  kernel-open/nvidia-modeset/nvidia-modeset-linux.c
-                do
-                  if [ -f "$candidate" ]; then
-                    modeset="$candidate"
-                    break
-                  fi
-                done
+          uvm_pmm=""
+          for candidate in \
+            nvidia-uvm/uvm_pmm_gpu.c \
+            kernel/nvidia-uvm/uvm_pmm_gpu.c \
+            kernel-open/nvidia-uvm/uvm_pmm_gpu.c
+          do
+            if [ -f "$candidate" ]; then
+              uvm_pmm="$candidate"
+              break
+            fi
+          done
 
-                if [ -z "$modeset" ]; then
-                  echo "ERROR: NVIDIA 580 nvidia-modeset-linux.c not found" >&2
-                  false
-                fi
+          if [ -z "$uvm_pmm" ]; then
+            echo "ERROR: NVIDIA 580 uvm_pmm_gpu.c not found" >&2
+            false
+          fi
 
-                substituteInPlace "$modeset" \
-                  --replace-fail \
-                    '    return strncpy(dest, src, n);' \
-                    '    size_t copy_len = strnlen(src, n);
-          memcpy(dest, src, copy_len);
-          if (copy_len < n)
-          {
-              memset(dest + copy_len, 0, n - copy_len);
-          }
-          return dest;'
+          substituteInPlace "$uvm_pmm" \
+            --replace-fail \
+              '                strncpy(chunk_split_cache[level].name, "uvm_gpu_chunk_t", sizeof(chunk_split_cache[level].name) - 1);' \
+              '                strscpy(chunk_split_cache[level].name, "uvm_gpu_chunk_t", sizeof(chunk_split_cache[level].name));'
+
+
+          modeset=""
+          for candidate in \
+            nvidia-modeset/nvidia-modeset-linux.c \
+            kernel/nvidia-modeset/nvidia-modeset-linux.c \
+            kernel-open/nvidia-modeset/nvidia-modeset-linux.c
+          do
+            if [ -f "$candidate" ]; then
+              modeset="$candidate"
+              break
+            fi
+          done
+
+          if [ -z "$modeset" ]; then
+            echo "ERROR: NVIDIA 580 nvidia-modeset-linux.c not found" >&2
+            false
+          fi
+
+          substituteInPlace "$modeset" \
+            --replace-fail \
+              '    return strncpy(dest, src, n);' \
+              '    size_t copy_len = strnlen(src, n);
+    memcpy(dest, src, copy_len);
+    if (copy_len < n)
+    {
+        memset(dest + copy_len, 0, n - copy_len);
+    }
+    return dest;'
         '';
       })
     else
@@ -140,10 +135,7 @@ let
 in
 {
   assertions = lib.optional (vendor == "nvidia") {
-    assertion = builtins.elem driverBranch [
-      "stable"
-      "legacy_580"
-    ];
+    assertion = builtins.elem driverBranch [ "stable" "legacy_580" ];
     message = "ODDC NVIDIA driverBranch must be stable or legacy_580.";
   };
 
