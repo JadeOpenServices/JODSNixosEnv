@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/JadeOpenServices/oddc"
+	"github.com/bakanura/gjallarOS/internal/installer/oddc/oddctest"
 )
 
 type fakeModelResolver struct {
@@ -193,34 +194,25 @@ func TestCatalogResolvedSourceHonorsCancellation(
 	}
 }
 
-func TestRepositoryCatalogSourceResolvesCurrentModel(
+func TestCatalogSourceResolvesEveryModel(
 	t *testing.T,
 ) {
-	source := NewCatalogResolvedSource(
-		"../../../oddc",
-		"model/framework/laptop-13-amd-ryzen-7040",
-	)
+	for _, answer := range oddctest.Answers(t) {
+		resolved, err := NewCatalogResolvedSource(
+			answer.Root,
+			answer.Model,
+		).Resolved(context.Background())
+		if err != nil {
+			t.Fatal(err)
+		}
 
-	resolved, err := source.Resolved(
-		context.Background(),
-	)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	model, ok := resolved["model"].(map[string]any)
-	if !ok {
-		t.Fatalf(
-			"resolved model metadata = %#v",
-			resolved["model"],
-		)
-	}
-
-	if model["id"] !=
-		"model/framework/laptop-13-amd-ryzen-7040" {
-		t.Fatalf(
-			"model ID = %#v",
-			model["id"],
-		)
+		model, ok := resolved["model"].(map[string]any)
+		if !ok || model["id"] != answer.Model {
+			t.Fatalf(
+				"%s resolved model metadata = %#v",
+				answer.Model,
+				resolved["model"],
+			)
+		}
 	}
 }

@@ -46,12 +46,12 @@ import (
 	"github.com/bakanura/gjallarOS/internal/installer/hardwareconfig"
 	"github.com/bakanura/gjallarOS/internal/installer/localgit"
 	"github.com/bakanura/gjallarOS/internal/installer/nixrender"
-	"github.com/bakanura/gjallarOS/internal/installer/oddcvalidation"
 	"github.com/bakanura/gjallarOS/internal/installer/policy"
 	"github.com/bakanura/gjallarOS/internal/installer/release"
 	"github.com/bakanura/gjallarOS/internal/installer/secrets"
 	"github.com/bakanura/gjallarOS/internal/installer/secureboot"
 	"github.com/bakanura/gjallarOS/internal/installercheck"
+	"github.com/bakanura/gjallarOS/internal/oddccli"
 	"github.com/bakanura/gjallarOS/internal/preset"
 )
 
@@ -80,7 +80,7 @@ func run(args []string, stdout, stderr io.Writer) int {
 	case "preflight":
 		return runPreflight(args[1:], stdout, stderr)
 	case "oddc":
-		return runODDC(args[1:], stdout, stderr)
+		return oddccli.Run(args[1:], stdout, stderr)
 	case "device-probe":
 		return runDeviceProbe(args[1:], stdout, stderr)
 	case "fan":
@@ -1208,160 +1208,6 @@ func runDeviceProbe(args []string, stdout, stderr io.Writer) int {
 	return 0
 }
 
-func runODDC(args []string, stdout, stderr io.Writer) int {
-	if len(args) == 0 {
-		fmt.Fprintln(stderr, "ERROR: oddc requires a subcommand")
-		return 2
-	}
-
-	switch args[0] {
-	case "validate-device":
-		return runODDCValidateDevice(args[1:], stdout, stderr)
-	default:
-		if isODDCctlCommand(args[0]) {
-			return runODDCctl(args, stdout, stderr)
-		}
-		fmt.Fprintf(stderr, "ERROR: unknown oddc command %q\n", args[0])
-		return 2
-	}
-}
-
-func runODDCValidateDevice(args []string, stdout, stderr io.Writer) int {
-	flags := flag.NewFlagSet("gjallarctl oddc validate-device", flag.ContinueOnError)
-	flags.SetOutput(stderr)
-
-	repo := flags.String("repo", ".", "GjallarOS repository root")
-
-	if err := flags.Parse(args); err != nil {
-		return 2
-	}
-	if flags.NArg() != 0 {
-		fmt.Fprintln(stderr, "ERROR: oddc validate-device accepts no positional arguments")
-		return 2
-	}
-
-	root, err := installercheck.ResolveRepository(*repo)
-	if err != nil {
-		fmt.Fprintf(stderr, "ERROR: %v\n", err)
-		return 2
-	}
-
-	return runODDCValidateDeviceResolved(root, stdout, stderr)
-}
-
-type oddcValidationRunner func(
-	context.Context,
-	string,
-	oddcvalidation.CommandRunner,
-) (oddcvalidation.Report, oddcvalidation.DeviceContext, error)
-
-func runODDCValidateDeviceResolved(
-	root string,
-	stdout io.Writer,
-	stderr io.Writer,
-) int {
-	report, device, err := oddcvalidation.Run(
-		context.Background(),
-		root,
-		nil,
-	)
-	if err == nil {
-		pinnedRelease, releaseErr := release.Expected(root)
-		if releaseErr != nil {
-			err = releaseErr
-		} else {
-			validation, metadataErr := oddcvalidation.ValidationMetadata(
-				report,
-				device,
-				pinnedRelease,
-				time.Now(),
-			)
-			if metadataErr != nil {
-				err = metadataErr
-			} else {
-				authority := oddcvalidation.CheckContributorAuthority(
-					context.Background(),
-					root,
-					"bakanura/JODSNixosEnv",
-				)
-				mode, finalizeErr := oddcvalidation.FinalizeValidation(
-					context.Background(),
-					root,
-					device.Resolved.StableDeviceID(),
-					validation,
-					authority,
-				)
-				if finalizeErr != nil {
-					err = finalizeErr
-				} else {
-					fmt.Fprintf(stdout, "PASS: validation recorded (%s)\n", mode)
-				}
-			}
-		}
-	}
-
-	for _, result := range report.Results {
-		status := "PASS"
-		if !result.Passed {
-			status = "FAIL"
-		}
-		if result.Details != "" {
-			fmt.Fprintf(stdout, "%s: %s - %s\n", status, result.Gate, result.Details)
-		} else {
-			fmt.Fprintf(stdout, "%s: %s\n", status, result.Gate)
-		}
-	}
-
-	if err != nil {
-		fmt.Fprintf(stderr, "ERROR: %v\n", err)
-		return 1
-	}
-
-	fmt.Fprintln(stdout, "PASS: ODDC real-device validation complete")
-	return 0
-}
-
-func runODDCValidateDeviceWith(
-	root string,
-	stdout io.Writer,
-	stderr io.Writer,
-	runValidation oddcValidationRunner,
-) int {
-	report, _, err := runValidation(
-		context.Background(),
-		root,
-		nil,
-	)
-
-	for _, result := range report.Results {
-		status := "PASS"
-		if !result.Passed {
-			status = "FAIL"
-		}
-
-		if result.Details != "" {
-			fmt.Fprintf(
-				stdout,
-				"%s: %s - %s\n",
-				status,
-				result.Gate,
-				result.Details,
-			)
-			continue
-		}
-
-		fmt.Fprintf(stdout, "%s: %s\n", status, result.Gate)
-	}
-
-	if err != nil {
-		fmt.Fprintf(stderr, "ERROR: %v\n", err)
-		return 1
-	}
-
-	fmt.Fprintln(stdout, "PASS: ODDC real-device validation complete")
-	return 0
-}
-
 type fanSystemPolicy struct {
 	QuietStrategy           string `json:"quietStrategy"`
 	QuietEnterC             int    `json:"quietEnterC"`
@@ -1946,8 +1792,7 @@ func printUsage(out io.Writer) {
 	fmt.Fprintln(out, "Usage: gjallarctl usb {status|audit|policy|review|provision-key|allow-once|trust-permanent|keep-blocked|enroll-internal|accept-replacement|forget} [OPTIONS]")
 	fmt.Fprintln(out, "Usage: gjallarctl check [--repo PATH] [--timeout DURATION]")
 	fmt.Fprintln(out, "       gjallarctl preflight [--repo PATH]")
-	fmt.Fprintln(out, "       gjallarctl oddc validate-device [--repo PATH]")
-	fmt.Fprintln(out, "       gjallarctl oddc {validate|list|resolve|explain} [ODDCCTL-ARGS...]")
+	oddccli.Usage(out)
 	fmt.Fprintln(out, "       gjallarctl auth")
 	fmt.Fprintln(out, "       gjallarctl rebuild [--repo PATH] [--host HOST] [-d|--debug] [-n|--no-cleanup] [NIXOS-REBUILD-ARGS...]")
 	fmt.Fprintln(out, "       gjallarctl device-probe refresh [--output PATH]")

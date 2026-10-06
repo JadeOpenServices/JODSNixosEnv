@@ -1,7 +1,12 @@
+# oddc: the ODDC flake source, e.g. (builtins.getFlake "github:JadeOpenServices/oddc/staging").
 {
   nixpkgs ? <nixpkgs>,
+  oddc,
 }:
 let
+  # Any catalog model: the checks below hold for every machine.
+  device = builtins.head ((import (oddc + "/lib")).mkRegistry (import (nixpkgs + "/lib"))).modelIds;
+
   evaluate =
     enabled: enforce: managed:
     let
@@ -15,7 +20,7 @@ let
           endpointManagedDevice = managed;
         };
         modules = [
-          ../oddc/nixos/modules
+          (oddc + "/nixos/modules")
           ../system/services/removable-media.nix
           ({ lib, ... }: {
             options.home-manager.users = lib.mkOption {
@@ -24,7 +29,7 @@ let
             };
             config = {
               system.stateVersion = "26.05";
-              oddc.device = "model/framework/laptop-13-amd-ryzen-7040";
+              oddc.device = device;
             };
           })
         ];
@@ -43,7 +48,8 @@ let
       start = if enabled then c.systemd.services.usb-trust-broker.serviceConfig.ExecStart else null;
       desktopGroups = if enabled then c.users.users.testuser.extraGroups else [ ];
       brokerGroup = if enabled then c.systemd.services.usb-trust-broker.serviceConfig.Group else null;
-      stateDirectory = if enabled then c.systemd.services.usb-trust-broker.serviceConfig.StateDirectory else null;
+      stateDirectory =
+        if enabled then c.systemd.services.usb-trust-broker.serviceConfig.StateDirectory else null;
       startsWithBackend =
         !enabled || builtins.elem "usbguard.service" c.systemd.services.usb-trust-broker.wantedBy;
       review =
@@ -80,5 +86,10 @@ assert audit.startsWithBackend && enforcing.startsWithBackend;
 assert audit.review != null;
 assert managedAudit.review == null;
 {
-  inherit dormant audit enforcing managedAudit;
+  inherit
+    dormant
+    audit
+    enforcing
+    managedAudit
+    ;
 }

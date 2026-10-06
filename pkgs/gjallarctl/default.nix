@@ -1,15 +1,10 @@
 {
   buildGoModule,
-  callPackage,
   git,
   lib,
   runtimeShell,
   systemd,
 }:
-let
-  # ODDC is its own Go module, so its CLI is its own derivation.
-  oddcctl = callPackage ../../oddc/package.nix { };
-in
 buildGoModule {
   pname = "gjallarctl";
   version = "0.1.0";
@@ -20,6 +15,7 @@ buildGoModule {
     root = ../../.;
     fileset = lib.fileset.unions [
       ../../go.mod
+      ../../go.sum
       ../../cmd
       ../../internal/ai
       ../../internal/hardware
@@ -27,15 +23,15 @@ buildGoModule {
       ../../internal/installercheck
       ../../internal/installer
       ../../internal/nettrust
+      ../../internal/oddccli
       ../../internal/preset
       ../../internal/usbtrust
-      ../../oddc
     ];
   };
 
-  vendorHash = null;
-  # ODDC, the only dependency, resolves through the go.mod replace to the
-  # oddc/ subtree; module mode instead of -mod=vendor needs no vendor dir.
+  vendorHash = "sha256-8HOS0S6am4g59tpFI7R5FOCCmm3ptHwgsLlZu90IxpU=";
+  # Module mode: ODDC's catalog files stay in the module cache, which the
+  # tests read as the real catalog.
   proxyVendor = true;
 
   subPackages = [
@@ -48,30 +44,26 @@ buildGoModule {
   ldflags = [
     "-s"
     "-w"
-    "-X main.oddcctlPath=${lib.getExe oddcctl}"
-    "-X main.oddcRoot=/etc/oddc"
   ];
 
   postInstall = ''
-    ln -s ${lib.getExe oddcctl} "$out/bin/oddcctl"
+            cat > "$out/bin/gjallar-sudo-askpass" <<'ASKPASS'
+    #!${runtimeShell}
+    # sudo runs askpass with its own stdin, which gjallarctl detaches. Prompt on
+    # the controlling terminal; without one, fail instead of waiting forever for
+    # a password agent that does not exist.
+    exec ${lib.getExe' systemd "systemd-ask-password"} \
+      --echo=no \
+      --timeout=0 \
+      "$@" </dev/tty
+    ASKPASS
+        chmod 0555 "$out/bin/gjallar-sudo-askpass"
 
-    cat > "$out/bin/gjallar-sudo-askpass" <<'ASKPASS'
-#!${runtimeShell}
-# sudo runs askpass with its own stdin, which gjallarctl detaches. Prompt on
-# the controlling terminal; without one, fail instead of waiting forever for
-# a password agent that does not exist.
-exec ${lib.getExe' systemd "systemd-ask-password"} \
-  --echo=no \
-  --timeout=0 \
-  "$@" </dev/tty
-ASKPASS
-    chmod 0555 "$out/bin/gjallar-sudo-askpass"
-
-    cat > "$out/bin/gjallar-sudo-auth" <<'AUTH'
-#!${runtimeShell}
-exit 0
-AUTH
-    chmod 0555 "$out/bin/gjallar-sudo-auth"
+        cat > "$out/bin/gjallar-sudo-auth" <<'AUTH'
+    #!${runtimeShell}
+    exit 0
+    AUTH
+        chmod 0555 "$out/bin/gjallar-sudo-auth"
   '';
 
   meta = {

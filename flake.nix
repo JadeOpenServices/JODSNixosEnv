@@ -46,6 +46,13 @@
       inputs.nixpkgs.follows = "nixpkgs";
     };
 
+    # Module code only; the machine's own model comes from the installer's
+    # answer in generated/oddc. staging until ODDC promotes fetch to main.
+    oddc = {
+      url = "github:JadeOpenServices/oddc/staging";
+      inputs.nixpkgs.follows = "nixpkgs";
+    };
+
     jods = {
       url = "git+https://github.com/bakanura/jods.git?rev=3673356b81109bfaf827eea0cc58888f1add8779&shallow=1";
       flake = false;
@@ -98,8 +105,6 @@
       pkgs = basePkgs;
     in
     {
-      nixosModules = import ./oddc/nixos/registry.nix;
-
       packages.${system} = rec {
         gjallarctl = pkgs.callPackage ./pkgs/gjallarctl { };
         "gjallar-usbtrustd" = pkgs.callPackage ./pkgs/gjallar-usbtrustd { };
@@ -118,15 +123,6 @@
         build-entrypoint = import ./tests/nix/build-entrypoint.nix { inherit pkgs; };
 
         nextcloud-client-patches = import ./tests/nix/nextcloud-client-patches.nix { inherit pkgs; };
-
-        m620-legacy-nvidia-policy = import ./tests/nix/m620-policy.nix {
-          inherit nixpkgs system;
-          graphicsModule = ./system/hardware/graphics;
-        };
-
-        framework-battery-policy = import ./tests/nix/battery-policy.nix {
-          inherit pkgs;
-        };
 
         security-baseline = import ./tests/nix/security-baseline.nix {
           inherit nixpkgs system;
@@ -176,7 +172,9 @@
       nixosConfigurations = {
         gjallar-recovery = nixpkgs.lib.nixosSystem {
           inherit system;
-          modules = [ ./system/recovery/image.nix ];
+          modules = [
+            ./system/recovery/image.nix
+          ];
           specialArgs = {
             releaseVersion = releasePolicy.release;
             repoSource = self.outPath;

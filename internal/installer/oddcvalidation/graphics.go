@@ -28,7 +28,7 @@ let
     inputs = flake.inputs;
   };
   resolved = flake.nixosConfigurations.${settings.hostname}.config.oddc.resolved;
-  graphics = import ./oddc/nixos/lib/graphics.nix {
+  graphics = import (flake.inputs.oddc + "/nixos/lib/graphics.nix") {
     lib = flake.inputs.nixpkgs.lib;
   } resolved;
   selected = if graphics.discreteDriver != "" then graphics.discrete else graphics.integrated;

@@ -518,6 +518,27 @@
         "type": "github"
       }
     },
+    "oddc": {
+      "inputs": {
+        "nixpkgs": [
+          "nixpkgs"
+        ]
+      },
+      "locked": {
+        "lastModified": 1791320191,
+        "narHash": "sha256-ykuzIIgUsKihGp+9HStAL9NY/UneW6A0uGAyJy011lQ=",
+        "owner": "JadeOpenServices",
+        "repo": "oddc",
+        "rev": "a62109ac5cda6a78ae71f078a8069793162e25a5",
+        "type": "github"
+      },
+      "original": {
+        "owner": "JadeOpenServices",
+        "ref": "staging",
+        "repo": "oddc",
+        "type": "github"
+      }
+    },
     "plasma-manager": {
       "inputs": {
         "home-manager": "home-manager_2",
@@ -593,6 +614,7 @@
         "noctalia": "noctalia",
         "noctalia-greeter": "noctalia-greeter",
         "nur": "nur",
+        "oddc": "oddc",
         "plasma-manager": "plasma-manager",
         "sops-nix": "sops-nix",
         "stylix": "stylix",

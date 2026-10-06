@@ -1,5 +1,6 @@
 {
   config,
+  inputs,
   lib,
   settings,
   pkgs,
@@ -7,7 +8,7 @@
 }:
 
 let
-  graphics = import ../../oddc/nixos/lib/graphics.nix { inherit lib; } config.oddc.resolved;
+  graphics = import (inputs.oddc + "/nixos/lib/graphics.nix") { inherit lib; } config.oddc.resolved;
 
   cavemanSrc = pkgs.fetchFromGitHub {
     owner = "JuliusBrussee";

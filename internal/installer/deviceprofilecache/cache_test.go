@@ -7,64 +7,9 @@ import (
 	"strings"
 	"testing"
 
-	portable "github.com/JadeOpenServices/oddc"
 	"github.com/bakanura/gjallarOS/internal/installer/oddc"
+	"github.com/bakanura/gjallarOS/internal/installer/oddc/oddctest"
 )
-
-func writeCanonicalTestModel(
-	t *testing.T,
-	root string,
-) {
-	t.Helper()
-
-	path := filepath.Join(
-		root,
-		"catalog",
-		"entities",
-		"models",
-		"test",
-		"test-laptop.json",
-	)
-
-	if err := os.MkdirAll(
-		filepath.Dir(path),
-		0755,
-	); err != nil {
-		t.Fatal(err)
-	}
-
-	body := `{
-	  "apiVersion": "oddc.openjade.de/v2",
-	  "kind": "DeviceModel",
-	  "metadata": {
-	    "id": "model/test/test-laptop",
-	    "name": "Test Laptop"
-	  },
-	  "data": {
-	    "class": {
-	      "formFactor": "laptop"
-	    },
-	    "identity": {
-	      "dmi": {
-	        "systemVendor": {
-	          "hp": "HP"
-	        },
-	        "productName": {
-	          "test-laptop": "Test Laptop"
-	        }
-	      }
-	    }
-	  }
-	}`
-
-	if err := os.WriteFile(
-		path,
-		[]byte(body),
-		0644,
-	); err != nil {
-		t.Fatal(err)
-	}
-}
 
 func testResolved(
 	t *testing.T,
@@ -75,46 +20,46 @@ func testResolved(
 ) {
 	t.Helper()
 
-	root := t.TempDir()
-	writeCanonicalTestModel(t, root)
+	return resolvedAnswer(t, oddctest.Answers(t)[0])
+}
+
+func resolvedAnswer(
+	t *testing.T,
+	answer oddctest.Answer,
+) (
+	oddc.EmbeddedSource,
+	oddc.Identity,
+	oddc.Resolved,
+) {
+	t.Helper()
 
 	source := oddc.EmbeddedSource{
-		Root:       root,
+		Root:       answer.Root,
 		Repository: "embedded:oddc",
 		Revision:   "oddc-test-revision",
 		Integrity:  "sha256-source-test",
 	}
+	identity := oddc.Identity(answer.Identity)
 
-	identity := oddc.Identity{
-		FormFactor:     "laptop",
-		SysVendor:      "HP",
-		ProductName:    "Test Laptop",
-		ProductVersion: "rev-a",
-		BoardVendor:    "HP",
-		BoardName:      "board-a",
-		BoardVersion:   "firmware-a",
-	}
-
-	registry, err := portable.LoadRegistry(root)
+	resolved, err := source.Resolve(identity)
 	if err != nil {
 		t.Fatal(err)
-	}
-
-	canonical, err := registry.ResolveModel(
-		"model/test/test-laptop",
-		nil,
-		nil,
-	)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	resolved := oddc.Resolved{
-		ModelID:   "model/test/test-laptop",
-		Canonical: canonical,
 	}
 
 	return source, identity, resolved
+}
+
+// otherModel is a second catalog model, resolved, for replacement tests.
+func otherModel(t *testing.T) (oddc.Identity, oddc.Resolved) {
+	t.Helper()
+
+	answers := oddctest.Answers(t)
+	if len(answers) < 2 {
+		t.Skip("ODDC catalog has a single model")
+	}
+	_, identity, resolved := resolvedAnswer(t, answers[1])
+
+	return identity, resolved
 }
 
 func materializedTestCapsule(t *testing.T) string {
@@ -160,12 +105,12 @@ func TestMaterializeAndVerify(t *testing.T) {
 		t.Fatalf("schema=%d", capsule.Manifest.Schema)
 	}
 
-	if capsule.Manifest.ModelID != "model/test/test-laptop" {
+	if capsule.Manifest.ModelID != resolved.ModelID {
 		t.Fatalf("model id=%q", capsule.Manifest.ModelID)
 	}
 
 	wantPaths := map[string]bool{
-		"oddc/catalog/entities/models/test/test-laptop.json": false,
+		"oddc/catalog/entities/" + resolved.ModelID + ".json": false,
 		"oddc/resolved.json": false,
 	}
 
@@ -284,11 +229,7 @@ func TestNeedsRebindDetectsReplacementHardware(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	current := identity
-	current.SysVendor = "Framework"
-	current.ProductName = "Framework Laptop 13"
-	current.BoardVendor = "Framework"
-	current.BoardName = "FRANMDCP"
+	current, _ := otherModel(t)
 
 	if !NeedsRebind(capsule, current, resolved) {
 		t.Fatal("replacement machine was not detected")
@@ -312,8 +253,7 @@ func TestNeedsRebindDetectsResolvedModelChange(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	changed := resolved
-	changed.ModelID = "model/test/replacement"
+	_, changed := otherModel(t)
 
 	if !NeedsRebind(capsule, identity, changed) {
 		t.Fatal("resolved device profile change was not detected")
@@ -377,13 +317,15 @@ func TestVerifyRejectsUnlistedCanonicalFile(t *testing.T) {
 		t.Fatal(err)
 	}
 
+	// A stray file beside the model's own file.
 	extra := filepath.Join(
-		destination,
-		"oddc",
-		"catalog",
-		"entities",
-		"models",
-		"test",
+		filepath.Dir(filepath.Join(
+			destination,
+			"oddc",
+			"catalog",
+			"entities",
+			filepath.FromSlash(resolved.ModelID)+".json",
+		)),
 		"unexpected.json",
 	)
 	if err := os.WriteFile(

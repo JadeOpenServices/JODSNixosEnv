@@ -11,15 +11,13 @@ buildGoModule {
     root = ../..;
     fileset = lib.fileset.unions [
       ../../go.mod
+      ../../go.sum
       ../../cmd/gjallar-usbtrustd
       ../../internal/usbtrust
-      ../../oddc
     ];
   };
 
-  vendorHash = null;
-  # ODDC, the only dependency, resolves through the go.mod replace to the
-  # oddc/ subtree; module mode instead of -mod=vendor needs no vendor dir.
+  vendorHash = "sha256-8HOS0S6am4g59tpFI7R5FOCCmm3ptHwgsLlZu90IxpU=";
   proxyVendor = true;
 
   subPackages = [

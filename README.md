@@ -47,16 +47,18 @@ Hyprland bindings are maintained in
 ## Hardware catalog (ODDC)
 
 [ODDC](https://github.com/JadeOpenServices/oddc) is a separate project,
-vendored here as a git subtree at `oddc/` so installs work offline. The
-installer carries the full catalog and picks the model whose DMI identity
-matches the machine. The installed system receives only that model under
-`/etc/oddc`: its referenced entities, evidence, host overlay and resolved view.
-`gjallarctl oddc list`, `gjallarctl oddc resolve` and
-`gjallarctl oddc explain --path PATH` read that deployment and default to this
-machine's model. Browse the full catalog in a checkout with
-`gjallarctl oddc list --root oddc`. Update the vendored copy with:
+used like an API. The installer reads the machine's DMI identity and asks ODDC
+for its model; only that model's answer (referenced entities, evidence and the
+ODDC revision) lands in `generated/oddc`. Nothing else of the catalog reaches
+this repository or the machine. The `oddc` flake input supplies module code
+only, and the system configuration reads the answer as `oddc.catalog`. The
+installed system receives that model under `/etc/oddc`.
 
-    git subtree pull --prefix=oddc https://github.com/JadeOpenServices/oddc main --squash
+`gjallarctl oddc COMMAND` passes ODDC commands to `oddc` unchanged, for example
+`gjallarctl oddc resolve` or `gjallarctl oddc explain --path PATH`. On the
+installed system these default to its model. `gjallarctl oddc validate-device`
+validates this checkout on the device. Validation evidence goes to ODDC through
+`oddc contribute`, not into this repository.
 
 ## Rebuilds and removable disks
 

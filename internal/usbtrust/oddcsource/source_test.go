@@ -1,10 +1,10 @@
 package oddcsource
 
 import (
-	"reflect"
 	"testing"
 
 	"github.com/JadeOpenServices/oddc"
+	"github.com/bakanura/gjallarOS/internal/installer/oddc/oddctest"
 )
 
 func TestExpectedFiltersTransportAndAttachment(t *testing.T) {
@@ -111,42 +111,34 @@ func TestExpectedFailsClosedWithoutDeviceID(t *testing.T) {
 	}
 }
 
-func TestFrameworkResolvedUSBExpectations(t *testing.T) {
-	registry, err := oddc.LoadRegistry("../../../oddc")
-	if err != nil {
-		t.Fatal(err)
-	}
+// Every role a catalog model expects is an internal USB device it resolves.
+func TestCatalogResolvedUSBExpectations(t *testing.T) {
+	for _, answer := range oddctest.Answers(t) {
+		registry, err := oddc.LoadRegistry(answer.Root)
+		if err != nil {
+			t.Fatal(err)
+		}
 
-	resolved, err := registry.ResolveModel(
-		"model/framework/laptop-13-amd-ryzen-7040",
-		nil,
-		nil,
-	)
-	if err != nil {
-		t.Fatal(err)
-	}
+		resolved, err := registry.ResolveModel(answer.Model, nil, nil)
+		if err != nil {
+			t.Fatal(err)
+		}
 
-	got, err := Expected(resolved.Resolved)
-	if err != nil {
-		t.Fatal(err)
-	}
+		got, err := Expected(resolved.Resolved)
+		if err != nil {
+			t.Fatalf("%s: %v", answer.Model, err)
+		}
 
-	roles := make([]string, 0, len(got))
-
-	for _, expected := range got {
-		roles = append(roles, expected.Role)
-	}
-
-	want := []string{
-		"hardware.network.bluetooth.primary",
-		"hardware.security.fingerprint.primary",
-	}
-
-	if !reflect.DeepEqual(roles, want) {
-		t.Fatalf(
-			"Framework internal USB roles = %#v, want %#v",
-			roles,
-			want,
-		)
+		for _, expected := range got {
+			for key, want := range map[string]string{
+				"bus":        "usb",
+				"attachment": "internal",
+			} {
+				value, _ := oddc.Lookup(resolved.Resolved, expected.Role+"."+key)
+				if value != want {
+					t.Errorf("%s %s.%s = %#v, want %q", answer.Model, expected.Role, key, value, want)
+				}
+			}
+		}
 	}
 }

@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 
+	"github.com/bakanura/gjallarOS/internal/installer/deviceprofile"
 	"github.com/bakanura/gjallarOS/internal/installer/deviceprofilecache"
 	"github.com/bakanura/gjallarOS/internal/installer/discovery"
 	"github.com/bakanura/gjallarOS/internal/installer/oddc"
@@ -39,7 +40,7 @@ func materializeODDCCapsule(
 	}
 
 	source := oddc.EmbeddedSource{
-		Root:       filepath.Join(repo, "oddc"),
+		Root:       filepath.Join(repo, filepath.FromSlash(deviceprofile.AnswerDir)),
 		Repository: resolved.Source.Repository,
 		Revision:   resolved.Source.Revision,
 		Integrity:  resolved.Source.Integrity,

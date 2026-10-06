@@ -350,7 +350,7 @@ func run(ctx context.Context, args []string, in io.Reader, out, errOut io.Writer
 
 	hardware := detectInstallerHardware("/sys")
 
-	resolvedSource := currentODDCSource(root, sourceRevision)
+	resolvedSource := currentODDCSource(root)
 	resolvedDevice, err := resolveODDCModelFromSource(
 		resolvedSource,
 		hardware,
