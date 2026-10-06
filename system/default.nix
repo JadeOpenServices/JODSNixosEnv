@@ -18,6 +18,7 @@
     ./hardware/firmware.nix
     ./hardware/fingerprint.nix
     ./hardware/input.nix
+    ./hardware/fan-control.nix
 
     ./security/firewall.nix
     ./security/local-hardening.nix

@@ -1577,7 +1577,7 @@ func fanStrategyAllowed(cfg fanRuntimeConfig, strategy string) bool {
 }
 
 func fwFanCtrlBinary() string {
-	if path := os.Getenv("GJALLAR_FW_FANCTRL_BIN"); path != "" {
+	if path := os.Getenv("ODDC_FW_FANCTRL_BIN"); path != "" {
 		return path
 	}
 	return "fw-fanctrl"
@@ -1691,9 +1691,9 @@ func runFan(args []string, stdout, stderr io.Writer) int {
 		return 2
 	}
 
-	configPath := os.Getenv("GJALLAR_FAN_CONFIG")
+	configPath := os.Getenv("ODDC_FAN_CONFIG")
 	if configPath == "" {
-		configPath = "/etc/gjallarOS/fan-control.json"
+		configPath = "/etc/oddc/fan-control.json"
 	}
 
 	cfg, err := loadFanRuntimeConfig(configPath)
