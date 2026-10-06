@@ -131,14 +131,22 @@ sync -f "$mount_dir/EFI/BOOT/BOOTX64.EFI"
 
 # Give firmware an explicit independent recovery target. Never delete or
 # rewrite an existing firmware entry here; duplicate creation is avoided by
-# checking the canonical label first.
+# checking the canonical label first. --create would put recovery first in
+# BootOrder and every normal boot would land in it; append it last instead.
 if ! efibootmgr | grep -Fq 'GjallarOS Recovery'; then
+  boot_order=$(efibootmgr | sed -n 's/^BootOrder: //p')
   efibootmgr \
-    --create \
+    --create-only \
     --disk "$parent" \
     --part "$part_number" \
     --label 'GjallarOS Recovery' \
     --loader '\EFI\BOOT\BOOTX64.EFI'
+  recovery_entry=$(efibootmgr | sed -n 's/^Boot\([0-9A-Fa-f]\{4\}\)[* ] GjallarOS Recovery\(\t.*\)\{0,1\}$/\1/p' | head -n1)
+  [ -n "$recovery_entry" ] || {
+    echo "ERROR: recovery UEFI boot entry was not created" >&2
+    exit 1
+  }
+  efibootmgr --bootorder "${boot_order:+$boot_order,}$recovery_entry" >/dev/null
 fi
 
 efibootmgr -v | grep -F 'GjallarOS Recovery' >/dev/null || {
