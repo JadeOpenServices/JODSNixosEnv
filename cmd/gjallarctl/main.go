@@ -1218,6 +1218,9 @@ func runODDC(args []string, stdout, stderr io.Writer) int {
 	case "validate-device":
 		return runODDCValidateDevice(args[1:], stdout, stderr)
 	default:
+		if isODDCctlCommand(args[0]) {
+			return runODDCctl(args, stdout, stderr)
+		}
 		fmt.Fprintf(stderr, "ERROR: unknown oddc command %q\n", args[0])
 		return 2
 	}
@@ -1944,6 +1947,7 @@ func printUsage(out io.Writer) {
 	fmt.Fprintln(out, "Usage: gjallarctl check [--repo PATH] [--timeout DURATION]")
 	fmt.Fprintln(out, "       gjallarctl preflight [--repo PATH]")
 	fmt.Fprintln(out, "       gjallarctl oddc validate-device [--repo PATH]")
+	fmt.Fprintln(out, "       gjallarctl oddc {validate|list|resolve|explain} [ODDCCTL-ARGS...]")
 	fmt.Fprintln(out, "       gjallarctl auth")
 	fmt.Fprintln(out, "       gjallarctl rebuild [--repo PATH] [--host HOST] [-d|--debug] [-n|--no-cleanup] [NIXOS-REBUILD-ARGS...]")
 	fmt.Fprintln(out, "       gjallarctl device-probe refresh [--output PATH]")
