@@ -4,7 +4,6 @@
   lib,
   hyprlandShellDetails,
   gjallarRun,
-  gjallarApps,
   settings,
   ...
 }:
@@ -73,7 +72,7 @@ let
   available =
     binding:
     !(binding.action == "exec" && appOf ? ${binding.command or ""})
-    || builtins.elem appOf.${binding.command} gjallarApps;
+    || config.gjallar.apps.${appOf.${binding.command}}.enable;
 
   renderBindm = binding: "${binding.mods or ""}, ${binding.key}, ${binding.action}";
 in

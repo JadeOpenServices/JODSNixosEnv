@@ -1,0 +1,298 @@
+{
+  config,
+  lib,
+  pkgs,
+  settings,
+  gjallarRun,
+  ...
+}:
+let
+  dolphinTheme = import ../../themes/apps/dolphin/darkly.nix { inherit pkgs; };
+  dolphinNextcloudIcons = import ../../themes/apps/dolphin/nextcloud-icons.nix;
+  dolphinClient =
+    if settings.nextcloudEnable or false then
+      pkgs.symlinkJoin {
+        name = "dolphin-openvfs";
+        paths = [ pkgs.kdePackages.dolphin ];
+        nativeBuildInputs = [ pkgs.makeWrapper ];
+        postBuild = ''
+          # In-process KIO file workers look like Dolphin to OpenVFS and are
+          # excluded from hydration along with previews. Keep file copies in
+          # identifiable workers; thumbnail workers remain excluded.
+          rm "$out/bin/dolphin"
+          makeWrapper ${lib.getExe pkgs.kdePackages.dolphin} "$out/bin/dolphin" \
+            --set KIO_ENABLE_WORKER_THREADS 0
+          service="$out/share/dbus-1/services/org.kde.dolphin.FileManager1.service"
+          cp --remove-destination "$service" "$service.tmp"
+          rm "$service"
+          mv "$service.tmp" "$service"
+          chmod u+w "$service"
+          substituteInPlace "$service" \
+            --replace-fail ${lib.escapeShellArg (lib.getExe pkgs.kdePackages.dolphin)} "$out/bin/dolphin"
+        '';
+        meta.mainProgram = "dolphin";
+      }
+    else
+      pkgs.kdePackages.dolphin;
+
+  fileManager = pkgs.writeShellApplication {
+    name = "file-manager";
+    text = ''
+      if [ "$#" -eq 0 ]; then
+        set -- "$HOME"
+      fi
+
+      # Darkly is Dolphin-local. qtct remains active and continues supplying
+      # the live Noctalia/KColorScheme palette.
+      export QT_STYLE_OVERRIDE=${lib.escapeShellArg dolphinTheme.styleName}
+      export QT_PLUGIN_PATH=${lib.escapeShellArg dolphinTheme.qtPluginPath}''${QT_PLUGIN_PATH:+:$QT_PLUGIN_PATH}
+
+      exec ${lib.getExe gjallarRun} ${lib.getExe dolphinClient} --new-window "$@"
+    '';
+  };
+  ini = pkgs.formats.ini { };
+  defaults = ini.generate "dolphin-defaults" {
+    General = {
+      AlwaysShowTabBar = true;
+      BrowseThroughArchives = true;
+      FilterBar = true;
+      GlobalViewProps = true;
+      OpenExternallyCalledFolderInNewTab = false;
+      RememberOpenedTabs = false;
+      ShowFullPath = true;
+      ShowToolTips = true;
+      ShowZoomSlider = true;
+      SortingChoice = 0;
+    };
+    ContextMenu.ShowCopyMoveMenu = true;
+    InformationPanel = {
+      previewsShown = true;
+      previewsAutoPlay = false;
+    };
+    # Keep remote browsing from fetching file content merely for thumbnails.
+    PreviewSettings = {
+      EnableRemoteFolderThumbnail = false;
+      MaximumRemoteSize = 0;
+    };
+  };
+  editorDesktop =
+    {
+      vscodium = "codium.desktop";
+      vscode = "code.desktop";
+    }
+    .${settings.preferredEditor} or null;
+in
+lib.mkIf config.gjallar.apps.dolphin.enable {
+  _module.args.gjallarFileManager = fileManager;
+
+  home.packages = with pkgs.kdePackages; [
+    dolphinTheme.package
+    dolphinClient
+    dolphin-plugins
+    ark
+    kio-extras
+    kio-fuse
+    kdegraphics-thumbnailers
+    ffmpegthumbs
+    konsole
+    kfind
+    filelight
+    fileManager
+  ];
+
+  # Stylix supplies the desktop's dark Kvantum palette and fonts.
+  qt.qt6ctSettings.Appearance.icon_theme = lib.mkDefault settings.themeDetails.icons;
+
+  # Dolphin-specific Nextcloud availability glyphs. Unique names avoid
+  # mutating Papirus or other applications' icon lookup.
+  xdg.dataFile."icons/hicolor/scalable/places/${dolphinNextcloudIcons.places}.svg" =
+    lib.mkIf (settings.nextcloudEnable or false) {
+      source = dolphinNextcloudIcons.cloudSource;
+    };
+
+  xdg.dataFile."icons/hicolor/scalable/emblems/${dolphinNextcloudIcons.onlineOnly}.svg" =
+    lib.mkIf (settings.nextcloudEnable or false) {
+      source = dolphinNextcloudIcons.cloudSource;
+    };
+
+  xdg.dataFile."icons/hicolor/scalable/emblems/${dolphinNextcloudIcons.local}.svg" =
+    lib.mkIf (settings.nextcloudEnable or false) {
+      source = dolphinNextcloudIcons.localSource;
+    };
+
+  # Seed once: Dolphin owns its live settings so UI changes survive rebuilds.
+  home.activation.dolphinDefaults = lib.hm.dag.entryAfter [ "writeBoundary" ] ''
+    dolphin_config=${lib.escapeShellArg "${config.xdg.configHome}/dolphinrc"}
+    if [ ! -e "$dolphin_config" ] && [ ! -L "$dolphin_config" ]; then
+      run ${pkgs.coreutils}/bin/install -D -m 0600 ${defaults} "$dolphin_config"
+    fi
+  '';
+
+  # Seed the managed Nextcloud root into Dolphin Places without
+  # taking ownership of the user's live Places configuration.
+  # Do not restore an ever-growing collection of old tabs, and do
+  # not funnel externally opened folders into the current Dolphin window.
+  home.activation.dolphinSessionPolicy = lib.hm.dag.entryAfter [ "dolphinDefaults" ] ''
+    dolphin_config=${lib.escapeShellArg "${config.xdg.configHome}/dolphinrc"}
+    write_config=${lib.getExe' pkgs.kdePackages.kconfig "kwriteconfig6"}
+
+    remember_opened_tabs=
+    externally_called_folder=
+    in_general=false
+
+    if [ -r "$dolphin_config" ]; then
+      while IFS= read -r line || [ -n "$line" ]; do
+        case "$line" in
+          '[General]')
+            in_general=true
+            continue
+            ;;
+          '['*']')
+            if [ "$in_general" = true ]; then
+              break
+            fi
+            continue
+            ;;
+        esac
+
+        if [ "$in_general" = true ]; then
+          case "$line" in
+            RememberOpenedTabs=*)
+              remember_opened_tabs="''${line#RememberOpenedTabs=}"
+              ;;
+            OpenExternallyCalledFolderInNewTab=*)
+              externally_called_folder="''${line#OpenExternallyCalledFolderInNewTab=}"
+              ;;
+          esac
+        fi
+      done < "$dolphin_config"
+    fi
+
+    if [ "$remember_opened_tabs" != "false" ]; then
+      run "$write_config" --file dolphinrc --group General --key RememberOpenedTabs false
+    fi
+
+    if [ "$externally_called_folder" != "false" ]; then
+      run "$write_config" --file dolphinrc --group General --key OpenExternallyCalledFolderInNewTab false
+    fi
+  '';
+
+  home.activation.dolphinNextcloudPlace = lib.mkIf (settings.nextcloudEnable or false) (
+    lib.hm.dag.entryAfter [ "dolphinDefaults" "dolphinSessionPolicy" ] ''
+      places=${lib.escapeShellArg "${config.xdg.dataHome}/user-places.xbel"}
+    nextcloud_uri="file://$HOME/Nextcloud"
+
+    if [ -f "$places" ] &&
+       ! ${pkgs.gnugrep}/bin/grep -Fq "href=\"$nextcloud_uri\"" "$places"
+    then
+      tmp="$places.gjallar-nextcloud.$$"
+      base="$(${pkgs.coreutils}/bin/date +%s)"
+      n=0
+
+      while ${pkgs.gnugrep}/bin/grep -Fq "<ID>$base/$n</ID>" "$places"
+      do
+        n=$((n + 1))
+      done
+
+      nextcloud_id="$base/$n"
+
+      ${pkgs.gnused}/bin/sed \
+        "/<bookmark href=\"remote:\\/\">/i\\
+ <bookmark href=\"$nextcloud_uri\">\\
+  <title>Nextcloud</title>\\
+  <info>\\
+   <metadata owner=\"http://freedesktop.org\">\\
+    <bookmark:icon name=\"${dolphinNextcloudIcons.places}\"/>\\
+   </metadata>\\
+   <metadata owner=\"http://www.kde.org\">\\
+    <ID>$nextcloud_id</ID>\\
+   </metadata>\\
+  </info>\\
+ </bookmark>" \
+        "$places" > "$tmp"
+
+      ${pkgs.coreutils}/bin/chmod --reference="$places" "$tmp"
+        ${pkgs.coreutils}/bin/mv "$tmp" "$places"
+      fi
+    ''
+  );
+
+  # Migrate only GjallarOS' previous Nextcloud icon defaults. Preserve any
+  # user-selected custom icon and every unrelated Places entry.
+  home.activation.dolphinNextcloudIconMigration =
+    lib.mkIf (settings.nextcloudEnable or false) (
+      lib.hm.dag.entryAfter [ "dolphinNextcloudPlace" ] ''
+        places=${lib.escapeShellArg "${config.xdg.dataHome}/user-places.xbel"}
+        nextcloud_uri="file://$HOME/Nextcloud"
+
+        if [ -f "$places" ] &&
+           ${pkgs.gnugrep}/bin/grep -Fq "href=\"$nextcloud_uri\"" "$places"
+        then
+          tmp="$places.gjallar-nextcloud-icon.$$"
+
+          ${pkgs.gawk}/bin/awk \
+            -v uri="$nextcloud_uri" \
+            -v icon=${lib.escapeShellArg dolphinNextcloudIcons.places} '
+              index($0, "<bookmark href=\"" uri "\">") {
+                inside_nextcloud = 1
+              }
+
+              inside_nextcloud &&
+              /<bookmark:icon name="(folder-cloud|cloudstatus)"\/>/ {
+                sub(/name="(folder-cloud|cloudstatus)"/, "name=\"" icon "\"")
+              }
+
+              { print }
+
+              inside_nextcloud && /<\/bookmark>/ {
+                inside_nextcloud = 0
+              }
+            ' "$places" > "$tmp"
+
+          if ${pkgs.diffutils}/bin/cmp -s "$places" "$tmp"; then
+            ${pkgs.coreutils}/bin/rm -f "$tmp"
+          else
+            ${pkgs.coreutils}/bin/install -m 0600 "$tmp" "$places"
+            ${pkgs.coreutils}/bin/rm -f "$tmp"
+          fi
+        fi
+      ''
+    );
+
+  xdg.desktopEntries."org.kde.dolphin" = {
+    name = "Dolphin";
+    genericName = "File Manager";
+    comment = "Browse files, devices, archives and network locations";
+    exec = "${lib.getExe fileManager} %U";
+    icon = "system-file-manager";
+    terminal = false;
+    categories = [
+      "Qt"
+      "KDE"
+      "System"
+      "FileManager"
+    ];
+    mimeType = [ "inode/directory" ];
+  };
+
+  xdg.mimeApps = {
+    enable = true;
+    associations.added."inode/directory" = [ "org.kde.dolphin.desktop" ];
+    defaultApplications = {
+      "inode/directory" = [ "org.kde.dolphin.desktop" ];
+    }
+    // lib.optionalAttrs (editorDesktop != null) (
+      lib.genAttrs [
+        "text/plain"
+        "text/markdown"
+        "application/json"
+        "application/javascript"
+        "application/xml"
+        "application/yaml"
+        "text/yaml"
+      ] (_: [ editorDesktop ])
+    );
+  };
+
+  programs.zsh.shellAliases.fm = "${lib.getExe fileManager} .";
+}

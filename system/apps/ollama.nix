@@ -1034,7 +1034,7 @@ let
     circumvent, shadow, disable, or bypass the protection around:
 
     - `system/apps/ollama.nix`
-    - `user/apps/opencode.nix`
+    - `apps/opencode/home.nix`
     - `internal/ai/`
     - `cmd/gjallarctl/main.go`
     - `pkgs/gjallarctl/`
@@ -1598,7 +1598,7 @@ lib.mkIf (if settings ? aiEnable then settings.aiEnable else false) {
 
       ReadOnlyPaths = [
         "/workspace/system/apps/ollama.nix"
-        "/workspace/user/apps/opencode.nix"
+        "/workspace/apps/opencode/home.nix"
         "/workspace/internal/ai"
         "/workspace/cmd/gjallarctl/main.go"
         "/workspace/pkgs/gjallarctl"

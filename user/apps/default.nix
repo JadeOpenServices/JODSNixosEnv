@@ -1,42 +1,27 @@
 { lib, settings, ... }:
 
 let
-  # Optional apps by ID. `settings.apps` selects them; without it an
-  # install keeps every app it had before the selection existed.
-  catalog = {
-    btop = ./btop;
-    dolphin = ./dolphin.nix;
-    drawio = ./drawio.nix;
-    fastfetch = ./fastfetch;
-    gimp = ./gimp.nix;
-    git = ./git.nix;
-    keepassxc = ./keepassxc.nix;
-    libreoffice = ./libreoffice.nix;
-    nextcloud = ./nextcloud.nix;
-    opencode = ./opencode.nix;
-    plane = ./plane.nix;
-    qbittorrent = ./qbittorrent.nix;
-    rust = ./rust.nix;
-    teams = ./teams.nix;
-    vlc = ./vlc.nix;
-    wine = ./wine.nix;
-  };
+  catalogue = import ../../apps;
 
-  selected = settings.apps or (builtins.attrNames catalog);
+  # `settings.apps` selects catalogue apps; without it an install keeps
+  # every app it had before the selection existed.
+  selected = settings.apps or (builtins.attrNames catalogue);
 
-  unknown = builtins.filter (id: !(catalog ? ${id})) selected;
+  unknown = builtins.filter (id: !(catalogue ? ${id})) selected;
 in
 {
-  imports =
-    assert lib.assertMsg (unknown == [ ]) "unknown apps: ${toString unknown}";
-    [
-      # Base: the window managers launch ghostty, and fingerprint follows
-      # the hardware ODDC resolved.
-      ./ghostty.nix
-      ./fingerprint.nix
-    ]
-    ++ map (id: catalog.${id}) selected;
+  imports = [
+    ../../apps/home.nix
 
-  # The selected app IDs, for modules that wire up optional apps.
-  _module.args.gjallarApps = selected;
+    # Base: the window managers launch ghostty, and fingerprint follows
+    # the hardware ODDC resolved.
+    ./ghostty.nix
+    ./fingerprint.nix
+  ];
+
+  gjallar.apps =
+    assert lib.assertMsg (unknown == [ ]) "unknown apps: ${toString unknown}";
+    lib.genAttrs selected (_: {
+      enable = true;
+    });
 }

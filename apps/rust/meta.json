@@ -1,0 +1,5 @@
+{
+  "name": "Rust",
+  "description": "Rust toolchain: cargo, rustc, rustfmt, clippy, rust-analyzer.",
+  "category": "development"
+}

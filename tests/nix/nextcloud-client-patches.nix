@@ -1,6 +1,6 @@
 { pkgs }:
 let
-  client = import ../../user/apps/nextcloud-client-source.nix { inherit (pkgs) fetchFromGitHub; };
+  client = import ../../apps/nextcloud/client-source.nix { inherit (pkgs) fetchFromGitHub; };
 in
 pkgs.stdenvNoCC.mkDerivation {
   name = "gjallar-nextcloud-client-patches-check";

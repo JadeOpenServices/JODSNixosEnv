@@ -1,0 +1,104 @@
+{
+  config,
+  lib,
+  pkgs,
+  settings,
+  ...
+}:
+let
+  webApplication = import ../lib/web-application.nix { inherit lib pkgs; };
+
+  webApplications = settings.webApplications or [ ];
+  teamsEnable =
+    if settings ? webApplications then
+      builtins.any (
+        application: (application.id or "") == "teams"
+      ) webApplications
+    else
+      true;
+
+  normalBrowser = settings.preferredBrowser;
+
+  teamsApp = webApplication.mkIsolatedWebApplication {
+    name = "gjallar-teams";
+    browser = pkgs.microsoft-edge;
+    profile = ".config/microsoft-edge-teams";
+    url = "https://teams.microsoft.com";
+    allowRuntimeUrl = true;
+    browserArguments = [
+      "--password-store=basic"
+      "--class=gjallar-teams"
+      "--name=Microsoft Teams"
+    ];
+  };
+
+  urlHandler = pkgs.writeShellScriptBin "gjallar-open-url" ''
+    set -euo pipefail
+    url="''${1:-}"
+    [ -n "$url" ] || exit 2
+    case "$url" in
+        https://teams.microsoft.com|https://teams.microsoft.com/*|https://teams.live.com|https://teams.live.com/*|https://teams.microsoft.us|https://teams.microsoft.us/*|https://teams.cloud.microsoft|https://teams.cloud.microsoft/*|msteams:*)
+            exec ${teamsApp}/bin/gjallar-teams "$url"
+            ;;
+        *)
+            exec ${normalBrowser} "$url"
+            ;;
+    esac
+  '';
+in
+{
+  config = lib.mkIf (config.gjallar.apps.teams.enable && teamsEnable) {
+    home.packages = [
+      pkgs.microsoft-edge
+      teamsApp
+      urlHandler
+    ];
+
+    home.file.".local/share/icons/hicolor/scalable/apps/gjallar-teams.svg".source =
+      "${pkgs.papirus-icon-theme}/share/icons/Papirus/64x64/apps/teams-for-linux.svg";
+
+    xdg.mimeApps = {
+      enable = true;
+      defaultApplications = {
+        "x-scheme-handler/http" = [ "gjallar-url-handler.desktop" ];
+        "x-scheme-handler/https" = [ "gjallar-url-handler.desktop" ];
+        "x-scheme-handler/msteams" = [ "gjallar-url-handler.desktop" ];
+      };
+    };
+
+    home.file.".local/share/applications/gjallar-url-handler.desktop".text = ''
+      [Desktop Entry]
+      Type=Application
+      Name=GjallarOS URL handler
+      NoDisplay=true
+      Exec=${urlHandler}/bin/gjallar-open-url %u
+      MimeType=x-scheme-handler/http;x-scheme-handler/https;x-scheme-handler/msteams;
+    '';
+
+    home.file.".local/share/applications/microsoft-teams.desktop".text = ''
+      [Desktop Entry]
+      Type=Application
+      Name=Microsoft Teams
+      Exec=${teamsApp}/bin/gjallar-teams %U
+      Terminal=false
+      Icon=gjallar-teams
+      Categories=Network;Office;InstantMessaging;
+      StartupWMClass=gjallar-teams
+    '';
+
+    home.activation.gjallarDesktopDatabase =
+      lib.hm.dag.entryAfter [ "writeBoundary" ] ''
+        if command -v update-desktop-database >/dev/null 2>&1; then
+            update-desktop-database "$HOME/.local/share/applications" >/dev/null 2>&1 || true
+        fi
+      '';
+
+    xdg.dataFile."applications/microsoft-edge.desktop".text = ''
+      [Desktop Entry]
+      Type=Application
+      Name=Backend Browser
+      NoDisplay=true
+      Hidden=true
+    '';
+  };
+}
