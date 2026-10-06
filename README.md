@@ -44,6 +44,18 @@ Tarantool development shells intentionally use unstable.
 Hyprland bindings are maintained in
 [`user/wm/hyprland/keybinds.json`](user/wm/hyprland/keybinds.json).
 
+## Hardware catalog (ODDC)
+
+[ODDC](https://github.com/JadeOpenServices/oddc) is a separate project,
+vendored here as a git subtree at `oddc/` so installs work offline. The
+installer picks the model whose DMI identity matches the machine; other models
+stay in the catalog but configure nothing. Inspect the whole catalog with
+`gjallarctl oddc list`, `gjallarctl oddc resolve --device MODEL` and
+`gjallarctl oddc explain --device MODEL --path PATH`. Update the vendored copy
+with:
+
+    git subtree pull --prefix=oddc https://github.com/JadeOpenServices/oddc main --squash
+
 ## Rebuilds and removable disks
 
 Use `rebuild --repo /path/to/gjallarOS`. Direct host flake builds fail unless the
