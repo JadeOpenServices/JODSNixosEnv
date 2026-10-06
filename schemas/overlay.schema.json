@@ -1,0 +1,86 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://openjade.de/oddc/schemas/overlay.schema.json",
+  "title": "ODDC resolved-model override",
+  "type": "object",
+  "required": [
+    "apiVersion",
+    "id",
+    "kind",
+    "targetModel",
+    "overrides"
+  ],
+  "properties": {
+    "$schema": {
+      "type": "string"
+    },
+    "apiVersion": {
+      "const": "oddc.openjade.de/v2"
+    },
+    "id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "kind": {
+      "enum": [
+        "project",
+        "host"
+      ]
+    },
+    "targetModel": {
+      "type": "string",
+      "pattern": "^model/"
+    },
+    "overrides": {
+      "$ref": "#/$defs/object"
+    }
+  },
+  "$defs": {
+    "scalar": {
+      "type": [
+        "string",
+        "number",
+        "integer",
+        "boolean",
+        "null"
+      ]
+    },
+    "node": {
+      "oneOf": [
+        {
+          "$ref": "#/$defs/scalar"
+        },
+        {
+          "$ref": "#/$defs/delete"
+        },
+        {
+          "$ref": "#/$defs/object"
+        }
+      ]
+    },
+    "delete": {
+      "type": "object",
+      "required": [
+        "$delete"
+      ],
+      "properties": {
+        "$delete": {
+          "const": true
+        }
+      },
+      "additionalProperties": false
+    },
+    "object": {
+      "type": "object",
+      "propertyNames": {
+        "not": {
+          "const": "$delete"
+        }
+      },
+      "additionalProperties": {
+        "$ref": "#/$defs/node"
+      }
+    }
+  },
+  "additionalProperties": false
+}
