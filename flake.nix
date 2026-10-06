@@ -47,9 +47,9 @@
     };
 
     # Module code only; the machine's own model comes from the installer's
-    # answer in generated/oddc. staging until ODDC promotes fetch to main.
+    # answer in generated/oddc.
     oddc = {
-      url = "github:JadeOpenServices/oddc/staging";
+      url = "github:JadeOpenServices/oddc";
       inputs.nixpkgs.follows = "nixpkgs";
     };
 

@@ -11,9 +11,8 @@ import (
 	portable "github.com/JadeOpenServices/oddc"
 )
 
-// Channel is the ODDC branch the installer asks. The address layout and
-// fetch exist only on staging until ODDC promotes them to main.
-const Channel = "staging"
+// Channel is the ODDC branch the installer asks: main, its stable channel.
+const Channel = "main"
 
 // FetchedSource asks ODDC for this machine only: on first resolve it
 // fetches the matched model's answer (reference closure, evidence and

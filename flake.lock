@@ -534,7 +534,6 @@
       },
       "original": {
         "owner": "JadeOpenServices",
-        "ref": "staging",
         "repo": "oddc",
         "type": "github"
       }
