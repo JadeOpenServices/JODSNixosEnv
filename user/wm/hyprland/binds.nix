@@ -4,7 +4,7 @@
   lib,
   hyprlandShellDetails,
   gjallarRun,
-  gjallarFileManager,
+  gjallarApps,
   settings,
   ...
 }:
@@ -28,7 +28,7 @@ let
     editor = "${lib.getExe gjallarRun} ${lib.getExe pkgs.${settings.preferredEditor}}";
     browser = "${lib.getExe gjallarRun} ${lib.getExe pkgs.${settings.preferredBrowser}}";
 
-    fileManager = lib.getExe gjallarFileManager;
+    fileManager = lib.getExe config._module.args.gjallarFileManager;
 
     gjallarAI = "gjallar-ai";
 
@@ -62,6 +62,19 @@ let
     else
       "${mods}, ${binding.key}, ${command}${if args == "" then "," else ", ${args}"}";
 
+  # Commands that exist only when their app is selected.
+  appOf = {
+    fileManager = "dolphin";
+    gjallarAI = "opencode";
+    libreoffice = "libreoffice";
+    teams = "teams";
+  };
+
+  available =
+    binding:
+    !(binding.action == "exec" && appOf ? ${binding.command or ""})
+    || builtins.elem appOf.${binding.command} gjallarApps;
+
   renderBindm = binding: "${binding.mods or ""}, ${binding.key}, ${binding.action}";
 in
 {
@@ -70,7 +83,7 @@ in
     "$mod" = "SUPER";
 
     bindm = map renderBindm profile.bindm;
-    binde = map render profile.binde;
-    bind = map render profile.bind;
+    binde = map render (builtins.filter available profile.binde);
+    bind = map render (builtins.filter available profile.bind);
   };
 }

@@ -24,11 +24,6 @@
     username = settings.username;
     homeDirectory = "/home/${settings.username}";
     stateVersion = installState.homeManagerStateVersion;
-
-    packages = with pkgs; [
-      libreoffice-fresh
-      gimp
-    ];
   };
 
   xdg = {
