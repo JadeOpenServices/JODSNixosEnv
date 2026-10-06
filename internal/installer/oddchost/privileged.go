@@ -10,7 +10,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/bakanura/gjallarOS/pkg/oddc"
+	"github.com/JadeOpenServices/oddc"
 )
 
 // PrivilegedReader retrieves protected machine-local state. exists=false is

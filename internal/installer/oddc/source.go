@@ -3,7 +3,7 @@ package oddc
 import (
 	"errors"
 
-	portable "github.com/bakanura/gjallarOS/pkg/oddc"
+	portable "github.com/JadeOpenServices/oddc"
 )
 
 var (

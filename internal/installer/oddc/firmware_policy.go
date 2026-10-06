@@ -5,7 +5,7 @@ import (
 	"sort"
 	"strings"
 
-	portable "github.com/bakanura/gjallarOS/pkg/oddc"
+	portable "github.com/JadeOpenServices/oddc"
 )
 
 type EffectiveSecureBootFirmwarePolicy struct {

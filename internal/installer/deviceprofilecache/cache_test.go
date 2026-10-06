@@ -7,8 +7,8 @@ import (
 	"strings"
 	"testing"
 
+	portable "github.com/JadeOpenServices/oddc"
 	"github.com/bakanura/gjallarOS/internal/installer/oddc"
-	portable "github.com/bakanura/gjallarOS/pkg/oddc"
 )
 
 func writeCanonicalTestModel(

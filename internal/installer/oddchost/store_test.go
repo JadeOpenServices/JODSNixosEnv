@@ -5,7 +5,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/bakanura/gjallarOS/pkg/oddc"
+	"github.com/JadeOpenServices/oddc"
 )
 
 const testModel = "model/test/laptop"

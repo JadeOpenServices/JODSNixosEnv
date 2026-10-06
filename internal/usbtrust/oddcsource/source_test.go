@@ -4,7 +4,7 @@ import (
 	"reflect"
 	"testing"
 
-	"github.com/bakanura/gjallarOS/pkg/oddc"
+	"github.com/JadeOpenServices/oddc"
 )
 
 func TestExpectedFiltersTransportAndAttachment(t *testing.T) {

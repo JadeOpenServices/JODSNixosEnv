@@ -1,10 +1,15 @@
 {
   buildGoModule,
+  callPackage,
   git,
   lib,
   runtimeShell,
   systemd,
 }:
+let
+  # ODDC is its own Go module, so its CLI is its own derivation.
+  oddcctl = callPackage ../../oddc/package.nix { };
+in
 buildGoModule {
   pname = "gjallarctl";
   version = "0.1.0";
@@ -16,7 +21,6 @@ buildGoModule {
     fileset = lib.fileset.unions [
       ../../go.mod
       ../../cmd
-      ../../pkg
       ../../internal/ai
       ../../internal/hardware
       ../../internal/input
@@ -30,21 +34,27 @@ buildGoModule {
   };
 
   vendorHash = null;
+  # ODDC, the only dependency, resolves through the go.mod replace to the
+  # oddc/ subtree; module mode instead of -mod=vendor needs no vendor dir.
+  proxyVendor = true;
 
   subPackages = [
     "cmd/gjallarctl"
     "cmd/gjallar-installer"
     "cmd/gjallar-recovery-maintenance"
-    "cmd/oddcctl"
   ];
 
   env.CGO_ENABLED = "0";
   ldflags = [
     "-s"
     "-w"
+    "-X main.oddcctlPath=${lib.getExe oddcctl}"
+    "-X main.oddcRoot=${oddcctl}/share/oddc"
   ];
 
   postInstall = ''
+    ln -s ${lib.getExe oddcctl} "$out/bin/oddcctl"
+
     cat > "$out/bin/gjallar-sudo-askpass" <<'ASKPASS'
 #!${runtimeShell}
 # sudo runs askpass with its own stdin, which gjallarctl detaches. Prompt on

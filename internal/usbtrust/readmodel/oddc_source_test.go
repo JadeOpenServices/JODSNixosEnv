@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/bakanura/gjallarOS/pkg/oddc"
+	"github.com/JadeOpenServices/oddc"
 )
 
 type fakeModelResolver struct {

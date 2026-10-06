@@ -5,10 +5,10 @@ import (
 	"errors"
 	"testing"
 
+	portable "github.com/JadeOpenServices/oddc"
 	"github.com/bakanura/gjallarOS/internal/installer/discovery"
 	"github.com/bakanura/gjallarOS/internal/installer/oddc"
 	"github.com/bakanura/gjallarOS/internal/installer/oddchost"
-	portable "github.com/bakanura/gjallarOS/pkg/oddc"
 )
 
 type hostReadTestSource struct {

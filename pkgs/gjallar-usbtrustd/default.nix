@@ -13,12 +13,14 @@ buildGoModule {
       ../../go.mod
       ../../cmd/gjallar-usbtrustd
       ../../internal/usbtrust
-      ../../pkg/oddc
       ../../oddc
     ];
   };
 
   vendorHash = null;
+  # ODDC, the only dependency, resolves through the go.mod replace to the
+  # oddc/ subtree; module mode instead of -mod=vendor needs no vendor dir.
+  proxyVendor = true;
 
   subPackages = [
     "cmd/gjallar-usbtrustd"
