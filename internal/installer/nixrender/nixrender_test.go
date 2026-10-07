@@ -295,8 +295,8 @@ rec {
 }
 
 func TestRenderAICentralServer(t *testing.T) {
-	got := string(Render(Settings{AIEnable: true, AIEndpoint: "http://192.168.8.205:11434", AIRemoteModel: "qwen3-coder:30b", AIRemoteContextTokens: 32768}))
-	for _, want := range []string{`aiEndpoint = "http://192.168.8.205:11434";`, `aiRemoteModel = "qwen3-coder:30b";`, "aiRemoteContextTokens = 32768;"} {
+	got := string(Render(Settings{AIEnable: true, AIEndpoint: "https://192.168.8.205", AIRemoteModel: "qwen3-coder:30b", AIRemoteContextTokens: 32768}))
+	for _, want := range []string{`aiEndpoint = "https://192.168.8.205";`, `aiRemoteModel = "qwen3-coder:30b";`, "aiRemoteContextTokens = 32768;"} {
 		if !strings.Contains(got, want) {
 			t.Fatalf("missing %q", want)
 		}

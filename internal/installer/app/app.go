@@ -1,6 +1,7 @@
 package app
 
 import (
+	"bufio"
 	"context"
 	"errors"
 	"flag"
@@ -15,6 +16,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/bakanura/gjallarOS/internal/ai/aitoken"
 	"github.com/bakanura/gjallarOS/internal/ai/profile"
 	"github.com/bakanura/gjallarOS/internal/hardware/graphics"
 	"github.com/bakanura/gjallarOS/internal/input/xkb"
@@ -22,6 +24,7 @@ import (
 	"github.com/bakanura/gjallarOS/internal/installer/baremetalinstall"
 	"github.com/bakanura/gjallarOS/internal/installer/bootstrap"
 	"github.com/bakanura/gjallarOS/internal/installer/config"
+	"github.com/bakanura/gjallarOS/internal/installer/credential"
 	"github.com/bakanura/gjallarOS/internal/installer/deploy"
 	"github.com/bakanura/gjallarOS/internal/installer/deviceprofile"
 	"github.com/bakanura/gjallarOS/internal/installer/deviceprofilecache"
@@ -828,6 +831,11 @@ func run(ctx context.Context, args []string, in io.Reader, out, errOut io.Writer
 			s.render.RootPasswordFile = lines[len(lines)-1]
 		}
 		fmt.Fprint(out, path)
+	}
+	if s.user.AIEnable && s.user.AIEndpoint != "" {
+		if err := ensureAIToken(ctx, out); err != nil {
+			return fail(errOut, err)
+		}
 	}
 	settingsPath := filepath.Join(root, "generated", "state.nix")
 	if err := nixrender.WriteAtomic(settingsPath, s.render); err != nil {
@@ -2038,9 +2046,9 @@ func collectInteractive(ctx context.Context, ui prompt.UI, root string, hardware
 // downloaded locally then; the server picks hardware and holds the model.
 func collectAIServer(ctx context.Context, ui prompt.UI, u *config.User) error {
 	u.OverrideAISelection, u.OverrideModelWith = false, ""
-	fmt.Fprintln(ui.Out, "Ollama has no authentication: use a server on a trusted network or behind HTTPS.")
+	fmt.Fprintln(ui.Out, "The central AI server must use HTTPS and a bearer token (e.g. Ollama behind a TLS proxy that checks it). The token is asked for later, hidden.")
 	for {
-		endpoint, err := ui.Value(ctx, "AI server URL", "http://192.168.8.205:11434")
+		endpoint, err := ui.Value(ctx, "AI server URL", "https://192.168.8.205")
 		if err != nil {
 			return err
 		}
@@ -2061,6 +2069,33 @@ func collectAIServer(ctx context.Context, ui prompt.UI, u *config.User) error {
 			return nil
 		}
 		fmt.Fprintf(ui.Out, "%v\n", err)
+	}
+}
+
+// ensureAIToken asks for the central AI server token, hidden, unless one is
+// already staged or sealed. It stays root-only at aitoken.Pending until the
+// installed system seals it with systemd-creds.
+func ensureAIToken(ctx context.Context, out io.Writer) error {
+	if privilegedFileExists(ctx, aitoken.Pending) || privilegedFileExists(ctx, aitoken.Sealed) {
+		fmt.Fprintln(out, "Existing AI server token retained.")
+		return nil
+	}
+	tty, err := os.OpenFile("/dev/tty", os.O_RDWR, 0)
+	if err != nil {
+		return fmt.Errorf("open terminal for AI server token (or stage it root-only at %s): %w", aitoken.Pending, err)
+	}
+	defer tty.Close()
+	reader := bufio.NewReader(tty)
+	for {
+		token, err := credential.ReadSecret(tty, reader, out, "AI server token (hidden): ")
+		if err != nil {
+			return fmt.Errorf("read AI server token: %w", err)
+		}
+		if err := aitoken.Validate(token); err != nil {
+			fmt.Fprintln(out, err)
+			continue
+		}
+		return aitoken.Store(ctx, token, aitoken.Pending)
 	}
 }
 

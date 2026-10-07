@@ -316,8 +316,10 @@ func ValidateAIEndpoint(user User) error {
 		return nil
 	}
 	parsed, err := url.Parse(user.AIEndpoint)
-	if err != nil || (parsed.Scheme != "http" && parsed.Scheme != "https") || parsed.Hostname() == "" {
-		return fmt.Errorf("aiEndpoint must be an http or https URL with a host: %q", user.AIEndpoint)
+	// The system logs in with a bearer token; over plain http the token and
+	// every prompt would cross the network in clear.
+	if err != nil || parsed.Scheme != "https" || parsed.Hostname() == "" {
+		return fmt.Errorf("aiEndpoint must be an https URL with a host (the server needs a token and TLS): %q", user.AIEndpoint)
 	}
 	if parsed.User != nil || strings.Trim(parsed.Path, "/") != "" || parsed.RawQuery != "" || parsed.Fragment != "" {
 		return fmt.Errorf("aiEndpoint must be scheme://host[:port] only: %q", user.AIEndpoint)

@@ -32,6 +32,14 @@ Git.
   integrated graphics it runs on Vulkan instead of ROCm, and it is confined
   below the desktop (memory capped at 65% of RAM, low CPU/IO priority, killed
   first under memory pressure) so a model load cannot take Hyprland down.
+  Instead of a local model, AI can use a central server: set `aiEndpoint`
+  (`https://host[:port]` only), `aiRemoteModel` and `aiRemoteContextTokens`.
+  The server must sit behind HTTPS and check a bearer token (Ollama itself has
+  no login); http endpoints and missing tokens are refused. The installer asks
+  for the token hidden; on an installed system run `gjallarctl ai set-token`.
+  The token never enters the Nix store or `user.config.json`: it is encrypted
+  with `systemd-creds` (TPM2-bound when present) into
+  `/var/lib/gjallarOS/ai/endpoint-token.cred`.
 - SOPS/age secrets, TPM2 LUKS enrollment, and recovery-key handling.
 - Maintenance helpers for rebuilding, cleanup, thermal status, and updates.
 

@@ -42,7 +42,7 @@ func TestAIConfigurationBranches(t *testing.T) {
 
 func TestAIEndpointValidation(t *testing.T) {
 	u := validAIUser()
-	u.AIEndpoint = "http://192.168.8.205:11434"
+	u.AIEndpoint = "https://192.168.8.205"
 	u.AIRemoteModel = "qwen3-coder:30b"
 	u.AIRemoteContextTokens = 32768
 	if err := Validate(u); err != nil {
@@ -51,9 +51,10 @@ func TestAIEndpointValidation(t *testing.T) {
 
 	for name, mutate := range map[string]func(*User){
 		"scheme":    func(u *User) { u.AIEndpoint = "ftp://192.168.8.205:11434" },
-		"no host":   func(u *User) { u.AIEndpoint = "http://" },
-		"path":      func(u *User) { u.AIEndpoint = "http://192.168.8.205:11434/v1" },
-		"userinfo":  func(u *User) { u.AIEndpoint = "http://a:b@192.168.8.205:11434" },
+		"http":      func(u *User) { u.AIEndpoint = "http://192.168.8.205:11434" },
+		"no host":   func(u *User) { u.AIEndpoint = "https://" },
+		"path":      func(u *User) { u.AIEndpoint = "https://192.168.8.205/v1" },
+		"userinfo":  func(u *User) { u.AIEndpoint = "https://a:b@192.168.8.205" },
 		"no model":  func(u *User) { u.AIRemoteModel = "" },
 		"bad model": func(u *User) { u.AIRemoteModel = "qwen3 coder" },
 		"flag":      func(u *User) { u.AIRemoteModel = "-x" },

@@ -2,6 +2,7 @@ package modelbroker
 
 import (
 	"encoding/json"
+	"strings"
 	"testing"
 )
 
@@ -93,5 +94,25 @@ func TestRenameModelUsesUpstreamName(t *testing.T) {
 	same, err := renameModel(in, "gjallaros-caveman-ai", "")
 	if err != nil || string(same) != string(in) {
 		t.Fatalf("empty upstream rewrote request: %s %v", same, err)
+	}
+}
+
+func TestCheckUpstreamRequiresTokenAndHTTPSForRemote(t *testing.T) {
+	token := strings.Repeat("c3", 32)
+	for upstream, ok := range map[string]bool{
+		"http://127.0.0.1:11434":     true,
+		"http://localhost:11434":     true,
+		"https://ai.example:443":     true,
+		"http://192.168.8.205:11434": false,
+	} {
+		if err := checkUpstream(upstream, token); (err == nil) != ok {
+			t.Fatalf("%s with token: err=%v", upstream, err)
+		}
+	}
+	if err := checkUpstream("https://ai.example", ""); err == nil {
+		t.Fatal("remote upstream without token accepted")
+	}
+	if err := checkUpstream("http://127.0.0.1:11434", ""); err != nil {
+		t.Fatalf("local upstream without token refused: %v", err)
 	}
 }

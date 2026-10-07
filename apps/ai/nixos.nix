@@ -364,6 +364,30 @@ let
   baseModel = if remote then settings.aiRemoteModel else settings.aiModel;
   contextTokens = if remote then settings.aiRemoteContextTokens else settings.aiContextTokens;
 
+  # The system logs in to a central server with a bearer token. It never
+  # enters the store: gjallarctl leaves it root-only at tokenPending and
+  # ai-endpoint-token-seal encrypts it with systemd-creds into tokenSealed.
+  tokenPending = "/var/lib/gjallarOS/ai/endpoint-token";
+  tokenSealed = "/var/lib/gjallarOS/ai/endpoint-token.cred";
+  tokenCredential = "ai-endpoint-token";
+  # A central server is created through the API: the ollama CLI cannot send a
+  # token.
+  remoteCreateRequest = pkgs.writeText "gjallaros-caveman-ai-create.json" (
+    builtins.toJSON {
+      model = upstreamModel;
+      from = baseModel;
+      system = "${aiSystemPrompt}\n\n${securityInstructions.system}";
+      parameters.num_ctx = contextTokens;
+      stream = false;
+    }
+  );
+  remotePullRequest = pkgs.writeText "gjallaros-caveman-ai-pull.json" (
+    builtins.toJSON {
+      model = baseModel;
+      stream = false;
+    }
+  );
+
   assistantModel = "gjallaros-caveman-ai";
   # On a shared server each definition gets its own name, so clients with
   # different prompts or models never overwrite each other.
@@ -1290,6 +1314,32 @@ let
       >/dev/null 2>&1 || true
   '';
 
+  # Every call carries the sealed token. curl reads it from --config on stdin,
+  # so it never shows in argv.
+  remoteProvision = ''
+    set -euo pipefail
+    api() {
+      local seconds="$1" path="$2"; shift 2
+      printf 'header = "Authorization: Bearer %s"\n' "$(cat "$CREDENTIALS_DIRECTORY/${tokenCredential}")" \
+        | curl --config - --silent --show-error --fail --max-time "$seconds" "$@" ${lib.escapeShellArg upstream}"$path"
+    }
+    ready=false
+    for _ in $(seq 1 30); do
+      if api 5 /api/tags >/dev/null; then ready=true; break; fi
+      sleep 1
+    done
+    if [ "$ready" != true ]; then echo "ERROR: AI server ${upstream} did not answer with the token within 30 seconds." >&2; exit 1; fi
+    api 1800 /api/pull --data @${remotePullRequest} >/dev/null
+    state="$STATE_DIRECTORY/definition.sha256"
+    applied="$(cat "$state" 2>/dev/null || true)"
+    present=false
+    if api 30 /api/tags | grep -Fq '"name":"${upstreamModel}:latest"'; then present=true; fi
+    if [ "$present" != true ] || [ "$applied" != ${lib.escapeShellArg modelDefinitionHash} ]; then
+      api 600 /api/create --data @${remoteCreateRequest} >/dev/null
+      printf '%s\n' ${lib.escapeShellArg modelDefinitionHash} > "$state"
+    fi
+  '';
+
   localBackend = {
     systemd.tmpfiles.rules = [
       "d /var/lib/ollama 0750 ollama ollama -"
@@ -1462,6 +1512,10 @@ lib.mkIf config.gjallar.apps.ai.enable (
 
           message = "The hardened GjallarOS AI session currently requires " + "aiAgentMode = \"workspace\".";
         }
+        {
+          assertion = !remote || lib.hasPrefix "https://" upstream;
+          message = "aiEndpoint ${upstream} must use https: the system logs in with a bearer token.";
+        }
       ];
 
       environment.etc."opencode/opencode.json".source = managedOpencodeConfig;
@@ -1604,7 +1658,8 @@ lib.mkIf config.gjallar.apps.ai.enable (
       systemd.services.ai-model-broker = {
         description = "Inference-only AI model broker";
 
-        after = lib.optional (!remote) "ollama.service";
+        after = if remote then [ "ai-endpoint-token-seal.service" ] else [ "ollama.service" ];
+        wants = lib.optional remote "ai-endpoint-token-seal.service";
         requires = lib.optional (!remote) "ollama.service";
 
         wantedBy = [
@@ -1619,11 +1674,13 @@ lib.mkIf config.gjallar.apps.ai.enable (
             + "--upstream ${lib.escapeShellArg upstream} "
             + "--model ${assistantModel} "
             + "--upstream-model ${upstreamModel} "
+            + lib.optionalString remote "--upstream-token-file %d/${tokenCredential} "
             + "--user ${lib.escapeShellArg settings.username} "
             + "--cgroup-prefix /ai-session@";
 
           User = "gjallar-ai-model";
           Group = "ai-model-access";
+          LoadCredentialEncrypted = lib.mkIf remote "${tokenCredential}:${tokenSealed}";
 
           RuntimeDirectory = "gjallar-ai-model";
           RuntimeDirectoryMode = "0750";
@@ -1747,8 +1804,18 @@ lib.mkIf config.gjallar.apps.ai.enable (
 
       systemd.services.ollama-model-provision = {
         description = "Provision the resolved Ollama model";
-        after = if remote then [ "network-online.target" ] else [ "ollama.service" ];
-        wants = lib.optional remote "network-online.target";
+        after =
+          if remote then
+            [
+              "network-online.target"
+              "ai-endpoint-token-seal.service"
+            ]
+          else
+            [ "ollama.service" ];
+        wants = lib.optionals remote [
+          "network-online.target"
+          "ai-endpoint-token-seal.service"
+        ];
         requires = lib.optional (!remote) "ollama.service";
         path = [
           (if remote then pkgs.ollama else ollamaPackage)
@@ -1775,24 +1842,52 @@ lib.mkIf config.gjallar.apps.ai.enable (
           ProtectSystem = "strict";
           ProtectHome = true;
           ReadWritePaths = lib.optional (!remote) "/var/lib/ollama";
+          LoadCredentialEncrypted = lib.mkIf remote "${tokenCredential}:${tokenSealed}";
         };
+        script =
+          if remote then
+            remoteProvision
+          else
+            ''
+              set -euo pipefail
+              ready=false
+              for _ in $(seq 1 30); do
+                if curl --silent --fail --max-time 2 ${lib.escapeShellArg upstream}/api/tags >/dev/null; then ready=true; break; fi
+                sleep 1
+              done
+              if [ "$ready" != true ]; then echo "ERROR: Ollama at ${upstream} did not become ready within 30 seconds." >&2; exit 1; fi
+              ollama pull ${lib.escapeShellArg baseModel}
+              state="$STATE_DIRECTORY/definition.sha256"
+              applied="$(cat "$state" 2>/dev/null || true)"
+              present=false
+              if ollama list | grep -Eq '^${upstreamModel}(:latest)?[[:space:]]'; then present=true; fi
+              if [ "$present" != true ] || [ "$applied" != ${lib.escapeShellArg modelDefinitionHash} ]; then
+                ollama create ${upstreamModel} --file ${modelDefinitionFile}
+                printf '%s\n' ${lib.escapeShellArg modelDefinitionHash} > "$state"
+              fi
+            '';
+      };
+
+      systemd.services.ai-endpoint-token-seal = lib.mkIf remote {
+        description = "Seal the central AI server token with systemd-creds";
+        wantedBy = [ "multi-user.target" ];
+        before = [
+          "ai-model-broker.service"
+          "ollama-model-provision.service"
+        ];
+        unitConfig.ConditionPathExists = tokenPending;
+        path = [ pkgs.coreutils ];
+        serviceConfig = {
+          Type = "oneshot";
+          UMask = "0077";
+        };
+        # --with-key=auto binds the token to the TPM2 when there is one, else
+        # to this host's credential key; a copied disk cannot read it.
         script = ''
           set -euo pipefail
-          ready=false
-          for _ in $(seq 1 30); do
-            if curl --silent --fail --max-time 2 ${lib.escapeShellArg upstream}/api/tags >/dev/null; then ready=true; break; fi
-            sleep 1
-          done
-          if [ "$ready" != true ]; then echo "ERROR: Ollama at ${upstream} did not become ready within 30 seconds." >&2; exit 1; fi
-          ollama pull ${lib.escapeShellArg baseModel}
-          state="$STATE_DIRECTORY/definition.sha256"
-          applied="$(cat "$state" 2>/dev/null || true)"
-          present=false
-          if ollama list | grep -Eq '^${upstreamModel}(:latest)?[[:space:]]'; then present=true; fi
-          if [ "$present" != true ] || [ "$applied" != ${lib.escapeShellArg modelDefinitionHash} ]; then
-            ollama create ${upstreamModel} --file ${modelDefinitionFile}
-            printf '%s\n' ${lib.escapeShellArg modelDefinitionHash} > "$state"
-          fi
+          ${pkgs.systemd}/bin/systemd-creds encrypt --with-key=auto --name=${tokenCredential} ${tokenPending} ${tokenSealed}.tmp
+          mv -f ${tokenSealed}.tmp ${tokenSealed}
+          shred -u ${tokenPending}
         '';
       };
 

@@ -11,6 +11,7 @@ import (
 	"io"
 	"net"
 	"net/http"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
@@ -23,7 +24,10 @@ type Config struct {
 	Upstream   string
 	Model      string
 	// UpstreamModel is the name the upstream knows Model by; empty means Model.
-	UpstreamModel        string
+	UpstreamModel string
+	// UpstreamToken is the bearer token for a central server. A non-loopback
+	// upstream requires it and HTTPS.
+	UpstreamToken        string
 	AllowedUID           uint32
 	RequiredCgroupPrefix string
 	MaxRequestBytes      int64
@@ -46,6 +50,9 @@ func Serve(ctx context.Context, cfg Config) error {
 	}
 	if cfg.Model == "" {
 		return errors.New("model broker model is required")
+	}
+	if err := checkUpstream(cfg.Upstream, cfg.UpstreamToken); err != nil {
+		return err
 	}
 	if cfg.RequiredCgroupPrefix == "" {
 		return errors.New("model broker cgroup prefix is required")
@@ -241,6 +248,10 @@ func handler(cfg Config) http.Handler {
 			"Content-Type",
 			"application/json",
 		)
+
+		if cfg.UpstreamToken != "" {
+			req.Header.Set("Authorization", "Bearer "+cfg.UpstreamToken)
+		}
 
 		if accept := r.Header.Get("Accept"); accept != "" {
 			req.Header.Set("Accept", accept)
@@ -447,6 +458,25 @@ func gjallarTrivialFastPath(
 
 // renameModel swaps the client-facing model name for the upstream one, so a
 // shared server can hold per-definition models under one client name.
+// checkUpstream refuses a central server without a token or over plain
+// HTTP, where the token and every prompt would cross the network in clear.
+func checkUpstream(upstream, token string) error {
+	parsed, err := url.Parse(upstream)
+	if err != nil || parsed.Hostname() == "" {
+		return fmt.Errorf("invalid upstream %q", upstream)
+	}
+	if ip := net.ParseIP(parsed.Hostname()); (ip != nil && ip.IsLoopback()) || parsed.Hostname() == "localhost" {
+		return nil
+	}
+	if parsed.Scheme != "https" {
+		return fmt.Errorf("upstream %s must use https", upstream)
+	}
+	if token == "" {
+		return fmt.Errorf("upstream %s requires a token (--upstream-token-file)", upstream)
+	}
+	return nil
+}
+
 func renameModel(raw []byte, model, upstream string) ([]byte, error) {
 	if upstream == "" || upstream == model {
 		return raw, nil

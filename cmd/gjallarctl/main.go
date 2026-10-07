@@ -30,6 +30,7 @@ import (
 	"unsafe"
 
 	"github.com/bakanura/gjallarOS/internal/ai/agentexec"
+	"github.com/bakanura/gjallarOS/internal/ai/aitoken"
 	"github.com/bakanura/gjallarOS/internal/ai/modelbroker"
 	aipolicy "github.com/bakanura/gjallarOS/internal/ai/policy"
 	"github.com/bakanura/gjallarOS/internal/ai/profile"
@@ -989,6 +990,12 @@ func runAIModelServe(args []string, stdout, stderr io.Writer) int {
 		"upstream name of the exposed model (default: --model)",
 	)
 
+	tokenFile := f.String(
+		"upstream-token-file",
+		"",
+		"file with the bearer token of a central server",
+	)
+
 	username := f.String(
 		"user",
 		"",
@@ -1038,6 +1045,15 @@ func runAIModelServe(args []string, stdout, stderr io.Writer) int {
 		return 1
 	}
 
+	token := ""
+	if *tokenFile != "" {
+		token, err = aitoken.Read(*tokenFile)
+		if err != nil {
+			fmt.Fprintf(stderr, "ERROR: %v\n", err)
+			return 1
+		}
+	}
+
 	err = modelbroker.Serve(
 		context.Background(),
 		modelbroker.Config{
@@ -1045,6 +1061,7 @@ func runAIModelServe(args []string, stdout, stderr io.Writer) int {
 			Upstream:             *upstream,
 			Model:                *model,
 			UpstreamModel:        *upstreamModel,
+			UpstreamToken:        token,
 			AllowedUID:           uint32(uid64),
 			RequiredCgroupPrefix: *cgroupPrefix,
 			MaxRequestBytes:      16 << 20,
@@ -1064,13 +1081,48 @@ func runAIModelServe(args []string, stdout, stderr io.Writer) int {
 	return 0
 }
 
+// runAISetToken stores the central AI server token root-only for
+// ai-endpoint-token-seal, which encrypts it, then restarts the AI services.
+func runAISetToken(args []string, stdout, stderr io.Writer) int {
+	if len(args) != 0 {
+		fmt.Fprintln(stderr, "Usage: gjallarctl ai set-token")
+		return 2
+	}
+	tty, err := os.OpenFile("/dev/tty", os.O_RDWR, 0)
+	if err != nil {
+		fmt.Fprintf(stderr, "ERROR: open terminal: %v\n", err)
+		return 1
+	}
+	defer tty.Close()
+	token, err := credential.ReadSecret(tty, bufio.NewReader(tty), stdout, "AI server token: ")
+	if err == nil {
+		err = aitoken.Store(context.Background(), token, aitoken.Pending)
+	}
+	if err != nil {
+		fmt.Fprintf(stderr, "ERROR: %v\n", err)
+		return 1
+	}
+	restart := exec.Command("sudo", "systemctl", "restart",
+		"ai-endpoint-token-seal.service", "ai-model-broker.service", "ollama-model-provision.service")
+	restart.Stdout, restart.Stderr = stdout, stderr
+	if err := restart.Run(); err != nil {
+		fmt.Fprintf(stderr, "ERROR: token stored but AI services did not restart: %v\n", err)
+		return 1
+	}
+	fmt.Fprintln(stdout, "AI server token sealed; AI services restarted.")
+	return 0
+}
+
 func runAI(args []string, stdout, stderr io.Writer) int {
 	if len(args) > 0 && args[0] == "model-serve" {
 		return runAIModelServe(args[1:], stdout, stderr)
 	}
+	if len(args) > 0 && args[0] == "set-token" {
+		return runAISetToken(args[1:], stdout, stderr)
+	}
 
 	if len(args) == 0 {
-		fmt.Fprintln(stderr, "Usage: gjallarctl ai {profile|tool|approve|research-serve}")
+		fmt.Fprintln(stderr, "Usage: gjallarctl ai {profile|tool|approve|research-serve|set-token}")
 		return 2
 	}
 	if args[0] == "tool" {
