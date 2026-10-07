@@ -27,8 +27,11 @@ Git.
 - Noctalia shell styling with Stylix propagation for system applications.
 - ODDC-backed device identity, capabilities, and hardware policy with generic system composition.
 - Graphics, Wi-Fi, firmware, touchscreen, battery, and clamshell detection.
-- VSCodium, Teams web app, system-wide Wine, and optional Nemu.
-- Optional localhost-only Ollama AI with hardware-aware model selection.
+- VSCodium, web apps (Teams, Plane, draw.io), system-wide Wine, and optional Nemu.
+- Optional localhost-only Ollama AI with hardware-aware model selection. On AMD
+  integrated graphics it runs on Vulkan instead of ROCm, and it is confined
+  below the desktop (memory capped at 65% of RAM, low CPU/IO priority, killed
+  first under memory pressure) so a model load cannot take Hyprland down.
 - SOPS/age secrets, TPM2 LUKS enrollment, and recovery-key handling.
 - Maintenance helpers for rebuilding, cleanup, thermal status, and updates.
 
@@ -41,8 +44,21 @@ that intent into `generated/state.nix`; machine hardware lives in
 root flake, Home Manager, and Stylix follow 26.05; only the ComfyUI and
 Tarantool development shells intentionally use unstable.
 
+Web apps are listed in `webApplications`, for example
+`[{"id": "teams"}, {"id": "plane", "endpoint": "https://plane.example"}]`.
+The older `planeEnable`/`planeHost`/`drawio*` fields are still read when
+`webApplications` is absent, but new configs should use the list.
+
 Hyprland bindings are maintained in
 [`user/wm/hyprland/keybinds.json`](user/wm/hyprland/keybinds.json).
+
+## App catalogue
+
+Optional applications live in `apps/<id>/`: `meta.json` (name, description,
+category), and a `home.nix` and/or `nixos.nix` module. System apps are switched
+with `gjallar.apps.<id>.enable` (declared in `apps/nixos-options.nix`); today
+these are `ai`, `containers`, `nemu` and `tailscale`. Each app owns its whole
+module, so removing an app removes everything it brought in.
 
 ## Hardware catalog (ODDC)
 
@@ -69,6 +85,11 @@ model again at the new commit and swaps it in only once complete. Offline, the
 rebuild warns and keeps the answer it has. Without `--rebuild`, the next
 `rebuild` does the fetch. `gjallarctl oddc doctor` shows the ODDC revision the
 installed model came from.
+
+`rebuild --hardware-update [--stage main|staging]` does the same move as part
+of a rebuild: it runs `oddc update --flake <checkout> [--stage STAGE]` first
+and stops with `nothing rebuilt` if that fails. It needs an `oddc` that knows
+`update --flake`.
 
 `gjallarctl oddc COMMAND` passes ODDC commands to `oddc` unchanged, for example
 `gjallarctl oddc resolve` or `gjallarctl oddc explain --path PATH`. On the
