@@ -139,12 +139,13 @@ in
       "display-manager.service"
       "greetd.service"
     ];
-    requires = [ "systemd-pcrlock-make-policy.service" ];
+    # Not requires: the policy made before Secure Boot was enabled makes
+    # this unit fail until the enrollment below replaces it.
+    wants = [ "systemd-pcrlock-make-policy.service" ];
     unitConfig = {
       ConditionSecurity = "uefi-secureboot";
       ConditionPathExists = [
         "!/var/lib/gjallarOS/tpm2-enrollment-complete"
-        "/var/lib/systemd/pcrlock.json"
         "/var/lib/gjallarOS/secure-boot/ownership.json"
       ];
     };
@@ -172,6 +173,19 @@ in
       [ ! -e "$state/secure-boot-enable-required" ] || exit 0
       gjallar-verify-secure-boot-artifacts
       gjallar-verify-secure-boot-ownership enrolled
+
+      if cryptsetup luksDump --dump-json-metadata "$device" | grep -q 'systemd-tpm2'; then
+        printf '%s\n' 'ERROR: an existing TPM2 token must be replaced with: sudo gjallarctl tpm2 reenroll; no slot was changed.' >&2
+        exit 1
+      fi
+      # The policy from the first boot locks the PCR 7 of the time before
+      # Secure Boot was enabled, and make-policy cannot rewrite its NV index
+      # (e2e-fw13, 2026-10-07: AuthorizeNV policy mismatch). No token uses
+      # it yet, so make it afresh.
+      if [ -e /var/lib/systemd/pcrlock.json ]; then
+        ${config.systemd.package}/lib/systemd/systemd-pcrlock remove-policy
+      fi
+      systemctl restart systemd-pcrlock-make-policy.service
       ${checkPolicy}
 
       plymouth quit || true
@@ -180,12 +194,6 @@ in
         "GjallarOS: enter the human LUKS recovery passphrase to enroll measured-boot TPM2 unlock" >"$keyfile"
       chmod 0600 "$keyfile"
       cryptsetup open --test-passphrase --type luks "$device" --key-file "$keyfile"
-
-      before="$(cryptsetup luksDump --dump-json-metadata "$device")"
-      if printf '%s' "$before" | grep -q 'systemd-tpm2'; then
-        printf '%s\n' 'ERROR: an existing TPM2 token must be replaced with: sudo gjallarctl tpm2 reenroll; no slot was changed.' >&2
-        exit 1
-      fi
 
       systemd-cryptenroll --unlock-key-file="$keyfile" --tpm2-device=auto \
         --tpm2-pcrlock=/var/lib/systemd/pcrlock.json "$device"
