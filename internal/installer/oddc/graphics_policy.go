@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"strings"
 
-	portable "github.com/JadeOpenServices/oddc"
+	portable "github.com/JadeOpenServices/oddc/pkg/oddc"
 )
 
 type EffectiveGraphicsPolicy struct {

@@ -9,7 +9,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/JadeOpenServices/oddc"
+	"github.com/JadeOpenServices/oddc/pkg/oddc"
 )
 
 func TestLoadPrivilegedMissingIsAbsent(t *testing.T) {

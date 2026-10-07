@@ -8,7 +8,7 @@ import (
 	"strings"
 	"testing"
 
-	portable "github.com/JadeOpenServices/oddc"
+	portable "github.com/JadeOpenServices/oddc/pkg/oddc"
 
 	"github.com/bakanura/gjallarOS/internal/installer/oddc/oddctest"
 )
@@ -27,7 +27,7 @@ func (fn roundTripper) RoundTrip(request *http.Request) (*http.Response, error) 
 func TestRefreshWithoutAnswerDoesNothing(t *testing.T) {
 	root := filepath.Join(t.TempDir(), "oddc")
 
-	before, err := Refresh(root, "6911862daccfb8dfcea89f88ffe760fa945f3fcc", offline)
+	before, err := Refresh(root, "4e311931ed5fac2dca79b99d01e50e620624afa0", offline)
 	if err != nil || before != "" {
 		t.Fatalf("Refresh = %q, %v; want no answer, no error", before, err)
 	}

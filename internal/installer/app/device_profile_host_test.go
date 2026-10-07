@@ -5,7 +5,7 @@ import (
 	"errors"
 	"testing"
 
-	portable "github.com/JadeOpenServices/oddc"
+	portable "github.com/JadeOpenServices/oddc/pkg/oddc"
 	"github.com/bakanura/gjallarOS/internal/installer/discovery"
 	"github.com/bakanura/gjallarOS/internal/installer/oddc"
 	"github.com/bakanura/gjallarOS/internal/installer/oddchost"

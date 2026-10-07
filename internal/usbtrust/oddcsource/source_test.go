@@ -3,7 +3,7 @@ package oddcsource
 import (
 	"testing"
 
-	"github.com/JadeOpenServices/oddc"
+	"github.com/JadeOpenServices/oddc/pkg/oddc"
 	"github.com/bakanura/gjallarOS/internal/installer/oddc/oddctest"
 )
 

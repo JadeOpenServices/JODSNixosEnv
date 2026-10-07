@@ -8,7 +8,7 @@ import (
 	"path/filepath"
 	"time"
 
-	portable "github.com/JadeOpenServices/oddc"
+	portable "github.com/JadeOpenServices/oddc/pkg/oddc"
 )
 
 // FetchedSource asks ODDC for this machine only: on first resolve it

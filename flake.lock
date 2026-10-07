@@ -525,11 +525,11 @@
         ]
       },
       "locked": {
-        "lastModified": 1791320191,
-        "narHash": "sha256-ykuzIIgUsKihGp+9HStAL9NY/UneW6A0uGAyJy011lQ=",
+        "lastModified": 1791383018,
+        "narHash": "sha256-1UTroJETt19YLRXRElKFY8VmJucYofFTFw72R5is5Uk=",
         "owner": "JadeOpenServices",
         "repo": "oddc",
-        "rev": "6911862daccfb8dfcea89f88ffe760fa945f3fcc",
+        "rev": "4e311931ed5fac2dca79b99d01e50e620624afa0",
         "type": "github"
       },
       "original": {

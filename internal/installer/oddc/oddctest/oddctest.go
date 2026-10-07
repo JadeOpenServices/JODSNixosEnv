@@ -9,7 +9,7 @@ import (
 	"strings"
 	"testing"
 
-	portable "github.com/JadeOpenServices/oddc"
+	portable "github.com/JadeOpenServices/oddc/pkg/oddc"
 )
 
 // Answer is one catalog model as the installer receives it.

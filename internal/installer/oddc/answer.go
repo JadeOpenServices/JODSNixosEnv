@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"os"
 
-	portable "github.com/JadeOpenServices/oddc"
+	portable "github.com/JadeOpenServices/oddc/pkg/oddc"
 )
 
 // AnswerRevision is the ODDC commit the answer in root came from, or ""
