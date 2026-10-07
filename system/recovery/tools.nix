@@ -5,6 +5,7 @@
 }:
 let
   gjallarctl = pkgs.callPackage ../../pkgs/gjallarctl { };
+  installer = pkgs.callPackage ../../pkgs/gjallar-installer { };
   recoveryExecutor = pkgs.writeShellApplication {
     name = "gjallar-recovery-execute";
     runtimeInputs = with pkgs; [
@@ -29,6 +30,7 @@ let
       tpm2-tools
       util-linux
       gjallarctl
+      installer
     ];
     text = ''
       set -euo pipefail
@@ -316,5 +318,5 @@ let
   };
 in
 {
-  inherit gjallarctl recovery recoveryExecutor;
+  inherit gjallarctl installer recovery recoveryExecutor;
 }

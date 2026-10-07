@@ -140,6 +140,12 @@ recovery ISO, with the root mounted at `/mnt`) and run
 `sudo gjallar-recover generations /` then `sudo gjallar-recover rollback / N`.
 This adds a new generation with that system; nothing newer is deleted.
 
+The installed system does not carry the installer. `gjallar-installer` and
+`gjallar-recovery-maintenance` (package `pkgs/gjallar-installer`) can
+repartition and reinstall a disk, so they exist only in the trusted-recovery
+boot entry, the recovery-maintenance initrd and the recovery ISO. A reinstall
+or reset therefore needs a deliberate boot into recovery.
+
 USB review offers permanent trust after a configured, unused TPM signing handle
 has been provisioned with `sudo gjallarctl usb provision-key`. Existing TPM
 objects are never overwritten. Provisioning does not automatically trust devices

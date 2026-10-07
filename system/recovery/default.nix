@@ -11,7 +11,7 @@ let
   tools = import ./tools.nix {
     inherit config pkgs sourceRevision;
   };
-  inherit (tools) gjallarctl recovery recoveryExecutor;
+  inherit (tools) gjallarctl installer recovery recoveryExecutor;
 
   maintenanceCandidates = lib.concatStringsSep "\n" (
     lib.mapAttrsToList (
@@ -101,6 +101,7 @@ lib.mkMerge [
         recovery
         recoveryExecutor
         gjallarctl
+        installer
         pkgs.dosfstools
         pkgs.gptfdisk
         pkgs.parted
@@ -174,7 +175,7 @@ lib.mkMerge [
           pkgs.parted
           pkgs.systemd
           pkgs.util-linux
-          gjallarctl
+          installer
         ];
 
         script = ''

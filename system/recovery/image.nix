@@ -240,6 +240,7 @@ in
     tpm2-tools
     util-linux
     tools.gjallarctl
+    tools.installer
     tools.recovery
     tools.recoveryExecutor
   ];

@@ -35,11 +35,9 @@ buildGoModule {
   # tests read as the real catalog.
   proxyVendor = true;
 
-  subPackages = [
-    "cmd/gjallarctl"
-    "cmd/gjallar-installer"
-    "cmd/gjallar-recovery-maintenance"
-  ];
+  # The installer and recovery maintenance live in pkgs/gjallar-installer,
+  # which the installed system does not carry.
+  subPackages = [ "cmd/gjallarctl" ];
 
   env.CGO_ENABLED = "0";
   ldflags = [
