@@ -1,6 +1,9 @@
 {
   "aiAgentMode": "workspace",
-  "aiEnable": true,
+  "aiEnable": false,
+  "aiEndpoint": "",
+  "aiRemoteContextTokens": 0,
+  "aiRemoteModel": "",
   "allowUnvalidatedODDCModel": false,
   "autoReboot": false,
   "backgroundNormal": "non-nix/wallpapers/sword.jpg",

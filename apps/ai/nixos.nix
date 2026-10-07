@@ -324,7 +324,9 @@ let
   # ROCm compute on an AMD iGPU shares the GPU with the compositor; a hang or
   # reset there takes Hyprland down. Vulkan (RADV) coexists with the desktop.
   ollamaPackage =
-    if graphics.vendor == "amd" && graphics.type == "integrated" && builtins.hasAttr "ollama-vulkan" pkgs then
+    if
+      graphics.vendor == "amd" && graphics.type == "integrated" && builtins.hasAttr "ollama-vulkan" pkgs
+    then
       pkgs.ollama-vulkan
     else if graphics.vendor == "amd" && builtins.hasAttr "ollama-rocm" pkgs then
       pkgs.ollama-rocm
@@ -355,16 +357,30 @@ let
 
   securityInstructions = builtins.fromJSON (builtins.readFile ./security-instructions.json);
 
+  # A central server (aiEndpoint) replaces the on-device ollama: nothing is
+  # downloaded or run locally, and the server's hardware sets model and context.
+  remote = (settings.aiEndpoint or "") != "";
+  upstream = if remote then settings.aiEndpoint else "http://127.0.0.1:11434";
+  baseModel = if remote then settings.aiRemoteModel else settings.aiModel;
+  contextTokens = if remote then settings.aiRemoteContextTokens else settings.aiContextTokens;
+
   assistantModel = "gjallaros-caveman-ai";
+  # On a shared server each definition gets its own name, so clients with
+  # different prompts or models never overwrite each other.
+  upstreamModel =
+    if remote then
+      "${assistantModel}-${builtins.substring 0 12 modelDefinitionHash}"
+    else
+      assistantModel;
   modelDefinition = ''
-    FROM ${settings.aiModel}
+    FROM ${baseModel}
     ${lib.optionalString (
-      accelerationProfile.numGpu != null
+      !remote && accelerationProfile.numGpu != null
     ) "PARAMETER num_gpu ${toString accelerationProfile.numGpu}"}
     SYSTEM """${aiSystemPrompt}
 
     ${securityInstructions.system}"""
-    PARAMETER num_ctx ${toString settings.aiContextTokens}
+    PARAMETER num_ctx ${toString contextTokens}
   '';
   accelerationProfileName = settings.aiAccelerationProfile;
 
@@ -1182,11 +1198,12 @@ let
     set -u
     echo "AI enabled: true"
     echo "Selection: resolved during installation"
-    echo "Resolved base model: ${settings.aiModel}"
-    echo "Context tokens: ${toString settings.aiContextTokens}"
+    echo "Backend: ${if remote then "central server ${upstream}" else "local ollama"}"
+    echo "Resolved base model: ${baseModel}"
+    echo "Context tokens: ${toString contextTokens}"
     echo "Detected VRAM MiB: ${toString settings.aiVramMB}"
     echo "Agent mode: ${if settings ? aiAgentMode then settings.aiAgentMode else "workspace"}"
-    echo "Derived model: ${assistantModel}"
+    echo "Derived model: ${upstreamModel}"
     echo "Definition hash: ${modelDefinitionHash}"
     printf 'Ollama service: '; ${pkgs.systemd}/bin/systemctl is-active ollama.service 2>/dev/null || true
     printf 'Provision service: '; ${pkgs.systemd}/bin/systemctl is-active ollama-model-provision.service 2>/dev/null || true
@@ -1241,10 +1258,11 @@ let
         ;;
     esac
 
-    ${pkgs.systemd}/bin/systemctl \
-      start \
-      ollama.service
-
+    ${lib.optionalString (!remote) ''
+      ${pkgs.systemd}/bin/systemctl \
+        start \
+        ollama.service
+    ''}
     ${pkgs.systemd}/bin/systemctl \
       start \
       ollama-model-provision.service
@@ -1272,546 +1290,554 @@ let
       >/dev/null 2>&1 || true
   '';
 
+  localBackend = {
+    systemd.tmpfiles.rules = [
+      "d /var/lib/ollama 0750 ollama ollama -"
+      "Z /var/lib/ollama - ollama ollama -"
+    ];
+
+    systemd.services.ai-model-firewall = {
+      description = "Local Ollama API firewall";
+
+      before = [
+        "ollama.service"
+        "ai-model-broker.service"
+        "ollama-model-provision.service"
+      ];
+
+      wantedBy = [
+        "multi-user.target"
+      ];
+
+      serviceConfig = {
+        Type = "oneshot";
+        RemainAfterExit = true;
+
+        User = "root";
+        Group = "root";
+
+        NoNewPrivileges = true;
+        PrivateTmp = true;
+        PrivateDevices = true;
+
+        ProtectSystem = "strict";
+        ProtectHome = true;
+
+        ProtectKernelTunables = true;
+        ProtectKernelModules = true;
+        ProtectKernelLogs = true;
+        ProtectControlGroups = true;
+
+        RestrictSUIDSGID = true;
+        RestrictRealtime = true;
+        RestrictNamespaces = true;
+
+        LockPersonality = true;
+
+        CapabilityBoundingSet = [
+          "CAP_NET_ADMIN"
+        ];
+
+        RestrictAddressFamilies = [
+          "AF_NETLINK"
+          "AF_UNIX"
+        ];
+      };
+
+      script = ''
+        set -euo pipefail
+
+        nft=${pkgs.nftables}/bin/nft
+
+        if "$nft" list table inet gjallar_ai_model >/dev/null 2>&1; then
+          "$nft" delete table inet gjallar_ai_model
+        fi
+
+        "$nft" -f - <<'EOF'
+        table inet gjallar_ai_model {
+          chain output {
+            type filter hook output priority -50; policy accept;
+
+            ip daddr 127.0.0.1 tcp dport 11434 meta skuid ollama accept
+            ip daddr 127.0.0.1 tcp dport 11434 meta skuid gjallar-ai-model accept
+
+            ip daddr 127.0.0.1 tcp dport 11434 counter reject
+          }
+        }
+        EOF
+
+        "$nft" list table inet gjallar_ai_model \
+          | ${pkgs.gnugrep}/bin/grep -F \
+              'ip daddr 127.0.0.1 tcp dport 11434 counter packets 0 bytes 0 reject' \
+              >/dev/null \
+          || {
+            echo "ERROR: Ollama firewall rule was not installed." >&2
+            "$nft" delete table inet gjallar_ai_model 2>/dev/null || true
+            exit 1
+          }
+      '';
+
+      preStop = ''
+        ${pkgs.nftables}/bin/nft \
+          delete table inet gjallar_ai_model \
+          2>/dev/null \
+          || true
+      '';
+    };
+
+    systemd.services.ollama.requires = [
+      "ai-model-firewall.service"
+    ];
+
+    systemd.services.ollama.after = [
+      "ai-model-firewall.service"
+    ];
+
+    users.groups.ollama = { };
+
+    users.users.ollama = {
+      isSystemUser = true;
+      group = "ollama";
+      home = "/var/lib/ollama";
+      createHome = true;
+    };
+
+    services.ollama = rec {
+      enable = true;
+
+      user = "ollama";
+      group = "ollama";
+
+      openFirewall = false;
+      host = "127.0.0.1";
+      port = 11434;
+
+      environmentVariables = ollamaEnvironment;
+
+      package = ollamaPackage;
+    };
+
+    systemd.services.ollama.serviceConfig = {
+      DynamicUser = lib.mkForce false;
+
+      # The desktop always wins: ollama yields CPU and IO, stays below a
+      # memory ceiling, and is the first process the OOM killer picks.
+      MemoryHigh = "50%";
+      MemoryMax = "65%";
+      CPUWeight = 20;
+      IOWeight = 20;
+      Nice = 10;
+      OOMScoreAdjust = 800;
+
+      NoNewPrivileges = true;
+      PrivateTmp = true;
+      ProtectSystem = "strict";
+      ProtectHome = lib.mkForce "read-only";
+
+      ReadWritePaths = [
+        "/var/lib/ollama"
+      ];
+
+      RestrictAddressFamilies = [
+        "AF_UNIX"
+        "AF_INET"
+        "AF_INET6"
+      ];
+    };
+  };
+
 in
 
-lib.mkIf config.gjallar.apps.ai.enable {
-  environment.systemPackages = with pkgs; [
-    gjallarAiSessionStart
-    aiDiagnostics
-  ];
-
-  assertions = [
+lib.mkIf config.gjallar.apps.ai.enable (
+  lib.mkMerge [
     {
-      assertion = agentMode == "workspace";
-
-      message = "The hardened GjallarOS AI session currently requires " + "aiAgentMode = \"workspace\".";
-    }
-  ];
-
-  environment.etc."opencode/opencode.json".source = managedOpencodeConfig;
-
-  users.groups.ai-model-access = { };
-
-  users.users.gjallar-ai-model = {
-    isSystemUser = true;
-    group = "ai-model-access";
-  };
-
-  users.users.${settings.username}.extraGroups = lib.mkAfter [
-    "ai-model-access"
-  ];
-
-  systemd.tmpfiles.rules = [
-    "d /workspace 0755 root root -"
-
-    "d /var/lib/ollama 0750 ollama ollama -"
-    "Z /var/lib/ollama - ollama ollama -"
-  ];
-
-  systemd.services.ai-model-firewall = {
-    description = "Local Ollama API firewall";
-
-    before = [
-      "ollama.service"
-      "ai-model-broker.service"
-      "ollama-model-provision.service"
-    ];
-
-    wantedBy = [
-      "multi-user.target"
-    ];
-
-    serviceConfig = {
-      Type = "oneshot";
-      RemainAfterExit = true;
-
-      User = "root";
-      Group = "root";
-
-      NoNewPrivileges = true;
-      PrivateTmp = true;
-      PrivateDevices = true;
-
-      ProtectSystem = "strict";
-      ProtectHome = true;
-
-      ProtectKernelTunables = true;
-      ProtectKernelModules = true;
-      ProtectKernelLogs = true;
-      ProtectControlGroups = true;
-
-      RestrictSUIDSGID = true;
-      RestrictRealtime = true;
-      RestrictNamespaces = true;
-
-      LockPersonality = true;
-
-      CapabilityBoundingSet = [
-        "CAP_NET_ADMIN"
+      environment.systemPackages = with pkgs; [
+        gjallarAiSessionStart
+        aiDiagnostics
       ];
 
-      RestrictAddressFamilies = [
-        "AF_NETLINK"
-        "AF_UNIX"
-      ];
-    };
-
-    script = ''
-      set -euo pipefail
-
-      nft=${pkgs.nftables}/bin/nft
-
-      if "$nft" list table inet gjallar_ai_model >/dev/null 2>&1; then
-        "$nft" delete table inet gjallar_ai_model
-      fi
-
-      "$nft" -f - <<'EOF'
-      table inet gjallar_ai_model {
-        chain output {
-          type filter hook output priority -50; policy accept;
-
-          ip daddr 127.0.0.1 tcp dport 11434 meta skuid ollama accept
-          ip daddr 127.0.0.1 tcp dport 11434 meta skuid gjallar-ai-model accept
-
-          ip daddr 127.0.0.1 tcp dport 11434 counter reject
-        }
-      }
-      EOF
-
-      "$nft" list table inet gjallar_ai_model \
-        | ${pkgs.gnugrep}/bin/grep -F \
-            'ip daddr 127.0.0.1 tcp dport 11434 counter packets 0 bytes 0 reject' \
-            >/dev/null \
-        || {
-          echo "ERROR: Ollama firewall rule was not installed." >&2
-          "$nft" delete table inet gjallar_ai_model 2>/dev/null || true
-          exit 1
-        }
-    '';
-
-    preStop = ''
-      ${pkgs.nftables}/bin/nft \
-        delete table inet gjallar_ai_model \
-        2>/dev/null \
-        || true
-    '';
-  };
-
-  systemd.services.ollama.requires = [
-    "ai-model-firewall.service"
-  ];
-
-  systemd.services.ollama.after = [
-    "ai-model-firewall.service"
-  ];
-
-  security.polkit.extraConfig = lib.mkAfter ''
-    polkit.addRule(function(action, subject) {
-      if (
-        action.id !=
-        "org.freedesktop.systemd1.manage-units"
-      ) {
-        return polkit.Result.NOT_HANDLED;
-      }
-
-      if (
-        !subject.active ||
-        !subject.local ||
-        subject.user != "${settings.username}"
-      ) {
-        return polkit.Result.NOT_HANDLED;
-      }
-
-      var unit = action.lookup("unit");
-      var verb = action.lookup("verb");
-
-      if (
-        typeof unit !== "string" ||
-        !/^ai-session@[^/]+\\.service$/.test(unit)
-      ) {
-        return polkit.Result.NOT_HANDLED;
-      }
-
-      if (
-        verb == "start" ||
-        verb == "stop"
-      ) {
-        return polkit.Result.YES;
-      }
-
-      return polkit.Result.NO;
-    });
-
-
-    // gjallarCode session lifecycle authorization
-    //
-    // Only the configured gjallarOS user and only
-    // ai-session@*.service are covered.
-    polkit.addRule(function(action, subject) {
-      if (
-        action.id != "org.freedesktop.systemd1.manage-units" ||
-        subject.user != "${settings.username}"
-      ) {
-        return polkit.Result.NOT_HANDLED;
-      }
-
-      var unit = action.lookup("unit");
-      var verb = action.lookup("verb");
-
-      if (
-        typeof unit != "string" ||
-        unit.indexOf("ai-session@") !== 0 ||
-        unit.slice(-8) != ".service"
-      ) {
-        return polkit.Result.NOT_HANDLED;
-      }
-
-      // Ending the user's own AI session should never require
-      // authentication.
-      if (verb == "stop") {
-        return polkit.Result.YES;
-      }
-
-      // Starting/restarting remains intentional and authenticated,
-      // but uses the normal user's own password. No wheel/sudo.
-      if (
-        verb == "start" ||
-        verb == "restart"
-      ) {
-        return polkit.Result.AUTH_SELF;
-      }
-
-      return polkit.Result.NOT_HANDLED;
-    });
-  '';
-
-  systemd.services.ai-clipboard-broker = {
-    description = "Authenticated write-only AI clipboard broker";
-
-    wantedBy = [
-      "multi-user.target"
-    ];
-
-    serviceConfig = {
-      Type = "simple";
-
-      User = settings.username;
-
-      RuntimeDirectory = "gjallar-ai-clipboard";
-
-      RuntimeDirectoryMode = "0700";
-
-      ExecStart = "${gjallarClipboardServer}";
-
-      Restart = "always";
-
-      RestartSec = 1;
-
-      NoNewPrivileges = true;
-
-      PrivateTmp = true;
-
-      ProtectSystem = "strict";
-
-      ProtectHome = true;
-
-      ProtectKernelTunables = true;
-      ProtectKernelModules = true;
-      ProtectControlGroups = true;
-
-      RestrictAddressFamilies = [
-        "AF_UNIX"
-      ];
-    };
-  };
-
-  systemd.services.ai-model-broker = {
-    description = "Inference-only AI model broker";
-
-    after = [
-      "ollama.service"
-    ];
-
-    requires = [
-      "ollama.service"
-    ];
-
-    wantedBy = [
-      "multi-user.target"
-    ];
-
-    serviceConfig = {
-      ExecStart =
-        "${pkgs.gjallarctl or (pkgs.callPackage ../../pkgs/gjallarctl { })}/bin/gjallarctl "
-        + "ai model-serve "
-        + "--socket /run/gjallar-ai-model/model.sock "
-        + "--upstream http://127.0.0.1:11434 "
-        + "--model ${assistantModel} "
-        + "--user ${lib.escapeShellArg settings.username} "
-        + "--cgroup-prefix /ai-session@";
-
-      User = "gjallar-ai-model";
-      Group = "ai-model-access";
-
-      RuntimeDirectory = "gjallar-ai-model";
-      RuntimeDirectoryMode = "0750";
-
-      NoNewPrivileges = true;
-      PrivateTmp = true;
-      PrivateDevices = true;
-
-      ProtectSystem = "strict";
-      ProtectHome = true;
-
-      ProtectKernelTunables = true;
-      ProtectKernelModules = true;
-      ProtectKernelLogs = true;
-      ProtectControlGroups = true;
-
-      RestrictSUIDSGID = true;
-      RestrictRealtime = true;
-      RestrictNamespaces = true;
-
-      CapabilityBoundingSet = "";
-      LockPersonality = true;
-
-      RestrictAddressFamilies = [
-        "AF_UNIX"
-        "AF_INET"
-        "AF_INET6"
-      ];
-    };
-  };
-
-  systemd.services."ai-session@" = {
-    description = "Controlled AI workspace session for %i";
-
-    after = [
-      "ai-model-broker.service"
-      "ollama-model-provision.service"
-    ];
-
-    requires = [
-      "ai-model-broker.service"
-      "ollama.service"
-    ];
-
-    serviceConfig = {
-
-      ExecStopPost = "-+${gjallarAiBackendStop}";
-
-      ReadOnlyPaths = [
-        "/workspace/apps/ai/nixos.nix"
-        "/workspace/apps/opencode/home.nix"
-        "/workspace/internal/ai"
-        "/workspace/cmd/gjallarctl/main.go"
-        "/workspace/pkgs/gjallarctl"
-        "/workspace/flake.nix"
-        "/workspace/flake.lock"
-      ];
-
-      InaccessiblePaths = [
-        "/run/user"
-      ];
-
-      Type = "simple";
-
-      ExecStart = "${aiSessionRuntime} %i";
-      User = settings.username;
-
-      RuntimeDirectory = "gjallar-ai-session-%i";
-
-      RuntimeDirectoryMode = "0755";
-
-      StateDirectory = "gjallar-ai";
-      StateDirectoryMode = "0700";
-
-      CacheDirectory = "gjallar-ai";
-      CacheDirectoryMode = "0700";
-
-      UMask = "0077";
-
-      PrivateNetwork = true;
-      PrivateTmp = true;
-      PrivateDevices = true;
-      PrivateMounts = true;
-
-      BindPaths = [
-        "%f:/workspace"
-      ];
-
-      WorkingDirectory = "/workspace";
-
-      TemporaryFileSystem = [
-        "/home:mode=0755,nosuid,nodev"
-      ];
-
-      NoNewPrivileges = true;
-
-      ProtectSystem = "strict";
-      ProtectHome = false;
-
-      ProtectKernelTunables = true;
-      ProtectKernelModules = true;
-      ProtectKernelLogs = true;
-      ProtectControlGroups = true;
-
-      RestrictSUIDSGID = true;
-      RestrictRealtime = true;
-      RestrictNamespaces = true;
-
-      LockPersonality = true;
-      CapabilityBoundingSet = "";
-
-      RestrictAddressFamilies = [
-        "AF_UNIX"
-        "AF_INET"
-        "AF_INET6"
-      ];
-
-      TimeoutStopSec = "10s";
-    };
-  };
-
-  systemd.services.ollama-model-provision = {
-    description = "Provision the resolved Ollama model";
-    after = [ "ollama.service" ];
-    requires = [ "ollama.service" ];
-    path = [
-      ollamaPackage
-      pkgs.curl
-      pkgs.coreutils
-      pkgs.gnugrep
-    ];
-    environment = {
-      HOME = "/var/lib/ollama";
-      OLLAMA_HOST = "http://127.0.0.1:11434";
-      OLLAMA_MODELS = "/var/lib/ollama/models";
-    };
-    serviceConfig = {
-      Type = "oneshot";
-      User = "ollama";
-      Group = "ollama";
-      StateDirectory = "gjallaros-agent";
-      StateDirectoryMode = "0755";
-      TimeoutStartSec = "30min";
-      NoNewPrivileges = true;
-      PrivateTmp = true;
-      ProtectSystem = "strict";
-      ProtectHome = true;
-      ReadWritePaths = [ "/var/lib/ollama" ];
-    };
-    script = ''
-      set -euo pipefail
-      ready=false
-      for _ in $(seq 1 30); do
-        if curl --silent --fail --max-time 2 http://127.0.0.1:11434/api/tags >/dev/null; then ready=true; break; fi
-        sleep 1
-      done
-      if [ "$ready" != true ]; then echo "ERROR: Ollama did not become ready within 30 seconds." >&2; exit 1; fi
-      ollama pull ${lib.escapeShellArg settings.aiModel}
-      state="$STATE_DIRECTORY/definition.sha256"
-      applied="$(cat "$state" 2>/dev/null || true)"
-      present=false
-      if ollama list | grep -q '^${assistantModel}[[:space:]]'; then present=true; fi
-      if [ "$present" != true ] || [ "$applied" != ${lib.escapeShellArg modelDefinitionHash} ]; then
-        ollama create ${assistantModel} --file ${modelDefinitionFile}
-        printf '%s\n' ${lib.escapeShellArg modelDefinitionHash} > "$state"
-      fi
-    '';
-  };
-
-  systemd.services.ai-research-broker = {
-    description = "Read-only AI research broker";
-    wantedBy = [ "multi-user.target" ];
-    serviceConfig = {
-      ExecStart = "${
-        pkgs.gjallarctl or (pkgs.callPackage ../../pkgs/gjallarctl { })
-      }/bin/gjallarctl ai research-serve";
-      RuntimeDirectory = "gjallar-ai";
-      RuntimeDirectoryMode = "0700";
-      User = settings.username;
-      NoNewPrivileges = true;
-      PrivateTmp = true;
-      ProtectSystem = "strict";
-      ProtectHome = true;
-      PrivateDevices = true;
-      ProtectKernelTunables = true;
-      ProtectKernelModules = true;
-      ProtectControlGroups = true;
-      RestrictSUIDSGID = true;
-      RestrictAddressFamilies = [
-        "AF_UNIX"
-        "AF_INET"
-        "AF_INET6"
-      ];
-    };
-  };
-
-  users.groups.ollama = { };
-
-  users.users.ollama = {
-    isSystemUser = true;
-    group = "ollama";
-    home = "/var/lib/ollama";
-    createHome = true;
-  };
-
-  services.ollama = rec {
-    enable = true;
-
-    user = "ollama";
-    group = "ollama";
-
-    openFirewall = false;
-    host = "127.0.0.1";
-    port = 11434;
-
-    environmentVariables = ollamaEnvironment;
-
-    package = ollamaPackage;
-  };
-
-  systemd.services.ollama.serviceConfig = {
-    DynamicUser = lib.mkForce false;
-
-    # The desktop always wins: ollama yields CPU and IO, stays below a
-    # memory ceiling, and is the first process the OOM killer picks.
-    MemoryHigh = "50%";
-    MemoryMax = "65%";
-    CPUWeight = 20;
-    IOWeight = 20;
-    Nice = 10;
-    OOMScoreAdjust = 800;
-
-    NoNewPrivileges = true;
-    PrivateTmp = true;
-    ProtectSystem = "strict";
-    ProtectHome = lib.mkForce "read-only";
-
-    ReadWritePaths = [
-      "/var/lib/ollama"
-    ];
-
-    RestrictAddressFamilies = [
-      "AF_UNIX"
-      "AF_INET"
-      "AF_INET6"
-    ];
-  };
-
-  security.sudo.extraRules = lib.mkAfter [
-    {
-      users = [ settings.username ];
-
-      commands = [
+      assertions = [
         {
-          command = "/run/current-system/sw/bin/gjallar-ai-session-start";
+          assertion = agentMode == "workspace";
 
-          options = [ "PASSWD" ];
+          message = "The hardened GjallarOS AI session currently requires " + "aiAgentMode = \"workspace\".";
         }
       ];
-    }
-  ];
 
-}
+      environment.etc."opencode/opencode.json".source = managedOpencodeConfig;
+
+      users.groups.ai-model-access = { };
+
+      users.users.gjallar-ai-model = {
+        isSystemUser = true;
+        group = "ai-model-access";
+      };
+
+      users.users.${settings.username}.extraGroups = lib.mkAfter [
+        "ai-model-access"
+      ];
+
+      systemd.tmpfiles.rules = [
+        "d /workspace 0755 root root -"
+      ];
+
+      security.polkit.extraConfig = lib.mkAfter ''
+        polkit.addRule(function(action, subject) {
+          if (
+            action.id !=
+            "org.freedesktop.systemd1.manage-units"
+          ) {
+            return polkit.Result.NOT_HANDLED;
+          }
+
+          if (
+            !subject.active ||
+            !subject.local ||
+            subject.user != "${settings.username}"
+          ) {
+            return polkit.Result.NOT_HANDLED;
+          }
+
+          var unit = action.lookup("unit");
+          var verb = action.lookup("verb");
+
+          if (
+            typeof unit !== "string" ||
+            !/^ai-session@[^/]+\\.service$/.test(unit)
+          ) {
+            return polkit.Result.NOT_HANDLED;
+          }
+
+          if (
+            verb == "start" ||
+            verb == "stop"
+          ) {
+            return polkit.Result.YES;
+          }
+
+          return polkit.Result.NO;
+        });
+
+
+        // gjallarCode session lifecycle authorization
+        //
+        // Only the configured gjallarOS user and only
+        // ai-session@*.service are covered.
+        polkit.addRule(function(action, subject) {
+          if (
+            action.id != "org.freedesktop.systemd1.manage-units" ||
+            subject.user != "${settings.username}"
+          ) {
+            return polkit.Result.NOT_HANDLED;
+          }
+
+          var unit = action.lookup("unit");
+          var verb = action.lookup("verb");
+
+          if (
+            typeof unit != "string" ||
+            unit.indexOf("ai-session@") !== 0 ||
+            unit.slice(-8) != ".service"
+          ) {
+            return polkit.Result.NOT_HANDLED;
+          }
+
+          // Ending the user's own AI session should never require
+          // authentication.
+          if (verb == "stop") {
+            return polkit.Result.YES;
+          }
+
+          // Starting/restarting remains intentional and authenticated,
+          // but uses the normal user's own password. No wheel/sudo.
+          if (
+            verb == "start" ||
+            verb == "restart"
+          ) {
+            return polkit.Result.AUTH_SELF;
+          }
+
+          return polkit.Result.NOT_HANDLED;
+        });
+      '';
+
+      systemd.services.ai-clipboard-broker = {
+        description = "Authenticated write-only AI clipboard broker";
+
+        wantedBy = [
+          "multi-user.target"
+        ];
+
+        serviceConfig = {
+          Type = "simple";
+
+          User = settings.username;
+
+          RuntimeDirectory = "gjallar-ai-clipboard";
+
+          RuntimeDirectoryMode = "0700";
+
+          ExecStart = "${gjallarClipboardServer}";
+
+          Restart = "always";
+
+          RestartSec = 1;
+
+          NoNewPrivileges = true;
+
+          PrivateTmp = true;
+
+          ProtectSystem = "strict";
+
+          ProtectHome = true;
+
+          ProtectKernelTunables = true;
+          ProtectKernelModules = true;
+          ProtectControlGroups = true;
+
+          RestrictAddressFamilies = [
+            "AF_UNIX"
+          ];
+        };
+      };
+
+      systemd.services.ai-model-broker = {
+        description = "Inference-only AI model broker";
+
+        after = lib.optional (!remote) "ollama.service";
+        requires = lib.optional (!remote) "ollama.service";
+
+        wantedBy = [
+          "multi-user.target"
+        ];
+
+        serviceConfig = {
+          ExecStart =
+            "${pkgs.gjallarctl or (pkgs.callPackage ../../pkgs/gjallarctl { })}/bin/gjallarctl "
+            + "ai model-serve "
+            + "--socket /run/gjallar-ai-model/model.sock "
+            + "--upstream ${lib.escapeShellArg upstream} "
+            + "--model ${assistantModel} "
+            + "--upstream-model ${upstreamModel} "
+            + "--user ${lib.escapeShellArg settings.username} "
+            + "--cgroup-prefix /ai-session@";
+
+          User = "gjallar-ai-model";
+          Group = "ai-model-access";
+
+          RuntimeDirectory = "gjallar-ai-model";
+          RuntimeDirectoryMode = "0750";
+
+          NoNewPrivileges = true;
+          PrivateTmp = true;
+          PrivateDevices = true;
+
+          ProtectSystem = "strict";
+          ProtectHome = true;
+
+          ProtectKernelTunables = true;
+          ProtectKernelModules = true;
+          ProtectKernelLogs = true;
+          ProtectControlGroups = true;
+
+          RestrictSUIDSGID = true;
+          RestrictRealtime = true;
+          RestrictNamespaces = true;
+
+          CapabilityBoundingSet = "";
+          LockPersonality = true;
+
+          RestrictAddressFamilies = [
+            "AF_UNIX"
+            "AF_INET"
+            "AF_INET6"
+          ];
+        };
+      };
+
+      systemd.services."ai-session@" = {
+        description = "Controlled AI workspace session for %i";
+
+        after = [
+          "ai-model-broker.service"
+          "ollama-model-provision.service"
+        ];
+
+        requires = [
+          "ai-model-broker.service"
+        ]
+        ++ lib.optional (!remote) "ollama.service";
+
+        serviceConfig = {
+
+          ExecStopPost = "-+${gjallarAiBackendStop}";
+
+          ReadOnlyPaths = [
+            "/workspace/apps/ai/nixos.nix"
+            "/workspace/apps/opencode/home.nix"
+            "/workspace/internal/ai"
+            "/workspace/cmd/gjallarctl/main.go"
+            "/workspace/pkgs/gjallarctl"
+            "/workspace/flake.nix"
+            "/workspace/flake.lock"
+          ];
+
+          InaccessiblePaths = [
+            "/run/user"
+          ];
+
+          Type = "simple";
+
+          ExecStart = "${aiSessionRuntime} %i";
+          User = settings.username;
+
+          RuntimeDirectory = "gjallar-ai-session-%i";
+
+          RuntimeDirectoryMode = "0755";
+
+          StateDirectory = "gjallar-ai";
+          StateDirectoryMode = "0700";
+
+          CacheDirectory = "gjallar-ai";
+          CacheDirectoryMode = "0700";
+
+          UMask = "0077";
+
+          PrivateNetwork = true;
+          PrivateTmp = true;
+          PrivateDevices = true;
+          PrivateMounts = true;
+
+          BindPaths = [
+            "%f:/workspace"
+          ];
+
+          WorkingDirectory = "/workspace";
+
+          TemporaryFileSystem = [
+            "/home:mode=0755,nosuid,nodev"
+          ];
+
+          NoNewPrivileges = true;
+
+          ProtectSystem = "strict";
+          ProtectHome = false;
+
+          ProtectKernelTunables = true;
+          ProtectKernelModules = true;
+          ProtectKernelLogs = true;
+          ProtectControlGroups = true;
+
+          RestrictSUIDSGID = true;
+          RestrictRealtime = true;
+          RestrictNamespaces = true;
+
+          LockPersonality = true;
+          CapabilityBoundingSet = "";
+
+          RestrictAddressFamilies = [
+            "AF_UNIX"
+            "AF_INET"
+            "AF_INET6"
+          ];
+
+          TimeoutStopSec = "10s";
+        };
+      };
+
+      systemd.services.ollama-model-provision = {
+        description = "Provision the resolved Ollama model";
+        after = if remote then [ "network-online.target" ] else [ "ollama.service" ];
+        wants = lib.optional remote "network-online.target";
+        requires = lib.optional (!remote) "ollama.service";
+        path = [
+          (if remote then pkgs.ollama else ollamaPackage)
+          pkgs.curl
+          pkgs.coreutils
+          pkgs.gnugrep
+        ];
+        environment = {
+          HOME = if remote then "/var/lib/gjallaros-agent" else "/var/lib/ollama";
+          OLLAMA_HOST = upstream;
+        }
+        // lib.optionalAttrs (!remote) {
+          OLLAMA_MODELS = "/var/lib/ollama/models";
+        };
+        serviceConfig = {
+          Type = "oneshot";
+          User = if remote then "gjallar-ai-model" else "ollama";
+          Group = if remote then "ai-model-access" else "ollama";
+          StateDirectory = "gjallaros-agent";
+          StateDirectoryMode = "0755";
+          TimeoutStartSec = "30min";
+          NoNewPrivileges = true;
+          PrivateTmp = true;
+          ProtectSystem = "strict";
+          ProtectHome = true;
+          ReadWritePaths = lib.optional (!remote) "/var/lib/ollama";
+        };
+        script = ''
+          set -euo pipefail
+          ready=false
+          for _ in $(seq 1 30); do
+            if curl --silent --fail --max-time 2 ${lib.escapeShellArg upstream}/api/tags >/dev/null; then ready=true; break; fi
+            sleep 1
+          done
+          if [ "$ready" != true ]; then echo "ERROR: Ollama at ${upstream} did not become ready within 30 seconds." >&2; exit 1; fi
+          ollama pull ${lib.escapeShellArg baseModel}
+          state="$STATE_DIRECTORY/definition.sha256"
+          applied="$(cat "$state" 2>/dev/null || true)"
+          present=false
+          if ollama list | grep -Eq '^${upstreamModel}(:latest)?[[:space:]]'; then present=true; fi
+          if [ "$present" != true ] || [ "$applied" != ${lib.escapeShellArg modelDefinitionHash} ]; then
+            ollama create ${upstreamModel} --file ${modelDefinitionFile}
+            printf '%s\n' ${lib.escapeShellArg modelDefinitionHash} > "$state"
+          fi
+        '';
+      };
+
+      systemd.services.ai-research-broker = {
+        description = "Read-only AI research broker";
+        wantedBy = [ "multi-user.target" ];
+        serviceConfig = {
+          ExecStart = "${
+            pkgs.gjallarctl or (pkgs.callPackage ../../pkgs/gjallarctl { })
+          }/bin/gjallarctl ai research-serve";
+          RuntimeDirectory = "gjallar-ai";
+          RuntimeDirectoryMode = "0700";
+          User = settings.username;
+          NoNewPrivileges = true;
+          PrivateTmp = true;
+          ProtectSystem = "strict";
+          ProtectHome = true;
+          PrivateDevices = true;
+          ProtectKernelTunables = true;
+          ProtectKernelModules = true;
+          ProtectControlGroups = true;
+          RestrictSUIDSGID = true;
+          RestrictAddressFamilies = [
+            "AF_UNIX"
+            "AF_INET"
+            "AF_INET6"
+          ];
+        };
+      };
+
+      security.sudo.extraRules = lib.mkAfter [
+        {
+          users = [ settings.username ];
+
+          commands = [
+            {
+              command = "/run/current-system/sw/bin/gjallar-ai-session-start";
+
+              options = [ "PASSWD" ];
+            }
+          ];
+        }
+      ];
+
+    }
+    (lib.mkIf (!remote) localBackend)
+  ]
+)

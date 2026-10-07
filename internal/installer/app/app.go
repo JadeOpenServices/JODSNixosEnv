@@ -1966,11 +1966,23 @@ func collectInteractive(ctx context.Context, ui prompt.UI, root string, hardware
 	if err != nil {
 		return err
 	}
-	u.AIEnable, err = ui.Confirm(ctx, "Enable local AI tools?", false)
+	u.AIEnable, err = ui.Confirm(ctx, "Enable AI tools?", false)
 	if err != nil {
 		return err
 	}
+	u.AIEndpoint, u.AIRemoteModel, u.AIRemoteContextTokens = "", "", 0
 	if u.AIEnable {
+		backend, err := ui.Choice(ctx, "AI backend", "local", []string{"local", "central-server"})
+		if err != nil {
+			return err
+		}
+		if backend == "central-server" {
+			if err := collectAIServer(ctx, ui, u); err != nil {
+				return err
+			}
+		}
+	}
+	if u.AIEnable && u.AIEndpoint == "" {
 		u.OverrideAISelection, err = ui.Confirm(ctx, "Override automatic hardware-aware AI model selection?", false)
 		if err != nil {
 			return err
@@ -1981,7 +1993,9 @@ func collectInteractive(ctx context.Context, ui prompt.UI, root string, hardware
 				return err
 			}
 		}
-		u.AIAgentMode, err = ui.Choice(ctx, "Local AI permission profile", "workspace", []string{"workspace", "owner-conservative", "owner-full-local"})
+	}
+	if u.AIEnable {
+		u.AIAgentMode, err = ui.Choice(ctx, "AI permission profile", "workspace", []string{"workspace", "owner-conservative", "owner-full-local"})
 		if err != nil {
 			return err
 		}
@@ -2018,6 +2032,36 @@ func collectInteractive(ctx context.Context, ui prompt.UI, root string, hardware
 	u.WriteConfig = true
 	u.RunRebuild = true
 	return nil
+}
+
+// collectAIServer points AI at a central Ollama server. Nothing runs or is
+// downloaded locally then; the server picks hardware and holds the model.
+func collectAIServer(ctx context.Context, ui prompt.UI, u *config.User) error {
+	u.OverrideAISelection, u.OverrideModelWith = false, ""
+	fmt.Fprintln(ui.Out, "Ollama has no authentication: use a server on a trusted network or behind HTTPS.")
+	for {
+		endpoint, err := ui.Value(ctx, "AI server URL", "http://192.168.8.205:11434")
+		if err != nil {
+			return err
+		}
+		model, err := ui.Value(ctx, "Ollama model on the server", "qwen3-coder:30b")
+		if err != nil {
+			return err
+		}
+		tokens, err := ui.Value(ctx, "Context tokens", "32768")
+		if err != nil {
+			return err
+		}
+		u.AIEndpoint, u.AIRemoteModel = strings.TrimRight(strings.TrimSpace(endpoint), "/"), strings.TrimSpace(model)
+		u.AIRemoteContextTokens, err = strconv.Atoi(strings.TrimSpace(tokens))
+		if err == nil {
+			err = config.ValidateAIEndpoint(*u)
+		}
+		if err == nil {
+			return nil
+		}
+		fmt.Fprintf(ui.Out, "%v\n", err)
+	}
 }
 
 func collectTailscale(ctx context.Context, ui prompt.UI, u *config.User) error {
@@ -2741,7 +2785,8 @@ func detectAndRenderState(
 		return err
 	}
 	ai := profile.Result{Model: "qwen3-coder:30b", ContextTokens: 8192}
-	if u.AIEnable {
+	// A central AI server holds the model; local hardware does not matter.
+	if u.AIEnable && u.AIEndpoint == "" {
 		ai, err = profile.Detect(ctx, func() string {
 			if s.preset {
 				return filepath.Join(root, "user.config.json")

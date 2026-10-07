@@ -106,6 +106,8 @@ type Settings struct {
 	AIModel, AIAccelerationProfile                                                          string
 	AIAgentMode                                                                             string
 	AIContextTokens, AIVRAMMB                                                               int
+	AIEndpoint, AIRemoteModel                                                               string
+	AIRemoteContextTokens                                                                   int
 	NemuEnable                                                                              bool
 	LUKSTPM2Enable                                                                          bool
 	RecoveryEnable, RecoveryPartitionEnable, JODSPrebootLockEnable                          bool
@@ -160,6 +162,9 @@ func FromUser(user config.User) Settings {
 		BackgroundNormal:                    user.BackgroundNormal,
 		AIEnable:                            user.AIEnable,
 		AIAgentMode:                         user.AIAgentMode,
+		AIEndpoint:                          user.AIEndpoint,
+		AIRemoteModel:                       user.AIRemoteModel,
+		AIRemoteContextTokens:               user.AIRemoteContextTokens,
 		NemuEnable:                          user.NemuEnable,
 		LUKSTPM2Enable:                      user.LUKSTPM2Enable,
 		RecoveryEnable:                      user.RecoveryEnable,
@@ -239,6 +244,9 @@ var userIntentKeys = []string{
 	"backgroundNormal",
 	"aiEnable",
 	"aiAgentMode",
+	"aiEndpoint",
+	"aiRemoteModel",
+	"aiRemoteContextTokens",
 	"nemuEnable",
 	"luksTpm2Enable",
 	"recoveryEnable",
@@ -418,6 +426,9 @@ func Render(s Settings) []byte {
 	str("aiAgentMode", s.AIAgentMode)
 	integer("aiContextTokens", s.AIContextTokens)
 	integer("aiVramMB", s.AIVRAMMB)
+	str("aiEndpoint", s.AIEndpoint)
+	str("aiRemoteModel", s.AIRemoteModel)
+	integer("aiRemoteContextTokens", s.AIRemoteContextTokens)
 	boolean("nemuEnable", s.NemuEnable)
 	boolean("luksTpm2Enable", s.LUKSTPM2Enable)
 	boolean("recoveryEnable", s.RecoveryEnable)

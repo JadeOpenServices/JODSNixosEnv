@@ -58,6 +58,9 @@ type User struct {
 	OverrideAISelection       bool   `json:"overrideAiSelection"`
 	OverrideModelWith         string `json:"overrideModelWith"`
 	AIAgentMode               string `json:"aiAgentMode"`
+	AIEndpoint                string `json:"aiEndpoint"`
+	AIRemoteModel             string `json:"aiRemoteModel"`
+	AIRemoteContextTokens     int    `json:"aiRemoteContextTokens"`
 	NemuEnable                bool   `json:"nemuEnable"`
 	LUKSTPM2Enable            bool   `json:"luksTpm2Enable"`
 	RecoveryEnable            bool   `json:"recoveryEnable"`
@@ -177,6 +180,9 @@ func Validate(user User) error {
 		}
 		if !oneOf(user.AIAgentMode, "workspace", "owner-conservative", "owner-full-local") {
 			return fmt.Errorf("invalid aiAgentMode: %q", user.AIAgentMode)
+		}
+		if err := ValidateAIEndpoint(user); err != nil {
+			return err
 		}
 	}
 	if err := ValidateJODS(user); err != nil {
@@ -302,3 +308,27 @@ func oneOf(value string, allowed ...string) bool {
 	}
 	return false
 }
+
+// ValidateAIEndpoint checks the central Ollama server settings. An empty
+// aiEndpoint keeps inference on this device.
+func ValidateAIEndpoint(user User) error {
+	if user.AIEndpoint == "" {
+		return nil
+	}
+	parsed, err := url.Parse(user.AIEndpoint)
+	if err != nil || (parsed.Scheme != "http" && parsed.Scheme != "https") || parsed.Hostname() == "" {
+		return fmt.Errorf("aiEndpoint must be an http or https URL with a host: %q", user.AIEndpoint)
+	}
+	if parsed.User != nil || strings.Trim(parsed.Path, "/") != "" || parsed.RawQuery != "" || parsed.Fragment != "" {
+		return fmt.Errorf("aiEndpoint must be scheme://host[:port] only: %q", user.AIEndpoint)
+	}
+	if !ollamaModelPattern.MatchString(user.AIRemoteModel) {
+		return fmt.Errorf("aiRemoteModel is not a valid Ollama model identifier: %q", user.AIRemoteModel)
+	}
+	if user.AIRemoteContextTokens < 2048 || user.AIRemoteContextTokens > 262144 {
+		return fmt.Errorf("aiRemoteContextTokens must be between 2048 and 262144")
+	}
+	return nil
+}
+
+var ollamaModelPattern = regexp.MustCompile(`^[a-z0-9][a-z0-9._/-]*(:[A-Za-z0-9._-]+)?$`)

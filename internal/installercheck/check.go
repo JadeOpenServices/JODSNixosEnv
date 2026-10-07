@@ -100,6 +100,7 @@ const (
 	presetWebApplicationList
 	presetTailscale
 	presetStringMap
+	presetInt
 )
 
 var presetSchema = map[string]presetValueType{
@@ -118,6 +119,7 @@ var presetSchema = map[string]presetValueType{
 	"backgroundNormal": presetString,
 	"containersEnable": presetBool, "debugFunctions": presetBool, "aiEnable": presetBool,
 	"overrideAiSelection": presetBool, "overrideModelWith": presetString, "aiAgentMode": presetString,
+	"aiEndpoint": presetString, "aiRemoteModel": presetString, "aiRemoteContextTokens": presetInt,
 	"jodsFingerprintEnrollmentAllowed": presetBool,
 	"nemuEnable":                       presetBool, "luksTpm2Enable": presetBool,
 	"recoveryEnable":          presetBool,
@@ -163,6 +165,9 @@ func matchesPresetType(raw json.RawMessage, expected presetValueType) bool {
 		return matchesPresetTailscale(raw)
 	case presetStringMap:
 		var value map[string]string
+		return json.Unmarshal(raw, &value) == nil
+	case presetInt:
+		var value int
 		return json.Unmarshal(raw, &value) == nil
 	default:
 		return false
