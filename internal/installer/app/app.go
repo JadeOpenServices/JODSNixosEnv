@@ -2235,10 +2235,11 @@ func collectProjectTools(ctx context.Context, ui prompt.UI, u *config.User) erro
 
 		switch id {
 		case config.WebApplicationPlane:
-			application.Endpoint, err = ui.Value(
+			application.Endpoint, err = askEndpoint(
 				ctx,
+				ui,
 				"Plane endpoint",
-				"",
+				checkEndpoint,
 			)
 			if err != nil {
 				return err
@@ -2255,10 +2256,11 @@ func collectProjectTools(ctx context.Context, ui prompt.UI, u *config.User) erro
 			}
 
 			if selfHosted {
-				application.Endpoint, err = ui.Value(
+				application.Endpoint, err = askEndpoint(
 					ctx,
+					ui,
 					"Draw.io endpoint",
-					"",
+					checkEndpoint,
 				)
 				if err != nil {
 					return err
@@ -2293,10 +2295,14 @@ func collectProjectTools(ctx context.Context, ui prompt.UI, u *config.User) erro
 	}
 
 	if u.NextcloudEnable {
-		u.NextcloudHost, err = ui.Value(
+		u.NextcloudHost, err = askEndpoint(
 			ctx,
+			ui,
 			"Nextcloud server",
-			"",
+			func(host string) error {
+				probe := config.User{NextcloudEnable: true, NextcloudHost: host}
+				return config.NormalizeProjectTools(&probe)
+			},
 		)
 		if err != nil {
 			return err
@@ -2304,6 +2310,27 @@ func collectProjectTools(ctx context.Context, ui prompt.UI, u *config.User) erro
 	}
 
 	return config.NormalizeProjectTools(u)
+}
+
+// askEndpoint asks for label until check accepts the answer, so a blank or
+// invalid endpoint is asked again instead of failing the whole install.
+func askEndpoint(ctx context.Context, ui prompt.UI, label string, check func(string) error) (string, error) {
+	for {
+		value, err := ui.Value(ctx, label, "")
+		if err != nil {
+			return "", err
+		}
+		if err := check(value); err != nil {
+			fmt.Fprintf(ui.Out, "%v\n", err)
+			continue
+		}
+		return value, nil
+	}
+}
+
+func checkEndpoint(endpoint string) error {
+	_, err := config.NormalizeExternalServiceEndpoint(endpoint)
+	return err
 }
 
 func normalizePreset(u *config.User, root string) {

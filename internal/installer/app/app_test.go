@@ -292,6 +292,35 @@ func TestCollectProjectToolsSupportsNextcloud(t *testing.T) {
 	}
 }
 
+// A blank or invalid endpoint is asked again; it failed the whole install
+// before (e2e-generic, 2026-10-07).
+func TestCollectProjectToolsReasksInvalidEndpoints(t *testing.T) {
+	var output bytes.Buffer
+	u := config.User{}
+
+	err := collectProjectTools(
+		context.Background(),
+		prompt.New(
+			strings.NewReader(
+				"yes\n\nhttps://plane.example.test\nno\nno\nyes\n\nhttp://cloud.example.test\nhttps://cloud.example.test\n",
+			),
+			&output,
+		),
+		&u,
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if u.PlaneHost != "https://plane.example.test" || u.NextcloudHost != "https://cloud.example.test" {
+		t.Fatalf("plane=%q nextcloud=%q", u.PlaneHost, u.NextcloudHost)
+	}
+	for _, want := range []string{"endpoint is empty", "HTTPS is required"} {
+		if !strings.Contains(output.String(), want) {
+			t.Fatalf("output lacks %q:\n%s", want, output.String())
+		}
+	}
+}
+
 func TestManagedPresetRequiresRecoveryPartitionProvisioning(t *testing.T) {
 	u := config.User{
 		EndpointManagedDevice:   true,
