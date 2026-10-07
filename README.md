@@ -5,7 +5,8 @@ ODDC-backed hardware policy, generic system composition, and a reviewable instal
 
 ## Quick start
 
-On NixOS, or the NixOS minimal ISO:
+Needs a machine booted in UEFI mode (legacy BIOS/CSM is refused). On NixOS,
+or the NixOS minimal ISO:
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/JadeOpenServices/JODSNixosEnv/main/scripts/installation/install.sh | bash

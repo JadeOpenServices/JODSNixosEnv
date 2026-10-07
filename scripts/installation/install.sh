@@ -17,6 +17,13 @@ command -v nix >/dev/null 2>&1 || {
     exit 1
 }
 
+# GjallarOS boots with systemd-boot or lanzaboote from an ESP; a machine
+# started in legacy BIOS mode would install and then not boot.
+[[ -d /sys/firmware/efi ]] || {
+    printf 'ERROR: GjallarOS needs UEFI boot. This system was started in legacy BIOS mode; switch the firmware to UEFI (disable CSM) and boot the installer media again.\n' >&2
+    exit 1
+}
+
 # Started outside a checkout (curl -fsSL .../install.sh | bash): clone the
 # repository with its submodules and run the installer from the clone. The
 # pipe is the script itself, so the installer reads answers from the terminal.
