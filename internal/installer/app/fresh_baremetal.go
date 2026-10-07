@@ -167,16 +167,17 @@ func runFreshBareMetal(
 		"STAGE: materializing machine-local device profile into target",
 	)
 
+	profileDestination := filepath.Join(
+		rootResult.MountPoint,
+		"var",
+		"lib",
+		"gjallarOS",
+		"device-profile",
+	)
 	if err := materializeODDCCapsule(
 		ctx,
 		repo,
-		filepath.Join(
-			rootResult.MountPoint,
-			"var",
-			"lib",
-			"gjallarOS",
-			"device-profile",
-		),
+		profileDestination,
 		hardware,
 		resolvedDevice,
 		recovery,
@@ -186,6 +187,9 @@ func runFreshBareMetal(
 			"materialize fresh target device profile: %w",
 			err,
 		)
+	}
+	if resolvedDevice.ModelID == "" {
+		stageODDCDraft(ctx, profileDestination, out)
 	}
 
 	fmt.Fprintln(out, "STAGE: staging account password hashes into target")

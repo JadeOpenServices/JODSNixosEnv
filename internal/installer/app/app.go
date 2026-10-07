@@ -472,7 +472,11 @@ func run(ctx context.Context, args []string, in io.Reader, out, errOut io.Writer
 		return fail(errOut, err)
 	}
 
-	fmt.Fprintf(out, "ODDC canonical model: %s\n", resolvedDevice.ModelID)
+	if resolvedDevice.ModelID == "" {
+		fmt.Fprintln(out, "ODDC canonical model: none (unsupported by ODDC; installing the hardware-neutral baseline)")
+	} else {
+		fmt.Fprintf(out, "ODDC canonical model: %s\n", resolvedDevice.ModelID)
+	}
 
 	if needsDeviceRebind {
 		if s.user.UnattendedInstall || s.user.EndpointManagedDevice {
@@ -1113,6 +1117,13 @@ func run(ctx context.Context, args []string, in io.Reader, out, errOut io.Writer
 								"commit recovery device-profile capsule after hardware rebind: %w",
 								err,
 							),
+						)
+					}
+					if resolvedDevice.ModelID == "" {
+						stageODDCDraft(
+							ctx,
+							filepath.Join(installedRoot, "var", "lib", "gjallarOS", "device-profile"),
+							out,
 						)
 					}
 

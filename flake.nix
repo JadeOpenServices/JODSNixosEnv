@@ -104,7 +104,7 @@
         gjallarctl = pkgs.callPackage ./pkgs/gjallarctl { };
         "gjallar-usbtrustd" = pkgs.callPackage ./pkgs/gjallar-usbtrustd { };
         "gjallar-recovery-install" = pkgs.callPackage ./pkgs/gjallar-recovery-install { };
-        "gjallar-installer" = pkgs.callPackage ./pkgs/gjallar-installer { };
+        "gjallar-installer" = pkgs.callPackage ./pkgs/gjallar-installer { inherit (inputs) oddc; };
         "gjallar-recovery-iso" = self.nixosConfigurations.gjallar-recovery.config.system.build.isoImage;
         "gjallar-installer-lab-iso" =
           self.nixosConfigurations.gjallar-installer-lab.config.system.build.isoImage;
