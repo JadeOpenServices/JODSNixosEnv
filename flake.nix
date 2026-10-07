@@ -26,11 +26,6 @@
 
     caelestia.url = "github:caelestia-dots/shell";
 
-    plasma-manager = {
-      url = "github:nix-community/plasma-manager";
-      inputs.nixpkgs.follows = "nixpkgs";
-    };
-
     zen-browser = {
       url = "github:0xc000022070/zen-browser-flake";
       inputs.nixpkgs.follows = "nixpkgs";
@@ -223,7 +218,6 @@
               };
 
               home-manager.sharedModules = [
-                inputs.plasma-manager.homeModules.plasma-manager
                 inputs.sops-nix.homeManagerModules.sops
                 inputs.zen-browser.homeModules.twilight
                 inputs.noctalia.homeModules.default
@@ -270,7 +264,6 @@
 
           modules = [
             ./user/default.nix
-            inputs.plasma-manager.homeModules.plasma-manager
             inputs.stylix.homeModules.stylix
             inputs.sops-nix.homeManagerModules.sops
             inputs.zen-browser.homeModules.twilight

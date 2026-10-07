@@ -67,6 +67,5 @@ in
     targets.hyprlock.enable = false;
     targets.hyprland.enable = false;
     targets.btop.enable = false;
-    targets.sway.useWallpaper = false;
   };
 }
