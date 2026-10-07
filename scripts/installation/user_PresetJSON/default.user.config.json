@@ -24,7 +24,6 @@
     "wine"
   ],
   "autoReboot": false,
-  "backgroundNormal": "",
   "browsers": [
     "librewolf"
   ],

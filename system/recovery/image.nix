@@ -65,7 +65,6 @@ let
       preferredBrowser = getSetting "preferredBrowser" "librewolf";
 
       theme = getSetting "theme" "noctalia";
-      backgroundNormal = getSetting "backgroundNormal" "";
 
 
       aiAgentMode = getSetting "aiAgentMode" "workspace";

@@ -36,7 +36,6 @@ import (
 	"github.com/bakanura/gjallarOS/internal/ai/profile"
 	"github.com/bakanura/gjallarOS/internal/ai/research"
 	"github.com/bakanura/gjallarOS/internal/input/xkb"
-	"github.com/bakanura/gjallarOS/internal/installer/background"
 	"github.com/bakanura/gjallarOS/internal/installer/bootstrap"
 	"github.com/bakanura/gjallarOS/internal/installer/config"
 	"github.com/bakanura/gjallarOS/internal/installer/credential"
@@ -124,7 +123,7 @@ func run(args []string, stdout, stderr io.Writer) int {
 
 func runInstaller(args []string, stdout, stderr io.Writer) int {
 	if len(args) == 0 {
-		fmt.Fprintln(stderr, "Usage: gjallarctl installer {check-secrets|deploy|firmware|generate-hardware|policy|protect-local|release|resolve-background|local-password}")
+		fmt.Fprintln(stderr, "Usage: gjallarctl installer {check-secrets|deploy|firmware|generate-hardware|policy|protect-local|release|local-password}")
 		return 2
 	}
 	if args[0] == "protect-local" {
@@ -135,9 +134,6 @@ func runInstaller(args []string, stdout, stderr io.Writer) int {
 	}
 	if args[0] == "deploy" {
 		return runDeploy(args[1:], stdout, stderr)
-	}
-	if args[0] == "resolve-background" {
-		return runResolveBackground(args[1:], stdout, stderr)
 	}
 	if args[0] == "release" {
 		return runRelease(args[1:], stdout, stderr)
@@ -179,7 +175,7 @@ func runInstaller(args []string, stdout, stderr io.Writer) int {
 		return runBootstrap(args[1:], stdout, stderr)
 	}
 	if args[0] != "policy" {
-		fmt.Fprintln(stderr, "Usage: gjallarctl installer {check-secrets|deploy|firmware|generate-hardware|policy|protect-local|release|resolve-background|local-password}")
+		fmt.Fprintln(stderr, "Usage: gjallarctl installer {check-secrets|deploy|firmware|generate-hardware|policy|protect-local|release|local-password}")
 		return 2
 	}
 	flags := flag.NewFlagSet("gjallarctl installer policy", flag.ContinueOnError)
@@ -784,25 +780,6 @@ func runRelease(args []string, stdout, stderr io.Writer) int {
 		"NixOS %s staged for the next boot. Reboot to activate it.\n",
 		expected,
 	)
-	return 0
-}
-
-func runResolveBackground(args []string, stdout, stderr io.Writer) int {
-	f := flag.NewFlagSet("gjallarctl installer resolve-background", flag.ContinueOnError)
-	f.SetOutput(stderr)
-	repo := f.String("repo", "", "repository path")
-	dotfiles := f.String("dotfiles", "", "configured dotfiles path")
-	role := f.String("role", "", "normal, work, or gaming")
-	value := f.String("value", "", "path or HTTPS URL")
-	if err := f.Parse(args); err != nil || f.NArg() != 0 {
-		return 2
-	}
-	resolved, err := background.Resolve(context.Background(), *repo, *dotfiles, *role, *value)
-	if err != nil {
-		fmt.Fprintf(stderr, "ERROR: %v\n", err)
-		return 1
-	}
-	fmt.Fprintln(stdout, resolved)
 	return 0
 }
 

@@ -56,7 +56,6 @@ type User struct {
 	NextcloudEnable           bool   `json:"nextcloudEnable"`
 	NextcloudHost             string `json:"nextcloudHost"`
 	Theme                     string `json:"theme"`
-	BackgroundNormal          string `json:"backgroundNormal"`
 	DebugFunctions            bool   `json:"debugFunctions"`
 	OverrideAISelection       bool   `json:"overrideAiSelection"`
 	OverrideModelWith         string `json:"overrideModelWith"`
@@ -150,6 +149,13 @@ func Load(path string) (User, error) {
 		for key, id := range map[string]string{"aiEnable": "ai", "containersEnable": "containers", "nemuEnable": "nemu"} {
 			if _, old := fields[key]; old {
 				return User{}, fmt.Errorf("user configuration: %s was replaced by apps; remove it and list %q in apps when wanted", key, id)
+			}
+		}
+		// Noctalia owns the wallpaper now; older configs still carry the key.
+		if _, old := fields["backgroundNormal"]; old {
+			delete(fields, "backgroundNormal")
+			if contents, err = json.Marshal(fields); err != nil {
+				return User{}, fmt.Errorf("parse user configuration: %w", err)
 			}
 		}
 	}

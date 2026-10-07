@@ -35,7 +35,6 @@ func excludePatterns() []string {
 		".user.config.json-*",
 		"generated/",
 		".vm/",
-		"non-nix/wallpapers/user-*",
 	}
 }
 

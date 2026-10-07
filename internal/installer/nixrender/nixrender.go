@@ -99,7 +99,6 @@ type Settings struct {
 	Apps                                                                                    []string
 	NextcloudHost                                                                           string
 	NextcloudEnable                                                                         bool
-	BackgroundNormal                                                                        string
 	ODDCModel                                                                               string
 	GraphicsBusID, GraphicsIntegratedBusID                                                  string
 	AIModel, AIAccelerationProfile                                                          string
@@ -157,7 +156,6 @@ func FromUser(user config.User) Settings {
 		Apps:                                user.Apps,
 		NextcloudEnable:                     user.NextcloudEnable,
 		NextcloudHost:                       user.NextcloudHost,
-		BackgroundNormal:                    user.BackgroundNormal,
 		AIAgentMode:                         user.AIAgentMode,
 		AIEndpoint:                          user.AIEndpoint,
 		AIRemoteModel:                       user.AIRemoteModel,
@@ -240,7 +238,6 @@ var userIntentKeys = []string{
 	"tailscale",
 	"nextcloudEnable",
 	"nextcloudHost",
-	"backgroundNormal",
 	"aiAgentMode",
 	"aiEndpoint",
 	"aiRemoteModel",
@@ -414,7 +411,6 @@ func Render(s Settings) []byte {
 	list("apps", s.Apps)
 	boolean("nextcloudEnable", s.NextcloudEnable)
 	str("nextcloudHost", s.NextcloudHost)
-	str("backgroundNormal", s.BackgroundNormal)
 	str("oddcModel", s.ODDCModel)
 	str("graphicsBusId", s.GraphicsBusID)
 	str("graphicsIntegratedBusId", s.GraphicsIntegratedBusID)

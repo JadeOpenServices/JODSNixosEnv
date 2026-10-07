@@ -43,12 +43,9 @@ The `name` field is the human-readable Git commit author name; it is not the
 Linux username or GitHub username. `githubUsername` is a separate optional
 account label.
 
-Optional `backgroundNormal` selects the user wallpaper. Use an absolute path,
-a path relative to the repository, or
-an HTTPS URL. HTTPS backgrounds are downloaded into `non-nix/wallpapers/`
-using a stable URL-derived filename. The repository ships no wallpapers: an
-empty value gives a solid background in the theme's base colour. Downloaded `user-*` wallpapers are added to Git's local exclude
-file alongside generated machine-local state.
+The wallpaper is picked in the Noctalia control centre and kept in Noctalia's
+own state. The repository ships no wallpapers; until one is picked the
+background is the theme's base colour.
 
 The installer targets NixOS 26.05 and stops before making changes if another
 release is detected. The release/channel policy is kept in

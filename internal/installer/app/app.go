@@ -22,7 +22,6 @@ import (
 	"github.com/bakanura/gjallarOS/internal/ai/profile"
 	"github.com/bakanura/gjallarOS/internal/hardware/graphics"
 	"github.com/bakanura/gjallarOS/internal/input/xkb"
-	"github.com/bakanura/gjallarOS/internal/installer/background"
 	"github.com/bakanura/gjallarOS/internal/installer/baremetalinstall"
 	"github.com/bakanura/gjallarOS/internal/installer/bootstrap"
 	"github.com/bakanura/gjallarOS/internal/installer/config"
@@ -2881,16 +2880,6 @@ func detectAndRenderState(
 	u := s.user
 	if u.AIAgentMode == "" {
 		u.AIAgentMode = "workspace"
-	}
-	for _, item := range []struct {
-		role  string
-		value *string
-	}{{"normal", &u.BackgroundNormal}} {
-		resolved, err := background.Resolve(ctx, root, u.DotfilesDir, item.role, *item.value)
-		if err != nil {
-			return err
-		}
-		*item.value = resolved
 	}
 	g, err := graphics.Detect(ctx)
 	if err != nil {

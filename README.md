@@ -25,8 +25,7 @@ cp scripts/installation/user_PresetJSON/default.user.config.json user.config.jso
 ```
 
 Edit the copy, then run the installer. Secrets, LUKS passphrases, recovery
-settings, generated hardware data, backups, and wallpapers are excluded from
-Git.
+settings, generated hardware data and backups are excluded from Git.
 
 ## Included
 

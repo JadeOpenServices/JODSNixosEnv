@@ -418,9 +418,6 @@ in
           per_monitor_directories = false;
           fill_mode = "crop";
           transition_on_startup = false;
-        }
-        // lib.optionalAttrs (settings.backgroundNormal != "") {
-          default.path = settings.backgroundNormal;
         };
       };
   };
