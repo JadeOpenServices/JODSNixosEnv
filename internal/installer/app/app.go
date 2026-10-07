@@ -1165,6 +1165,13 @@ func run(ctx context.Context, args []string, in io.Reader, out, errOut io.Writer
 				if err := deploy.Apply(ctx, root, s.user.Hostname); err != nil {
 					return fail(errOut, err)
 				}
+				if resolvedDevice.ModelID == "" {
+					stageODDCDraft(
+						ctx,
+						filepath.Join(installedRoot, "var", "lib", "gjallarOS", "device-profile"),
+						out,
+					)
+				}
 
 				if err := saveODDCHostOverlay(
 					ctx,
