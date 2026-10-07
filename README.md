@@ -117,6 +117,12 @@ hash is needed. `--switch 1` (the default) rebuilds and switches right away;
 nixos-rebuild switch --flake`: `generated/` is untracked, so a plain git flake
 cannot see it.
 
+A plain `rebuild` never moves the pin. It asks GitHub whether the branch the
+oddc input follows has a newer commit and, if so, prints `ODDC update
+available: OLD -> NEW. Apply with: rebuild --hardware-update`. Offline or on
+any error it says nothing. Managed endpoints skip the check: JODS moves their
+pin.
+
 `gjallarctl oddc COMMAND` passes ODDC commands to `oddc` unchanged, for example
 `gjallarctl oddc resolve` or `gjallarctl oddc explain --path PATH`. On the
 installed system these default to its model. `gjallarctl oddc validate-device`

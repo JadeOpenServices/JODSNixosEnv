@@ -2035,6 +2035,11 @@ func runRebuild(args []string, stdout, stderr io.Writer) int {
 	// authentication boundary instead of attempting sudo.
 	managedDevice := userConfig.EndpointManagedDevice
 
+	// JODS moves the pin on managed endpoints; elsewhere the user decides.
+	if !hardwareUpdate && !managedDevice {
+		oddccli.CheckUpdate(repo, stdout)
+	}
+
 	if managedDevice && os.Geteuid() != 0 {
 		executable, err := os.Executable()
 		if err != nil {
