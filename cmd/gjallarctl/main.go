@@ -2678,7 +2678,7 @@ func runPrivilegeAuthentication(ctx context.Context, stderr io.Writer) int {
 	fmt.Fprintln(tty)
 	fmt.Fprintln(
 		tty,
-		"[GjallarOS] Authenticate for privileged operation (fingerprint first; secure password fallback).",
+		"[GjallarOS] Authenticate for privileged operation.",
 	)
 
 	fingerprint := privilegeFingerprintCommand(ctx, tty, authHelper)
