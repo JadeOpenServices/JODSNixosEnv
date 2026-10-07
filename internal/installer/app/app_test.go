@@ -348,6 +348,28 @@ func TestCollectRecoveryAsksPartitionWhenPossible(t *testing.T) {
 	}
 }
 
+func TestCollectUSBTrustSkippedWithoutODDCModel(t *testing.T) {
+	var output bytes.Buffer
+	u := config.User{USBGuardEnable: true}
+	if err := collectUSBTrust(context.Background(), prompt.New(strings.NewReader("yes\n"), &output), false, &u); err != nil {
+		t.Fatal(err)
+	}
+	if u.USBGuardEnable || strings.Contains(output.String(), "Enable USB trust review") {
+		t.Fatalf("usb trust=%t output:\n%s", u.USBGuardEnable, output.String())
+	}
+}
+
+func TestCollectUSBTrustAskedWithODDCModel(t *testing.T) {
+	var output bytes.Buffer
+	u := config.User{}
+	if err := collectUSBTrust(context.Background(), prompt.New(strings.NewReader("yes\n"), &output), true, &u); err != nil {
+		t.Fatal(err)
+	}
+	if !u.USBGuardEnable {
+		t.Fatalf("usb trust not enabled:\n%s", output.String())
+	}
+}
+
 func TestManagedPresetRequiresRecoveryPartitionProvisioning(t *testing.T) {
 	u := config.User{
 		EndpointManagedDevice:   true,

@@ -538,7 +538,10 @@ func run(ctx context.Context, args []string, in io.Reader, out, errOut io.Writer
 	}
 	if s.preset {
 		normalizePreset(&s.user, root)
-	} else if err := collectInteractive(ctx, ui, root, !persistentInstalledHost || rootEncrypted(ctx, "/"), hardware, choices, &s.user); err != nil {
+		if s.user.USBGuardEnable && resolvedDevice.ModelID == "" {
+			return fail(errOut, errors.New("usbguardEnable needs an ODDC model, and ODDC has none for this machine; set usbguardEnable to false"))
+		}
+	} else if err := collectInteractive(ctx, ui, root, !persistentInstalledHost || rootEncrypted(ctx, "/"), resolvedDevice.ModelID != "", hardware, choices, &s.user); err != nil {
 		return fail(errOut, err)
 	}
 	if err := configureWeatherLocation(ctx, ui, &s.user, out); err != nil {
@@ -1818,7 +1821,7 @@ func containsValue(values []string, want string) bool {
 
 // partitionable is false for an in-place install on an unencrypted root,
 // which recovery partitioning cannot resize.
-func collectInteractive(ctx context.Context, ui prompt.UI, root string, partitionable bool, hardware discovery.Hardware, o discovery.Options, u *config.User) error {
+func collectInteractive(ctx context.Context, ui prompt.UI, root string, partitionable, modelSelected bool, hardware discovery.Hardware, o discovery.Options, u *config.User) error {
 	var err error
 	host, _ := os.Hostname()
 	if host == "" || host == "nixos" {
@@ -1912,8 +1915,7 @@ func collectInteractive(ctx context.Context, ui prompt.UI, root string, partitio
 	if err != nil {
 		return err
 	}
-	u.USBGuardEnable, err = ui.Confirm(ctx, "Enable USB trust review in audit mode? Blocking requires separate activation after device enrollment.", false)
-	if err != nil {
+	if err := collectUSBTrust(ctx, ui, modelSelected, u); err != nil {
 		return err
 	}
 	u.Name, err = ui.Value(ctx, "Full name", u.Username)
@@ -2545,6 +2547,20 @@ func mountSourceDevice(source string) string {
 
 // rootEncrypted reports whether mountpoint sits on a device-mapper (LUKS)
 // mapping, the first thing discoverInstalledRecoveryTopology requires.
+// collectUSBTrust offers USB trust review only with an ODDC model: the
+// system refuses USB trust without one, since the model names the internal
+// devices that must stay trusted.
+func collectUSBTrust(ctx context.Context, ui prompt.UI, modelSelected bool, u *config.User) error {
+	if !modelSelected {
+		u.USBGuardEnable = false
+		fmt.Fprintln(ui.Out, "No USB trust review: ODDC has no model for this machine, and USB trust needs one to know its internal devices.")
+		return nil
+	}
+	var err error
+	u.USBGuardEnable, err = ui.Confirm(ctx, "Enable USB trust review in audit mode? Blocking requires separate activation after device enrollment.", false)
+	return err
+}
+
 func rootEncrypted(ctx context.Context, mountpoint string) bool {
 	mounted, err := exec.CommandContext(ctx, "findmnt", "-nvro", "SOURCE", "--target", mountpoint).Output()
 	return err == nil && strings.HasPrefix(mountSourceDevice(string(mounted)), "/dev/mapper/")
