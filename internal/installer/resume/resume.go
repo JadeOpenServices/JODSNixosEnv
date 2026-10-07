@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/bakanura/gjallarOS/internal/installer/control"
 	"io/fs"
 	"os"
 	"os/exec"
@@ -332,13 +333,16 @@ func arm(ctx context.Context, executable string, tx Transaction) error {
 		return fmt.Errorf("install resumable installer binary: %w", err)
 	}
 
-	control := filepath.Join(filepath.Dir(executable), "gjallarctl")
-	if info, statErr := os.Stat(control); statErr == nil && !info.IsDir() {
+	ctl := control.Path
+	if ctl == "" {
+		ctl = filepath.Join(filepath.Dir(executable), "gjallarctl")
+	}
+	if info, statErr := os.Stat(ctl); statErr == nil && !info.IsDir() {
 		if err := sudo(
 			ctx,
 			"install",
 			"-m", "0755",
-			control,
+			ctl,
 			ControlPath,
 		); err != nil {
 			return fmt.Errorf("install resumable gjallarctl: %w", err)

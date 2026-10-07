@@ -6,6 +6,7 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"github.com/bakanura/gjallarOS/internal/installer/control"
 	"io"
 	"os"
 	"os/exec"
@@ -2901,14 +2902,7 @@ func configureSecrets(context.Context, string, *state, io.Writer) error {
 }
 
 func controlBinary() string {
-	exe, err := os.Executable()
-	if err == nil {
-		candidate := filepath.Join(filepath.Dir(exe), "gjallarctl")
-		if _, err := os.Stat(candidate); err == nil {
-			return candidate
-		}
-	}
-	return "gjallarctl"
+	return control.Binary()
 }
 func controlOutput(ctx context.Context, binary string, stderr io.Writer, args ...string) (string, error) {
 	cmd := exec.CommandContext(ctx, binary, args...)
