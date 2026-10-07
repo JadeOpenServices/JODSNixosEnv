@@ -321,8 +321,12 @@ let
 
   aiSystemPrompt = (builtins.fromJSON (builtins.readFile ./system-prompt.json)).system;
 
+  # ROCm compute on an AMD iGPU shares the GPU with the compositor; a hang or
+  # reset there takes Hyprland down. Vulkan (RADV) coexists with the desktop.
   ollamaPackage =
-    if graphics.vendor == "amd" && builtins.hasAttr "ollama-rocm" pkgs then
+    if graphics.vendor == "amd" && graphics.type == "integrated" && builtins.hasAttr "ollama-vulkan" pkgs then
+      pkgs.ollama-vulkan
+    else if graphics.vendor == "amd" && builtins.hasAttr "ollama-rocm" pkgs then
       pkgs.ollama-rocm
     else
       pkgs.ollama;
@@ -1770,6 +1774,15 @@ lib.mkIf config.gjallar.apps.ai.enable {
 
   systemd.services.ollama.serviceConfig = {
     DynamicUser = lib.mkForce false;
+
+    # The desktop always wins: ollama yields CPU and IO, stays below a
+    # memory ceiling, and is the first process the OOM killer picks.
+    MemoryHigh = "50%";
+    MemoryMax = "65%";
+    CPUWeight = 20;
+    IOWeight = 20;
+    Nice = 10;
+    OOMScoreAdjust = 800;
 
     NoNewPrivileges = true;
     PrivateTmp = true;
