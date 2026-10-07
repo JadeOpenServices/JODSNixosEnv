@@ -102,15 +102,24 @@ cleanup() {
 }
 trap cleanup EXIT
 mount -o nodev,nosuid,noexec "$partition" "$mount_dir"
-xorriso -osirrox on -indev "$image" -extract / "$mount_dir" >/dev/null 2>&1
-
-[ -f "$mount_dir/EFI/BOOT/BOOTX64.EFI" ] || {
-  echo "ERROR: recovery image has no UEFI fallback bootloader" >&2
+# The partition boots the image's UKI, which mounts the ISO file itself
+# (findiso=). The ISO's own GRUB needs shim under Secure Boot, and its files
+# unpacked onto vfat have no iso9660 root to mount.
+[ "$(stat -c '%s' "$image")" -lt 4294967296 ] || {
+  echo "ERROR: recovery image does not fit a FAT32 file (4 GiB)" >&2
   exit 1
 }
+install -d "$mount_dir/EFI/BOOT"
+xorriso -osirrox on -indev "$image" \
+  -extract /EFI/gjallar/recovery-partition.efi "$mount_dir/EFI/BOOT/BOOTX64.EFI" >/dev/null 2>&1
+[ -f "$mount_dir/EFI/BOOT/BOOTX64.EFI" ] || {
+  echo "ERROR: recovery image has no recovery-partition UKI" >&2
+  exit 1
+}
+cp "$image" "$mount_dir/gjallar-recovery.iso"
 
-# Sign every executable in the copied boot chain with this endpoint's key.
-# systemd-boot then verifies signed UKIs before starting them.
+# Sign the boot executable with this endpoint's key so firmware starts it
+# under Secure Boot.
 while IFS= read -r -d '' executable; do
   sbctl sign --save "$executable" >/dev/null
   sbctl verify "$executable" >/dev/null

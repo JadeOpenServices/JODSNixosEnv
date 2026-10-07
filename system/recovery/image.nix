@@ -97,6 +97,21 @@ let
 
   installerFallbackPreset =
     if builtins.pathExists sourceUserConfig then sourceUserConfig else generatedInstallerPreset;
+
+  # The recovery partition starts this UKI, not the ISO's GRUB: GRUB needs
+  # shim under Secure Boot (e2e-fw13, 2026-10-07: shim_lock protocol not
+  # found), and the ISO's /iso mount wants an iso9660 device. findiso= makes
+  # stage 1 mount the ISO file install-partition.sh copies next to it.
+  recoveryPartitionUki = pkgs.runCommand "gjallar-recovery-partition.efi" { } ''
+    ${pkgs.buildPackages.systemdUkify}/lib/systemd/ukify build \
+      --linux=${config.boot.kernelPackages.kernel}/${config.system.boot.loader.kernelFile} \
+      --initrd=${config.system.build.initialRamdisk}/${config.system.boot.loader.initrdFile} \
+      --cmdline="init=${config.system.build.toplevel}/init ${toString config.boot.kernelParams} findiso=/gjallar-recovery.iso" \
+      --stub=${pkgs.systemd}/lib/systemd/boot/efi/linux${pkgs.stdenv.hostPlatform.efiArch}.efi.stub \
+      --uname=${config.boot.kernelPackages.kernel.modDirVersion} \
+      --os-release=@${config.system.build.etc}/etc/os-release \
+      --output=$out
+  '';
 in
 {
   imports = [ "${modulesPath}/installer/cd-dvd/installation-cd-minimal.nix" ];
@@ -105,6 +120,14 @@ in
 
   image.fileName = lib.mkForce "gjallar-recovery-${config.system.nixos.label}-${pkgs.stdenv.hostPlatform.system}.iso";
   isoImage.squashfsCompression = "zstd -Xcompression-level 15";
+  isoImage.contents = [
+    {
+      source = recoveryPartitionUki;
+      target = "/EFI/gjallar/recovery-partition.efi";
+    }
+  ];
+  # findiso= runs only in the scripted stage 1.
+  boot.initrd.systemd.enable = lib.mkForce false;
   boot.zfs.forceImportRoot = false;
 
   services.xserver.xkb = {
