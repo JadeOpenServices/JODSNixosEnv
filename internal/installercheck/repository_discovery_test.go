@@ -38,6 +38,7 @@ func TestDiscoverRepositoryWalksUp(t *testing.T) {
 		"",
 		"",
 		"",
+		"",
 		filepath.Join(root, "internal", "installercheck"),
 	)
 	if err != nil {
@@ -56,6 +57,7 @@ func TestDiscoverRepositoryUsesRememberedCheckout(t *testing.T) {
 		"",
 		"",
 		root,
+		"/definitely/not/a/repository",
 		t.TempDir(),
 	)
 	if err != nil {
@@ -73,6 +75,7 @@ func TestDiscoverRepositoryEnvironmentWinsRemembered(t *testing.T) {
 	got, err := discoverRepository(
 		"",
 		root,
+		"/definitely/not/a/repository",
 		"/definitely/not/a/repository",
 		t.TempDir(),
 	)
@@ -92,8 +95,42 @@ func TestDiscoverRepositoryExplicitWins(t *testing.T) {
 		root,
 		"/definitely/not/a/repository",
 		"/also/not/a/repository",
+		"/also/not/a/repository",
 		t.TempDir(),
 	)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if got != root {
+		t.Fatalf("repository = %q, want %q", got, root)
+	}
+}
+
+func TestDiscoverRepositoryUsesSystemCheckout(t *testing.T) {
+	root := repositoryRootForTest(t)
+
+	got, err := discoverRepository(
+		"",
+		"",
+		"/definitely/not/a/repository",
+		root+"\n",
+		t.TempDir(),
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if got != root {
+		t.Fatalf("repository = %q, want %q", got, root)
+	}
+}
+
+func TestDiscoverRepositoryRememberedWinsSystem(t *testing.T) {
+	root := repositoryRootForTest(t)
+	other := t.TempDir()
+
+	got, err := discoverRepository("", "", root, other, t.TempDir())
 	if err != nil {
 		t.Fatal(err)
 	}

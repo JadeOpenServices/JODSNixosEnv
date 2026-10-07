@@ -59,7 +59,11 @@ Updating ODDC on a device is one operation:
 
     gjallarctl oddc update --rebuild
 
-It runs `nix flake update oddc` on this checkout and rebuilds. When the pinned
+It runs `nix flake update oddc` on the system's checkout and rebuilds, then
+says whether ODDC moved (`ODDC: OLD -> NEW` or `ODDC: already at REV`) and
+where this machine's answer stands. `--simple` prints only that as one line;
+`--debug` lists the lock and answer revisions before and after, the model, and
+whether the answer was fetched, kept or left unchanged. When the pinned
 commit differs from `generated/oddc/revision`, the rebuild fetches the same
 model again at the new commit and swaps it in only once complete. Offline, the
 rebuild warns and keeps the answer it has. Without `--rebuild`, the next
@@ -74,7 +78,10 @@ validates this checkout on the device. Validation evidence goes to ODDC through
 
 ## Rebuilds and removable disks
 
-Use `rebuild --repo /path/to/gjallarOS`. Direct host flake builds fail unless the
+Every GjallarOS system names its checkout in `/etc/gjallar/repository`
+(`dotfilesDir`), so `rebuild`, `gjallarctl oddc update` and the other commands
+find it from any directory. `--repo PATH`, `GJALLAROS_REPO` and the checkout you
+last rebuilt from take precedence. Direct host flake builds fail unless the
 source was staged by `gjallarctl`; installer and recovery deployment also use
 that staging path. This prevents skipping the normal preparation workflow. It
 is not an authorization boundary against root or someone who can change the

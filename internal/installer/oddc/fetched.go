@@ -114,26 +114,14 @@ func gitHub(client *http.Client, rev string) (*portable.GitHubSource, error) {
 // It returns the answer's earlier revision. Without an answer (no model
 // matched this machine) there is nothing to refresh, and it returns "".
 func Refresh(root, rev string, client *http.Client) (string, error) {
-	if _, err := os.Stat(root); errors.Is(err, os.ErrNotExist) {
-		return "", nil
-	}
-	current := portable.DirSource{Root: root}.Revision()
-	if current == rev {
+	current := AnswerRevision(root)
+	if current == "" || current == rev {
 		return current, nil
 	}
 
-	registry, err := portable.LoadRegistry(root)
+	model, err := AnswerModel(root)
 	if err != nil {
-		return current, fmt.Errorf("read ODDC answer: %w", err)
-	}
-	var models []string
-	for id, entity := range registry.Entities {
-		if entity.Kind == "DeviceModel" {
-			models = append(models, id)
-		}
-	}
-	if len(models) != 1 {
-		return current, fmt.Errorf("ODDC answer in %s holds %d models, want 1", root, len(models))
+		return current, err
 	}
 
 	upstream, err := gitHub(client, rev)
@@ -145,7 +133,7 @@ func Refresh(root, rev string, client *http.Client) (string, error) {
 	if err := os.RemoveAll(next); err != nil {
 		return current, err
 	}
-	if err := portable.FetchModel(upstream, models[0], next); err != nil {
+	if err := portable.FetchModel(upstream, model, next); err != nil {
 		return current, fmt.Errorf("fetch ODDC answer: %w", err)
 	}
 	if err := os.RemoveAll(root); err != nil {

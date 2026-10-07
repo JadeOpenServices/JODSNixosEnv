@@ -13,7 +13,8 @@ import (
 //  1. explicit --repo
 //  2. GJALLAROS_REPO
 //  3. last successfully rebuilt checkout
-//  4. cwd and its parents
+//  4. the system's checkout, SystemRepositoryFile
+//  5. cwd and its parents
 func DiscoverRepository(explicit string) (string, error) {
 	cwd, err := os.Getwd()
 	if err != nil {
@@ -21,19 +22,27 @@ func DiscoverRepository(explicit string) (string, error) {
 	}
 
 	remembered, _ := readRememberedRepository()
+	system, _ := os.ReadFile(SystemRepositoryFile)
 
 	return discoverRepository(
 		explicit,
 		os.Getenv("GJALLAROS_REPO"),
 		remembered,
+		string(system),
 		cwd,
 	)
 }
+
+// SystemRepositoryFile names the checkout the running system was built
+// from (settings.dotfilesDir), so every GjallarOS deployment has one fixed
+// place to find it.
+var SystemRepositoryFile = "/etc/gjallar/repository"
 
 func discoverRepository(
 	explicit string,
 	environment string,
 	remembered string,
+	system string,
 	start string,
 ) (string, error) {
 	for _, candidate := range []struct {
@@ -43,6 +52,7 @@ func discoverRepository(
 		{"explicit repository", strings.TrimSpace(explicit)},
 		{"GJALLAROS_REPO", strings.TrimSpace(environment)},
 		{"remembered repository", strings.TrimSpace(remembered)},
+		{"system repository", strings.TrimSpace(system)},
 	} {
 		if candidate.path == "" {
 			continue
@@ -53,7 +63,9 @@ func discoverRepository(
 			return root, nil
 		}
 
-		if candidate.name != "remembered repository" {
+		// Stale pointers fall through; explicit choices must resolve.
+		if candidate.name != "remembered repository" &&
+			candidate.name != "system repository" {
 			return "", fmt.Errorf(
 				"%s %q: %w",
 				candidate.name,

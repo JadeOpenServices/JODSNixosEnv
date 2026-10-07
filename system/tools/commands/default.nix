@@ -16,6 +16,12 @@ let
 
 in
 {
+  # One fixed place on every deployment that names the system's checkout;
+  # gjallarctl falls back to it when no --repo is given.
+  environment.etc."gjallar/repository" = lib.mkIf (settings.dotfilesDir != "") {
+    text = settings.dotfilesDir + "\n";
+  };
+
   environment.systemPackages = [
     (goCommand "helpme" "helpme")
     rebuild

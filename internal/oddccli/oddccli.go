@@ -29,6 +29,6 @@ func Run(args []string, stdout, stderr io.Writer) int {
 // Usage lists the commands for gjallarctl's help.
 func Usage(out io.Writer) {
 	fmt.Fprintln(out, "       gjallarctl oddc validate-device [--repo PATH]")
-	fmt.Fprintln(out, "       gjallarctl oddc update [--repo PATH] [--rebuild]")
+	fmt.Fprintln(out, "       gjallarctl oddc update [--repo PATH] [--rebuild] [--simple|--debug]")
 	fmt.Fprintln(out, "       gjallarctl oddc ODDC-COMMAND [ODDC-ARGS...]")
 }
