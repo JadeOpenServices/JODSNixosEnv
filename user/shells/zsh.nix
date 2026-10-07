@@ -48,7 +48,6 @@
       cp = "rsync -avhW --no-compress --progress";
       rm = "rm -rv";
       w3md = "w3m https://lite.duckduckgo.com/lite/";
-      nix-tarantool = "nix develop ${settings.dotfilesDir}/shells/tarantool -c zsh";
       nix-python = "nix develop ${settings.dotfilesDir}/shells/python -c zsh";
       nix-lampray = "nix develop ${settings.dotfilesDir}/shells/lampray -c zsh";
       nix-invoke = "nix develop ${settings.dotfilesDir}/shells/invoke -c zsh";
@@ -76,9 +75,7 @@
         command sudo "$@"
       }
       export PATH=$PATH:${config.home.homeDirectory}/.local/bin
-
-    ''
-    + (builtins.readFile ./lib/television/zshrc);
+    '';
   };
 
   home.packages = with pkgs; [

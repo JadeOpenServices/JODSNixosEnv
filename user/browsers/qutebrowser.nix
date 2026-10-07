@@ -1,45 +1,18 @@
+# qutebrowser, selectable through `browsers` in user.config.json.
 {
   programs.qutebrowser = {
     enable = true;
     loadAutoconfig = true;
-    settings = {
-      scrolling.smooth = true;
-      qt.highdpi = true;
-      zoom.default = 125;
-      auto_save.session = true;
-      colors.webpage.darkmode.enabled = false;
-    };
     searchEngines = {
-      g = "https://www.google.com/search?hl=en&amp;q={}";
-      y = "https://yandex.ru/search/?text={}";
-      t = "https://www.tarantool.io/en/doc/latest/search/?q={}";
-      n = "https://mynixos.com/search?q={}";
+      DEFAULT = "https://duckduckgo.com/?q={}";
+      nix = "https://search.nixos.org/packages?query={}";
+      opt = "https://search.nixos.org/options?query={}";
+      gh = "https://github.com/search?q={}";
     };
-    quickmarks = {
-      gh = "https://github.com";
-      ghr = "https://github.com/search?q=&type=repositories";
-      ghi = "https://github.com/issues";
-      ghp = "https://github.com/pulls";
-      ghn = "https://github.com/notifications";
-
-      ght = "https://github.com/tarantool";
-      ghtt = "https://github.com/tarantool/tarantool";
-      ghtv = "https://github.com/tarantool/vshard";
-      ghtve = "https://github.com/tarantool/vshard-ee";
-
-      wt = "https://www.tarantool.io/en";
-      wm = "https://myteam.mail.ru/webim";
-
-      up = "https://student.bmstu.ru/hpronto";
-      ul = "https://lks.bmstu.ru";
-      ud = "https://delo.bmstu.ru";
-
-      em = "https://e.mail.ru/inbox";
-      yt = "https://www.youtube.com";
-
+    settings = {
+      auto_save.session = true;
+      scrolling.smooth = true;
+      zoom.default = "110%";
     };
-    extraConfig = ''
-      c.tabs.padding = { "bottom": 8, "left": 5, "right": 5, "top": 8 }
-    '';
   };
 }

@@ -10,11 +10,6 @@ lib.mkIf config.gjallar.apps.git.enable {
   programs.git = {
     enable = true;
     settings = {
-      url = {
-        "git@github.com:tarantool" = {
-          insteadOf = "https://github.com/tarantool";
-        };
-      };
       core.editor = lib.getExe pkgs.${settings.preferredEditor};
       user = {
         name = settings.name;

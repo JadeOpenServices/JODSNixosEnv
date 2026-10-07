@@ -1,14 +1,32 @@
+# television fuzzy finder: ctrl-t completes the command line, ctrl-r
+# searches history (both from the packaged zsh integration), and a `nix`
+# channel searches packages and options through nix-search-tv.
 { pkgs, config, ... }:
 let
   semanticTheme = import ../../../../themes/lib/semantic.nix { inherit config; };
 in
 {
-  home.packages = with pkgs; [
-    television
-    nix-search-tv
-  ];
+  programs.television = {
+    enable = true;
+    enableZshIntegration = true;
+    settings.ui = {
+      theme = "stylix";
+      input_bar_position = "top";
+      show_help_bar = false;
+    };
+    channels.nix = {
+      metadata = {
+        name = "nix";
+        description = "NixOS packages and options";
+        requirements = [ "nix-search-tv" ];
+      };
+      source.command = "nix-search-tv print";
+      preview.command = "nix-search-tv preview {}";
+    };
+  };
+  home.packages = [ pkgs.nix-search-tv ];
 
-  home.file.".config/television/themes/stylix.toml".text = ''
+  xdg.configFile."television/themes/stylix.toml".text = ''
     remote_control_mode_bg = '#00000000'
     border_fg = '#${semanticTheme.fallback.outline}'
     text_fg = '#${semanticTheme.fallback.onSurface}'
@@ -26,7 +44,4 @@ in
     remote_control_mode_fg = '#${semanticTheme.fallback.terminal.normal.green}'
     send_to_channel_mode_fg = '#${semanticTheme.fallback.primary}'
   '';
-
-  home.file.".config/television/config.toml".source = ./config.toml;
-  home.file.".config/television/cable/nix.toml".source = ./nix.toml;
 }

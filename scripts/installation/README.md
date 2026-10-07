@@ -54,7 +54,7 @@ The installer targets NixOS 26.05 and stops before making changes if another
 release is detected. The release/channel policy is kept in
 `deployment/release-policy.json` for future centrally managed updates. The root
 flake and stable shell flakes track its `nixpkgsInput`; only the explicitly
-listed development shells (currently ComfyUI and Tarantool) intentionally use
+listed development shells (currently ComfyUI) intentionally use
 `unstableNixpkgsInput` for fast-moving GPU/build tooling. Flake input URLs must
 remain literal by Nix design, so the installer validates the running release
 against this policy before proceeding.

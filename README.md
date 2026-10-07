@@ -56,8 +56,8 @@ Git.
 that intent into `generated/state.nix`; machine hardware lives in
 `generated/hardware.nix`, and historical compatibility baselines live in
 `generated/install-state.nix`. `deployment/release-policy.json` records the supported release. The
-root flake, Home Manager, and Stylix follow 26.05; only the ComfyUI and
-Tarantool development shells intentionally use unstable.
+root flake, Home Manager, and Stylix follow 26.05; only the ComfyUI
+development shell intentionally uses unstable.
 
 Web apps are listed in `webApplications`, for example
 `[{"id": "teams"}, {"id": "plane", "endpoint": "https://plane.example"}]`.
