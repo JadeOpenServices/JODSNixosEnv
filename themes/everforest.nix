@@ -1,7 +1,6 @@
 { pkgs, ... }:
 {
   themeName = "everforest-dark-hard";
-  wallpaper = ../non-nix/wallpapers/yolka.jpg;
   override = null;
 
   btopTheme = null;

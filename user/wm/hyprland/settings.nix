@@ -33,18 +33,8 @@ let
   '';
   themeDetails = settings.themeDetails;
   shellDetails = hyprlandShellDetails;
-  wallpaperDetails =
-    if builtins.isAttrs themeDetails.wallpaper then
-      themeDetails.wallpaper
-    else
-      { center = themeDetails.wallpaper; };
-  startupWallpaper =
-    if settings.backgroundNormal != "" then
-      settings.backgroundNormal
-    else
-      wallpaperDetails.center;
   sessionStart = pkgs.writeShellScript "gjallar-hyprland-session-start" ''
-    selected_wallpaper=${lib.escapeShellArg startupWallpaper}
+    selected_wallpaper=${lib.escapeShellArg settings.backgroundNormal}
     noctalia_state="''${XDG_STATE_HOME:-$HOME/.local/state}/noctalia/settings.toml"
     if [ -r "$noctalia_state" ]; then
       noctalia_wallpaper="$(${pkgs.gawk}/bin/awk '
@@ -61,7 +51,13 @@ let
         selected_wallpaper="$noctalia_wallpaper"
       fi
     fi
-    ${pkgs.swaybg}/bin/swaybg --image "$selected_wallpaper" --mode fill &
+    # The repository ships no wallpapers: without a readable user image the
+    # background is the theme's base colour.
+    if [ -n "$selected_wallpaper" ] && [ -r "$selected_wallpaper" ]; then
+      ${pkgs.swaybg}/bin/swaybg --image "$selected_wallpaper" --mode fill &
+    else
+      ${pkgs.swaybg}/bin/swaybg --color "#${config.lib.stylix.colors.base00}" &
+    fi
     ${pkgs.coreutils}/bin/sleep 0.1
     ${pkgs.networkmanager}/bin/nm-online -q -t 10 || true
 

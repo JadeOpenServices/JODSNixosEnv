@@ -24,7 +24,7 @@
     "wine"
   ],
   "autoReboot": false,
-  "backgroundNormal": "non-nix/wallpapers/sword.jpg",
+  "backgroundNormal": "",
   "browsers": [
     "librewolf"
   ],

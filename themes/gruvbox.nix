@@ -1,7 +1,6 @@
 { pkgs, ... }:
 {
   themeName = "gruvbox-material-dark-medium";
-  wallpaper = ../non-nix/wallpapers/nature-gruvbox.jpg;
   override = null;
 
   btopTheme = "gruvbox_dark_v2";

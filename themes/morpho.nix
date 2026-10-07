@@ -1,12 +1,6 @@
 { pkgs, ... }:
 {
   themeName = "rose-pine";
-  avatar = ../non-nix/avatars/butterfly.png;
-  wallpaper = {
-    left = ../non-nix/wallpapers/butterfly-left.png;
-    center = ../non-nix/wallpapers/butterfly-girl.png;
-    right = ../non-nix/wallpapers/butterfly-right.png;
-  };
   override = {
     base00 = "05000f";
   };

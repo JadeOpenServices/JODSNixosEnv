@@ -44,10 +44,10 @@ Linux username or GitHub username. `githubUsername` is a separate optional
 account label.
 
 Optional `backgroundNormal` selects the user wallpaper. Use an absolute path,
-a path inside the repository (for example `non-nix/wallpapers/nord.png`), or
+a path relative to the repository, or
 an HTTPS URL. HTTPS backgrounds are downloaded into `non-nix/wallpapers/`
-using a stable URL-derived filename; an empty value uses the selected theme
-wallpaper. Downloaded `user-*` wallpapers are added to Git's local exclude
+using a stable URL-derived filename. The repository ships no wallpapers: an
+empty value gives a solid background in the theme's base colour. Downloaded `user-*` wallpapers are added to Git's local exclude
 file alongside generated machine-local state.
 
 The installer targets NixOS 26.05 and stops before making changes if another

@@ -8,18 +8,6 @@
 }:
 let
   themeDetails = settings.themeDetails;
-  wallpaperDetails =
-    if builtins.isAttrs themeDetails.wallpaper then
-      themeDetails.wallpaper
-    else
-      {
-        left = themeDetails.wallpaper;
-        center = themeDetails.wallpaper;
-        right = themeDetails.wallpaper;
-      };
-  avatarPath = if themeDetails ? avatar then themeDetails.avatar else wallpaperDetails.center;
-  selectedBackground =
-    if settings.backgroundNormal != "" then settings.backgroundNormal else wallpaperDetails.center;
   semanticTheme = import ../../../../themes/lib/semantic.nix { inherit config; };
   contrastGuard = import ../../../../themes/lib/contrast.nix { inherit pkgs; };
 
@@ -123,7 +111,6 @@ in
           clipboard_enabled = false;
           corner_radius_scale = 2.0;
           font_family = themeDetails.font;
-          avatar_path = avatarPath;
           polkit_agent = true;
           greeter_sync = {
             auto_sync = true;
@@ -431,7 +418,9 @@ in
           per_monitor_directories = false;
           fill_mode = "crop";
           transition_on_startup = false;
-          default.path = selectedBackground;
+        }
+        // lib.optionalAttrs (settings.backgroundNormal != "") {
+          default.path = settings.backgroundNormal;
         };
       };
   };

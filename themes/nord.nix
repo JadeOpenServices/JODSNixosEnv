@@ -1,7 +1,6 @@
 { pkgs, ... }:
 {
   themeName = "nord";
-  wallpaper = ../non-nix/wallpapers/violet-nord.png;
   override = {
     base02 = "#445060";
     base05 = "#fffcf0";

@@ -1,12 +1,6 @@
 { pkgs, ... }:
 {
   themeName = "rose-pine";
-  avatar = ../non-nix/wallpapers/avatar.png;
-  wallpaper = {
-    left = ../non-nix/wallpapers/evening-sky.png;
-    center = ../non-nix/wallpapers/evening-sky.png;
-    right = ../non-nix/wallpapers/evening-sky.png;
-  };
   override = {
     base00 = "11111b";
     base01 = "181825";

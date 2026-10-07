@@ -1,7 +1,6 @@
 { pkgs, ... }:
 {
   themeName = "black-metal-immortal";
-  wallpaper = ../non-nix/wallpapers/black.png;
   override = null;
 
   btopTheme = "nord";
