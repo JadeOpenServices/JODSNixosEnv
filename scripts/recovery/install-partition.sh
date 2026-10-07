@@ -60,14 +60,29 @@ if $local_build; then
 else
   "$(dirname "$0")/verify-image.sh" "$image" "$manifest" "$signature" "$public_key"
 fi
-for command in mkfs.vfat xorriso sbctl findmnt efibootmgr; do
+# Endpoints without an ODDC Secure Boot policy (generic profiles) have no
+# per-device keys and boot with Secure Boot off; their recovery UKI stays
+# unsigned (e2e-genluks, 2026-10-07). With Secure Boot on, an unsigned UKI
+# would not start, so the keys are required there.
+sign=false
+if [ -r /var/lib/sbctl/keys/db/db.key ] && [ -r /var/lib/sbctl/keys/db/db.pem ]; then
+  sign=true
+else
+  sb_var=/sys/firmware/efi/efivars/SecureBoot-8be4df61-93ca-11d0-aa5d-00a0c94e5b8c
+  if [ -r "$sb_var" ] && [ "$(od -An -tu1 -j4 -N1 "$sb_var" | tr -d ' ')" = 1 ]; then
+    echo "ERROR: Secure Boot is on but per-device signing keys are not installed" >&2
+    exit 1
+  fi
+  echo "Secure Boot is off and no per-device keys exist; the recovery UKI stays unsigned."
+fi
+for command in mkfs.vfat xorriso findmnt efibootmgr; do
   command -v "$command" >/dev/null || {
     echo "ERROR: required command not found: $command" >&2
     exit 1
   }
 done
-[ -r /var/lib/sbctl/keys/db/db.key ] && [ -r /var/lib/sbctl/keys/db/db.pem ] || {
-  echo "ERROR: per-device Secure Boot signing keys are not installed" >&2
+! $sign || command -v sbctl >/dev/null || {
+  echo "ERROR: required command not found: sbctl" >&2
   exit 1
 }
 parent_name=$(lsblk -dnro PKNAME "$partition")
@@ -120,10 +135,12 @@ cp "$image" "$mount_dir/gjallar-recovery.iso"
 
 # Sign the boot executable with this endpoint's key so firmware starts it
 # under Secure Boot.
-while IFS= read -r -d '' executable; do
-  sbctl sign --save "$executable" >/dev/null
-  sbctl verify "$executable" >/dev/null
-done < <(find "$mount_dir/EFI" -type f -iname '*.efi' -print0)
+if $sign; then
+  while IFS= read -r -d '' executable; do
+    sbctl sign --save "$executable" >/dev/null
+    sbctl verify "$executable" >/dev/null
+  done < <(find "$mount_dir/EFI" -type f -iname '*.efi' -print0)
+fi
 
 install -d -m 0700 "$mount_dir/.gjallar-release"
 if $local_build; then
@@ -163,4 +180,8 @@ efibootmgr -v | grep -F 'GjallarOS Recovery' >/dev/null || {
   false
 }
 
-echo "Installed verified, endpoint-signed, independently bootable recovery environment."
+if $sign; then
+  echo "Installed verified, endpoint-signed, independently bootable recovery environment."
+else
+  echo "Installed verified, independently bootable recovery environment (unsigned; Secure Boot off)."
+fi
