@@ -318,5 +318,10 @@ let
   };
 in
 {
-  inherit gjallarctl installer recovery recoveryExecutor;
+  inherit
+    gjallarctl
+    installer
+    recovery
+    recoveryExecutor
+    ;
 }
