@@ -118,7 +118,9 @@ in
 
   services.usbguard.enable = lib.mkForce false;
 
-  image.fileName = lib.mkForce "gjallar-recovery-${config.system.nixos.label}-${pkgs.stdenv.hostPlatform.system}.iso";
+  # isoImage builds its file name from image.baseName; image.fileName alone
+  # left it nixos-minimal-*.iso.
+  image.baseName = lib.mkForce "gjallar-recovery-${config.system.nixos.label}-${pkgs.stdenv.hostPlatform.system}";
   isoImage.squashfsCompression = "zstd -Xcompression-level 15";
   isoImage.contents = [
     {
