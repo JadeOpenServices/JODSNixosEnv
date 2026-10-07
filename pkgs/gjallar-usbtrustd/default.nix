@@ -17,7 +17,7 @@ buildGoModule {
     ];
   };
 
-  vendorHash = "sha256-8HOS0S6am4g59tpFI7R5FOCCmm3ptHwgsLlZu90IxpU=";
+  vendorHash = "sha256-Z8vLXDmxdeCj/m4zFVaPM13sGURUJKR5mOjN1WAEnQI=";
   proxyVendor = true;
 
   subPackages = [
