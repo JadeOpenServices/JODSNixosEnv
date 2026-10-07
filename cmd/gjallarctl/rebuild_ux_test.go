@@ -15,6 +15,9 @@ func TestRebuildDoesNotRequireExplicitRepoAndHost(t *testing.T) {
 	t.Setenv("GJALLAROS_REPO", "")
 	t.Setenv("XDG_STATE_HOME", t.TempDir())
 	t.Chdir(t.TempDir())
+	oldSystem := installercheck.SystemRepositoryFile
+	installercheck.SystemRepositoryFile = filepath.Join(t.TempDir(), "repository")
+	t.Cleanup(func() { installercheck.SystemRepositoryFile = oldSystem })
 
 	var stdout bytes.Buffer
 	var stderr bytes.Buffer
