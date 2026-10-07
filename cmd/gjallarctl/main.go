@@ -983,6 +983,12 @@ func runAIModelServe(args []string, stdout, stderr io.Writer) int {
 		"only exposed model",
 	)
 
+	upstreamModel := f.String(
+		"upstream-model",
+		"",
+		"upstream name of the exposed model (default: --model)",
+	)
+
 	username := f.String(
 		"user",
 		"",
@@ -1038,6 +1044,7 @@ func runAIModelServe(args []string, stdout, stderr io.Writer) int {
 			SocketPath:           *socket,
 			Upstream:             *upstream,
 			Model:                *model,
+			UpstreamModel:        *upstreamModel,
 			AllowedUID:           uint32(uid64),
 			RequiredCgroupPrefix: *cgroupPrefix,
 			MaxRequestBytes:      16 << 20,

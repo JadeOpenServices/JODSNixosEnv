@@ -19,9 +19,11 @@ import (
 )
 
 type Config struct {
-	SocketPath           string
-	Upstream             string
-	Model                string
+	SocketPath string
+	Upstream   string
+	Model      string
+	// UpstreamModel is the name the upstream knows Model by; empty means Model.
+	UpstreamModel        string
 	AllowedUID           uint32
 	RequiredCgroupPrefix string
 	MaxRequestBytes      int64
@@ -196,6 +198,9 @@ func handler(cfg Config) http.Handler {
 		}
 
 		raw, err = validateModel(raw, cfg.Model)
+		if err == nil {
+			raw, err = renameModel(raw, cfg.Model, cfg.UpstreamModel)
+		}
 		if err != nil {
 			fmt.Fprintf(
 				os.Stderr,
@@ -438,6 +443,20 @@ func gjallarTrivialFastPath(
 	payload["max_tokens"] = 32
 
 	return true
+}
+
+// renameModel swaps the client-facing model name for the upstream one, so a
+// shared server can hold per-definition models under one client name.
+func renameModel(raw []byte, model, upstream string) ([]byte, error) {
+	if upstream == "" || upstream == model {
+		return raw, nil
+	}
+	var payload map[string]any
+	if err := json.Unmarshal(raw, &payload); err != nil {
+		return nil, errors.New("invalid JSON request")
+	}
+	payload["model"] = upstream
+	return json.Marshal(payload)
 }
 
 func validateModel(raw []byte, model string) ([]byte, error) {
