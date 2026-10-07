@@ -321,6 +321,33 @@ func TestCollectProjectToolsReasksInvalidEndpoints(t *testing.T) {
 	}
 }
 
+// On an unencrypted in-place root the partition question is skipped: the
+// install used to fail after every question (e2e-generic, 2026-10-07).
+func TestCollectRecoverySkipsPartitionOnUnencryptedRoot(t *testing.T) {
+	var output bytes.Buffer
+	u := config.User{}
+	if err := collectRecovery(context.Background(), prompt.New(strings.NewReader("yes\n"), &output), false, &u); err != nil {
+		t.Fatal(err)
+	}
+	if !u.RecoveryEnable || u.RecoveryPartitionEnable {
+		t.Fatalf("recovery=%t partition=%t", u.RecoveryEnable, u.RecoveryPartitionEnable)
+	}
+	if strings.Contains(output.String(), "recovery partition (recommended)") {
+		t.Fatalf("partition question asked:\n%s", output.String())
+	}
+}
+
+func TestCollectRecoveryAsksPartitionWhenPossible(t *testing.T) {
+	var output bytes.Buffer
+	u := config.User{}
+	if err := collectRecovery(context.Background(), prompt.New(strings.NewReader("yes\nyes\n"), &output), true, &u); err != nil {
+		t.Fatal(err)
+	}
+	if !u.RecoveryEnable || !u.RecoveryPartitionEnable {
+		t.Fatalf("recovery=%t partition=%t", u.RecoveryEnable, u.RecoveryPartitionEnable)
+	}
+}
+
 func TestManagedPresetRequiresRecoveryPartitionProvisioning(t *testing.T) {
 	u := config.User{
 		EndpointManagedDevice:   true,

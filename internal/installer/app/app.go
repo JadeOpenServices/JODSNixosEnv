@@ -538,7 +538,7 @@ func run(ctx context.Context, args []string, in io.Reader, out, errOut io.Writer
 	}
 	if s.preset {
 		normalizePreset(&s.user, root)
-	} else if err := collectInteractive(ctx, ui, root, hardware, choices, &s.user); err != nil {
+	} else if err := collectInteractive(ctx, ui, root, !persistentInstalledHost || rootEncrypted(ctx, "/"), hardware, choices, &s.user); err != nil {
 		return fail(errOut, err)
 	}
 	if err := configureWeatherLocation(ctx, ui, &s.user, out); err != nil {
@@ -1816,7 +1816,9 @@ func containsValue(values []string, want string) bool {
 	return false
 }
 
-func collectInteractive(ctx context.Context, ui prompt.UI, root string, hardware discovery.Hardware, o discovery.Options, u *config.User) error {
+// partitionable is false for an in-place install on an unencrypted root,
+// which recovery partitioning cannot resize.
+func collectInteractive(ctx context.Context, ui prompt.UI, root string, partitionable bool, hardware discovery.Hardware, o discovery.Options, u *config.User) error {
 	var err error
 	host, _ := os.Hostname()
 	if host == "" || host == "nixos" {
@@ -1972,21 +1974,8 @@ func collectInteractive(ctx context.Context, ui prompt.UI, root string, hardware
 	if err := collectApps(ctx, ui, u); err != nil {
 		return err
 	}
-	u.RecoveryEnable, err = ui.Confirm(ctx, "Install the trusted local GjallarOS recovery/JODS boot entry?", true)
-	if err != nil {
+	if err := collectRecovery(ctx, ui, partitionable, u); err != nil {
 		return err
-	}
-	if u.RecoveryEnable {
-		u.RecoveryPartitionEnable, err = ui.Confirm(
-			ctx,
-			"Create and maintain a dedicated GjallarOS recovery partition (recommended):",
-			true,
-		)
-		if err != nil {
-			return err
-		}
-	} else {
-		u.RecoveryPartitionEnable = false
 	}
 	if u.RecoveryEnable && u.EndpointManagedDevice {
 		u.JODSPrebootLockEnable, err = ui.Confirm(ctx, "Require Secure Boot and measured-boot TPM policy for JODS preboot access?", true)
@@ -1999,6 +1988,30 @@ func collectInteractive(ctx context.Context, ui prompt.UI, root string, hardware
 	// discovery and the resolved ODDC device graph already determine.
 	u.WriteConfig = true
 	u.RunRebuild = true
+	return nil
+}
+
+// collectRecovery asks for the recovery boot entry and, where the root can
+// take one, the recovery partition.
+func collectRecovery(ctx context.Context, ui prompt.UI, partitionable bool, u *config.User) error {
+	var err error
+	u.RecoveryEnable, err = ui.Confirm(ctx, "Install the trusted local GjallarOS recovery/JODS boot entry?", true)
+	if err != nil {
+		return err
+	}
+	u.RecoveryPartitionEnable = false
+	if u.RecoveryEnable && !partitionable {
+		fmt.Fprintln(ui.Out, "No recovery partition: this root is not on encrypted Btrfs, which recovery partitioning needs. The recovery boot entry is still installed.")
+	} else if u.RecoveryEnable {
+		u.RecoveryPartitionEnable, err = ui.Confirm(
+			ctx,
+			"Create and maintain a dedicated GjallarOS recovery partition (recommended):",
+			true,
+		)
+		if err != nil {
+			return err
+		}
+	}
 	return nil
 }
 
@@ -2528,6 +2541,13 @@ func mountSourceDevice(source string) string {
 		source = source[:i]
 	}
 	return source
+}
+
+// rootEncrypted reports whether mountpoint sits on a device-mapper (LUKS)
+// mapping, the first thing discoverInstalledRecoveryTopology requires.
+func rootEncrypted(ctx context.Context, mountpoint string) bool {
+	mounted, err := exec.CommandContext(ctx, "findmnt", "-nvro", "SOURCE", "--target", mountpoint).Output()
+	return err == nil && strings.HasPrefix(mountSourceDevice(string(mounted)), "/dev/mapper/")
 }
 
 func discoverInstalledRecoveryTopology(
