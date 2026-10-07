@@ -504,11 +504,11 @@
         ]
       },
       "locked": {
-        "lastModified": 1791383018,
+        "lastModified": 1791384324,
         "narHash": "sha256-1UTroJETt19YLRXRElKFY8VmJucYofFTFw72R5is5Uk=",
         "owner": "JadeOpenServices",
         "repo": "oddc",
-        "rev": "4e311931ed5fac2dca79b99d01e50e620624afa0",
+        "rev": "5bbb6cf6c27407a18450f34277b8cce71b6d6960",
         "type": "github"
       },
       "original": {
