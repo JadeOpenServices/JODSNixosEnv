@@ -90,9 +90,11 @@ func Collect(ctx context.Context, sysRoot string) (Snapshot, error) {
 	s.PCI = lines(pci)
 
 	usb, err := command(ctx, "lsusb")
-	if err != nil {
+	if err != nil && hasUSBBus(sysRoot) {
 		return Snapshot{}, err
 	}
+	// lsusb exits 1 on a machine without any USB bus (e2e-fw13 VM,
+	// 2026-10-07); that is an empty list, not a failed probe.
 	s.USB = lines(usb)
 
 	return s, nil
@@ -206,4 +208,9 @@ func lines(value string) []string {
 		}
 	}
 	return out
+}
+
+func hasUSBBus(sysRoot string) bool {
+	entries, err := os.ReadDir(filepath.Join(sysRoot, "bus/usb/devices"))
+	return err != nil || len(entries) > 0
 }
