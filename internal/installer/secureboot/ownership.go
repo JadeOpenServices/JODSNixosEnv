@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"crypto/sha256"
+	"encoding/binary"
 	"encoding/hex"
 	"encoding/json"
 	"encoding/pem"
@@ -172,7 +173,7 @@ func Inspect(ctx context.Context) (Inspection, error) {
 			return Inspection{}, err
 		}
 
-		if defaultPresent && bytes.Equal(pk, pkDefault) {
+		if defaultPresent && samePlatformKey(pk, pkDefault) {
 			return Inspection{
 				State:       StatePendingEnrollment,
 				SetupMode:   false,
@@ -202,13 +203,13 @@ func Inspect(ctx context.Context) (Inspection, error) {
 		if err != nil {
 			return Inspection{}, err
 		}
-		if defaultPresent && bytes.Equal(pk, pkDefault) {
+		if defaultPresent && samePlatformKey(pk, pkDefault) {
 			return Inspection{
 				State:       StateOEMFactoryDerived,
 				SetupMode:   false,
 				SecureBoot:  secureBoot,
 				Recorded:    false,
-				Description: "The active Platform Key exactly matches the firmware PKDefault; KEK/db updates do not change OEM-root classification.",
+				Description: "The active Platform Key certificate matches the firmware PKDefault; KEK/db updates do not change OEM-root classification.",
 			}, nil
 		}
 	}
@@ -460,6 +461,52 @@ func efivarBool(name string) (bool, error) {
 	default:
 		return false, fmt.Errorf("%s has unexpected value %d", name, payload[0])
 	}
+}
+
+// samePlatformKey reports whether two EFI signature lists hold the same
+// signatures. Signature owner GUIDs are ignored: they only label who added an
+// entry, and firmware may store PKDefault under a different owner than the
+// enrolled PK (seen on the Framework factory variables). Lists that do not
+// parse are compared byte for byte.
+func samePlatformKey(a, b []byte) bool {
+	sa, okA := signatureEntries(a)
+	sb, okB := signatureEntries(b)
+	if !okA || !okB {
+		return bytes.Equal(a, b)
+	}
+	if len(sa) != len(sb) {
+		return false
+	}
+	for i := range sa {
+		if sa[i] != sb[i] {
+			return false
+		}
+	}
+	return true
+}
+
+// signatureEntries returns each signature of a sequence of
+// EFI_SIGNATURE_LISTs as its type GUID followed by its data, without owner.
+func signatureEntries(raw []byte) ([]string, bool) {
+	var entries []string
+	for len(raw) > 0 {
+		if len(raw) < 28 {
+			return nil, false
+		}
+		listSize := int(binary.LittleEndian.Uint32(raw[16:20]))
+		headerSize := int(binary.LittleEndian.Uint32(raw[20:24]))
+		signatureSize := int(binary.LittleEndian.Uint32(raw[24:28]))
+		if listSize < 28 || listSize > len(raw) || headerSize < 0 || signatureSize <= 16 ||
+			28+headerSize > listSize || (listSize-28-headerSize)%signatureSize != 0 {
+			return nil, false
+		}
+		kind := string(raw[:16])
+		for body := raw[28+headerSize : listSize]; len(body) > 0; body = body[signatureSize:] {
+			entries = append(entries, kind+string(body[16:signatureSize]))
+		}
+		raw = raw[listSize:]
+	}
+	return entries, len(entries) > 0
 }
 
 func efivarPayload(name string) ([]byte, bool, error) {
