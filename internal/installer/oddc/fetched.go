@@ -11,17 +11,14 @@ import (
 	portable "github.com/JadeOpenServices/oddc"
 )
 
-// Channel is the ODDC branch the installer asks: main, its stable channel.
-const Channel = "main"
-
 // FetchedSource asks ODDC for this machine only: on first resolve it
 // fetches the matched model's answer (reference closure, evidence and
-// revision) into Root, replacing an earlier answer, and resolves from it.
-// Nothing else of the catalog reaches the machine.
+// revision) at commit Rev into Root, replacing an earlier answer, and
+// resolves from it. Nothing else of the catalog reaches the machine.
 type FetchedSource struct {
-	Root    string
-	Channel string
-	Client  *http.Client
+	Root   string
+	Rev    string
+	Client *http.Client
 
 	fetched bool
 	err     error
@@ -50,24 +47,9 @@ func (source *FetchedSource) fetch(identity Identity) error {
 }
 
 func (source *FetchedSource) ask(identity Identity) error {
-	client := source.Client
-	if client == nil {
-		client = &http.Client{Timeout: time.Minute}
-	}
-	channel := source.Channel
-	if channel == "" {
-		channel = Channel
-	}
-
-	upstream, err := portable.NewGitHubSource(
-		client,
-		portable.GitHubAPI,
-		portable.GitHubRaw,
-		portable.Repository,
-		channel,
-	)
+	upstream, err := gitHub(source.Client, source.Rev)
 	if err != nil {
-		return fmt.Errorf("ask ODDC: %w", err)
+		return err
 	}
 
 	if err := os.MkdirAll(filepath.Dir(source.Root), 0o755); err != nil {
@@ -103,6 +85,74 @@ func (source *FetchedSource) ask(identity Identity) error {
 		return err
 	}
 	return os.Rename(next, source.Root)
+}
+
+func gitHub(client *http.Client, rev string) (*portable.GitHubSource, error) {
+	if rev == "" {
+		return nil, errors.New("ask ODDC: no commit to ask")
+	}
+	if client == nil {
+		client = &http.Client{Timeout: time.Minute}
+	}
+
+	upstream, err := portable.NewGitHubSource(
+		client,
+		portable.GitHubAPI,
+		portable.GitHubRaw,
+		portable.Repository,
+		rev,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("ask ODDC: %w", err)
+	}
+
+	return upstream, nil
+}
+
+// Refresh moves the answer in root to commit rev: it fetches the same
+// model again and replaces the answer only once the new one is complete.
+// It returns the answer's earlier revision. Without an answer (no model
+// matched this machine) there is nothing to refresh, and it returns "".
+func Refresh(root, rev string, client *http.Client) (string, error) {
+	if _, err := os.Stat(root); errors.Is(err, os.ErrNotExist) {
+		return "", nil
+	}
+	current := portable.DirSource{Root: root}.Revision()
+	if current == rev {
+		return current, nil
+	}
+
+	registry, err := portable.LoadRegistry(root)
+	if err != nil {
+		return current, fmt.Errorf("read ODDC answer: %w", err)
+	}
+	var models []string
+	for id, entity := range registry.Entities {
+		if entity.Kind == "DeviceModel" {
+			models = append(models, id)
+		}
+	}
+	if len(models) != 1 {
+		return current, fmt.Errorf("ODDC answer in %s holds %d models, want 1", root, len(models))
+	}
+
+	upstream, err := gitHub(client, rev)
+	if err != nil {
+		return current, err
+	}
+
+	next := root + ".next"
+	if err := os.RemoveAll(next); err != nil {
+		return current, err
+	}
+	if err := portable.FetchModel(upstream, models[0], next); err != nil {
+		return current, fmt.Errorf("fetch ODDC answer: %w", err)
+	}
+	if err := os.RemoveAll(root); err != nil {
+		return current, err
+	}
+
+	return current, os.Rename(next, root)
 }
 
 func (source *FetchedSource) Resolve(identity Identity) (Resolved, error) {

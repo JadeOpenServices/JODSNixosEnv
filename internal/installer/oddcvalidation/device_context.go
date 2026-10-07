@@ -54,7 +54,10 @@ func loadDeviceContext(
 
 	hardware := detectHardware("/sys")
 
-	source := deviceprofile.CurrentSource(repo)
+	source, err := deviceprofile.CurrentSource(repo)
+	if err != nil {
+		return DeviceContext{}, err
+	}
 
 	resolved, err := deviceprofile.Resolve(source, hardware)
 	if err != nil {

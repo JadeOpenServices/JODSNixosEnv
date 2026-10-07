@@ -15,20 +15,6 @@ var (
 	saveODDCHostOverlayPrivileged = oddchost.SavePrivileged
 )
 
-func currentODDCSource(repo string) oddc.DeviceSource {
-	return deviceprofile.CurrentSource(repo)
-}
-
-func resolveODDCModel(
-	repo string,
-	hardware discovery.Hardware,
-) (oddc.Resolved, error) {
-	return resolveODDCModelFromSource(
-		currentODDCSource(repo),
-		hardware,
-	)
-}
-
 func resolveODDCModelFromSource(
 	source oddc.DeviceSource,
 	hardware discovery.Hardware,

@@ -54,6 +54,18 @@ this repository or the machine. The `oddc` flake input supplies module code
 only, and the system configuration reads the answer as `oddc.catalog`. The
 installed system receives that model under `/etc/oddc`.
 
+The answer comes from the ODDC commit `flake.lock` pins for the `oddc` input.
+Updating ODDC on a device is one operation:
+
+    gjallarctl oddc update --rebuild
+
+It runs `nix flake update oddc` on this checkout and rebuilds. When the pinned
+commit differs from `generated/oddc/revision`, the rebuild fetches the same
+model again at the new commit and swaps it in only once complete. Offline, the
+rebuild warns and keeps the answer it has. Without `--rebuild`, the next
+`rebuild` does the fetch. `gjallarctl oddc doctor` shows the ODDC revision the
+installed model came from.
+
 `gjallarctl oddc COMMAND` passes ODDC commands to `oddc` unchanged, for example
 `gjallarctl oddc resolve` or `gjallarctl oddc explain --path PATH`. On the
 installed system these default to its model. `gjallarctl oddc validate-device`

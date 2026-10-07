@@ -46,8 +46,8 @@
       inputs.nixpkgs.follows = "nixpkgs";
     };
 
-    # Module code only; the machine's own model comes from the installer's
-    # answer in generated/oddc.
+    # Module code only; the machine's own model is the answer in
+    # generated/oddc, fetched at the commit this input is locked to.
     oddc = {
       url = "github:JadeOpenServices/oddc";
       inputs.nixpkgs.follows = "nixpkgs";

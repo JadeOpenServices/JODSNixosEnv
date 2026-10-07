@@ -23,6 +23,7 @@ import (
 	"github.com/bakanura/gjallarOS/internal/installer/bootstrap"
 	"github.com/bakanura/gjallarOS/internal/installer/config"
 	"github.com/bakanura/gjallarOS/internal/installer/deploy"
+	"github.com/bakanura/gjallarOS/internal/installer/deviceprofile"
 	"github.com/bakanura/gjallarOS/internal/installer/deviceprofilecache"
 	"github.com/bakanura/gjallarOS/internal/installer/discovery"
 	"github.com/bakanura/gjallarOS/internal/installer/diskcrypto"
@@ -350,7 +351,11 @@ func run(ctx context.Context, args []string, in io.Reader, out, errOut io.Writer
 
 	hardware := detectInstallerHardware("/sys")
 
-	resolvedSource := currentODDCSource(root)
+	var resolvedSource oddc.DeviceSource
+	resolvedSource, err = deviceprofile.CurrentSource(root)
+	if err != nil {
+		return fail(errOut, err)
+	}
 	resolvedDevice, err := resolveODDCModelFromSource(
 		resolvedSource,
 		hardware,
