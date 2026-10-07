@@ -35,3 +35,14 @@ func execute(stdout, stderr io.Writer, label, path string, args ...string) int {
 
 	return 0
 }
+
+// HardwareUpdate moves the oddc pin of the flake at root with
+// `oddc update --flake ROOT [--stage STAGE]`. It never switches; the caller
+// rebuilds afterwards and stops on a non-zero code.
+func HardwareUpdate(root, stage string, stdout, stderr io.Writer) int {
+	args := []string{"update", "--flake", root}
+	if stage != "" {
+		args = append(args, "--stage", stage)
+	}
+	return execute(stdout, stderr, "oddc", Path, args...)
+}

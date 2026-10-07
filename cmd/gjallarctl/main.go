@@ -1795,7 +1795,7 @@ func printUsage(out io.Writer) {
 	fmt.Fprintln(out, "       gjallarctl preflight [--repo PATH]")
 	oddccli.Usage(out)
 	fmt.Fprintln(out, "       gjallarctl auth")
-	fmt.Fprintln(out, "       gjallarctl rebuild [--repo PATH] [--host HOST] [-d|--debug] [-n|--no-cleanup] [NIXOS-REBUILD-ARGS...]")
+	fmt.Fprintln(out, "       gjallarctl rebuild [--repo PATH] [--host HOST] [-d|--debug] [-n|--no-cleanup] [--hardware-update [--stage main|staging]] [NIXOS-REBUILD-ARGS...]")
 	fmt.Fprintln(out, "       gjallarctl device-probe refresh [--output PATH]")
 	fmt.Fprintln(out, "       gjallarctl fan {status|list|reconcile}")
 	fmt.Fprintln(out, "       gjallarctl ai profile [--config PATH]")
@@ -1828,9 +1828,19 @@ func normalizeRebuildUserIntent(user *config.User, repo string) (bool, error) {
 func runRebuild(args []string, stdout, stderr io.Writer) int {
 	repo, host := "", ""
 	debug, cleanup := false, true
+	hardwareUpdate, stage := false, ""
 	var rebuildArgs []string
 	for i := 0; i < len(args); i++ {
 		switch args[i] {
+		case "--hardware-update":
+			hardwareUpdate = true
+		case "--stage":
+			if i+1 >= len(args) || (args[i+1] != "main" && args[i+1] != "staging") {
+				fmt.Fprintln(stderr, "ERROR: --stage requires main or staging")
+				return 2
+			}
+			i++
+			stage = args[i]
 		case "--repo", "--host":
 			if i+1 >= len(args) {
 				fmt.Fprintf(stderr, "ERROR: %s requires a value\n", args[i])
@@ -1859,6 +1869,18 @@ func runRebuild(args []string, stdout, stderr io.Writer) int {
 		return 2
 	}
 	repo = resolvedRepo
+
+	if stage != "" && !hardwareUpdate {
+		fmt.Fprintln(stderr, "ERROR: --stage requires --hardware-update")
+		return 2
+	}
+	// The oddc pin moves first, so the rebuild below already uses it.
+	if hardwareUpdate {
+		if code := oddccli.HardwareUpdate(repo, stage, stdout, stderr); code != 0 {
+			fmt.Fprintf(stderr, "[GjallarOS] Error: oddc update failed (exit %d); nothing rebuilt\n", code)
+			return code
+		}
+	}
 
 	_, err = repojson.CanonicalizeChangedTracked(
 		context.Background(),

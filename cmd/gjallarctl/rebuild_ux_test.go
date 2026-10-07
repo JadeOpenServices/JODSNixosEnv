@@ -9,6 +9,7 @@ import (
 
 	"github.com/bakanura/gjallarOS/internal/installer/config"
 	"github.com/bakanura/gjallarOS/internal/installercheck"
+	"github.com/bakanura/gjallarOS/internal/oddccli"
 )
 
 func TestRebuildDoesNotRequireExplicitRepoAndHost(t *testing.T) {
@@ -295,4 +296,53 @@ func countString(values []string, want string) int {
 		}
 	}
 	return count
+}
+
+func TestRebuildHardwareUpdateFailureStopsRebuild(t *testing.T) {
+	repo, _ := filepath.EvalSymlinks(t.TempDir())
+	for _, marker := range []string{"flake.nix", "scripts/installation/install.sh"} {
+		if err := os.MkdirAll(filepath.Dir(filepath.Join(repo, marker)), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(repo, marker), nil, 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	log := filepath.Join(t.TempDir(), "log")
+	fake := filepath.Join(t.TempDir(), "oddc")
+	body := "#!/bin/sh\necho \"$@\" > " + log + "\nexit 3\n"
+	if err := os.WriteFile(fake, []byte(body), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	old := oddccli.Path
+	oddccli.Path = fake
+	t.Cleanup(func() { oddccli.Path = old })
+
+	var stdout, stderr bytes.Buffer
+	status := runRebuild(
+		[]string{"--repo", repo, "--hardware-update", "--stage", "staging"},
+		&stdout,
+		&stderr,
+	)
+
+	if status != 3 {
+		t.Fatalf("status = %d, want 3:\n%s", status, stderr.String())
+	}
+	ran, _ := os.ReadFile(log)
+	if want := "update --flake " + repo + " --stage staging\n"; string(ran) != want {
+		t.Fatalf("oddc ran %q, want %q", ran, want)
+	}
+	if !strings.Contains(stderr.String(), "nothing rebuilt") {
+		t.Fatalf("failure not reported:\n%s", stderr.String())
+	}
+}
+
+func TestRebuildStageRequiresHardwareUpdate(t *testing.T) {
+	var stdout, stderr bytes.Buffer
+	if status := runRebuild([]string{"--repo", t.TempDir(), "--stage", "main"}, &stdout, &stderr); status != 2 {
+		t.Fatalf("status = %d, want 2", status)
+	}
+	if status := runRebuild([]string{"--hardware-update", "--stage", "dev"}, &stdout, &stderr); status != 2 {
+		t.Fatalf("bad stage status = %d, want 2", status)
+	}
 }
