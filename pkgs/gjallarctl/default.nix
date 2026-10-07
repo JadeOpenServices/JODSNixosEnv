@@ -68,7 +68,7 @@ AUTH
   meta = {
     description = "Safe GjallarOS maintenance and validation tool";
     mainProgram = "gjallarctl";
-    license = lib.licenses.mit;
+    license = lib.licenses.agpl3Plus;
     platforms = lib.platforms.linux;
   };
 }
