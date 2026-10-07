@@ -9,7 +9,7 @@ Needs a machine booted in UEFI mode (legacy BIOS/CSM is refused). On NixOS,
 or the NixOS minimal ISO:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/JadeOpenServices/JODSNixosEnv/main/scripts/installation/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/JadeOpenServices/gjallarOS/main/scripts/installation/install.sh | bash
 ```
 
 The script clones the repository with its submodules into
@@ -212,5 +212,5 @@ rebuild, then delete the override file.
 ## Credits
 
 GjallarOS builds on the ideas and groundwork of
-[AlfheimOS](https://github.com/bakanura/JODSNixosEnv). Please send some love
+[AlfheimOS](https://github.com/Serpentian/AlfheimOS). Please send some love
 their way as well.

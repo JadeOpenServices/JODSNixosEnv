@@ -29,7 +29,7 @@ command -v nix >/dev/null 2>&1 || {
 # pipe is the script itself, so the installer reads answers from the terminal.
 script_file="${BASH_SOURCE[0]:-}"
 if [[ ! -f "$script_file" || ! -f "$(dirname "$script_file")/../../flake.nix" ]]; then
-    repo_url="${GJALLAR_REPO_URL:-https://github.com/JadeOpenServices/JODSNixosEnv.git}"
+    repo_url="${GJALLAR_REPO_URL:-https://github.com/JadeOpenServices/gjallarOS.git}"
     checkout="${GJALLAR_DIR:-$HOME/Documents/gjallarOS}"
     git_cmd=(git)
     command -v git >/dev/null 2>&1 ||
