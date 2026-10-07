@@ -24,7 +24,6 @@ func collectTailscaleAnswers(t *testing.T, answers ...string) (*config.Tailscale
 
 func TestCollectTailscaleHomeWifisAndSiteRouter(t *testing.T) {
 	got, _ := collectTailscaleAnswers(t,
-		"", // enable
 		"", // home subnets: default
 		"y",
 		"home-router",
@@ -34,14 +33,13 @@ func TestCollectTailscaleHomeWifisAndSiteRouter(t *testing.T) {
 		"", // targets: default
 	)
 	want := config.TailscaleIntent{
-		Enable:            true,
 		HomeSubnets:       []string{"192.168.8.0/24"},
 		TrustedWifis:      []string{"bakasifu-5Ghz", "bakasifu-2.4Ghz", "fizzlipuzzli"},
 		ExitNode:          "home-router",
 		SiteRouterTrust:   true,
 		SiteRouterTargets: []string{"192.168.8.1:53"},
 	}
-	if got.Enable != want.Enable || got.ExitNode != want.ExitNode || !got.SiteRouterTrust ||
+	if got.ExitNode != want.ExitNode || !got.SiteRouterTrust ||
 		!slices.Equal(got.HomeSubnets, want.HomeSubnets) ||
 		!slices.Equal(got.TrustedWifis, want.TrustedWifis) ||
 		!slices.Equal(got.SiteRouterTargets, want.SiteRouterTargets) {
@@ -51,7 +49,6 @@ func TestCollectTailscaleHomeWifisAndSiteRouter(t *testing.T) {
 
 func TestCollectTailscaleReasksInvalidAnswers(t *testing.T) {
 	got, out := collectTailscaleAnswers(t,
-		"y",
 		"192.168.8.0", // not a CIDR
 		"10.0.0.0/24",
 		"y",
@@ -73,7 +70,7 @@ func TestCollectTailscaleReasksInvalidAnswers(t *testing.T) {
 
 func TestCollectTailscaleQuotedWifiNames(t *testing.T) {
 	got, out := collectTailscaleAnswers(t,
-		"y", "", "y", "OpenWrt",
+		"", "y", "OpenWrt",
 		`"cafe, upstairs`, // unterminated quote is asked again
 		`bakasifu-5ghz, "cafe, upstairs", fizzlipuzzli`,
 		"elsewhere", // not a trusted Wi-Fi: asked again
@@ -92,21 +89,14 @@ func TestCollectTailscaleQuotedWifiNames(t *testing.T) {
 }
 
 func TestCollectTailscaleWithoutVPNKeepsHomeBypassOnly(t *testing.T) {
-	got, _ := collectTailscaleAnswers(t, "y", "", "n")
-	if !got.Enable || got.ExitNode != "" || got.SiteRouterTrust || len(got.TrustedWifis) != 0 {
-		t.Fatalf("tailscale = %#v", got)
-	}
-}
-
-func TestCollectTailscaleDisabled(t *testing.T) {
-	got, _ := collectTailscaleAnswers(t, "n")
-	if got == nil || got.Enable {
+	got, _ := collectTailscaleAnswers(t, "", "n")
+	if got.ExitNode != "" || got.SiteRouterTrust || len(got.TrustedWifis) != 0 {
 		t.Fatalf("tailscale = %#v", got)
 	}
 }
 
 func TestCollectTailscaleExitNodeDefaultsToAuto(t *testing.T) {
-	got, _ := collectTailscaleAnswers(t, "y", "", "y", "", "home", "", "n")
+	got, _ := collectTailscaleAnswers(t, "", "y", "", "home", "", "n")
 	if got.ExitNode != "auto" || !slices.Equal(got.TrustedWifis, []string{"home"}) || got.WifiExitNodes != nil {
 		t.Fatalf("tailscale = %#v", got)
 	}

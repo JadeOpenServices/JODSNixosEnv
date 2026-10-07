@@ -35,11 +35,14 @@ let
     builtins.fromJSON (builtins.readFile file);
 
   # Generated state from before the installer asked: the old live behaviour.
-  legacy = evaluate { };
-  legacyNull = evaluate { tailscale = null; };
+  legacy = evaluate { apps = [ "tailscale" ]; };
+  legacyNull = evaluate {
+    apps = [ "tailscale" ];
+    tailscale = null;
+  };
   vpn = evaluate {
+    apps = [ "tailscale" ];
     tailscale = {
-      enable = true;
       homeSubnets = [ "192.168.8.0/24" ];
       trustedWifis = [
         "bakasifu-5Ghz"
@@ -52,8 +55,8 @@ let
     };
   };
   off = evaluate {
+    apps = [ ];
     tailscale = {
-      enable = false;
       homeSubnets = [ ];
       trustedWifis = [ ];
       exitNode = "";

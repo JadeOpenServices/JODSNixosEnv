@@ -1,5 +1,6 @@
 {
   "name": "Microsoft Teams",
   "description": "Teams as a web application.",
-  "category": "communication"
+  "category": "communication",
+  "default": true
 }

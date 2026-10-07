@@ -1,5 +1,6 @@
 {
   "name": "LibreOffice",
   "description": "Office suite.",
-  "category": "office"
+  "category": "office",
+  "default": true
 }

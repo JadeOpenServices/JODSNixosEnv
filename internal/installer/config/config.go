@@ -10,7 +10,10 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"strings"
+
+	"github.com/bakanura/gjallarOS/apps"
 )
 
 type User struct {
@@ -40,6 +43,8 @@ type User struct {
 	PreferredBrowser       string                 `json:"preferredBrowser"`
 	WebApplications        []WebApplicationIntent `json:"webApplications"`
 	Tailscale              *TailscaleIntent       `json:"tailscale,omitempty"`
+	// Apps are the selected catalogue app IDs (apps/<id>/meta.json).
+	Apps []string `json:"apps"`
 
 	// Compatibility fields retained while the installer prompt and generated
 	// Nix settings migrate to the generic webApplications contract.
@@ -52,16 +57,13 @@ type User struct {
 	NextcloudHost             string `json:"nextcloudHost"`
 	Theme                     string `json:"theme"`
 	BackgroundNormal          string `json:"backgroundNormal"`
-	ContainersEnable          bool   `json:"containersEnable"`
 	DebugFunctions            bool   `json:"debugFunctions"`
-	AIEnable                  bool   `json:"aiEnable"`
 	OverrideAISelection       bool   `json:"overrideAiSelection"`
 	OverrideModelWith         string `json:"overrideModelWith"`
 	AIAgentMode               string `json:"aiAgentMode"`
 	AIEndpoint                string `json:"aiEndpoint"`
 	AIRemoteModel             string `json:"aiRemoteModel"`
 	AIRemoteContextTokens     int    `json:"aiRemoteContextTokens"`
-	NemuEnable                bool   `json:"nemuEnable"`
 	LUKSTPM2Enable            bool   `json:"luksTpm2Enable"`
 	RecoveryEnable            bool   `json:"recoveryEnable"`
 	RecoveryPartitionEnable   bool   `json:"recoveryPartitionEnable"`
@@ -85,6 +87,11 @@ type User struct {
 	WriteConfig               bool   `json:"writeConfig"`
 	RunRebuild                bool   `json:"runRebuild"`
 	ForceRedeploy             bool   `json:"forceRedeploy"`
+}
+
+// HasApp reports whether the catalogue app id is selected.
+func (u User) HasApp(id string) bool {
+	return slices.Contains(u.Apps, id)
 }
 
 // WriteAtomic persists the confirmed machine-local installer input.
@@ -138,11 +145,25 @@ func Load(path string) (User, error) {
 	if err != nil {
 		return User{}, fmt.Errorf("read user configuration: %w", err)
 	}
+	var fields map[string]json.RawMessage
+	if err := json.Unmarshal(contents, &fields); err == nil {
+		for key, id := range map[string]string{"aiEnable": "ai", "containersEnable": "containers", "nemuEnable": "nemu"} {
+			if _, old := fields[key]; old {
+				return User{}, fmt.Errorf("user configuration: %s was replaced by apps; remove it and list %q in apps when wanted", key, id)
+			}
+		}
+	}
 	decoder := json.NewDecoder(strings.NewReader(string(contents)))
 	decoder.DisallowUnknownFields()
 	var user User
 	if err := decoder.Decode(&user); err != nil {
 		return User{}, fmt.Errorf("parse user configuration: %w", err)
+	}
+	// Without apps, the catalogue defaults apply.
+	if user.Apps == nil {
+		if user.Apps, err = apps.Defaults(); err != nil {
+			return User{}, err
+		}
 	}
 	if err := NormalizeProjectTools(&user); err != nil {
 		return User{}, err
@@ -174,7 +195,10 @@ func Validate(user User) error {
 			return fmt.Errorf("usbTrustEnforce requires usbTrustTpmHandle")
 		}
 	}
-	if user.AIEnable {
+	if err := apps.Validate(user.Apps); err != nil {
+		return err
+	}
+	if user.HasApp("ai") {
 		if user.OverrideAISelection && strings.TrimSpace(user.OverrideModelWith) == "" {
 			return fmt.Errorf("overrideModelWith is required when overrideAiSelection is true")
 		}

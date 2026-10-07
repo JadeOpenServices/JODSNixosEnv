@@ -1,5 +1,6 @@
 {
   "name": "Wine",
   "description": "Runs Windows programs.",
-  "category": "compatibility"
+  "category": "compatibility",
+  "default": true
 }

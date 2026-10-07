@@ -10,14 +10,14 @@ func validAIUser() User {
 		Shell:       "zsh",
 		Editors:     []string{"vim"},
 		Browsers:    []string{"firefox"},
-		AIEnable:    true,
+		Apps:        []string{"ai"},
 		AIAgentMode: "workspace",
 	}
 }
 
 func TestAIConfigurationBranches(t *testing.T) {
 	u := validAIUser()
-	u.AIEnable = false
+	u.Apps = nil
 	u.AIAgentMode = ""
 	if err := Validate(u); err != nil {
 		t.Fatalf("disabled: %v", err)

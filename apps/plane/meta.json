@@ -1,5 +1,6 @@
 {
   "name": "Plane",
   "description": "Plane project management as a web application.",
-  "category": "office"
+  "category": "office",
+  "default": true
 }

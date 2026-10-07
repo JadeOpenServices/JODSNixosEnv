@@ -11,7 +11,7 @@ func matchesPresetTailscale(raw json.RawMessage) bool {
 	for key, value := range fields {
 		var expected presetValueType
 		switch key {
-		case "enable", "siteRouterTrust":
+		case "siteRouterTrust":
 			expected = presetBool
 		case "exitNode":
 			expected = presetString

@@ -1,5 +1,6 @@
 {
   "name": "qBittorrent",
   "description": "BitTorrent client.",
-  "category": "network"
+  "category": "network",
+  "default": true
 }

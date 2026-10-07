@@ -1,5 +1,7 @@
 {
   "name": "Local AI",
-  "description": "Localhost-only Ollama backend with hardware-aware model selection.",
-  "category": "development"
+  "description": "Ollama backend: local with hardware-aware model selection, or a central server.",
+  "category": "development",
+  "default": false,
+  "installer": "Enable AI tools?"
 }

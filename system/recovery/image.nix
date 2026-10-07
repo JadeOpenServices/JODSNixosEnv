@@ -55,7 +55,7 @@ let
 
       dotfilesDir = "";
 
-      containersEnable = getSetting "containersEnable" false;
+      apps = settings.apps;
       debugFunctions = getSetting "debugFunctions" false;
 
       shell = getSetting "shell" "zsh";
@@ -68,12 +68,9 @@ let
       backgroundNormal = getSetting "backgroundNormal" "";
 
 
-      aiEnable = getSetting "aiEnable" false;
       aiAgentMode = getSetting "aiAgentMode" "workspace";
       overrideAiSelection = false;
       overrideModelWith = "";
-
-      nemuEnable = getSetting "nemuEnable" false;
 
       luksTpm2Enable = getSetting "luksTpm2Enable" false;
 

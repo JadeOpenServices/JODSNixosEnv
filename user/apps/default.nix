@@ -1,17 +1,14 @@
 { lib, settings, ... }:
 
 let
-  # System apps (ai, containers, nemu, tailscale) are selected on the
-  # NixOS side; see system/apps.nix.
-  catalogue = lib.filterAttrs (_: app: builtins.pathExists (app.path + "/home.nix")) (
-    import ../../apps
-  );
+  all = import ../../apps;
+  catalogue = lib.filterAttrs (_: app: builtins.pathExists (app.path + "/home.nix")) all;
 
-  # `settings.apps` selects catalogue apps; without it an install keeps
-  # every app it had before the selection existed.
-  selected = settings.apps or (builtins.attrNames catalogue);
+  # `settings.apps` selects catalogue apps. System apps (ai, containers,
+  # nemu, tailscale) are enabled on the NixOS side; see apps/nixos-options.nix.
+  selected = builtins.filter (id: catalogue ? ${id}) settings.apps;
 
-  unknown = builtins.filter (id: !(catalogue ? ${id})) selected;
+  unknown = builtins.filter (id: !(all ? ${id})) settings.apps;
 in
 {
   imports = [

@@ -67,8 +67,7 @@ func Tailscale(t *config.TailscaleIntent) string {
 		return "null"
 	}
 	return fmt.Sprintf(
-		"{ enable = %t; homeSubnets = %s; trustedWifis = %s; exitNode = %s; wifiExitNodes = %s; siteRouterTrust = %t; siteRouterTargets = %s; }",
-		t.Enable,
+		"{ homeSubnets = %s; trustedWifis = %s; exitNode = %s; wifiExitNodes = %s; siteRouterTrust = %t; siteRouterTargets = %s; }",
 		Strings(t.HomeSubnets),
 		Strings(t.TrustedWifis),
 		String(t.ExitNode),
@@ -91,24 +90,23 @@ type Settings struct {
 	USBTrustTPMHandle                                                                       string
 	Name, Email, GitHubUsername, DotfilesDir                                                string
 	RootPasswordFile                                                                        string
-	ContainersEnable, DebugFunctions                                                        bool
+	DebugFunctions                                                                          bool
 	Shell                                                                                   string
 	Editors, Browsers                                                                       []string
 	PreferredEditor, PreferredBrowser                                                       string
 	WebApplications                                                                         []config.WebApplicationIntent
 	Tailscale                                                                               *config.TailscaleIntent
+	Apps                                                                                    []string
 	NextcloudHost                                                                           string
 	NextcloudEnable                                                                         bool
 	BackgroundNormal                                                                        string
 	ODDCModel                                                                               string
 	GraphicsBusID, GraphicsIntegratedBusID                                                  string
-	AIEnable                                                                                bool
 	AIModel, AIAccelerationProfile                                                          string
 	AIAgentMode                                                                             string
 	AIContextTokens, AIVRAMMB                                                               int
 	AIEndpoint, AIRemoteModel                                                               string
 	AIRemoteContextTokens                                                                   int
-	NemuEnable                                                                              bool
 	LUKSTPM2Enable                                                                          bool
 	RecoveryEnable, RecoveryPartitionEnable, JODSPrebootLockEnable                          bool
 	SecureBootEnable                                                                        bool
@@ -148,7 +146,6 @@ func FromUser(user config.User) Settings {
 		Email:                               user.Email,
 		GitHubUsername:                      user.GitHubUsername,
 		DotfilesDir:                         user.DotfilesDir,
-		ContainersEnable:                    user.ContainersEnable,
 		DebugFunctions:                      user.DebugFunctions,
 		Shell:                               user.Shell,
 		Editors:                             user.Editors,
@@ -157,15 +154,14 @@ func FromUser(user config.User) Settings {
 		PreferredBrowser:                    user.PreferredBrowser,
 		WebApplications:                     user.WebApplications,
 		Tailscale:                           user.Tailscale,
+		Apps:                                user.Apps,
 		NextcloudEnable:                     user.NextcloudEnable,
 		NextcloudHost:                       user.NextcloudHost,
 		BackgroundNormal:                    user.BackgroundNormal,
-		AIEnable:                            user.AIEnable,
 		AIAgentMode:                         user.AIAgentMode,
 		AIEndpoint:                          user.AIEndpoint,
 		AIRemoteModel:                       user.AIRemoteModel,
 		AIRemoteContextTokens:               user.AIRemoteContextTokens,
-		NemuEnable:                          user.NemuEnable,
 		LUKSTPM2Enable:                      user.LUKSTPM2Enable,
 		RecoveryEnable:                      user.RecoveryEnable,
 		RecoveryPartitionEnable:             user.RecoveryPartitionEnable,
@@ -185,6 +181,10 @@ func FromUser(user config.User) Settings {
 }
 
 var retiredGeneratedKeys = map[string]bool{
+	// Selected by apps since the app catalogue.
+	"aiEnable":             true,
+	"containersEnable":     true,
+	"nemuEnable":           true,
 	"backgroundWork":       true,
 	"deviceBoardName":      true,
 	"deviceBoardVendor":    true,
@@ -230,7 +230,6 @@ var userIntentKeys = []string{
 	"email",
 	"githubUsername",
 	"dotfilesDir",
-	"containersEnable",
 	"debugFunctions",
 	"shell",
 	"editors",
@@ -242,12 +241,10 @@ var userIntentKeys = []string{
 	"nextcloudEnable",
 	"nextcloudHost",
 	"backgroundNormal",
-	"aiEnable",
 	"aiAgentMode",
 	"aiEndpoint",
 	"aiRemoteModel",
 	"aiRemoteContextTokens",
-	"nemuEnable",
 	"luksTpm2Enable",
 	"recoveryEnable",
 	"recoveryPartitionEnable",
@@ -263,6 +260,7 @@ var userIntentKeys = []string{
 	"jodsDesktopProfile",
 	"jodsFingerprintEnrollmentAllowed",
 	"theme",
+	"apps",
 }
 
 // SyncUserIntent updates only direct user-owned assignments in an existing
@@ -405,7 +403,6 @@ func Render(s Settings) []byte {
 	str("githubUsername", s.GitHubUsername)
 	str("dotfilesDir", s.DotfilesDir)
 	str("rootPasswordFile", s.RootPasswordFile)
-	boolean("containersEnable", s.ContainersEnable)
 	boolean("debugFunctions", s.DebugFunctions)
 	str("shell", s.Shell)
 	list("editors", s.Editors)
@@ -414,13 +411,13 @@ func Render(s Settings) []byte {
 	str("preferredBrowser", s.PreferredBrowser)
 	fmt.Fprintf(&b, "    webApplications = %s;\n", WebApplications(s.WebApplications))
 	fmt.Fprintf(&b, "    tailscale = %s;\n", Tailscale(s.Tailscale))
+	list("apps", s.Apps)
 	boolean("nextcloudEnable", s.NextcloudEnable)
 	str("nextcloudHost", s.NextcloudHost)
 	str("backgroundNormal", s.BackgroundNormal)
 	str("oddcModel", s.ODDCModel)
 	str("graphicsBusId", s.GraphicsBusID)
 	str("graphicsIntegratedBusId", s.GraphicsIntegratedBusID)
-	boolean("aiEnable", s.AIEnable)
 	str("aiModel", s.AIModel)
 	str("aiAccelerationProfile", s.AIAccelerationProfile)
 	str("aiAgentMode", s.AIAgentMode)
@@ -429,7 +426,6 @@ func Render(s Settings) []byte {
 	str("aiEndpoint", s.AIEndpoint)
 	str("aiRemoteModel", s.AIRemoteModel)
 	integer("aiRemoteContextTokens", s.AIRemoteContextTokens)
-	boolean("nemuEnable", s.NemuEnable)
 	boolean("luksTpm2Enable", s.LUKSTPM2Enable)
 	boolean("recoveryEnable", s.RecoveryEnable)
 	boolean("recoveryPartitionEnable", s.RecoveryPartitionEnable)

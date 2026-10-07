@@ -14,7 +14,6 @@ func TestTailscaleRender(t *testing.T) {
 		t.Fatalf("nil intent = %s", got)
 	}
 	got := Tailscale(&config.TailscaleIntent{
-		Enable:            true,
 		HomeSubnets:       []string{"192.168.8.0/24"},
 		TrustedWifis:      []string{"bakasifu-5Ghz", "${evil}"},
 		ExitNode:          "home-router",
@@ -22,7 +21,7 @@ func TestTailscaleRender(t *testing.T) {
 		SiteRouterTrust:   true,
 		SiteRouterTargets: []string{"192.168.8.1:53"},
 	})
-	want := `{ enable = true; homeSubnets = [ "192.168.8.0/24" ]; trustedWifis = [ "bakasifu-5Ghz" "\${evil}" ]; exitNode = "home-router"; wifiExitNodes = { "\${evil}" = "auto"; }; siteRouterTrust = true; siteRouterTargets = [ "192.168.8.1:53" ]; }`
+	want := `{ homeSubnets = [ "192.168.8.0/24" ]; trustedWifis = [ "bakasifu-5Ghz" "\${evil}" ]; exitNode = "home-router"; wifiExitNodes = { "\${evil}" = "auto"; }; siteRouterTrust = true; siteRouterTargets = [ "192.168.8.1:53" ]; }`
 	if got != want {
 		t.Fatalf("got  %s\nwant %s", got, want)
 	}
@@ -45,7 +44,8 @@ rec {
 		Theme:              "noctalia",
 		AIAgentMode:        "workspace",
 		JODSEnrollmentMode: "manual",
-		Tailscale:          &config.TailscaleIntent{Enable: true, ExitNode: "home-router"},
+		Tailscale:          &config.TailscaleIntent{ExitNode: "home-router"},
+		Apps:               []string{"tailscale"},
 	}
 	if err := SyncUserIntent(path, user); err != nil {
 		t.Fatal(err)
@@ -54,7 +54,10 @@ rec {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(string(data), `tailscale = { enable = true; homeSubnets = [  ]; trustedWifis = [  ]; exitNode = "home-router";`) {
+	if !strings.Contains(string(data), `tailscale = { homeSubnets = [  ]; trustedWifis = [  ]; exitNode = "home-router";`) {
 		t.Fatalf("tailscale not synced:\n%s", data)
+	}
+	if !strings.Contains(string(data), `apps = [ "tailscale" ];`) {
+		t.Fatalf("apps not synced:\n%s", data)
 	}
 }

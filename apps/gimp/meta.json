@@ -1,5 +1,6 @@
 {
   "name": "GIMP",
   "description": "Image editor.",
-  "category": "graphics"
+  "category": "graphics",
+  "default": true
 }

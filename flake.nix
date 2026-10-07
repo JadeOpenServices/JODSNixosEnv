@@ -153,7 +153,6 @@
           tailscaleModules = [
             ./apps/tailscale/nixos.nix
             ./apps/nixos-options.nix
-            ./system/apps.nix
           ];
         };
 

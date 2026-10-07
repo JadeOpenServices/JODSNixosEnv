@@ -16,6 +16,7 @@ buildGoModule {
     fileset = lib.fileset.unions [
       ../../go.mod
       ../../go.sum
+      (lib.fileset.fileFilter (f: f.hasExt "go" || f.name == "meta.json") ../../apps)
       ../../cmd
       ../../internal/ai
       ../../internal/hardware

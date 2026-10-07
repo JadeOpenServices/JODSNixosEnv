@@ -63,10 +63,23 @@ Hyprland bindings are maintained in
 ## App catalogue
 
 Optional applications live in `apps/<id>/`: `meta.json` (name, description,
-category), and a `home.nix` and/or `nixos.nix` module. System apps are switched
-with `gjallar.apps.<id>.enable` (declared in `apps/nixos-options.nix`); today
-these are `ai`, `containers`, `nemu` and `tailscale`. Each app owns its whole
-module, so removing an app removes everything it brought in.
+category, `default`, optional `installer` question), and a `home.nix` and/or
+`nixos.nix` module. Each app owns its whole module, so removing an app removes
+everything it brought in.
+
+`user.config.json` selects apps with one list:
+
+```json
+"apps": ["ai", "btop", "containers", "dolphin", "tailscale"]
+```
+
+Without `apps`, every app with `"default": true` is installed. The installer
+asks each app's `installer` question (today `ai`, `containers`, `nemu`,
+`tailscale`) and uses `default` for the rest. `apps` drives
+`gjallar.apps.<id>.enable` on both the NixOS side (`apps/nixos-options.nix`)
+and the Home Manager side (`user/apps/default.nix`). The old `aiEnable`,
+`containersEnable` and `nemuEnable` keys are rejected; list `ai`,
+`containers` or `nemu` in `apps` instead.
 
 ## Hardware catalog (ODDC)
 

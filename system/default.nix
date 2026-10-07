@@ -36,7 +36,6 @@
     ./tools
     ./users/privilege.nix
     ../apps/nixos.nix
-    ./apps.nix
   ]
   ++ (map (wm: ./wm/${wm}) settings.wms);
 

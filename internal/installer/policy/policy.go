@@ -24,10 +24,10 @@ type Features struct {
 
 func FromUser(user config.User) Features {
 	return Features{
-		AIEnable: user.AIEnable, AutoReboot: user.AutoReboot,
-		DebugFunctions: user.DebugFunctions, ContainersEnable: user.ContainersEnable,
+		AIEnable: user.HasApp("ai"), AutoReboot: user.AutoReboot,
+		DebugFunctions: user.DebugFunctions, ContainersEnable: user.HasApp("containers"),
 		ClamshellEnable: user.ClamshellEnable, USBGuardEnable: user.USBGuardEnable, USBTrustEnforce: user.USBTrustEnforce, USBTrustTPMHandle: user.USBTrustTPMHandle, PrintingEnable: user.PrintingEnable, NetworkPrintingEnable: user.NetworkPrintingEnable,
-		NemuEnable:     user.NemuEnable,
+		NemuEnable:     user.HasApp("nemu"),
 		RecoveryEnable: user.RecoveryEnable, JODSPrebootLockEnable: user.JODSPrebootLockEnable,
 		SecureBootEnable:       user.SecureBootEnable,
 		EndpointManagedDevice:  user.EndpointManagedDevice,

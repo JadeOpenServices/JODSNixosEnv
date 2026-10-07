@@ -8,11 +8,10 @@ import (
 
 func TestFromUser(t *testing.T) {
 	got := FromUser(config.User{
-		AIEnable:          true,
+		Apps:              []string{"ai", "nemu"},
 		USBGuardEnable:    true,
 		USBTrustEnforce:   true,
 		USBTrustTPMHandle: "0x81000042",
-		NemuEnable:        true,
 	})
 
 	if !got.AIEnable || !got.USBGuardEnable || !got.USBTrustEnforce || got.USBTrustTPMHandle != "0x81000042" || !got.NemuEnable || got.ContainersEnable {

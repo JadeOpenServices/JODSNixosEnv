@@ -85,26 +85,27 @@ let
     '';
   };
 
+  containersEnable = builtins.elem "containers" settings.apps;
 in
 {
-  home.sessionVariables = lib.mkIf settings.containersEnable {
+  home.sessionVariables = lib.mkIf containersEnable {
     GJALLAR_CONTAINER_DATA_HOME = containerDataHome;
   };
 
   systemd.user.tmpfiles.rules =
-    lib.optionals settings.containersEnable
+    lib.optionals containersEnable
       [
         "d %h/Containers 0700 - - -"
       ];
 
   home.packages =
-    lib.optionals settings.containersEnable
+    lib.optionals containersEnable
       [
         containerStorageInfo
       ];
 
   systemd.user.services.podman-storage-maintenance =
-    lib.mkIf settings.containersEnable
+    lib.mkIf containersEnable
       {
         Unit.Description = "Rootless Podman storage maintenance";
 
@@ -117,7 +118,7 @@ in
       };
 
   systemd.user.timers.podman-storage-maintenance =
-    lib.mkIf settings.containersEnable
+    lib.mkIf containersEnable
       {
         Unit.Description = "Rootless Podman storage maintenance timer";
 

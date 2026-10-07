@@ -1,5 +1,7 @@
 {
   "name": "Containers",
   "description": "Rootless Podman with Docker compatibility, distrobox and compose.",
-  "category": "development"
+  "category": "development",
+  "default": false,
+  "installer": "Enable rootless container tooling with Docker-compatible commands?"
 }

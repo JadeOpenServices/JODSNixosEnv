@@ -1,5 +1,7 @@
 {
   "name": "Tailscale",
   "description": "Tailnet VPN that switches by network trust.",
-  "category": "network"
+  "category": "network",
+  "default": true,
+  "installer": "Enable Tailscale?"
 }

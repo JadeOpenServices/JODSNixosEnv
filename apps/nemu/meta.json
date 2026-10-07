@@ -1,5 +1,7 @@
 {
   "name": "nEMU",
   "description": "QEMU virtual machines in the terminal, with SPICE USB redirection.",
-  "category": "system"
+  "category": "system",
+  "default": false,
+  "installer": "Enable Nemu virtual machines?"
 }

@@ -9,7 +9,6 @@ import (
 
 func TestValidateTailscale(t *testing.T) {
 	good := TailscaleIntent{
-		Enable:            true,
 		HomeSubnets:       []string{"192.168.8.0/24", "fd00::/64"},
 		TrustedWifis:      []string{"bakasifu-5Ghz", "fizzlipuzzli"},
 		ExitNode:          "home-router",

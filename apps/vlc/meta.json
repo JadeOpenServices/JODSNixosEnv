@@ -1,5 +1,6 @@
 {
   "name": "VLC",
   "description": "Media player.",
-  "category": "media"
+  "category": "media",
+  "default": true
 }

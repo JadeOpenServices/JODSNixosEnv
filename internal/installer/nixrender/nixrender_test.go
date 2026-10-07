@@ -3,6 +3,7 @@ package nixrender
 import (
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 
@@ -49,8 +50,8 @@ func TestRenderRecoveryPolicyDefaultsDisabled(t *testing.T) {
 }
 
 func TestRenderAIResolvedState(t *testing.T) {
-	got := string(Render(Settings{AIEnable: true, AIModel: "qwen2.5-coder:7b", AIAccelerationProfile: "auto", AIAgentMode: "workspace", AIContextTokens: 8192}))
-	for _, want := range []string{"aiEnable = true;", `aiModel = "qwen2.5-coder:7b";`, `aiAccelerationProfile = "auto";`, `aiAgentMode = "workspace";`, "aiContextTokens = 8192;"} {
+	got := string(Render(Settings{Apps: []string{"ai"}, AIModel: "qwen2.5-coder:7b", AIAccelerationProfile: "auto", AIAgentMode: "workspace", AIContextTokens: 8192}))
+	for _, want := range []string{`apps = [ "ai" ];`, `aiModel = "qwen2.5-coder:7b";`, `aiAccelerationProfile = "auto";`, `aiAgentMode = "workspace";`, "aiContextTokens = 8192;"} {
 		if !strings.Contains(got, want) {
 			t.Fatalf("missing %q", want)
 		}
@@ -129,7 +130,7 @@ func TestFromUserMapsRoutedIntent(t *testing.T) {
 		USBTrustTPMHandle:     "0x81000042",
 		PrintingEnable:        true,
 		NetworkPrintingEnable: true,
-		ContainersEnable:      true,
+		Apps:                  []string{"containers"},
 		WebApplications: []config.WebApplicationIntent{
 			{
 				ID:       config.WebApplicationPlane,
@@ -157,7 +158,7 @@ func TestFromUserMapsRoutedIntent(t *testing.T) {
 
 	if !got.PrintingEnable ||
 		!got.NetworkPrintingEnable ||
-		!got.ContainersEnable ||
+		!slices.Equal(got.Apps, []string{"containers"}) ||
 		!got.USBGuardEnable ||
 		!got.USBTrustEnforce {
 		t.Fatalf(
@@ -295,7 +296,7 @@ rec {
 }
 
 func TestRenderAICentralServer(t *testing.T) {
-	got := string(Render(Settings{AIEnable: true, AIEndpoint: "https://192.168.8.205", AIRemoteModel: "qwen3-coder:30b", AIRemoteContextTokens: 32768}))
+	got := string(Render(Settings{AIEndpoint: "https://192.168.8.205", AIRemoteModel: "qwen3-coder:30b", AIRemoteContextTokens: 32768}))
 	for _, want := range []string{`aiEndpoint = "https://192.168.8.205";`, `aiRemoteModel = "qwen3-coder:30b";`, "aiRemoteContextTokens = 32768;"} {
 		if !strings.Contains(got, want) {
 			t.Fatalf("missing %q", want)

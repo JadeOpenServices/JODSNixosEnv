@@ -16,6 +16,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/bakanura/gjallarOS/apps"
 	"github.com/bakanura/gjallarOS/internal/ai/aitoken"
 	"github.com/bakanura/gjallarOS/internal/ai/profile"
 	"github.com/bakanura/gjallarOS/internal/hardware/graphics"
@@ -832,7 +833,7 @@ func run(ctx context.Context, args []string, in io.Reader, out, errOut io.Writer
 		}
 		fmt.Fprint(out, path)
 	}
-	if s.user.AIEnable && s.user.AIEndpoint != "" {
+	if s.user.HasApp("ai") && s.user.AIEndpoint != "" {
 		if err := ensureAIToken(ctx, out); err != nil {
 			return fail(errOut, err)
 		}
@@ -1967,49 +1968,7 @@ func collectInteractive(ctx context.Context, ui prompt.UI, root string, hardware
 			return err
 		}
 	}
-	if err := collectTailscale(ctx, ui, u); err != nil {
-		return err
-	}
-	u.ContainersEnable, err = ui.Confirm(ctx, "Enable rootless container tooling with Docker-compatible commands?", false)
-	if err != nil {
-		return err
-	}
-	u.AIEnable, err = ui.Confirm(ctx, "Enable AI tools?", false)
-	if err != nil {
-		return err
-	}
-	u.AIEndpoint, u.AIRemoteModel, u.AIRemoteContextTokens = "", "", 0
-	if u.AIEnable {
-		backend, err := ui.Choice(ctx, "AI backend", "local", []string{"local", "central-server"})
-		if err != nil {
-			return err
-		}
-		if backend == "central-server" {
-			if err := collectAIServer(ctx, ui, u); err != nil {
-				return err
-			}
-		}
-	}
-	if u.AIEnable && u.AIEndpoint == "" {
-		u.OverrideAISelection, err = ui.Confirm(ctx, "Override automatic hardware-aware AI model selection?", false)
-		if err != nil {
-			return err
-		}
-		if u.OverrideAISelection {
-			u.OverrideModelWith, err = ui.Value(ctx, "Exact Ollama model identifier", "qwen2.5-coder:14b")
-			if err != nil {
-				return err
-			}
-		}
-	}
-	if u.AIEnable {
-		u.AIAgentMode, err = ui.Choice(ctx, "AI permission profile", "workspace", []string{"workspace", "owner-conservative", "owner-full-local"})
-		if err != nil {
-			return err
-		}
-	}
-	u.NemuEnable, err = ui.Confirm(ctx, "Enable Nemu virtual machines?", false)
-	if err != nil {
+	if err := collectApps(ctx, ui, u); err != nil {
 		return err
 	}
 	u.RecoveryEnable, err = ui.Confirm(ctx, "Install the trusted local GjallarOS recovery/JODS boot entry?", true)
@@ -2099,16 +2058,70 @@ func ensureAIToken(ctx context.Context, out io.Writer) error {
 	}
 }
 
-func collectTailscale(ctx context.Context, ui prompt.UI, u *config.User) error {
-	enable, err := ui.Confirm(ctx, "Enable Tailscale?", true)
+// collectApps asks each catalogue app's installer question; apps without
+// one take their default. Some apps ask follow-up questions.
+func collectApps(ctx context.Context, ui prompt.UI, u *config.User) error {
+	catalogue, err := apps.Catalogue()
 	if err != nil {
 		return err
 	}
-	t := &config.TailscaleIntent{Enable: enable, HomeSubnets: []string{}, TrustedWifis: []string{}, SiteRouterTargets: []string{}}
-	u.Tailscale = t
-	if !enable {
-		return nil
+	followUp := map[string]func(context.Context, prompt.UI, *config.User) error{
+		"ai":        collectAI,
+		"tailscale": collectTailscale,
 	}
+	u.Apps = []string{}
+	u.Tailscale = nil
+	u.AIAgentMode, u.OverrideAISelection, u.OverrideModelWith = "", false, ""
+	u.AIEndpoint, u.AIRemoteModel, u.AIRemoteContextTokens = "", "", 0
+	for _, app := range catalogue {
+		selected := app.Default
+		if app.Installer != "" {
+			selected, err = ui.Confirm(ctx, app.Installer, app.Default)
+			if err != nil {
+				return err
+			}
+		}
+		if !selected {
+			continue
+		}
+		u.Apps = append(u.Apps, app.ID)
+		if collect := followUp[app.ID]; collect != nil {
+			if err := collect(ctx, ui, u); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
+}
+
+func collectAI(ctx context.Context, ui prompt.UI, u *config.User) error {
+	backend, err := ui.Choice(ctx, "AI backend", "local", []string{"local", "central-server"})
+	if err != nil {
+		return err
+	}
+	if backend == "central-server" {
+		if err := collectAIServer(ctx, ui, u); err != nil {
+			return err
+		}
+	} else {
+		u.OverrideAISelection, err = ui.Confirm(ctx, "Override automatic hardware-aware AI model selection?", false)
+		if err != nil {
+			return err
+		}
+		if u.OverrideAISelection {
+			u.OverrideModelWith, err = ui.Value(ctx, "Exact Ollama model identifier", "qwen2.5-coder:14b")
+			if err != nil {
+				return err
+			}
+		}
+	}
+	u.AIAgentMode, err = ui.Choice(ctx, "AI permission profile", "workspace", []string{"workspace", "owner-conservative", "owner-full-local"})
+	return err
+}
+
+func collectTailscale(ctx context.Context, ui prompt.UI, u *config.User) error {
+	t := &config.TailscaleIntent{HomeSubnets: []string{}, TrustedWifis: []string{}, SiteRouterTargets: []string{}}
+	u.Tailscale = t
 
 	ask := func(label, def string, set func(string) error) error {
 		for {
@@ -2821,7 +2834,7 @@ func detectAndRenderState(
 	}
 	ai := profile.Result{Model: "qwen3-coder:30b", ContextTokens: 8192}
 	// A central AI server holds the model; local hardware does not matter.
-	if u.AIEnable && u.AIEndpoint == "" {
+	if u.HasApp("ai") && u.AIEndpoint == "" {
 		ai, err = profile.Detect(ctx, func() string {
 			if s.preset {
 				return filepath.Join(root, "user.config.json")

@@ -1,5 +1,6 @@
 {
   "name": "opencode",
   "description": "Local AI coding agent on the GjallarOS model backend.",
-  "category": "development"
+  "category": "development",
+  "default": true
 }

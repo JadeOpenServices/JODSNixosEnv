@@ -1,5 +1,6 @@
 {
   "name": "fastfetch",
   "description": "System summary in the terminal.",
-  "category": "system"
+  "category": "system",
+  "default": true
 }
