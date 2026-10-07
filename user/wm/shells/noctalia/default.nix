@@ -175,9 +175,11 @@ in
             scale = 0.98;
           };
 
-          gpu_vram = {
+          # System RAM. gpu_vram showed the APU's fixed 2 GiB carveout,
+          # which sits near 88% and looked like a stuck RAM reading.
+          ram = {
             type = "sysmon";
-            stat = "gpu_vram";
+            stat = "ram_pct";
             scale = 0.98;
           };
 
@@ -398,7 +400,7 @@ in
           center = [
             "cpu_usage"
             "cpu_temp"
-            "gpu_vram"
+            "ram"
 
             "divider_center_left"
 
