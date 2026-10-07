@@ -27,7 +27,7 @@ func (fn roundTripper) RoundTrip(request *http.Request) (*http.Response, error) 
 func TestRefreshWithoutAnswerDoesNothing(t *testing.T) {
 	root := filepath.Join(t.TempDir(), "oddc")
 
-	before, err := Refresh(root, "a62109ac5cda6a78ae71f078a8069793162e25a5", offline)
+	before, err := Refresh(root, "6911862daccfb8dfcea89f88ffe760fa945f3fcc", offline)
 	if err != nil || before != "" {
 		t.Fatalf("Refresh = %q, %v; want no answer, no error", before, err)
 	}
