@@ -345,4 +345,49 @@ func TestRebuildStageRequiresHardwareUpdate(t *testing.T) {
 	if status := runRebuild([]string{"--hardware-update", "--stage", "dev"}, &stdout, &stderr); status != 2 {
 		t.Fatalf("bad stage status = %d, want 2", status)
 	}
+	if status := runRebuild([]string{"--repo", t.TempDir(), "--switch", "0"}, &stdout, &stderr); status != 2 {
+		t.Fatalf("switch without hardware-update status = %d, want 2", status)
+	}
+	if status := runRebuild([]string{"--hardware-update", "--switch", "yes"}, &stdout, &stderr); status != 2 {
+		t.Fatalf("bad switch status = %d, want 2", status)
+	}
+}
+
+func TestRebuildHardwareUpdateSwitchZeroOnlyMovesPin(t *testing.T) {
+	repo, _ := filepath.EvalSymlinks(t.TempDir())
+	for _, marker := range []string{"flake.nix", "scripts/installation/install.sh"} {
+		if err := os.MkdirAll(filepath.Dir(filepath.Join(repo, marker)), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(repo, marker), nil, 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	log := filepath.Join(t.TempDir(), "log")
+	fake := filepath.Join(t.TempDir(), "oddc")
+	body := "#!/bin/sh\necho \"$@\" > " + log + "\n"
+	if err := os.WriteFile(fake, []byte(body), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	old := oddccli.Path
+	oddccli.Path = fake
+	t.Cleanup(func() { oddccli.Path = old })
+
+	var stdout, stderr bytes.Buffer
+	status := runRebuild(
+		[]string{"--repo", repo, "--hardware-update", "--stage", "main", "--switch", "0"},
+		&stdout,
+		&stderr,
+	)
+
+	if status != 0 {
+		t.Fatalf("status = %d, want 0:\n%s", status, stderr.String())
+	}
+	ran, _ := os.ReadFile(log)
+	if want := "update --flake " + repo + " --stage main\n"; string(ran) != want {
+		t.Fatalf("oddc ran %q, want %q", ran, want)
+	}
+	if !strings.Contains(stdout.String(), "not switched") {
+		t.Fatalf("no-switch not reported:\n%s", stdout.String())
+	}
 }

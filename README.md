@@ -86,10 +86,15 @@ rebuild warns and keeps the answer it has. Without `--rebuild`, the next
 `rebuild` does the fetch. `gjallarctl oddc doctor` shows the ODDC revision the
 installed model came from.
 
-`rebuild --hardware-update [--stage main|staging]` does the same move as part
-of a rebuild: it runs `oddc update --flake <checkout> [--stage STAGE]` first
-and stops with `nothing rebuilt` if that fails. It needs an `oddc` that knows
-`update --flake`.
+`rebuild --hardware-update [--stage main|staging] [--switch 0|1]` does the
+same move as part of a rebuild: it runs `oddc update --flake <checkout>
+[--stage STAGE]` first and stops with `nothing rebuilt` if that fails.
+`--stage` moves the oddc input to the newest commit of that branch; no commit
+hash is needed. `--switch 1` (the default) rebuilds and switches right away;
+`--switch 0` only moves the pin, and the next `rebuild` applies it. It needs an
+`oddc` that knows `update --flake`. Always apply with `rebuild`, not `sudo
+nixos-rebuild switch --flake`: `generated/` is untracked, so a plain git flake
+cannot see it.
 
 `gjallarctl oddc COMMAND` passes ODDC commands to `oddc` unchanged, for example
 `gjallarctl oddc resolve` or `gjallarctl oddc explain --path PATH`. On the
