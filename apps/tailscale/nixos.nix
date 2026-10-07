@@ -34,7 +34,7 @@ let
   # stale and the new one must not wait behind it.
   reapply = "${config.systemd.package}/bin/systemctl restart --no-block gjallar-vpn-trust.service";
 in
-lib.mkIf (intent.enable or true) {
+lib.mkIf config.gjallar.apps.tailscale.enable {
   services.tailscale.enable = true;
   # Using an exit node needs loose reverse-path filtering, and
   # gjallarctl vpn exit-node can turn one on at runtime.

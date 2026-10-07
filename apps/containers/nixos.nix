@@ -1,11 +1,11 @@
 {
+  config,
   lib,
   pkgs,
-  settings,
   ...
 }:
 
-lib.mkIf settings.containersEnable {
+lib.mkIf config.gjallar.apps.containers.enable {
   environment.systemPackages = with pkgs; [
     podman-compose
     distrobox

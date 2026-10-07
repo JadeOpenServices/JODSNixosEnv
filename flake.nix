@@ -150,7 +150,11 @@
 
         tailscale-trust = import ./tests/nix/tailscale-trust.nix {
           inherit nixpkgs system;
-          tailscaleModule = ./system/services/tailscale.nix;
+          tailscaleModules = [
+            ./apps/tailscale/nixos.nix
+            ./apps/nixos-options.nix
+            ./system/apps.nix
+          ];
         };
 
         recovery-maintenance = import ./tests/nix/recovery-maintenance.nix {
@@ -202,7 +206,6 @@
                 else
                   null;
             })
-            ./system/apps/brave-backend.nix
             ./system/security/secure-boot
             inputs.noctalia-greeter.nixosModules.default
             inputs.stylix.nixosModules.stylix

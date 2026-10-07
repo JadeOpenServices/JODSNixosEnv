@@ -3,12 +3,10 @@
 { lib, ... }:
 
 let
-  catalogue = import ./.;
+  catalogue = lib.filterAttrs (_: app: builtins.pathExists (app.path + "/home.nix")) (import ./.);
 in
 {
-  imports = lib.concatMap (
-    app: lib.optional (builtins.pathExists (app.path + "/home.nix")) (app.path + "/home.nix")
-  ) (builtins.attrValues catalogue);
+  imports = map (app: app.path + "/home.nix") (builtins.attrValues catalogue);
 
   options.gjallar.apps = lib.mapAttrs (_: app: {
     enable = lib.mkEnableOption app.name;

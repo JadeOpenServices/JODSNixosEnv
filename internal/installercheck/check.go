@@ -298,7 +298,7 @@ func checkRequiredFiles(r *Report, root string) {
 		"generated/hardware.nix",
 		"generated/install-state.nix",
 		"system/default.nix",
-		"system/apps/ollama.nix",
+		"apps/ai/nixos.nix",
 		"system/tools/commands/default.nix",
 		"user/default.nix",
 	} {
@@ -489,7 +489,6 @@ func checkModuleWiring(r *Report, root string) {
 	}
 
 	candidateRoots := []string{
-		"system/apps",
 		"system/compat",
 		"system/maintenance",
 		"system/management",

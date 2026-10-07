@@ -1,0 +1,5 @@
+{
+  "name": "Containers",
+  "description": "Rootless Podman with Docker compatibility, distrobox and compose.",
+  "category": "development"
+}

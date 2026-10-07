@@ -28,16 +28,15 @@
     ./maintenance/installer-resume.nix
     ./services/printing.nix
     ./services/removable-media.nix
-    ./services/tailscale.nix
 
     inputs.oddc.nixosModules.default
 
     ./recovery
-    ./virtualization
     ../themes/lib/common.nix
     ./tools
     ./users/privilege.nix
-    ./apps/ollama.nix
+    ../apps/nixos.nix
+    ./apps.nix
   ]
   ++ (map (wm: ./wm/${wm}) settings.wms);
 

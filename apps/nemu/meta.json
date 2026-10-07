@@ -1,0 +1,5 @@
+{
+  "name": "nEMU",
+  "description": "QEMU virtual machines in the terminal, with SPICE USB redirection.",
+  "category": "system"
+}

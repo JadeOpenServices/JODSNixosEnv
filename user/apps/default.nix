@@ -1,7 +1,11 @@
 { lib, settings, ... }:
 
 let
-  catalogue = import ../../apps;
+  # System apps (ai, containers, nemu, tailscale) are selected on the
+  # NixOS side; see system/apps.nix.
+  catalogue = lib.filterAttrs (_: app: builtins.pathExists (app.path + "/home.nix")) (
+    import ../../apps
+  );
 
   # `settings.apps` selects catalogue apps; without it an install keeps
   # every app it had before the selection existed.

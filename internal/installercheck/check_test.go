@@ -70,7 +70,7 @@ func testRepository(t *testing.T, config string) string {
 		"generated/hardware.nix":                                        "{}\n",
 		"generated/install-state.nix":                                   "{}\n",
 		"system/default.nix":                                            "{}\n",
-		"system/apps/ollama.nix":                                        "{}\n",
+		"apps/ai/nixos.nix":                                             "{}\n",
 		"user/default.nix":                                              "{}\n",
 		"system/tools/commands/default.nix":                             "# check-installer\n",
 	}

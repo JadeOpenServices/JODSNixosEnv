@@ -1,0 +1,5 @@
+{
+  "name": "Local AI",
+  "description": "Localhost-only Ollama backend with hardware-aware model selection.",
+  "category": "development"
+}

@@ -3,11 +3,13 @@
   lib,
   pkgs,
   settings,
+  osConfig ? { },
   ...
 }:
 
 let
-  aiEnabled = if settings ? aiEnable then settings.aiEnable else false;
+  # The system side owns the AI backend; standalone Home Manager has none.
+  aiEnabled = osConfig.gjallar.apps.ai.enable or false;
 
   aiModel = "gjallaros-caveman-ai";
   agentMode = if settings ? aiAgentMode then settings.aiAgentMode else "workspace";
@@ -119,7 +121,7 @@ let
 
               [ -f "$candidate/flake.nix" ] ||
                 continue
-              [ -f "$candidate/system/apps/ollama.nix" ] ||
+              [ -f "$candidate/apps/ai/nixos.nix" ] ||
                 continue
               [ -f "$candidate/apps/opencode/home.nix" ] ||
                 continue

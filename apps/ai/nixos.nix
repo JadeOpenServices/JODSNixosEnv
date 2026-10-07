@@ -319,7 +319,7 @@ let
 
   '';
 
-  aiSystemPrompt = (builtins.fromJSON (builtins.readFile ./ai/system-prompt.json)).system;
+  aiSystemPrompt = (builtins.fromJSON (builtins.readFile ./system-prompt.json)).system;
 
   ollamaPackage =
     if graphics.vendor == "amd" && builtins.hasAttr "ollama-rocm" pkgs then
@@ -330,7 +330,7 @@ let
   ollamaIgpuEnable =
     lib.optionalAttrs
       (
-        (if settings ? aiEnable then settings.aiEnable else false)
+        config.gjallar.apps.ai.enable
         && graphics.vendor == "amd"
         && graphics.type == "integrated"
         && settings.graphicsIntegratedBusId != ""
@@ -349,7 +349,7 @@ let
   }
   // ollamaIgpuEnable;
 
-  securityInstructions = builtins.fromJSON (builtins.readFile ./ai/security-instructions.json);
+  securityInstructions = builtins.fromJSON (builtins.readFile ./security-instructions.json);
 
   assistantModel = "gjallaros-caveman-ai";
   modelDefinition = ''
@@ -1033,7 +1033,7 @@ let
     You MUST NOT attempt to edit, delete, rename, overwrite, replace,
     circumvent, shadow, disable, or bypass the protection around:
 
-    - `system/apps/ollama.nix`
+    - `apps/ai/nixos.nix`
     - `apps/opencode/home.nix`
     - `internal/ai/`
     - `cmd/gjallarctl/main.go`
@@ -1270,7 +1270,7 @@ let
 
 in
 
-lib.mkIf (if settings ? aiEnable then settings.aiEnable else false) {
+lib.mkIf config.gjallar.apps.ai.enable {
   environment.systemPackages = with pkgs; [
     gjallarAiSessionStart
     aiDiagnostics
@@ -1597,7 +1597,7 @@ lib.mkIf (if settings ? aiEnable then settings.aiEnable else false) {
       ExecStopPost = "-+${gjallarAiBackendStop}";
 
       ReadOnlyPaths = [
-        "/workspace/system/apps/ollama.nix"
+        "/workspace/apps/ai/nixos.nix"
         "/workspace/apps/opencode/home.nix"
         "/workspace/internal/ai"
         "/workspace/cmd/gjallarctl/main.go"

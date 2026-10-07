@@ -1,7 +1,7 @@
 {
   nixpkgs,
   system,
-  tailscaleModule,
+  tailscaleModules,
 }:
 let
   pkgs = nixpkgs.legacyPackages.${system};
@@ -9,8 +9,7 @@ let
     settings:
     (nixpkgs.lib.nixosSystem {
       inherit system;
-      modules = [
-        tailscaleModule
+      modules = tailscaleModules ++ [
         {
           system.stateVersion = "26.05";
           boot.loader.grub.enable = false;
