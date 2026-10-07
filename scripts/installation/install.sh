@@ -12,13 +12,43 @@ fi
 # Build and launch the installer without changing the caller's environment.
 set -euo pipefail
 
-script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-repo="$(cd "$script_dir/../.." && pwd)"
-
 command -v nix >/dev/null 2>&1 || {
     printf 'ERROR: Nix is required to bootstrap GjallarOS.\n' >&2
     exit 1
 }
+
+# Started outside a checkout (curl -fsSL .../install.sh | bash): clone the
+# repository with its submodules and run the installer from the clone. The
+# pipe is the script itself, so the installer reads answers from the terminal.
+script_file="${BASH_SOURCE[0]:-}"
+if [[ ! -f "$script_file" || ! -f "$(dirname "$script_file")/../../flake.nix" ]]; then
+    repo_url="${GJALLAR_REPO_URL:-https://github.com/JadeOpenServices/JODSNixosEnv.git}"
+    checkout="${GJALLAR_DIR:-$HOME/Documents/gjallarOS}"
+    git_cmd=(git)
+    command -v git >/dev/null 2>&1 ||
+        git_cmd=(nix shell nixpkgs#git --command git)
+    if [[ -e "$checkout/.git" ]]; then
+        printf 'Using the existing checkout in %s\n' "$checkout"
+        "${git_cmd[@]}" -C "$checkout" submodule update --init --recursive
+    else
+        [[ ! -e "$checkout" ]] || {
+            printf 'ERROR: %s exists and is not a git checkout. Set GJALLAR_DIR to another directory.\n' "$checkout" >&2
+            exit 1
+        }
+        printf 'Cloning %s into %s...\n' "$repo_url" "$checkout"
+        mkdir -p "$(dirname "$checkout")"
+        "${git_cmd[@]}" clone --recurse-submodules "$repo_url" "$checkout"
+    fi
+    [[ "${GJALLAR_CLONE_ONLY:-0}" == 1 ]] && exit 0
+    [[ -r /dev/tty ]] || {
+        printf 'ERROR: the installer is interactive and needs a terminal.\n' >&2
+        exit 1
+    }
+    exec bash "$checkout/scripts/installation/install.sh" "$@" </dev/tty
+fi
+
+script_dir="$(cd "$(dirname "$script_file")" && pwd)"
+repo="$(cd "$script_dir/../.." && pwd)"
 
 # Nix evaluates a staged copy of the checkout: a path: reference to the
 # checkout itself copies .git (gigabytes of history) and ignored scratch such

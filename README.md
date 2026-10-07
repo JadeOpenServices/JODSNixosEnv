@@ -5,11 +5,17 @@ ODDC-backed hardware policy, generic system composition, and a reviewable instal
 
 ## Quick start
 
+On NixOS, or the NixOS minimal ISO:
+
 ```bash
-git clone --recurse-submodules <your-repository-url> ~/.dotfiles
-cd ~/.dotfiles
-./scripts/installation/install.sh
+curl -fsSL https://raw.githubusercontent.com/JadeOpenServices/JODSNixosEnv/main/scripts/installation/install.sh | bash
 ```
+
+The script clones the repository with its submodules into
+`~/Documents/gjallarOS` (set `GJALLAR_DIR` to change it) and starts the
+interactive installer from that checkout. Re-running it reuses the checkout.
+`GJALLAR_CLONE_ONLY=1` stops after the clone. From an existing checkout,
+run `./scripts/installation/install.sh` directly.
 
 For automated non-secret answers:
 
