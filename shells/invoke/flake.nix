@@ -1,5 +1,5 @@
 {
-  description = "Nix shell for Tarantool";
+  description = "InvokeAI development shell";
 
   inputs = {
     nixpkgs.url = "github:nixos/nixpkgs/nixos-26.05";
