@@ -1,78 +1,50 @@
 { ... }:
 {
+  # Two-line prompt: context on the first line, input on the second.
   programs.starship = {
     enable = true;
-
     settings = {
-      format = ''
-        [┌─>](bold bright-red) $all[└─>](bold bright-magenta) $character
-      '';
-
       add_newline = true;
-
-      character = {
-        error_symbol = "[ ](bold bright-red)";
-        success_symbol = "[ ](bold bright-green)";
-        vicmd_symbol = "[ ](bold bright-yellow)";
-        format = "[󰮯 ](bold bright-green)[|](bold bright-black) ";
-      };
+      format = "$username$hostname$directory$git_branch$git_state$git_status$nix_shell$python$golang$rust$cmd_duration$line_break$character";
 
       username = {
         show_always = true;
-        style_user = "bold bright-cyan";
+        format = "[$user]($style) ";
+        style_user = "bold cyan";
       };
-
       hostname = {
         ssh_only = true;
-        format = "[$hostname](bold bright-blue) ";
-        disabled = false;
+        format = "@[$hostname]($style) ";
+        style = "bold blue";
       };
-
       directory = {
-        read_only = " ";
-        style = "bold bright-green";
+        style = "bold green";
+        truncation_length = 4;
+        read_only = " ro";
       };
-
       git_branch = {
-        symbol = " ";
-        style = "bold bright-yellow";
+        format = "[$symbol$branch]($style) ";
+        symbol = "git:";
+        style = "bold yellow";
       };
-
-      git_status.style = "bold bright-red";
-
+      git_status.style = "bold red";
       nix_shell = {
-        symbol = " ";
-        style = "bold bright-magenta";
+        format = "[nix:$name]($style) ";
+        style = "bold purple";
       };
-
-      golang = {
-        symbol = " ";
-        style = "bold bright-cyan";
+      python.format = "[py:$version]($style) ";
+      golang.format = "[go:$version]($style) ";
+      rust.format = "[rs:$version]($style) ";
+      cmd_duration = {
+        min_time = 2000;
+        format = "took [$duration]($style) ";
+        style = "bold green";
       };
-
-      python = {
-        symbol = " ";
-        style = "bold bright-yellow";
+      character = {
+        success_symbol = "[>](bold green)";
+        error_symbol = "[>](bold red)";
+        vimcmd_symbol = "[<](bold yellow)";
       };
-
-      rust = {
-        symbol = " ";
-        style = "bold bright-red";
-      };
-
-      lua = {
-        symbol = " ";
-        style = "bold bright-blue";
-      };
-
-      c = {
-        symbol = " ";
-        style = "bold bright-magenta";
-      };
-
-      cmd_duration.style = "bold bright-green";
-
-      line_break.disable = true;
     };
   };
 }

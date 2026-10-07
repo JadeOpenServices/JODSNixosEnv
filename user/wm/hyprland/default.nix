@@ -22,7 +22,6 @@ in
   imports = [
     ./env.nix
     ./binds.nix
-    ./scripts.nix
     ./rules.nix
     ./plugins.nix
     ./hyprlock.nix
@@ -94,11 +93,6 @@ in
       source = ~/.local/state/noctalia/hyprland-colors.conf
       source = ~/.config/hypr/monitors.conf
     '';
-    plugins = [
-    ]
-    ++
-      lib.optional (settings.themeDetails.bordersPlusPlus)
-        pkgs.hyprlandPlugins.borders-plus-plus;
   };
 
 }
