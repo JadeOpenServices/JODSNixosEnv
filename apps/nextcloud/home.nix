@@ -13,14 +13,7 @@ let
   preferredBrowser = settings.preferredBrowser or "librewolf";
   browserPackage = pkgs.${preferredBrowser};
   browserExe = lib.getExe browserPackage;
-  browserArgs =
-    if preferredBrowser == "qutebrowser" then
-      [
-        "--target"
-        "window"
-      ]
-    else
-      [ "--new-window" ];
+  browserArgs = [ "--new-window" ];
   browserNeedles =
     if preferredBrowser == "librewolf" then
       [ "librewolf" ]
@@ -29,8 +22,6 @@ let
         "zen"
         "zen-browser"
       ]
-    else if preferredBrowser == "qutebrowser" then
-      [ "qutebrowser" ]
     else
       [ preferredBrowser ];
 

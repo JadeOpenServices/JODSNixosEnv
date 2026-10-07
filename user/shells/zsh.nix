@@ -10,7 +10,6 @@
   imports = [
     ./lib/bat.nix
     ./lib/starship.nix
-    ./lib/television
     ./lib/tmux
   ];
 
@@ -38,8 +37,8 @@
       "......" = "cd ../../../../../..";
       cat = "bat";
       gs = "git status";
-      gd = "tv git-diff";
-      gl = "tv git-log";
+      gd = "git diff";
+      gl = "git log --oneline --graph";
       ga = "git add";
       gc = "git commit";
       gca = "git commit -a";
@@ -47,7 +46,6 @@
       mv = "mv -v";
       cp = "rsync -avhW --no-compress --progress";
       rm = "rm -rv";
-      w3md = "w3m https://lite.duckduckgo.com/lite/";
       nix-python = "nix develop ${settings.dotfilesDir}/shells/python -c zsh";
       nix-lampray = "nix develop ${settings.dotfilesDir}/shells/lampray -c zsh";
       nix-invoke = "nix develop ${settings.dotfilesDir}/shells/invoke -c zsh";
