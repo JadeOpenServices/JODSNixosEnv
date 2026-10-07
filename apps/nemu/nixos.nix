@@ -50,16 +50,19 @@ in
       samba
     ];
 
+    # The upstream module predates the required wrapper owner and group.
+    security.wrappers.nemu = {
+      owner = "root";
+      group = "root";
+    };
+
     programs.nemu = {
       package = pkgs._nemu;
       enable = true;
       vhostNetGroup = "nemu-vhost";
       macvtapGroup = "nemu-vhost";
       users = {
-        ${settings.username} = {
-          autoAddVeth = false;
-          autoStartDaemon = false;
-        };
+        ${settings.username}.autoAddVeth = false;
       };
     };
   };
