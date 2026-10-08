@@ -11,6 +11,25 @@ let
   semanticTheme = import ../../../../themes/lib/semantic.nix { inherit config; };
   contrastGuard = import ../../../../themes/lib/contrast.nix { inherit pkgs; };
 
+  # Noctalia re-stages the greeter look on every login and theme load, and
+  # each sync is a pkexec password prompt. Ask only when the staged files
+  # differ from the last approved sync. No passwordless polkit rule: the root
+  # helper follows symlinks when it copies wallpaper.* into the greeter state.
+  greeterSyncPrivilege = pkgs.writeShellScript "gjallar-greeter-sync-privilege" ''
+    set -eu
+    PATH=${lib.makeBinPath [ pkgs.coreutils pkgs.findutils ]}:$PATH
+    staging="$2"
+    state="''${XDG_STATE_HOME:-$HOME/.local/state}/gjallar/greeter-sync.sha256"
+    sum=$(cd "$staging" && find . -maxdepth 1 -type f -print0 | sort -z \
+      | xargs -0 sha256sum | sha256sum)
+    if [ -r "$state" ] && [ "$(cat "$state")" = "$sum" ]; then
+      exit 0
+    fi
+    /run/wrappers/bin/pkexec "$@"
+    mkdir -p "$(dirname "$state")"
+    printf '%s\n' "$sum" > "$state"
+  '';
+
   palette = {
     dark = {
       mPrimary = "#${semanticTheme.fallback.primary}";
@@ -114,7 +133,7 @@ in
           polkit_agent = true;
           greeter_sync = {
             auto_sync = true;
-            privilege_command = "/run/wrappers/bin/pkexec";
+            privilege_command = "${greeterSyncPrivilege}";
           };
           screenshot = {
             directory = "${config.home.homeDirectory}/Pictures/Screenshots";
