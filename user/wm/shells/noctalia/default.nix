@@ -13,8 +13,8 @@ let
 
   # Noctalia re-stages the greeter look on every login and theme load, and
   # each sync is a pkexec password prompt. Ask only when the staged files
-  # differ from the last approved sync. No passwordless polkit rule: the root
-  # helper follows symlinks when it copies wallpaper.* into the greeter state.
+  # differ from the last answered sync. No passwordless polkit rule: the
+  # greeter look is shared by every account on the machine.
   greeterSyncPrivilege = pkgs.writeShellScript "gjallar-greeter-sync-privilege" ''
     set -eu
     PATH=${lib.makeBinPath [ pkgs.coreutils pkgs.findutils ]}:$PATH
@@ -25,9 +25,21 @@ let
     if [ -r "$state" ] && [ "$(cat "$state")" = "$sum" ]; then
       exit 0
     fi
-    /run/wrappers/bin/pkexec "$@"
     mkdir -p "$(dirname "$state")"
-    printf '%s\n' "$sum" > "$state"
+    # First sync of a new account is the default look the greeter already
+    # shows: record it, do not ask during the welcome flow.
+    if [ ! -e "$state" ]; then
+      printf '%s\n' "$sum" > "$state"
+      exit 0
+    fi
+    # A dismissed prompt counts as the answer for this look; the next change
+    # asks again instead of re-prompting for the same files.
+    rc=0
+    /run/wrappers/bin/pkexec "$@" || rc=$?
+    if [ "$rc" -eq 0 ] || [ "$rc" -eq 126 ]; then
+      printf '%s\n' "$sum" > "$state"
+    fi
+    exit "$rc"
   '';
 
   palette = {
