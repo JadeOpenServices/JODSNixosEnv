@@ -305,13 +305,13 @@
         "lastModified": 1788770406,
         "narHash": "sha256-W9uHt+t55RGOM5b3/++S4/bhskgIoxf0elxl1JoyAc4=",
         "ref": "refs/heads/main",
-        "rev": "3673356b81109bfaf827eea0cc58888f1add8779",
+        "rev": "762d016f36f60225e592c0961a38a4d8352997f3",
         "shallow": true,
         "type": "git",
         "url": "https://github.com/bakanura/jods.git"
       },
       "original": {
-        "rev": "3673356b81109bfaf827eea0cc58888f1add8779",
+        "rev": "762d016f36f60225e592c0961a38a4d8352997f3",
         "shallow": true,
         "type": "git",
         "url": "https://github.com/bakanura/jods.git"

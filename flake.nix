@@ -49,7 +49,7 @@
     };
 
     jods = {
-      url = "git+https://github.com/bakanura/jods.git?rev=3673356b81109bfaf827eea0cc58888f1add8779&shallow=1";
+      url = "git+https://github.com/bakanura/jods.git?rev=762d016f36f60225e592c0961a38a4d8352997f3&shallow=1";
       flake = false;
     };
   };
