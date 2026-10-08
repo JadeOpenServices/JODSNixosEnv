@@ -88,6 +88,10 @@ in
     enable = true;
     configType = "hyprlang";
     package = pkgs.hyprland;
+    # Portals come from the system module (hyprland + gtk). The HM default
+    # points the portal at a per-user dir with only hyprland.portal, which
+    # drops AppChooser and with it OpenURI, so xdg-open fails.
+    portalPackage = null;
     systemd.enable = true;
     extraConfig = ''
       source = ~/.local/state/noctalia/hyprland-colors.conf

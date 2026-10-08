@@ -14,6 +14,7 @@
     ./services/storage-maintenance.nix
     ./services/resource-qos.nix
     ./services/removable-media.nix
+    ./url-handler.nix
     ./apps
   ]
   ++ (map (wm: ./wm/${wm}) settings.wms)
@@ -54,7 +55,6 @@
 
   home.sessionVariables = {
     EDITOR = lib.getExe pkgs.${settings.preferredEditor};
-    BROWSER = settings.preferredBrowser;
   };
 
   programs.home-manager.enable = true;

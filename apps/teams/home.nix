@@ -17,14 +17,19 @@ let
     else
       true;
 
-  normalBrowser = settings.preferredBrowser;
+  teamsHosts = [
+    "teams.microsoft.com"
+    "teams.live.com"
+    "teams.microsoft.us"
+    "teams.cloud.microsoft"
+  ];
 
   teamsApp = webApplication.mkIsolatedWebApplication {
     name = "gjallar-teams";
     browser = pkgs.microsoft-edge;
     profile = ".config/microsoft-edge-teams";
     url = "https://teams.microsoft.com";
-    allowRuntimeUrl = true;
+    runtimeHosts = teamsHosts;
     browserArguments = [
       "--password-store=basic"
       "--class=gjallar-teams"
@@ -32,18 +37,23 @@ let
     ];
   };
 
-  urlHandler = pkgs.writeShellScriptBin "gjallar-open-url" ''
+  # msteams:/l/meetup-join/... -> https://teams.microsoft.com/l/meetup-join/...
+  msteamsHandler = pkgs.writeShellScript "gjallar-open-msteams" ''
     set -euo pipefail
-    url="''${1:-}"
-    [ -n "$url" ] || exit 2
-    case "$url" in
-        https://teams.microsoft.com|https://teams.microsoft.com/*|https://teams.live.com|https://teams.live.com/*|https://teams.microsoft.us|https://teams.microsoft.us/*|https://teams.cloud.microsoft|https://teams.cloud.microsoft/*|msteams:*)
-            exec ${teamsApp}/bin/gjallar-teams "$url"
-            ;;
-        *)
-            exec ${normalBrowser} "$url"
-            ;;
+    if [ "$#" -ne 1 ]; then
+      echo "gjallar-open-msteams: expects exactly one URL" >&2
+      exit 2
+    fi
+    path="''${1#[Mm][Ss][Tt][Ee][Aa][Mm][Ss]:}"
+    case "$path" in
+      "$1" | //* | *[[:space:][:cntrl:]\\]*)
+        echo "gjallar-open-msteams: refusing $1" >&2
+        exit 2
+        ;;
+      /*) exec ${teamsApp}/bin/gjallar-teams "https://teams.microsoft.com$path" ;;
     esac
+    echo "gjallar-open-msteams: refusing $1" >&2
+    exit 2
   '';
 in
 {
@@ -51,7 +61,13 @@ in
     home.packages = [
       pkgs.microsoft-edge
       teamsApp
-      urlHandler
+    ];
+
+    gjallar.urlHandler.routes = [
+      {
+        hosts = teamsHosts;
+        command = "${teamsApp}/bin/gjallar-teams";
+      }
     ];
 
     home.file.".local/share/icons/hicolor/scalable/apps/gjallar-teams.svg".source =
@@ -60,19 +76,17 @@ in
     xdg.mimeApps = {
       enable = true;
       defaultApplications = {
-        "x-scheme-handler/http" = [ "gjallar-url-handler.desktop" ];
-        "x-scheme-handler/https" = [ "gjallar-url-handler.desktop" ];
-        "x-scheme-handler/msteams" = [ "gjallar-url-handler.desktop" ];
+        "x-scheme-handler/msteams" = [ "gjallar-msteams-handler.desktop" ];
       };
     };
 
-    home.file.".local/share/applications/gjallar-url-handler.desktop".text = ''
+    home.file.".local/share/applications/gjallar-msteams-handler.desktop".text = ''
       [Desktop Entry]
       Type=Application
-      Name=GjallarOS URL handler
+      Name=Microsoft Teams link handler
       NoDisplay=true
-      Exec=${urlHandler}/bin/gjallar-open-url %u
-      MimeType=x-scheme-handler/http;x-scheme-handler/https;x-scheme-handler/msteams;
+      Exec=${msteamsHandler} %u
+      MimeType=x-scheme-handler/msteams;
     '';
 
     home.file.".local/share/applications/microsoft-teams.desktop".text = ''
