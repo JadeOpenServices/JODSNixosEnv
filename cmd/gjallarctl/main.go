@@ -2817,24 +2817,26 @@ func runPrivilegeAuthentication(ctx context.Context, stderr io.Writer) int {
 		"[GjallarOS] Authenticate for privileged operation.",
 	)
 
-	fingerprint := privilegeFingerprintCommand(ctx, tty, authHelper)
-	fingerprintStatus := authenticationCommandStatus(
-		ctx,
-		fingerprint,
-		stderr,
-		"fingerprint authentication",
-	)
-	if fingerprintStatus == 0 {
-		return 0
-	}
-	if fingerprintStatus == 130 {
-		return 130
-	}
+	if fingerprintEnrolled(ctx) {
+		fingerprint := privilegeFingerprintCommand(ctx, tty, authHelper)
+		fingerprintStatus := authenticationCommandStatus(
+			ctx,
+			fingerprint,
+			stderr,
+			"fingerprint authentication",
+		)
+		if fingerprintStatus == 0 {
+			return 0
+		}
+		if fingerprintStatus == 130 {
+			return 130
+		}
 
-	fmt.Fprintln(
-		tty,
-		"[GjallarOS] Fingerprint not verified; using secure password fallback.",
-	)
+		fmt.Fprintln(
+			tty,
+			"[GjallarOS] Fingerprint not verified; using secure password fallback.",
+		)
+	}
 
 	password := privilegePasswordCommand(
 		ctx,

@@ -488,7 +488,7 @@ func usbAuthorize(ctx context.Context, name string, command []string) ([]byte, e
 	_ = exec.CommandContext(ctx, sudo, "-k").Run()
 	defer func() { _ = exec.Command(sudo, "-k").Run() }()
 
-	if !usbFingerprintAuth(ctx, sudo, authHelper, name) {
+	if !fingerprintEnrolled(ctx) || !usbFingerprintAuth(ctx, sudo, authHelper, name) {
 		// A scan that finished after "Use password" may have cached a
 		// timestamp; drop it so the password prompt really appears.
 		_ = exec.CommandContext(ctx, sudo, "-k").Run()
