@@ -6,8 +6,8 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/bakanura/gjallarOS/internal/installer/diskplan"
-	"github.com/bakanura/gjallarOS/internal/installer/targetdisk"
+	"github.com/JadeOpenServices/gjallarOS/internal/installer/diskplan"
+	"github.com/JadeOpenServices/gjallarOS/internal/installer/targetdisk"
 )
 
 const (

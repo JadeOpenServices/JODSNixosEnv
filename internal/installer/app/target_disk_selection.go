@@ -6,8 +6,8 @@ import (
 	"io"
 	"strings"
 
-	"github.com/bakanura/gjallarOS/internal/installer/prompt"
-	"github.com/bakanura/gjallarOS/internal/installer/targetdisk"
+	"github.com/JadeOpenServices/gjallarOS/internal/installer/prompt"
+	"github.com/JadeOpenServices/gjallarOS/internal/installer/targetdisk"
 )
 
 const freshTargetMinimumBytes uint64 = 8 * 1024 * 1024 * 1024

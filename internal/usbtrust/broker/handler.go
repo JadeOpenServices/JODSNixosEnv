@@ -7,7 +7,7 @@ import (
 	"io"
 	"net"
 
-	"github.com/bakanura/gjallarOS/internal/usbtrust"
+	"github.com/JadeOpenServices/gjallarOS/internal/usbtrust"
 )
 
 const MaxRequestBytes = 16 * 1024

@@ -8,7 +8,7 @@ import (
 
 	portable "github.com/JadeOpenServices/oddc/pkg/oddc"
 
-	"github.com/bakanura/gjallarOS/internal/installer/oddc/oddctest"
+	"github.com/JadeOpenServices/gjallarOS/internal/installer/oddc/oddctest"
 )
 
 // A machine ODDC matches gets no draft: every real catalog model, as it

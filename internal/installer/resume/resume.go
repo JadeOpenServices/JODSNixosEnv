@@ -5,7 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"github.com/bakanura/gjallarOS/internal/installer/control"
+	"github.com/JadeOpenServices/gjallarOS/internal/installer/control"
 	"io/fs"
 	"os"
 	"os/exec"

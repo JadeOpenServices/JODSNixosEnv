@@ -3,7 +3,7 @@ package policy
 import (
 	"testing"
 
-	"github.com/bakanura/gjallarOS/internal/installer/config"
+	"github.com/JadeOpenServices/gjallarOS/internal/installer/config"
 )
 
 func TestFromUser(t *testing.T) {

@@ -4,8 +4,8 @@ import (
 	"context"
 	"testing"
 
-	"github.com/bakanura/gjallarOS/internal/usbtrust"
-	"github.com/bakanura/gjallarOS/internal/usbtrust/broker"
+	"github.com/JadeOpenServices/gjallarOS/internal/usbtrust"
+	"github.com/JadeOpenServices/gjallarOS/internal/usbtrust/broker"
 )
 
 func TestEnrolledInternalReplacementRequiresUnambiguousCandidate(t *testing.T) {

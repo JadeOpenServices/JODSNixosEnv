@@ -10,7 +10,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/bakanura/gjallarOS/internal/installer/diskplan"
+	"github.com/JadeOpenServices/gjallarOS/internal/installer/diskplan"
 )
 
 type Input struct {

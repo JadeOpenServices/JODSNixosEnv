@@ -1,7 +1,7 @@
 // Package policy derives non-interactive installer choices from typed input.
 package policy
 
-import "github.com/bakanura/gjallarOS/internal/installer/config"
+import "github.com/JadeOpenServices/gjallarOS/internal/installer/config"
 
 type Features struct {
 	AIEnable               bool

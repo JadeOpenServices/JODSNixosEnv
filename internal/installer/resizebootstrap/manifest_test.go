@@ -7,7 +7,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/bakanura/gjallarOS/internal/installer/recoveryresize"
+	"github.com/JadeOpenServices/gjallarOS/internal/installer/recoveryresize"
 )
 
 func manifest() recoveryresize.Manifest {

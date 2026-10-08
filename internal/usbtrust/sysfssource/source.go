@@ -4,8 +4,8 @@ import (
 	"regexp"
 	"strings"
 
-	"github.com/bakanura/gjallarOS/internal/hardware/deviceprobe"
-	"github.com/bakanura/gjallarOS/internal/usbtrust"
+	"github.com/JadeOpenServices/gjallarOS/internal/hardware/deviceprobe"
+	"github.com/JadeOpenServices/gjallarOS/internal/usbtrust"
 )
 
 var rootHubPath = regexp.MustCompile(`^usb[0-9]+$`)

@@ -7,10 +7,10 @@ import (
 	"io"
 	"path/filepath"
 
-	"github.com/bakanura/gjallarOS/internal/installer/diskplan"
-	"github.com/bakanura/gjallarOS/internal/installer/gptprovision"
-	"github.com/bakanura/gjallarOS/internal/installer/prompt"
-	"github.com/bakanura/gjallarOS/internal/installer/recoveryresize"
+	"github.com/JadeOpenServices/gjallarOS/internal/installer/diskplan"
+	"github.com/JadeOpenServices/gjallarOS/internal/installer/gptprovision"
+	"github.com/JadeOpenServices/gjallarOS/internal/installer/prompt"
+	"github.com/JadeOpenServices/gjallarOS/internal/installer/recoveryresize"
 )
 
 var evalSymlinks = filepath.EvalSymlinks

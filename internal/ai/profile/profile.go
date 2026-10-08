@@ -11,7 +11,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/bakanura/gjallarOS/internal/hardware/graphics"
+	"github.com/JadeOpenServices/gjallarOS/internal/hardware/graphics"
 )
 
 type Hardware struct {

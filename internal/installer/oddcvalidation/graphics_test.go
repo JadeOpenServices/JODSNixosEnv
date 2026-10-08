@@ -4,7 +4,7 @@ import (
 	"context"
 	"testing"
 
-	"github.com/bakanura/gjallarOS/internal/hardware/graphics"
+	"github.com/JadeOpenServices/gjallarOS/internal/hardware/graphics"
 )
 
 func TestRuntimeGraphicsGateMatchesODDCAndGeneratedTopology(t *testing.T) {

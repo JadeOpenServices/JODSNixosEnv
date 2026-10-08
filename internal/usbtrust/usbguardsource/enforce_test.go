@@ -5,7 +5,7 @@ import (
 	"reflect"
 	"testing"
 
-	"github.com/bakanura/gjallarOS/internal/usbtrust"
+	"github.com/JadeOpenServices/gjallarOS/internal/usbtrust"
 )
 
 type enforcementRunner struct {

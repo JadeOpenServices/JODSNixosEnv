@@ -3,8 +3,8 @@ package deviceprofile
 import (
 	"testing"
 
-	"github.com/bakanura/gjallarOS/internal/installer/discovery"
-	"github.com/bakanura/gjallarOS/internal/installer/oddc"
+	"github.com/JadeOpenServices/gjallarOS/internal/installer/discovery"
+	"github.com/JadeOpenServices/gjallarOS/internal/installer/oddc"
 )
 
 type unmatchedCanonicalSource struct{}

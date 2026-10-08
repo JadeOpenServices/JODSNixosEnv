@@ -5,7 +5,7 @@ import (
 	"slices"
 	"strings"
 
-	"github.com/bakanura/gjallarOS/internal/installer/oddc"
+	"github.com/JadeOpenServices/gjallarOS/internal/installer/oddc"
 )
 
 // OwnershipPlan explains, before anything is generated or changed, what the

@@ -3,8 +3,8 @@ package oddcvalidation
 import (
 	"fmt"
 
-	"github.com/bakanura/gjallarOS/internal/installer/oddc"
-	"github.com/bakanura/gjallarOS/internal/installer/secureboot"
+	"github.com/JadeOpenServices/gjallarOS/internal/installer/oddc"
+	"github.com/JadeOpenServices/gjallarOS/internal/installer/secureboot"
 )
 
 func secureBootPolicyResult(resolved oddc.Resolved) Result {

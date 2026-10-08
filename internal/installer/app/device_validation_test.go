@@ -7,9 +7,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/bakanura/gjallarOS/internal/installer/config"
-	"github.com/bakanura/gjallarOS/internal/installer/oddc"
-	"github.com/bakanura/gjallarOS/internal/installer/prompt"
+	"github.com/JadeOpenServices/gjallarOS/internal/installer/config"
+	"github.com/JadeOpenServices/gjallarOS/internal/installer/oddc"
+	"github.com/JadeOpenServices/gjallarOS/internal/installer/prompt"
 )
 
 func validationFixture(t *testing.T) oddc.Resolved {

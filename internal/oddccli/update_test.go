@@ -7,8 +7,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/bakanura/gjallarOS/internal/installer/oddc/oddctest"
-	"github.com/bakanura/gjallarOS/internal/installercheck"
+	"github.com/JadeOpenServices/gjallarOS/internal/installer/oddc/oddctest"
+	"github.com/JadeOpenServices/gjallarOS/internal/installercheck"
 )
 
 // Real ODDC commits: the one flake.lock pins, and its parent.

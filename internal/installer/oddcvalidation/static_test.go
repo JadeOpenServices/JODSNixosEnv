@@ -4,7 +4,7 @@ import (
 	"context"
 	"testing"
 
-	"github.com/bakanura/gjallarOS/internal/installer/config"
+	"github.com/JadeOpenServices/gjallarOS/internal/installer/config"
 )
 
 func TestRunStaticProducesExpectedGateOrder(t *testing.T) {

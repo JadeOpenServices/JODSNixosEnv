@@ -3,8 +3,8 @@ package oddcsource
 import (
 	"testing"
 
+	"github.com/JadeOpenServices/gjallarOS/internal/installer/oddc/oddctest"
 	"github.com/JadeOpenServices/oddc/pkg/oddc"
-	"github.com/bakanura/gjallarOS/internal/installer/oddc/oddctest"
 )
 
 func TestExpectedFiltersTransportAndAttachment(t *testing.T) {

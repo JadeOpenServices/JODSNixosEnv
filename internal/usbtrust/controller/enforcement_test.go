@@ -5,8 +5,8 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/bakanura/gjallarOS/internal/usbtrust"
-	"github.com/bakanura/gjallarOS/internal/usbtrust/broker"
+	"github.com/JadeOpenServices/gjallarOS/internal/usbtrust"
+	"github.com/JadeOpenServices/gjallarOS/internal/usbtrust/broker"
 )
 
 func armedFixture(t *testing.T) (*Controller, *sources, *[]usbtrust.Target) {

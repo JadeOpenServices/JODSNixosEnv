@@ -7,7 +7,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/bakanura/gjallarOS/internal/usbtrust/broker"
+	"github.com/JadeOpenServices/gjallarOS/internal/usbtrust/broker"
 )
 
 func TestUSBCLIUsesBrokerAndReportsFailures(t *testing.T) {

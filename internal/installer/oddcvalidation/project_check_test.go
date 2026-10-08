@@ -4,7 +4,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/bakanura/gjallarOS/internal/installercheck"
+	"github.com/JadeOpenServices/gjallarOS/internal/installercheck"
 )
 
 func TestProjectCheckAcceptsZeroWarnings(t *testing.T) {

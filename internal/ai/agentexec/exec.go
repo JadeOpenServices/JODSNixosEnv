@@ -12,7 +12,7 @@ import (
 	"strings"
 	"time"
 
-	policy "github.com/bakanura/gjallarOS/internal/ai/policy"
+	policy "github.com/JadeOpenServices/gjallarOS/internal/ai/policy"
 )
 
 type Request struct {

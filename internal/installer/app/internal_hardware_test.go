@@ -5,11 +5,11 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/JadeOpenServices/gjallarOS/internal/hardware/deviceprobe"
+	"github.com/JadeOpenServices/gjallarOS/internal/installer/discovery"
+	"github.com/JadeOpenServices/gjallarOS/internal/installer/oddc"
+	"github.com/JadeOpenServices/gjallarOS/internal/installer/prompt"
 	portable "github.com/JadeOpenServices/oddc/pkg/oddc"
-	"github.com/bakanura/gjallarOS/internal/hardware/deviceprobe"
-	"github.com/bakanura/gjallarOS/internal/installer/discovery"
-	"github.com/bakanura/gjallarOS/internal/installer/oddc"
-	"github.com/bakanura/gjallarOS/internal/installer/prompt"
 )
 
 const internalUSBTestModel = "model/test/laptop"

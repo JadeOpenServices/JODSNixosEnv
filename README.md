@@ -224,6 +224,6 @@ their way as well.
 GjallarOS is licensed under the GNU Affero General Public License v3.0 or
 later; see [LICENSE](LICENSE). Bundled parts keep their own licenses:
 
-- [`pkgs/monique`](https://github.com/bakanura/monique): GPL-3.0.
+- [`pkgs/monique`](https://github.com/vardstein/monique): GPL-3.0.
 - [`apps/nemu/module.nix`](apps/nemu/module.nix): nemu's upstream NixOS
   module, BSD-2-Clause, license text in the file header.

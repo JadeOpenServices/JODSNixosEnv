@@ -7,12 +7,12 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/bakanura/gjallarOS/internal/installer/discovery"
-	"github.com/bakanura/gjallarOS/internal/installer/hardwarereconcile"
-	"github.com/bakanura/gjallarOS/internal/installer/oddc"
-	"github.com/bakanura/gjallarOS/internal/installer/oddchost"
-	"github.com/bakanura/gjallarOS/internal/installer/prompt"
-	"github.com/bakanura/gjallarOS/internal/usbtrust"
+	"github.com/JadeOpenServices/gjallarOS/internal/installer/discovery"
+	"github.com/JadeOpenServices/gjallarOS/internal/installer/hardwarereconcile"
+	"github.com/JadeOpenServices/gjallarOS/internal/installer/oddc"
+	"github.com/JadeOpenServices/gjallarOS/internal/installer/oddchost"
+	"github.com/JadeOpenServices/gjallarOS/internal/installer/prompt"
+	"github.com/JadeOpenServices/gjallarOS/internal/usbtrust"
 )
 
 var detectInstallerHardware = discovery.DetectHardware

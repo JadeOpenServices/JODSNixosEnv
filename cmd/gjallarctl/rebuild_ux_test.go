@@ -7,9 +7,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/bakanura/gjallarOS/internal/installer/config"
-	"github.com/bakanura/gjallarOS/internal/installercheck"
-	"github.com/bakanura/gjallarOS/internal/oddccli"
+	"github.com/JadeOpenServices/gjallarOS/internal/installer/config"
+	"github.com/JadeOpenServices/gjallarOS/internal/installercheck"
+	"github.com/JadeOpenServices/gjallarOS/internal/oddccli"
 )
 
 func TestRebuildDoesNotRequireExplicitRepoAndHost(t *testing.T) {

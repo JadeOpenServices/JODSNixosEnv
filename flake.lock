@@ -308,13 +308,13 @@
         "rev": "762d016f36f60225e592c0961a38a4d8352997f3",
         "shallow": true,
         "type": "git",
-        "url": "https://github.com/bakanura/jods.git"
+        "url": "https://github.com/vardstein/jods.git"
       },
       "original": {
         "rev": "762d016f36f60225e592c0961a38a4d8352997f3",
         "shallow": true,
         "type": "git",
-        "url": "https://github.com/bakanura/jods.git"
+        "url": "https://github.com/vardstein/jods.git"
       }
     },
     "lanzaboote": {

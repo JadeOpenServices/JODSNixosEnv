@@ -1,9 +1,9 @@
 package discovery
 
 import (
-	"github.com/bakanura/gjallarOS/internal/hardware/deviceprobe"
-	"github.com/bakanura/gjallarOS/internal/hardware/inputclass"
-	"github.com/bakanura/gjallarOS/internal/hardware/orientation"
+	"github.com/JadeOpenServices/gjallarOS/internal/hardware/deviceprobe"
+	"github.com/JadeOpenServices/gjallarOS/internal/hardware/inputclass"
+	"github.com/JadeOpenServices/gjallarOS/internal/hardware/orientation"
 	"os"
 	"path/filepath"
 	"sort"

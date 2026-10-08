@@ -1,7 +1,7 @@
 package deviceprobe
 
 import (
-	"github.com/bakanura/gjallarOS/internal/hardware/inputclass"
+	"github.com/JadeOpenServices/gjallarOS/internal/hardware/inputclass"
 	"path/filepath"
 	"sort"
 	"strings"

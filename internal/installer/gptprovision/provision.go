@@ -18,8 +18,8 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/bakanura/gjallarOS/internal/installer/diskplan"
-	"github.com/bakanura/gjallarOS/internal/installer/prompt"
+	"github.com/JadeOpenServices/gjallarOS/internal/installer/diskplan"
+	"github.com/JadeOpenServices/gjallarOS/internal/installer/prompt"
 )
 
 const (

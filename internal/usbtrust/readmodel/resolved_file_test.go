@@ -6,7 +6,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/bakanura/gjallarOS/internal/usbtrust/oddcsource"
+	"github.com/JadeOpenServices/gjallarOS/internal/usbtrust/oddcsource"
 )
 
 func TestResolvedFilePreservesHostExpectations(t *testing.T) {

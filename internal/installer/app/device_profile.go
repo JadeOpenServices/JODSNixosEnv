@@ -4,10 +4,10 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/bakanura/gjallarOS/internal/installer/deviceprofile"
-	"github.com/bakanura/gjallarOS/internal/installer/discovery"
-	"github.com/bakanura/gjallarOS/internal/installer/oddc"
-	"github.com/bakanura/gjallarOS/internal/installer/oddchost"
+	"github.com/JadeOpenServices/gjallarOS/internal/installer/deviceprofile"
+	"github.com/JadeOpenServices/gjallarOS/internal/installer/discovery"
+	"github.com/JadeOpenServices/gjallarOS/internal/installer/oddc"
+	"github.com/JadeOpenServices/gjallarOS/internal/installer/oddchost"
 )
 
 var (

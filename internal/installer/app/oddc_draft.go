@@ -9,7 +9,7 @@ import (
 
 	portable "github.com/JadeOpenServices/oddc/pkg/oddc"
 
-	"github.com/bakanura/gjallarOS/internal/installer/oddcdraft"
+	"github.com/JadeOpenServices/gjallarOS/internal/installer/oddcdraft"
 )
 
 // stageODDCDraft drafts an ODDC model for a machine ODDC does not match and

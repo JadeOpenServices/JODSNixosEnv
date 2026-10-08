@@ -8,9 +8,9 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/bakanura/gjallarOS/internal/installer/deviceprofile"
-	"github.com/bakanura/gjallarOS/internal/installer/oddc"
-	"github.com/bakanura/gjallarOS/internal/installercheck"
+	"github.com/JadeOpenServices/gjallarOS/internal/installer/deviceprofile"
+	"github.com/JadeOpenServices/gjallarOS/internal/installer/oddc"
+	"github.com/JadeOpenServices/gjallarOS/internal/installercheck"
 )
 
 // Nix runs `nix flake update`; Gjallarctl, when set, runs the rebuild

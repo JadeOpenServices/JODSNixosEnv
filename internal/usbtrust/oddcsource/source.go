@@ -5,7 +5,7 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/bakanura/gjallarOS/internal/usbtrust"
+	"github.com/JadeOpenServices/gjallarOS/internal/usbtrust"
 )
 
 // Expected extracts internal USB expectations from an already-resolved

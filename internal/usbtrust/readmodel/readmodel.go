@@ -4,9 +4,9 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/bakanura/gjallarOS/internal/usbtrust"
-	"github.com/bakanura/gjallarOS/internal/usbtrust/broker"
-	"github.com/bakanura/gjallarOS/internal/usbtrust/oddcsource"
+	"github.com/JadeOpenServices/gjallarOS/internal/usbtrust"
+	"github.com/JadeOpenServices/gjallarOS/internal/usbtrust/broker"
+	"github.com/JadeOpenServices/gjallarOS/internal/usbtrust/oddcsource"
 )
 
 // ResolvedSource returns the already-resolved ODDC machine view.

@@ -1,6 +1,6 @@
 package discovery
 
-import "github.com/bakanura/gjallarOS/internal/installer/oddc"
+import "github.com/JadeOpenServices/gjallarOS/internal/installer/oddc"
 
 // ODDCIdentity converts discovered machine hardware into the structured
 // identity consumed by the declarative device collection resolver.

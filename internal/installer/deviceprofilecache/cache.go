@@ -11,7 +11,7 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/bakanura/gjallarOS/internal/installer/oddc"
+	"github.com/JadeOpenServices/gjallarOS/internal/installer/oddc"
 )
 
 const Schema = 2

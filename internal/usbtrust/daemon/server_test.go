@@ -10,8 +10,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/bakanura/gjallarOS/internal/usbtrust"
-	"github.com/bakanura/gjallarOS/internal/usbtrust/broker"
+	"github.com/JadeOpenServices/gjallarOS/internal/usbtrust"
+	"github.com/JadeOpenServices/gjallarOS/internal/usbtrust/broker"
 )
 
 type fakeReader struct{}

@@ -4,8 +4,8 @@ import (
 	"context"
 	"path/filepath"
 
-	"github.com/bakanura/gjallarOS/internal/installer/config"
-	"github.com/bakanura/gjallarOS/internal/installercheck"
+	"github.com/JadeOpenServices/gjallarOS/internal/installer/config"
+	"github.com/JadeOpenServices/gjallarOS/internal/installercheck"
 )
 
 type UserLoader func(path string) (config.User, error)

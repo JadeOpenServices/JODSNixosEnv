@@ -10,7 +10,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/bakanura/gjallarOS/internal/usbtrust/broker"
+	"github.com/JadeOpenServices/gjallarOS/internal/usbtrust/broker"
 )
 
 const (

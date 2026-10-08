@@ -9,11 +9,11 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/bakanura/gjallarOS/internal/installer/config"
-	"github.com/bakanura/gjallarOS/internal/installer/discovery"
-	"github.com/bakanura/gjallarOS/internal/installer/geolocation"
-	"github.com/bakanura/gjallarOS/internal/installer/prompt"
-	"github.com/bakanura/gjallarOS/internal/installer/secureboot"
+	"github.com/JadeOpenServices/gjallarOS/internal/installer/config"
+	"github.com/JadeOpenServices/gjallarOS/internal/installer/discovery"
+	"github.com/JadeOpenServices/gjallarOS/internal/installer/geolocation"
+	"github.com/JadeOpenServices/gjallarOS/internal/installer/prompt"
+	"github.com/JadeOpenServices/gjallarOS/internal/installer/secureboot"
 )
 
 func TestRequireNixOS(t *testing.T) {

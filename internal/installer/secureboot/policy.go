@@ -10,7 +10,7 @@ import (
 	"reflect"
 	"strings"
 
-	"github.com/bakanura/gjallarOS/internal/installer/oddc"
+	"github.com/JadeOpenServices/gjallarOS/internal/installer/oddc"
 )
 
 const FirmwarePolicyPath = "/var/lib/gjallarOS/secure-boot/firmware-policy.json"

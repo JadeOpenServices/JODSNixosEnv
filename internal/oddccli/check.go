@@ -6,7 +6,7 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/bakanura/gjallarOS/internal/installer/oddc"
+	"github.com/JadeOpenServices/gjallarOS/internal/installer/oddc"
 
 	portable "github.com/JadeOpenServices/oddc/pkg/oddc"
 )

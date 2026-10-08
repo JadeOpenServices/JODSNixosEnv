@@ -4,8 +4,8 @@ import (
 	"reflect"
 	"testing"
 
-	"github.com/bakanura/gjallarOS/internal/hardware/deviceprobe"
-	"github.com/bakanura/gjallarOS/internal/usbtrust"
+	"github.com/JadeOpenServices/gjallarOS/internal/hardware/deviceprobe"
+	"github.com/JadeOpenServices/gjallarOS/internal/usbtrust"
 )
 
 func TestObservedPreservesOnlyKnownSysfsIdentity(t *testing.T) {

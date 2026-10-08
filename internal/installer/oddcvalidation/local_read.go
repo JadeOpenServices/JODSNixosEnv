@@ -7,7 +7,7 @@ import (
 	"fmt"
 	"io"
 
-	"github.com/bakanura/gjallarOS/internal/installer/oddc"
+	"github.com/JadeOpenServices/gjallarOS/internal/installer/oddc"
 )
 
 func LocalValidationMatches(

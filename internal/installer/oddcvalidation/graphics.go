@@ -5,7 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 
-	"github.com/bakanura/gjallarOS/internal/hardware/graphics"
+	"github.com/JadeOpenServices/gjallarOS/internal/hardware/graphics"
 )
 
 type graphicsSettings struct {

@@ -11,7 +11,7 @@ import (
 	"slices"
 	"strings"
 
-	"github.com/bakanura/gjallarOS/internal/installer/config"
+	"github.com/JadeOpenServices/gjallarOS/internal/installer/config"
 )
 
 // String returns a Nix double-quoted string literal. In addition to ordinary

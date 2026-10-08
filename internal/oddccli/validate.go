@@ -7,9 +7,9 @@ import (
 	"io"
 	"time"
 
-	"github.com/bakanura/gjallarOS/internal/installer/oddcvalidation"
-	"github.com/bakanura/gjallarOS/internal/installer/release"
-	"github.com/bakanura/gjallarOS/internal/installercheck"
+	"github.com/JadeOpenServices/gjallarOS/internal/installer/oddcvalidation"
+	"github.com/JadeOpenServices/gjallarOS/internal/installer/release"
+	"github.com/JadeOpenServices/gjallarOS/internal/installercheck"
 )
 
 // validation runs the device gates and recorder keeps a passed result;

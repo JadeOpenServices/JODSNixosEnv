@@ -7,7 +7,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/bakanura/gjallarOS/internal/installer/oddcvalidation"
+	"github.com/JadeOpenServices/gjallarOS/internal/installer/oddcvalidation"
 )
 
 func TestValidateDevicePrintsSuccessfulGate(t *testing.T) {

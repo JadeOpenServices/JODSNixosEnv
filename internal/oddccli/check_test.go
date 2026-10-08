@@ -9,7 +9,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/bakanura/gjallarOS/internal/installer/oddc"
+	"github.com/JadeOpenServices/gjallarOS/internal/installer/oddc"
 )
 
 // upstreamRepo is a checkout with this repository's flake.lock, answered

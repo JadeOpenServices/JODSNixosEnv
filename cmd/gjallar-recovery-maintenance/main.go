@@ -11,10 +11,10 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/bakanura/gjallarOS/internal/installer/diskplan"
-	"github.com/bakanura/gjallarOS/internal/installer/prompt"
-	"github.com/bakanura/gjallarOS/internal/installer/recoveryprovision"
-	"github.com/bakanura/gjallarOS/internal/installer/recoveryresize"
+	"github.com/JadeOpenServices/gjallarOS/internal/installer/diskplan"
+	"github.com/JadeOpenServices/gjallarOS/internal/installer/prompt"
+	"github.com/JadeOpenServices/gjallarOS/internal/installer/recoveryprovision"
+	"github.com/JadeOpenServices/gjallarOS/internal/installer/recoveryresize"
 )
 
 const targetRoot = "/mnt"

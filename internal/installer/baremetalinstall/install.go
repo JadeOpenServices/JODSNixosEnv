@@ -19,8 +19,8 @@ import (
 	"regexp"
 	"strings"
 
-	"github.com/bakanura/gjallarOS/internal/installer/buildlimits"
-	"github.com/bakanura/gjallarOS/internal/installer/flakesource"
+	"github.com/JadeOpenServices/gjallarOS/internal/installer/buildlimits"
+	"github.com/JadeOpenServices/gjallarOS/internal/installer/flakesource"
 )
 
 const targetRoot = "/mnt"

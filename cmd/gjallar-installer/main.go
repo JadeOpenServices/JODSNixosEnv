@@ -6,7 +6,7 @@ import (
 	"os/signal"
 	"syscall"
 
-	"github.com/bakanura/gjallarOS/internal/installer/app"
+	"github.com/JadeOpenServices/gjallarOS/internal/installer/app"
 )
 
 func main() {

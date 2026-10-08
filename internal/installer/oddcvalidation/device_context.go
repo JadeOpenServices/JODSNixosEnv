@@ -3,11 +3,11 @@ package oddcvalidation
 import (
 	"fmt"
 
-	"github.com/bakanura/gjallarOS/internal/installer/config"
-	"github.com/bakanura/gjallarOS/internal/installer/deviceprofile"
-	"github.com/bakanura/gjallarOS/internal/installer/discovery"
-	"github.com/bakanura/gjallarOS/internal/installer/oddc"
-	"github.com/bakanura/gjallarOS/internal/installer/sourcerevision"
+	"github.com/JadeOpenServices/gjallarOS/internal/installer/config"
+	"github.com/JadeOpenServices/gjallarOS/internal/installer/deviceprofile"
+	"github.com/JadeOpenServices/gjallarOS/internal/installer/discovery"
+	"github.com/JadeOpenServices/gjallarOS/internal/installer/oddc"
+	"github.com/JadeOpenServices/gjallarOS/internal/installer/sourcerevision"
 )
 
 type DeviceContext struct {

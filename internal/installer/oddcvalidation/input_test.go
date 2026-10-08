@@ -4,7 +4,7 @@ import (
 	"context"
 	"testing"
 
-	"github.com/bakanura/gjallarOS/internal/installer/discovery"
+	"github.com/JadeOpenServices/gjallarOS/internal/installer/discovery"
 )
 
 func TestRuntimeInputGateMatchesGeneratedState(t *testing.T) {

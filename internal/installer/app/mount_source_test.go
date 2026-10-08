@@ -7,7 +7,7 @@ import (
 	"strings"
 	"testing"
 
-	installerresume "github.com/bakanura/gjallarOS/internal/installer/resume"
+	installerresume "github.com/JadeOpenServices/gjallarOS/internal/installer/resume"
 )
 
 func TestMountSourceDeviceStripsSubvolumeSuffix(t *testing.T) {

@@ -7,8 +7,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/bakanura/gjallarOS/internal/installer/config"
-	"github.com/bakanura/gjallarOS/internal/installer/prompt"
+	"github.com/JadeOpenServices/gjallarOS/internal/installer/config"
+	"github.com/JadeOpenServices/gjallarOS/internal/installer/prompt"
 )
 
 func collectTailscaleAnswers(t *testing.T, answers ...string) (*config.TailscaleIntent, string) {

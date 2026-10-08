@@ -4,8 +4,8 @@ import (
 	"context"
 	"os"
 
-	"github.com/bakanura/gjallarOS/internal/hardware/graphics"
-	"github.com/bakanura/gjallarOS/internal/installer/discovery"
+	"github.com/JadeOpenServices/gjallarOS/internal/hardware/graphics"
+	"github.com/JadeOpenServices/gjallarOS/internal/installer/discovery"
 )
 
 type ExecutableResolver func() (string, error)

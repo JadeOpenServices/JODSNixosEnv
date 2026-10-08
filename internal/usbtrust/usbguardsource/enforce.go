@@ -8,7 +8,7 @@ import (
 	"sort"
 	"strconv"
 
-	"github.com/bakanura/gjallarOS/internal/usbtrust"
+	"github.com/JadeOpenServices/gjallarOS/internal/usbtrust"
 )
 
 // Apply uses runtime actions only. USBGuard's persistent allowlist is never

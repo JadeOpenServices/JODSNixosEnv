@@ -19,7 +19,7 @@ import (
 	"io"
 	"strings"
 
-	"github.com/bakanura/gjallarOS/internal/installer/recoveryresize"
+	"github.com/JadeOpenServices/gjallarOS/internal/installer/recoveryresize"
 )
 
 const EnvelopeVersion = 1

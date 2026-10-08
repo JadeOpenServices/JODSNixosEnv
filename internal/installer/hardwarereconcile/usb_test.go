@@ -3,8 +3,8 @@ package hardwarereconcile
 import (
 	"testing"
 
-	"github.com/bakanura/gjallarOS/internal/hardware/deviceprobe"
-	"github.com/bakanura/gjallarOS/internal/usbtrust"
+	"github.com/JadeOpenServices/gjallarOS/internal/hardware/deviceprobe"
+	"github.com/JadeOpenServices/gjallarOS/internal/usbtrust"
 )
 
 func internalUSB(deviceID string, required bool) map[string]any {

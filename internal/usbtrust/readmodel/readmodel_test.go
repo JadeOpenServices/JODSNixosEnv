@@ -5,7 +5,7 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/bakanura/gjallarOS/internal/usbtrust"
+	"github.com/JadeOpenServices/gjallarOS/internal/usbtrust"
 )
 
 type fakeResolved struct {

@@ -11,7 +11,7 @@ import (
 	"path/filepath"
 	"regexp"
 
-	"github.com/bakanura/gjallarOS/internal/installer/nixrender"
+	"github.com/JadeOpenServices/gjallarOS/internal/installer/nixrender"
 )
 
 type Versions struct {

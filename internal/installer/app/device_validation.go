@@ -5,10 +5,10 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/bakanura/gjallarOS/internal/installer/config"
-	"github.com/bakanura/gjallarOS/internal/installer/oddc"
-	"github.com/bakanura/gjallarOS/internal/installer/oddcvalidation"
-	"github.com/bakanura/gjallarOS/internal/installer/prompt"
+	"github.com/JadeOpenServices/gjallarOS/internal/installer/config"
+	"github.com/JadeOpenServices/gjallarOS/internal/installer/oddc"
+	"github.com/JadeOpenServices/gjallarOS/internal/installer/oddcvalidation"
+	"github.com/JadeOpenServices/gjallarOS/internal/installer/prompt"
 )
 
 var localValidationMatches = oddcvalidation.LocalValidationMatches

@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/bakanura/gjallarOS/internal/installer/config"
+	"github.com/JadeOpenServices/gjallarOS/internal/installer/config"
 )
 
 func TestWebApplicationsRendersSingleLineNixLiteral(t *testing.T) {

@@ -15,12 +15,12 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/bakanura/gjallarOS/internal/usbtrust"
-	"github.com/bakanura/gjallarOS/internal/usbtrust/broker"
-	"github.com/bakanura/gjallarOS/internal/usbtrust/controller"
-	"github.com/bakanura/gjallarOS/internal/usbtrust/daemon"
-	"github.com/bakanura/gjallarOS/internal/usbtrust/readmodel"
-	"github.com/bakanura/gjallarOS/internal/usbtrust/usbguardsource"
+	"github.com/JadeOpenServices/gjallarOS/internal/usbtrust"
+	"github.com/JadeOpenServices/gjallarOS/internal/usbtrust/broker"
+	"github.com/JadeOpenServices/gjallarOS/internal/usbtrust/controller"
+	"github.com/JadeOpenServices/gjallarOS/internal/usbtrust/daemon"
+	"github.com/JadeOpenServices/gjallarOS/internal/usbtrust/readmodel"
+	"github.com/JadeOpenServices/gjallarOS/internal/usbtrust/usbguardsource"
 )
 
 type config struct {

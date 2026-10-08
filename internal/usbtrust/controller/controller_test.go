@@ -5,9 +5,9 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/bakanura/gjallarOS/internal/usbtrust"
-	"github.com/bakanura/gjallarOS/internal/usbtrust/broker"
-	"github.com/bakanura/gjallarOS/internal/usbtrust/readmodel"
+	"github.com/JadeOpenServices/gjallarOS/internal/usbtrust"
+	"github.com/JadeOpenServices/gjallarOS/internal/usbtrust/broker"
+	"github.com/JadeOpenServices/gjallarOS/internal/usbtrust/readmodel"
 )
 
 type sources struct {

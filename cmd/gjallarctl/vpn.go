@@ -13,7 +13,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/bakanura/gjallarOS/internal/nettrust"
+	"github.com/JadeOpenServices/gjallarOS/internal/nettrust"
 )
 
 var (

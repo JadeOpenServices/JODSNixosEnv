@@ -24,11 +24,11 @@ gjallarctl.overrideAttrs (old: {
 
   # The installer runs gjallarctl, which no longer sits next to it.
   ldflags = old.ldflags ++ [
-    "-X github.com/bakanura/gjallarOS/internal/installer/control.Path=${gjallarctl}/bin/gjallarctl"
+    "-X github.com/JadeOpenServices/gjallarOS/internal/installer/control.Path=${gjallarctl}/bin/gjallarctl"
   ]
   ++ lib.optional (
     oddc != null
-  ) "-X github.com/bakanura/gjallarOS/internal/installer/oddcdraft.Catalog=${oddc}";
+  ) "-X github.com/JadeOpenServices/gjallarOS/internal/installer/oddcdraft.Catalog=${oddc}";
 
   meta = old.meta // {
     description = "GjallarOS installer and recovery-storage maintenance";

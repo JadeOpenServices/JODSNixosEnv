@@ -4,9 +4,9 @@ import (
 	"sort"
 	"testing"
 
+	"github.com/JadeOpenServices/gjallarOS/internal/installer/oddc"
+	"github.com/JadeOpenServices/gjallarOS/internal/installer/oddc/oddctest"
 	portable "github.com/JadeOpenServices/oddc/pkg/oddc"
-	"github.com/bakanura/gjallarOS/internal/installer/oddc"
-	"github.com/bakanura/gjallarOS/internal/installer/oddc/oddctest"
 )
 
 func TestEmbeddedSourceAppliesHostOverlayWithoutChangingSourceMetadata(

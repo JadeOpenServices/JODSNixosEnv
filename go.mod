@@ -1,4 +1,4 @@
-module github.com/bakanura/gjallarOS
+module github.com/JadeOpenServices/gjallarOS
 
 go 1.26.0
 

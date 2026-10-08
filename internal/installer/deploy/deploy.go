@@ -9,8 +9,8 @@ import (
 	"regexp"
 	"strings"
 
-	"github.com/bakanura/gjallarOS/internal/installer/buildlimits"
-	"github.com/bakanura/gjallarOS/internal/installer/flakesource"
+	"github.com/JadeOpenServices/gjallarOS/internal/installer/buildlimits"
+	"github.com/JadeOpenServices/gjallarOS/internal/installer/flakesource"
 )
 
 var hostnamePattern = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9.-]{0,252}$`)

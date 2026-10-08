@@ -10,7 +10,7 @@ import (
 
 	portable "github.com/JadeOpenServices/oddc/pkg/oddc"
 
-	"github.com/bakanura/gjallarOS/internal/installer/oddc/oddctest"
+	"github.com/JadeOpenServices/gjallarOS/internal/installer/oddc/oddctest"
 )
 
 // offline fails every request, as a rebuild without network does.

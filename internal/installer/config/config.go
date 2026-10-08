@@ -13,7 +13,7 @@ import (
 	"slices"
 	"strings"
 
-	"github.com/bakanura/gjallarOS/apps"
+	"github.com/JadeOpenServices/gjallarOS/apps"
 )
 
 type User struct {

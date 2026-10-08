@@ -3,7 +3,7 @@ package oddcvalidation
 import (
 	"strings"
 
-	"github.com/bakanura/gjallarOS/internal/installercheck"
+	"github.com/JadeOpenServices/gjallarOS/internal/installercheck"
 )
 
 func projectCheckResult(report installercheck.Report) Result {

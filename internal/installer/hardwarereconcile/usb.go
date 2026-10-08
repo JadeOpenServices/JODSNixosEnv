@@ -3,10 +3,10 @@ package hardwarereconcile
 import (
 	"strings"
 
-	"github.com/bakanura/gjallarOS/internal/hardware/deviceprobe"
-	"github.com/bakanura/gjallarOS/internal/usbtrust"
-	"github.com/bakanura/gjallarOS/internal/usbtrust/oddcsource"
-	"github.com/bakanura/gjallarOS/internal/usbtrust/sysfssource"
+	"github.com/JadeOpenServices/gjallarOS/internal/hardware/deviceprobe"
+	"github.com/JadeOpenServices/gjallarOS/internal/usbtrust"
+	"github.com/JadeOpenServices/gjallarOS/internal/usbtrust/oddcsource"
+	"github.com/JadeOpenServices/gjallarOS/internal/usbtrust/sysfssource"
 )
 
 // InternalUSB compares resolved ODDC internal USB expectations with the current

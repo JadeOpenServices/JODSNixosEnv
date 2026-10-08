@@ -6,12 +6,12 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/bakanura/gjallarOS/internal/installer/deviceprofile"
-	"github.com/bakanura/gjallarOS/internal/installer/deviceprofilecache"
-	"github.com/bakanura/gjallarOS/internal/installer/discovery"
-	"github.com/bakanura/gjallarOS/internal/installer/oddc"
-	"github.com/bakanura/gjallarOS/internal/installer/release"
-	"github.com/bakanura/gjallarOS/internal/installer/sourcerevision"
+	"github.com/JadeOpenServices/gjallarOS/internal/installer/deviceprofile"
+	"github.com/JadeOpenServices/gjallarOS/internal/installer/deviceprofilecache"
+	"github.com/JadeOpenServices/gjallarOS/internal/installer/discovery"
+	"github.com/JadeOpenServices/gjallarOS/internal/installer/oddc"
+	"github.com/JadeOpenServices/gjallarOS/internal/installer/release"
+	"github.com/JadeOpenServices/gjallarOS/internal/installer/sourcerevision"
 )
 
 func materializeODDCCapsule(

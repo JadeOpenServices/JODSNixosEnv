@@ -3,7 +3,7 @@ package deviceprobe
 import (
 	"strings"
 
-	"github.com/bakanura/gjallarOS/internal/hardware/orientation"
+	"github.com/JadeOpenServices/gjallarOS/internal/hardware/orientation"
 )
 
 type CapabilityState struct {
