@@ -2,4 +2,4 @@ module github.com/JadeOpenServices/gjallarOS
 
 go 1.26.0
 
-require github.com/JadeOpenServices/oddc v0.0.0-20261007142338-4e311931ed5f
+require github.com/JadeOpenServices/oddc v0.0.0-20261008170248-4e3ae2c0903c
