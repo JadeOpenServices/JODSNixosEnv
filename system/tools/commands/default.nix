@@ -7,7 +7,19 @@ let
   preflight = pkgs.writeShellScriptBin "gjallar-preflight" ''
     exec ${gjallarctl}/bin/gjallarctl preflight --repo ${lib.escapeShellArg settings.dotfilesDir} "$@"
   '';
+  # Rebuild with the checkout's gjallarctl: an installed binary older than
+  # the checkout rejects config keys it does not know yet ("unknown field
+  # apps", 2026-10-08) and could never deploy its own successor.
   rebuild = pkgs.writeShellScriptBin "rebuild" ''
+    repo=${lib.escapeShellArg settings.dotfilesDir}
+    if [ -n "$repo" ] && [ -f "$repo/pkgs/gjallarctl/default.nix" ]; then
+      echo "[GjallarOS] Building gjallarctl from $repo..." >&2
+      if current="$(${pkgs.nix}/bin/nix-build --no-out-link -E \
+        "(import ${pkgs.path} { }).callPackage (/. + \"$repo/pkgs/gjallarctl\") { }" 2>/dev/null)"; then
+        exec "$current/bin/gjallarctl" rebuild "$@"
+      fi
+      echo "[GjallarOS] Building it failed; using the installed gjallarctl." >&2
+    fi
     exec ${gjallarctl}/bin/gjallarctl rebuild "$@"
   '';
   goCommand = name: command: pkgs.writeShellScriptBin name ''
