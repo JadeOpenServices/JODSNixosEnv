@@ -36,6 +36,18 @@ in
     MaxRetentionSec=14day
   '';
 
+  # Builds yield to the desktop. With default weights a rebuild's 16 build
+  # jobs got as much CPU as the whole user session, and a new VSCodium
+  # window took 14s to appear (2026-10-08). Weights only matter under
+  # contention, so idle builds still use every core.
+  nix.daemonCPUSchedPolicy = "batch";
+  nix.daemonIOSchedClass = "best-effort";
+  nix.daemonIOSchedPriority = 7;
+  systemd.services.nix-daemon.serviceConfig = {
+    CPUWeight = 20;
+    IOWeight = 20;
+  };
+
   systemd.services.nix-gc.serviceConfig = {
     Nice = 19;
     IOSchedulingClass = "idle";
