@@ -10,7 +10,7 @@ NixOS 26.05 · Hyprland · Noctalia · ODDC hardware policy · TPM2 disk encrypt
 
 <a href="#-quick-start"><kbd> <br> Quick start <br> </kbd></a>&ensp;
 <a href="#-screenshots"><kbd> <br> Screenshots <br> </kbd></a>&ensp;
-<a href="#-features"><kbd> <br> Features <br> </kbd></a>&ensp;
+<a href="#features"><kbd> <br> Features <br> </kbd></a>&ensp;
 <a href="#%EF%B8%8F-keybindings"><kbd> <br> Keybindings <br> </kbd></a>&ensp;
 <a href="#-configuration"><kbd> <br> Configuration <br> </kbd></a>&ensp;
 <a href="#-license"><kbd> <br> License <br> </kbd></a>
@@ -80,20 +80,20 @@ Taken in a QEMU test VM at 1920×1080.</sub>
 
 <div align="right"><a href="#gjallaros">↑ back to top</a></div>
 
-## ✨ Features
+## Features
 
 | | |
 | --- | --- |
-| 🪟 **Desktop** | Hyprland-only, Home Manager user configuration, Noctalia shell, Stylix theming propagated to system apps. |
-| 🔐 **Disk encryption** | LUKS2 with TPM2 enrollment, optional TPM+PIN, recovery-key handling, SOPS/age secrets. |
-| 🧩 **Hardware policy** | [ODDC](https://github.com/JadeOpenServices/oddc)-backed device identity and capabilities; graphics, Wi-Fi, firmware, touchscreen, battery and clamshell detection. |
-| 🔌 **USB trust** | Review new USB devices, TPM-signed permanent trust, opt-in enforcement. |
-| 🌐 **VPN and network trust** | Tailscale with per-network trust levels and automatic exit nodes. |
-| 📦 **App catalogue** | One list in `user.config.json` picks the apps; each app owns its whole module. |
-| 🤖 **Local AI** | Optional localhost-only Ollama with hardware-aware model selection, or a central HTTPS server with a sealed token. |
-| 🛟 **Recovery** | Trusted recovery boot entry, recovery ISO, generation rollback without deleting anything newer. |
-| 🛠️ **Apps** | VSCodium, web apps (Teams, Plane, draw.io), system-wide Wine, optional Nemu. |
-| 🧹 **Maintenance** | Helpers for rebuilding, cleanup, thermal status, and updates. |
+| **Desktop** | Hyprland-only, Home Manager user configuration, Noctalia shell, Stylix theming propagated to system apps. |
+| **Disk encryption** | LUKS2 with TPM2 enrollment, optional TPM+PIN, recovery-key handling, SOPS/age secrets. |
+| **Hardware policy** | [ODDC](https://github.com/JadeOpenServices/oddc)-backed device identity and capabilities; graphics, Wi-Fi, firmware, touchscreen, battery and clamshell detection. |
+| **USB trust** | Review new USB devices, TPM-signed permanent trust, opt-in enforcement. |
+| **VPN and network trust** | Tailscale with per-network trust levels and automatic exit nodes. |
+| **App catalogue** | One list in `user.config.json` picks the apps; each app owns its whole module. |
+| **Local AI** | Optional localhost-only Ollama with hardware-aware model selection, or a central HTTPS server with a sealed token. |
+| **Recovery** | Trusted recovery boot entry, recovery ISO, generation rollback without deleting anything newer. |
+| **Apps** | VSCodium, web apps (Teams, Plane, draw.io), system-wide Wine, optional Nemu. |
+| **Maintenance** | Helpers for rebuilding, cleanup, thermal status, and updates. |
 
 <details>
 <summary><b>Local AI details</b></summary>
