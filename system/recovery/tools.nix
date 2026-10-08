@@ -6,6 +6,7 @@
 let
   gjallarctl = pkgs.callPackage ../../pkgs/gjallarctl { };
   installer = pkgs.callPackage ../../pkgs/gjallar-installer { };
+  recoveryInstall = pkgs.callPackage ../../pkgs/gjallar-recovery-install { };
   recoveryExecutor = pkgs.writeShellApplication {
     name = "gjallar-recovery-execute";
     runtimeInputs = with pkgs; [
@@ -271,6 +272,8 @@ let
           confirm_phrase REPAIR-BOOT
           NIXOS_INSTALL_BOOTLOADER=1 nixos-enter --root "$root" -- \
             /run/current-system/bin/switch-to-configuration boot
+          # bootctl appends a restored entry behind USB, PXE and recovery.
+          ${recoveryInstall}/bin/gjallar-boot-first "$root/boot"
           ;;
         rebuild)
           require_root
