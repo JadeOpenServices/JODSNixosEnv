@@ -163,6 +163,11 @@ has been provisioned with `sudo gjallarctl usb provision-key`. Existing TPM
 objects are never overwritten. Provisioning does not automatically trust devices
 or enable enforcement; inspect `gjallarctl usb status` and review devices first.
 
+Enforcement is turned on with `"usbTrustEnforce": true` in `user.config.json`
+and a `rebuild`. To turn it off, set it back to `false`, `rebuild`, then run
+`sudo gjallarctl usb disarm` and enter the disk encryption passphrase. Disarm
+alone is temporary: the broker re-arms from the config on its next restart.
+
 Unformatted USB disks offer an explicit exFAT setup prompt. Cancelling leaves the
 disk unchanged. Existing partitions, recognized filesystems, mounted devices,
 and readers with no media are excluded. Formatting uses UDisks/Polkit and

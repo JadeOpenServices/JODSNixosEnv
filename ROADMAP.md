@@ -27,13 +27,16 @@ and only the disk encryption passphrase can turn blocking off again.
      notices still work.
   2. Test the password fallback: click "Use password" during the scan. The
      askpass dialog must appear at once.
-  3. Set `usbTrustEnforce = true` in `generated/state.nix` (untracked), then
+  3. Set `"usbTrustEnforce": true` in `user.config.json` (untracked), then
      `rebuild`.
   4. Check that `gjallarctl usb status` reports `"armed": true`. The fingerprint
      reader and Bluetooth should be enrolled. The passkey and USB disk should
      wait for review.
   5. Break-glass test: `sudo gjallarctl usb disarm`. A wrong passphrase must
      fail after about 3 s; the right one must disarm.
+  6. Turning enforcement off for good: set `"usbTrustEnforce": false`,
+     `rebuild`, then `sudo gjallarctl usb disarm`. Disarm alone does not
+     last: the broker re-arms from the config on its next restart.
 - [ ] Show armed or audit mode in the review dialog header, not only in
       `status` JSON.
 - [ ] Remaining caveats, which need real fixes, not just docs:
