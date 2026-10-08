@@ -135,6 +135,48 @@ installed system these default to its model. `gjallarctl oddc validate-device`
 validates this checkout on the device. Validation evidence goes to ODDC through
 `oddc contribute`, not into this repository.
 
+## Updates
+
+On a standalone install, `update` brings the system to the newest GjallarOS
+release:
+
+    update --check
+    update
+
+`update` fetches the release tags (`v26.05.N`) from the GjallarOS repository,
+picks the newest one, and checks that it was signed by a release key in
+`deployment/update-signers`. It then moves the checkout to that tag and runs
+`rebuild`. The rebuild uses the release's own `flake.lock`, so every machine
+gets the package versions that release was tested with. `--check` only says
+whether an update is available and lists the new commits.
+
+`update` refuses to run when:
+
+- the tag is unsigned, signed by another key, or signed under a different
+  name;
+- the checkout has commits that are not in the release;
+- the checkout has uncommitted changes.
+
+It moves the checkout only by fast-forward, so nothing local is ever
+overwritten. The one exception is a changed `flake.lock` from
+`rebuild --hardware-update`: `update` replaces it with the release's lock and
+says so. Run `rebuild --hardware-update` again afterwards to move ODDC
+forward. If `rebuild` fails after the move, the checkout is already updated;
+run `rebuild` again.
+
+The remote and the signing keys come from `/etc/gjallar/update.json`, which
+the running system writes. A checkout cannot change who it trusts until a
+release that changes it has been verified and applied. Until a key is listed
+in `deployment/update-signers`, `update` refuses to run.
+
+`updateChannel` in `user.config.json` picks what `update` follows:
+
+- `stable` (the default): signed release tags.
+- `main`: the newest signed commit on `main`, for testers.
+
+`update --inputs` is the old behaviour: it runs `nix flake update` and moves
+every input to its newest upstream version, untested.
+
 ## Rebuilds and removable disks
 
 Every GjallarOS system names its checkout in `/etc/gjallar/repository`
