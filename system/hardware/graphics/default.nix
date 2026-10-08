@@ -134,10 +134,20 @@ let
       selectedNvidiaPackage;
 in
 {
-  assertions = lib.optional (vendor == "nvidia") {
-    assertion = builtins.elem driverBranch [ "stable" "legacy_580" ];
-    message = "ODDC NVIDIA driverBranch must be stable or legacy_580.";
-  };
+  assertions = lib.optionals (vendor == "nvidia") [
+    {
+      assertion = builtins.elem driverBranch [ "stable" "legacy_580" ];
+      message = "ODDC NVIDIA driverBranch must be stable or legacy_580.";
+    }
+    # Bus IDs come from the hardware scan, the hybrid type from ODDC; say so
+    # before nixpkgs' bare PRIME assertion does.
+    {
+      assertion = !hybrid || (settings.graphicsBusId != "" && settings.graphicsIntegratedBusId != "");
+      message = ''
+        ODDC model ${settings.oddcModel or "(none)"} has integrated + NVIDIA graphics, but the hardware scan did not find both GPUs (NVIDIA "${settings.graphicsBusId}", integrated "${settings.graphicsIntegratedBusId}").
+        Turn the NVIDIA GPU on in firmware setup (hybrid graphics mode), then run the installer or `rebuild --hardware-update` again.'';
+    }
+  ];
 
   services.xserver.enable = true;
   hardware.graphics = {
