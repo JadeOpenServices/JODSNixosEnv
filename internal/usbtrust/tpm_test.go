@@ -296,3 +296,50 @@ func publicKeyPEM(
 		},
 	)
 }
+
+func TestTPMSignerReadsPublicKeyOnce(t *testing.T) {
+	privateKey, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	if err != nil {
+		t.Fatal(err)
+	}
+	reads := 0
+	signer := &TPMSigner{
+		Handle: "0x81000042",
+		readPublic: func(context.Context, string) ([]byte, error) {
+			reads++
+			return publicKeyPEM(t, &privateKey.PublicKey), nil
+		},
+	}
+	for range 3 {
+		if _, err := signer.publicKey(context.Background()); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if reads != 1 {
+		t.Fatalf("read the TPM public key %d times, want 1", reads)
+	}
+}
+
+func TestTPMSignerRetriesFailedPublicKeyRead(t *testing.T) {
+	privateKey, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	if err != nil {
+		t.Fatal(err)
+	}
+	reads := 0
+	signer := &TPMSigner{
+		Handle: "0x81000042",
+		readPublic: func(context.Context, string) ([]byte, error) {
+			reads++
+			if reads == 1 {
+				return nil, context.DeadlineExceeded
+			}
+			return publicKeyPEM(t, &privateKey.PublicKey), nil
+		},
+	}
+	if _, err := signer.publicKey(context.Background()); err == nil {
+		t.Fatal("first failed read was not reported")
+	}
+	if _, err := signer.publicKey(context.Background()); err != nil {
+		t.Fatalf("failed read was cached: %v", err)
+	}
+}

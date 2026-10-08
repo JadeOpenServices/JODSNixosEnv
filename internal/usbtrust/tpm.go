@@ -15,6 +15,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"regexp"
+	"sync"
 )
 
 const (
@@ -34,6 +35,13 @@ type TPMSigner struct {
 	Handle string
 
 	readPublic publicKeyReader
+
+	// The persistent key never changes under a running daemon, so one
+	// successful read serves every later verification. Reading it per
+	// request put a TPM round-trip in every 2s policy poll, which timed out
+	// whenever a rebuild held the TPM (2026-10-08).
+	keyMu sync.Mutex
+	key   *ecdsa.PublicKey
 }
 
 func NewTPMSigner(handle string) (*TPMSigner, error) {
@@ -217,6 +225,22 @@ func (s *TPMSigner) Verify(
 }
 
 func (s *TPMSigner) publicKey(
+	ctx context.Context,
+) (*ecdsa.PublicKey, error) {
+	s.keyMu.Lock()
+	defer s.keyMu.Unlock()
+	if s.key != nil {
+		return s.key, nil
+	}
+	key, err := s.readPublicKey(ctx)
+	if err != nil {
+		return nil, err
+	}
+	s.key = key
+	return key, nil
+}
+
+func (s *TPMSigner) readPublicKey(
 	ctx context.Context,
 ) (*ecdsa.PublicKey, error) {
 	var (
