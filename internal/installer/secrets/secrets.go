@@ -8,6 +8,7 @@ import (
 	"os/exec"
 	"os/user"
 	"path/filepath"
+	"strconv"
 	"strings"
 )
 
@@ -23,9 +24,17 @@ func EnsureAgeKey(ctx context.Context, username string) (keyPath, recipient stri
 	}
 	keyPath = filepath.Join(account.HomeDir, ".config", "sops", "age", "keys.txt")
 	if _, err := os.Stat(keyPath); os.IsNotExist(err) {
+		created := missingDirs(account.HomeDir, filepath.Dir(keyPath))
 		if err := os.MkdirAll(filepath.Dir(keyPath), 0700); err != nil {
 			return "", "", err
 		}
+		// Run as root (sudo installer), the key and the directories made
+		// for it must still belong to the user whose sops reads them.
+		defer func() {
+			if err == nil {
+				err = giveToAccount(account, append(created, keyPath)...)
+			}
+		}()
 		tmp, err := os.CreateTemp(filepath.Dir(keyPath), ".age-key-*")
 		if err != nil {
 			return "", "", err
@@ -67,6 +76,44 @@ func EnsureAgeKey(ctx context.Context, username string) (keyPath, recipient stri
 		return "", "", fmt.Errorf("could not read public recipient from %s", keyPath)
 	}
 	return keyPath, recipient, nil
+}
+
+// missingDirs lists dir and its parents below home that do not exist yet,
+// outermost first.
+func missingDirs(home, dir string) []string {
+	var missing []string
+	for d := dir; d != home && strings.HasPrefix(d, home+string(filepath.Separator)); d = filepath.Dir(d) {
+		if _, err := os.Lstat(d); err == nil {
+			break
+		}
+		missing = append([]string{d}, missing...)
+	}
+	return missing
+}
+
+var (
+	secretsEUID   = os.Geteuid
+	secretsLchown = os.Lchown
+)
+
+func giveToAccount(account *user.User, paths ...string) error {
+	if secretsEUID() != 0 {
+		return nil
+	}
+	uid, err := strconv.Atoi(account.Uid)
+	if err != nil {
+		return fmt.Errorf("uid of %s: %w", account.Username, err)
+	}
+	gid, err := strconv.Atoi(account.Gid)
+	if err != nil {
+		return fmt.Errorf("gid of %s: %w", account.Username, err)
+	}
+	for _, path := range paths {
+		if err := secretsLchown(path, uid, gid); err != nil {
+			return fmt.Errorf("give %s to %s: %w", path, account.Username, err)
+		}
+	}
+	return nil
 }
 
 func atomicWrite(path string, data []byte, mode os.FileMode) error {
