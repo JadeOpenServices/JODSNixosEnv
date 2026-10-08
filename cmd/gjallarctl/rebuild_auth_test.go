@@ -86,7 +86,7 @@ func TestPrivilegePasswordCommandUsesAskpassWithoutStdin(t *testing.T) {
 	}
 	// The askpass prompt needs the terminal; a background job would stop on
 	// SIGTTOU/SIGTTIN and the fallback would hang silently.
-	if !cmd.SysProcAttr.Foreground || cmd.SysProcAttr.Ctty != 1 {
+	if !cmd.SysProcAttr.Foreground || cmd.SysProcAttr.Ctty != int(tty.Fd()) {
 		t.Fatal("password authentication must run as the terminal foreground job")
 	}
 

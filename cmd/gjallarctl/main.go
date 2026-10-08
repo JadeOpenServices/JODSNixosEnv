@@ -2718,12 +2718,14 @@ func privilegePasswordCommand(
 	cmd.Env = environmentWithOverride("SUDO_ASKPASS", askpass)
 
 	// The askpass helper prompts on the terminal and turns echo off, which a
-	// background process group cannot do. Make sudo the foreground job; fd 1
-	// is the terminal in the child.
+	// background process group cannot do. Make sudo the foreground job. With
+	// Foreground, Ctty is a descriptor in this process, not in the child:
+	// fd 1 was the pipe in `sudo bootctl status | grep` and failed with
+	// ENOTTY (real HP, 2026-10-09).
 	cmd.SysProcAttr = &syscall.SysProcAttr{
 		Setpgid:    true,
 		Foreground: true,
-		Ctty:       1,
+		Ctty:       int(tty.Fd()),
 	}
 
 	return cmd
