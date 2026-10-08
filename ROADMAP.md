@@ -187,3 +187,18 @@ Ideas worth taking:
       notice. No scale is forced by default; the user picks it.
 - [ ] **Monique starts faster.** It still takes about a second too long to
       open. Measure where the time goes before changing anything.
+
+## 8. Secure Boot on devices without an ODDC setup
+
+- [ ] **Best-effort Secure Boot for draft profiles.** When ODDC has no
+      Secure Boot setup for a model, the installer can offer to try the
+      generic setup anyway: own keys through setup mode, Microsoft keys kept.
+      Off unless the user asks. Before anything is written, warn and ask for
+      typed confirmation that this can fail in ways nobody has tested on this
+      model, and that recovering may need clearing the Secure Boot keys or
+      resetting them to factory defaults by hand in firmware setup. Record
+      the result in the draft profile so ODDC can turn a working attempt into
+      a real setup.
+- [ ] **Desktop notice for Secure Boot state.** Keys enrolled but firmware
+      enforcement still off shows only in the journal today. Show it like the
+      low-battery warning.
