@@ -292,8 +292,8 @@ func TestCollectProjectToolsSupportsNextcloud(t *testing.T) {
 	}
 }
 
-// A blank or invalid endpoint is asked again; it failed the whole install
-// before (e2e-generic, 2026-10-07).
+// An invalid endpoint is asked again; it failed the whole install before
+// (e2e-generic, 2026-10-07).
 func TestCollectProjectToolsReasksInvalidEndpoints(t *testing.T) {
 	var output bytes.Buffer
 	u := config.User{}
@@ -302,7 +302,7 @@ func TestCollectProjectToolsReasksInvalidEndpoints(t *testing.T) {
 		context.Background(),
 		prompt.New(
 			strings.NewReader(
-				"yes\n\nhttps://plane.example.test\nno\nno\nyes\n\nhttp://cloud.example.test\nhttps://cloud.example.test\n",
+				"yes\nftp://plane.example.test\nhttps://plane.example.test\nno\nno\nyes\nhttp://cloud.example.test\nhttps://cloud.example.test\n",
 			),
 			&output,
 		),
@@ -314,10 +314,38 @@ func TestCollectProjectToolsReasksInvalidEndpoints(t *testing.T) {
 	if u.PlaneHost != "https://plane.example.test" || u.NextcloudHost != "https://cloud.example.test" {
 		t.Fatalf("plane=%q nextcloud=%q", u.PlaneHost, u.NextcloudHost)
 	}
-	for _, want := range []string{"endpoint is empty", "HTTPS is required"} {
+	for _, want := range []string{"unsupported external service endpoint scheme", "HTTPS is required"} {
 		if !strings.Contains(output.String(), want) {
 			t.Fatalf("output lacks %q:\n%s", want, output.String())
 		}
+	}
+}
+
+// A blank endpoint skips the service instead of asking forever (e2e-generic,
+// 2026-10-08: yes to Plane without a server looped on "Plane endpoint").
+func TestCollectProjectToolsBlankEndpointSkips(t *testing.T) {
+	var output bytes.Buffer
+	u := config.User{}
+
+	err := collectProjectTools(
+		context.Background(),
+		prompt.New(
+			strings.NewReader("yes\n\nyes\nyes\n\nno\nyes\n\n"),
+			&output,
+		),
+		&u,
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if u.PlaneEnable || u.PlaneHost != "" {
+		t.Fatalf("plane enabled=%t host=%q", u.PlaneEnable, u.PlaneHost)
+	}
+	if !u.DrawioEnable || u.DrawioSelfHosted || u.DrawioHost != "" {
+		t.Fatalf("drawio enabled=%t selfHosted=%t host=%q", u.DrawioEnable, u.DrawioSelfHosted, u.DrawioHost)
+	}
+	if u.NextcloudEnable || u.NextcloudHost != "" {
+		t.Fatalf("nextcloud enabled=%t host=%q", u.NextcloudEnable, u.NextcloudHost)
 	}
 }
 

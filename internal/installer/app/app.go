@@ -2286,11 +2286,14 @@ func collectProjectTools(ctx context.Context, ui prompt.UI, u *config.User) erro
 			application.Endpoint, err = askEndpoint(
 				ctx,
 				ui,
-				"Plane endpoint",
+				"Plane endpoint (blank skips Plane)",
 				checkEndpoint,
 			)
 			if err != nil {
 				return err
+			}
+			if application.Endpoint == "" {
+				continue
 			}
 
 		case config.WebApplicationDrawio:
@@ -2307,7 +2310,7 @@ func collectProjectTools(ctx context.Context, ui prompt.UI, u *config.User) erro
 				application.Endpoint, err = askEndpoint(
 					ctx,
 					ui,
-					"Draw.io endpoint",
+					"Draw.io endpoint (blank uses the public diagrams.net)",
 					checkEndpoint,
 				)
 				if err != nil {
@@ -2346,7 +2349,7 @@ func collectProjectTools(ctx context.Context, ui prompt.UI, u *config.User) erro
 		u.NextcloudHost, err = askEndpoint(
 			ctx,
 			ui,
-			"Nextcloud server",
+			"Nextcloud server (blank skips Nextcloud)",
 			func(host string) error {
 				probe := config.User{NextcloudEnable: true, NextcloudHost: host}
 				return config.NormalizeProjectTools(&probe)
@@ -2355,18 +2358,24 @@ func collectProjectTools(ctx context.Context, ui prompt.UI, u *config.User) erro
 		if err != nil {
 			return err
 		}
+		u.NextcloudEnable = u.NextcloudHost != ""
 	}
 
 	return config.NormalizeProjectTools(u)
 }
 
-// askEndpoint asks for label until check accepts the answer, so a blank or
-// invalid endpoint is asked again instead of failing the whole install.
+// askEndpoint asks for label until check accepts the answer, so an invalid
+// endpoint is asked again instead of failing the whole install. A blank answer
+// returns "" so the caller can skip the service; re-asking it trapped anyone
+// who said yes without having a server.
 func askEndpoint(ctx context.Context, ui prompt.UI, label string, check func(string) error) (string, error) {
 	for {
 		value, err := ui.Value(ctx, label, "")
 		if err != nil {
 			return "", err
+		}
+		if strings.TrimSpace(value) == "" {
+			return "", nil
 		}
 		if err := check(value); err != nil {
 			fmt.Fprintf(ui.Out, "%v\n", err)
