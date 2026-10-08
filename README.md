@@ -1,5 +1,7 @@
 <div align="center">
 
+<img src="docs/branding/gjallaros-logo.svg" alt="GjallarOS logo: Gjallarhorn held in a fist" width="128">
+
 # GjallarOS
 
 **A secure, modular NixOS workstation on Hyprland.**
