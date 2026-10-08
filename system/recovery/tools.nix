@@ -159,7 +159,7 @@ let
             exit 1
           }
 
-          if findmnt -rn --target "$target" >/dev/null 2>&1; then
+          if findmnt -rn --mountpoint "$target" >/dev/null 2>&1; then
             printf '%s\n'               "ERROR: $target is already mounted; refusing an ambiguous recovery root." >&2
             exit 1
           fi
@@ -192,11 +192,11 @@ let
           fi
 
           source="$(
-            findmnt -nro SOURCE --target "$target"
+            findmnt -nro SOURCE --mountpoint "$target"
           )"
 
           options="$(
-            findmnt -nro OPTIONS --target "$target"
+            findmnt -nro OPTIONS --mountpoint "$target"
           )"
 
           if [ "$source" != "$mapping" ]; then
