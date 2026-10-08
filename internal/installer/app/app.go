@@ -677,6 +677,30 @@ func run(ctx context.Context, args []string, in io.Reader, out, errOut io.Writer
 				return fail(errOut, err)
 			}
 		}
+	} else if tpmAvailable &&
+		s.user.SecureBootPrompt &&
+		!s.user.SecureBootEnable &&
+		!s.user.EndpointManagedDevice {
+		firmwareOn, firmwareErr := secureboot.FirmwareSecureBoot()
+		fmt.Fprint(out, noSecureBootPolicyNotice(
+			resolvedDevice.ModelID,
+			firmwareOn,
+			firmwareErr == nil,
+		))
+		if firmwareOn && !s.user.UnattendedInstall {
+			continued, err := ui.Confirm(
+				ctx,
+				"Continue without GjallarOS Secure Boot (turn it off in firmware before rebooting)?",
+				false,
+			)
+			if err != nil {
+				return fail(errOut, err)
+			}
+			if !continued {
+				fmt.Fprintln(out, "Installation cancelled. Nothing was changed.")
+				return 0
+			}
+		}
 	} else if s.user.SecureBootEnable &&
 		s.secureBootFirmware.Policy.Supported {
 		// user.config.json or endpoint management already decided; still
@@ -916,7 +940,7 @@ func run(ctx context.Context, args []string, in io.Reader, out, errOut io.Writer
 			s.user.LUKSTPM2Enable = false
 			fmt.Fprintln(
 				out,
-				"Secure Boot is disabled; TPM2 measured-boot unlock remains disabled.",
+				"GjallarOS Secure Boot is not set up on this install; TPM2 disk unlock stays off.",
 			)
 		} else if tpm2FollowsRequest(
 			s.render.EndpointManagedDevice,

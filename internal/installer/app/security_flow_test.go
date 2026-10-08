@@ -1,6 +1,9 @@
 package app
 
-import "testing"
+import (
+	"strings"
+	"testing"
+)
 
 func TestMayOfferSecureBootFallback(t *testing.T) {
 	tests := []struct {
@@ -75,5 +78,24 @@ func TestTPM2FollowsRequestOnFreshInstalls(t *testing.T) {
 			t.Errorf("tpm2FollowsRequest(managed=%t, persistent=%t) = %t, want %t",
 				test.managed, test.persistent, got, test.want)
 		}
+	}
+}
+
+func TestNoSecureBootPolicyNoticeNamesTheCause(t *testing.T) {
+	notice := noSecureBootPolicyNotice("model/hp/zbook-x2-g4", false, true)
+	if !strings.Contains(notice, "ODDC has no Secure Boot setup for model/hp/zbook-x2-g4") {
+		t.Fatalf("notice does not name the missing ODDC setup:\n%s", notice)
+	}
+	if !strings.Contains(notice, "reports Secure Boot off") {
+		t.Fatalf("notice does not report the firmware state:\n%s", notice)
+	}
+
+	on := noSecureBootPolicyNotice("model/hp/zbook-x2-g4", true, true)
+	if !strings.Contains(on, "Secure Boot ON") || !strings.Contains(on, "refuse to start") {
+		t.Fatalf("firmware-on notice does not warn about the unsigned boot loader:\n%s", on)
+	}
+
+	if !strings.Contains(noSecureBootPolicyNotice("", false, false), "no model for this machine") {
+		t.Fatal("notice without a model must say ODDC has no model")
 	}
 }

@@ -1,5 +1,7 @@
 package app
 
+import "strings"
+
 func mayOfferSecureBootFallback(
 	secureBootEnabled bool,
 	managed bool,
@@ -19,4 +21,32 @@ func tpm2AllowedForSecureBoot(secureBootEnabled bool) bool {
 // about it (e2e-target, 2026-09-29: rendered false, TPM2 never enrolled).
 func tpm2FollowsRequest(endpointManaged, persistentInstalledHost bool) bool {
 	return endpointManaged || !persistentInstalledHost
+}
+
+// noSecureBootPolicyNotice tells the user why GjallarOS leaves Secure Boot
+// alone on this machine. A generic "Secure Boot is disabled" read like a
+// misdetection on the real HP, where nobody had said that ODDC simply has no
+// Secure Boot setup for the model (2026-10-09).
+func noSecureBootPolicyNotice(modelID string, firmwareOn, firmwareKnown bool) string {
+	lines := []string{"Secure Boot setup:"}
+	if modelID == "" {
+		lines = append(lines, "  ODDC has no model for this machine, so it has no Secure Boot setup for it either.")
+	} else {
+		lines = append(lines, "  ODDC has no Secure Boot setup for "+modelID+" yet.")
+	}
+	lines = append(lines,
+		"  GjallarOS will not install its own Secure Boot keys here, and TPM2 disk unlock stays off because it depends on them.",
+	)
+	switch {
+	case !firmwareKnown:
+		lines = append(lines, "  The firmware's Secure Boot state could not be read.")
+	case firmwareOn:
+		lines = append(lines,
+			"  The firmware reports Secure Boot ON. The installed boot loader is not signed, so this",
+			"  firmware will refuse to start it. Turn Secure Boot off in firmware setup before rebooting.",
+		)
+	default:
+		lines = append(lines, "  The firmware reports Secure Boot off; the machine boots as before.")
+	}
+	return strings.Join(lines, "\n") + "\n"
 }
