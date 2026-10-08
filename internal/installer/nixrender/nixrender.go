@@ -87,7 +87,7 @@ type Settings struct {
 	TouchpadWorkspaceSwipe, TouchscreenEnable                                               bool
 	PenTabletEnable, OrientationSensorEnable                                                bool
 	ClamshellEnable, USBGuardEnable, USBTrustEnforce, PrintingEnable, NetworkPrintingEnable bool
-	USBTrustTPMHandle                                                                       string
+	USBTrustTPMHandle, UpdateChannel                                                        string
 	Name, Email, GitHubUsername, DotfilesDir                                                string
 	RootPasswordFile                                                                        string
 	DebugFunctions                                                                          bool
@@ -139,6 +139,7 @@ func FromUser(user config.User) Settings {
 		USBGuardEnable:                      user.USBGuardEnable,
 		USBTrustEnforce:                     user.USBTrustEnforce,
 		USBTrustTPMHandle:                   user.USBTrustTPMHandle,
+		UpdateChannel:                       user.UpdateChannel,
 		PrintingEnable:                      user.PrintingEnable,
 		NetworkPrintingEnable:               user.NetworkPrintingEnable,
 		Name:                                user.Name,
@@ -222,6 +223,7 @@ var userIntentKeys = []string{
 	"usbguardEnable",
 	"usbTrustEnforce",
 	"usbTrustTpmHandle",
+	"updateChannel",
 	"printingEnable",
 	"networkPrintingEnable",
 	"name",
@@ -393,6 +395,7 @@ func Render(s Settings) []byte {
 	boolean("usbguardEnable", s.USBGuardEnable)
 	boolean("usbTrustEnforce", s.USBTrustEnforce)
 	str("usbTrustTpmHandle", s.USBTrustTPMHandle)
+	str("updateChannel", s.UpdateChannel)
 	boolean("printingEnable", s.PrintingEnable)
 	boolean("networkPrintingEnable", s.NetworkPrintingEnable)
 	str("name", s.Name)
