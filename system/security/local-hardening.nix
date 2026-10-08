@@ -1,3 +1,4 @@
+{ lib, ... }:
 {
   # Laptops join untrusted networks: never let ICMP redirects or source routes
   # change the routing table, and never send redirects ourselves.
@@ -20,4 +21,10 @@
   systemd.tmpfiles.rules = [
     "d /var/lib/gjallarOS/passwords 0700 root root -"
   ];
+
+  # nixpkgs lets an account with an empty password field log in at the
+  # greeter and on the console (pam_unix nullok). Every account here has a
+  # password; an emptied hash must lock the account, not open it.
+  security.pam.services.greetd.allowNullPassword = lib.mkForce false;
+  security.pam.services.login.allowNullPassword = lib.mkForce false;
 }
