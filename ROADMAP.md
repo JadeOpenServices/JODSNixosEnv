@@ -177,3 +177,13 @@ Ideas worth taking:
 - Nextcloud effective-pin dehydration verification.
 - microSD reader reports zero capacity.
 - JODS clean-slate reset for unmanaged installs.
+
+## 7. Displays and Monique
+
+- [ ] **Display scaling from the Noctalia control center.** On the HP ZBook
+      x2's high-resolution screen everything is small enough that touch is
+      hard to use. Add a scale control to the Noctalia control center that
+      sets the scale through Monique, so users can change it as soon as they
+      notice. No scale is forced by default; the user picks it.
+- [ ] **Monique starts faster.** It still takes about a second too long to
+      open. Measure where the time goes before changing anything.
