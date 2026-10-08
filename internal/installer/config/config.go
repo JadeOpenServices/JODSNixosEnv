@@ -30,7 +30,6 @@ type User struct {
 	USBGuardEnable         bool                   `json:"usbguardEnable"`
 	USBTrustEnforce        bool                   `json:"usbTrustEnforce"`
 	USBTrustTPMHandle      string                 `json:"usbTrustTpmHandle"`
-	UpdateChannel          string                 `json:"updateChannel"`
 	PrintingEnable         bool                   `json:"printingEnable"`
 	NetworkPrintingEnable  bool                   `json:"networkPrintingEnable"`
 	Name                   string                 `json:"name"`
@@ -193,11 +192,6 @@ func Validate(user User) error {
 	}
 	if user.USBTrustTPMHandle != "" && !usbTrustTPMHandlePattern.MatchString(user.USBTrustTPMHandle) {
 		return fmt.Errorf("invalid usbTrustTpmHandle: %q", user.USBTrustTPMHandle)
-	}
-	switch user.UpdateChannel {
-	case "", "stable", "main":
-	default:
-		return fmt.Errorf("invalid updateChannel: %q (stable or main)", user.UpdateChannel)
 	}
 	if user.USBTrustEnforce {
 		if !user.USBGuardEnable {

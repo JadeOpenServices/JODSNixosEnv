@@ -4,6 +4,5 @@
   "unstableNixpkgsInput": "nixpkgs-unstable",
   "unstableShells": ["comfy"],
   "updateEndpoint": null,
-  "updateRemote": "https://github.com/JadeOpenServices/gjallarOS.git",
   "updatePolicy": "review-and-lock"
 }

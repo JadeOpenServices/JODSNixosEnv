@@ -2,7 +2,6 @@
   buildGoModule,
   git,
   lib,
-  openssh,
   runtimeShell,
   systemd,
 }:
@@ -10,10 +9,7 @@ buildGoModule {
   pname = "gjallarctl";
   version = "0.1.0";
 
-  nativeCheckInputs = [
-    git
-    openssh
-  ];
+  nativeCheckInputs = [ git ];
 
   src = lib.fileset.toSource {
     root = ../../.;

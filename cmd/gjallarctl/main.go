@@ -2194,6 +2194,35 @@ func rebuildCommandArgs(
 	return append(commandArgs, rebuildArgs...)
 }
 
+func runUpdate(args []string, stdout, stderr io.Writer) int {
+	repo := os.Getenv("GJALLAROS_REPO")
+	if repo == "" {
+		repo = "."
+	}
+	mode := "update"
+	if len(args) > 1 {
+		fmt.Fprintln(stderr, "Usage: update [--rebuild|-r|--check]")
+		return 2
+	}
+	if len(args) == 1 {
+		mode = args[0]
+	}
+	if mode == "--check" {
+		return runCommand(context.Background(), stdout, stderr, "nix", "flake", "check", repo)
+	}
+	if mode != "update" && mode != "--rebuild" && mode != "-r" {
+		fmt.Fprintln(stderr, "Usage: update [--rebuild|-r|--check]")
+		return 2
+	}
+	if status := runCommand(context.Background(), stdout, stderr, "nix", "flake", "update", repo); status != 0 {
+		return status
+	}
+	if mode == "--rebuild" || mode == "-r" {
+		return runCommand(context.Background(), stdout, stderr, "rebuild")
+	}
+	return 0
+}
+
 const (
 	systemProfilePath          = "/nix/var/nix/profiles/system"
 	rebuildGenerationRetention = 5
@@ -2369,7 +2398,7 @@ func runHelpme(args []string, stdout, stderr io.Writer) int {
 	if len(args) > 1 || len(args) == 1 && args[0] != "--text" {
 		return 2
 	}
-	text := "GjallarOS tools\n\n  rebuild            Apply the current NixOS configuration.\n  update             Install the newest signed GjallarOS release.\n  cleanup            Remove old generations and collect garbage.\n  thermal-status     Show temperatures and power state.\n  thermal-test       Pause/resume processes for troubleshooting.\n  check-installer    Check installer configuration.\n  gjallar-preflight  Run fast repository wiring checks.\n"
+	text := "GjallarOS tools\n\n  rebuild            Apply the current NixOS configuration.\n  update             Update flake inputs.\n  cleanup            Remove old generations and collect garbage.\n  thermal-status     Show temperatures and power state.\n  thermal-test       Pause/resume processes for troubleshooting.\n  check-installer    Check installer configuration.\n  gjallar-preflight  Run fast repository wiring checks.\n"
 	if len(args) == 1 || os.Getenv("DISPLAY")+os.Getenv("WAYLAND_DISPLAY") == "" {
 		fmt.Fprint(stdout, text)
 		return 0
@@ -2382,7 +2411,7 @@ func runHelpme(args []string, stdout, stderr io.Writer) int {
 		"--list", "--title=GjallarOS tools", "--width=900", "--height=520", "--center", "--button=Close:0",
 		"--column=Command", "--column=Description",
 		"rebuild", "Apply the current NixOS configuration.",
-		"update", "Install the newest signed GjallarOS release.",
+		"update", "Update flake inputs.",
 		"cleanup", "Remove old generations and collect garbage.",
 		"thermal-status", "Show temperatures and power state.",
 		"thermal-test", "Pause/resume processes for troubleshooting.",
