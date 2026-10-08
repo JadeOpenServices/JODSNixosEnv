@@ -1452,6 +1452,15 @@ let
       createHome = true;
     };
 
+    # The upstream unit lists the models directory in ReadWritePaths, and a
+    # missing path fails namespace setup: ollama never started on a fresh
+    # install (e2e-generic, 2026-10-08).
+    systemd.tmpfiles.settings.ollama."/var/lib/ollama/models".d = {
+      user = "ollama";
+      group = "ollama";
+      mode = "0750";
+    };
+
     services.ollama = rec {
       enable = true;
 
