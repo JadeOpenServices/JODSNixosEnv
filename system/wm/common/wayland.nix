@@ -1,4 +1,9 @@
-{ pkgs, settings, ... }:
+{
+  inputs,
+  pkgs,
+  settings,
+  ...
+}:
 
 {
   environment.systemPackages = with pkgs; [
@@ -19,6 +24,9 @@
 
   programs.noctalia-greeter = {
     enable = true;
+    package = pkgs.callPackage ../../../pkgs/noctalia-greeter {
+      noctalia-greeter = inputs.noctalia-greeter.packages.${pkgs.stdenv.hostPlatform.system}.default;
+    };
 
     settings = {
       appearance = {

@@ -1,0 +1,197 @@
+--- a/src/tools/apply_appearance_main.cpp
++++ b/src/tools/apply_appearance_main.cpp
+@@ -3,10 +3,17 @@
+ #include "greeter/greetd_user.h"
+ #include "greeter/greeter_preferences.h"
+ 
++#include <cerrno>
+ #include <cstdlib>
++#include <cstring>
++#include <dirent.h>
++#include <fcntl.h>
+ #include <filesystem>
+ #include <iostream>
++#include <optional>
+ #include <string>
++#include <sys/stat.h>
++#include <unistd.h>
+ 
+ namespace {
+ 
+@@ -39,6 +46,157 @@
+         << "  GREETD_CONFIG  greetd config.toml path\n";
+   }
+ 
++  // The staging directory belongs to the calling user, and the sync code
++  // follows symlinks (is_regular_file, copy_file): as root, a staged
++  // "wallpaper.png -> /etc/shadow" would land world-readable in the greeter
++  // state. Copy the regular files into a root-only directory without
++  // following symlinks and read only that copy.
++  constexpr off_t kMaxStagedFileBytes = 64 * 1024 * 1024;
++  constexpr int kMaxStagedFiles = 64;
++
++  [[nodiscard]] bool copyStagedFile(int fromDir, int toDir, const char* name, std::string& error) {
++    const int in = ::openat(fromDir, name, O_RDONLY | O_NOFOLLOW | O_NONBLOCK | O_NOCTTY | O_CLOEXEC);
++    if (in < 0) {
++      if (errno == ELOOP) {
++        kLog.warn("skipping staged symlink '{}'", name);
++        return true;
++      }
++      error = std::string("cannot open staged '") + name + "': " + std::strerror(errno);
++      return false;
++    }
++    struct stat st {};
++    if (::fstat(in, &st) != 0 || !S_ISREG(st.st_mode)) {
++      ::close(in);
++      return true;
++    }
++    if (st.st_size > kMaxStagedFileBytes) {
++      ::close(in);
++      error = std::string("staged '") + name + "' is too large";
++      return false;
++    }
++    const int out = ::openat(toDir, name, O_WRONLY | O_CREAT | O_EXCL | O_NOFOLLOW | O_CLOEXEC, 0600);
++    if (out < 0) {
++      ::close(in);
++      error = std::string("cannot create snapshot of '") + name + "': " + std::strerror(errno);
++      return false;
++    }
++    char buffer[65536];
++    off_t total = 0;
++    bool ok = true;
++    while (ok) {
++      const ssize_t got = ::read(in, buffer, sizeof buffer);
++      if (got == 0) {
++        break;
++      }
++      if (got < 0) {
++        ok = errno == EINTR;
++        continue;
++      }
++      total += got;
++      if (total > kMaxStagedFileBytes) {
++        ok = false;
++        break;
++      }
++      for (ssize_t done = 0; ok && done < got;) {
++        const ssize_t put = ::write(out, buffer + done, static_cast<size_t>(got - done));
++        if (put < 0) {
++          ok = errno == EINTR;
++          continue;
++        }
++        done += put;
++      }
++    }
++    ::close(in);
++    if (::close(out) != 0) {
++      ok = false;
++    }
++    if (!ok) {
++      error = std::string("failed to snapshot staged '") + name + "'";
++    }
++    return ok;
++  }
++
++  [[nodiscard]] std::optional<std::filesystem::path>
++  snapshotStaging(const std::filesystem::path& staging, std::string& error) {
++    const int dir = ::open(staging.c_str(), O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC);
++    if (dir < 0) {
++      error = std::string("staging directory must be a real directory: ") + std::strerror(errno);
++      return std::nullopt;
++    }
++    struct stat st {};
++    if (::fstat(dir, &st) != 0) {
++      ::close(dir);
++      error = "cannot stat staging directory";
++      return std::nullopt;
++    }
++    if (const char* caller = std::getenv("PKEXEC_UID"); caller != nullptr && std::to_string(st.st_uid) != caller) {
++      ::close(dir);
++      error = "staging directory is not owned by the calling user";
++      return std::nullopt;
++    }
++
++    char snapshot[] = "/run/noctalia-greeter-staging.XXXXXX";
++    if (::mkdtemp(snapshot) == nullptr) {
++      ::close(dir);
++      error = std::string("cannot create snapshot directory: ") + std::strerror(errno);
++      return std::nullopt;
++    }
++    const int out = ::open(snapshot, O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC);
++    const int listingFd = ::dup(dir);
++    DIR* listing = (out < 0 || listingFd < 0) ? nullptr : ::fdopendir(listingFd);
++    bool ok = listing != nullptr;
++    if (!ok) {
++      error = "cannot read staging directory";
++      if (listingFd >= 0) {
++        ::close(listingFd);
++      }
++    }
++    int count = 0;
++    while (ok) {
++      errno = 0;
++      const dirent* entry = ::readdir(listing);
++      if (entry == nullptr) {
++        if (errno != 0) {
++          ok = false;
++          error = "cannot read staging directory";
++        }
++        break;
++      }
++      if (std::strcmp(entry->d_name, ".") == 0 || std::strcmp(entry->d_name, "..") == 0) {
++        continue;
++      }
++      if (++count > kMaxStagedFiles) {
++        ok = false;
++        error = "staging directory has too many entries";
++        break;
++      }
++      ok = copyStagedFile(dir, out, entry->d_name, error);
++    }
++    if (listing != nullptr) {
++      ::closedir(listing);
++    }
++    if (out >= 0) {
++      ::close(out);
++    }
++    ::close(dir);
++    if (!ok) {
++      std::error_code ec;
++      std::filesystem::remove_all(snapshot, ec);
++      return std::nullopt;
++    }
++    return std::filesystem::path(snapshot);
++  }
++
++  struct SnapshotCleanup {
++    std::optional<std::filesystem::path> path;
++    ~SnapshotCleanup() {
++      if (path.has_value()) {
++        std::error_code ec;
++        std::filesystem::remove_all(*path, ec);
++      }
++    }
++  };
++
+ } // namespace
+ 
+ int main(int argc, char* argv[]) {
+@@ -72,8 +230,17 @@
+     return 2;
+   }
+ 
+-  const std::filesystem::path stagingDirectory = argv[1];
++  std::filesystem::path stagingDirectory = argv[1];
+   std::string error;
++  SnapshotCleanup snapshot;
++  if (::geteuid() == 0) {
++    snapshot.path = snapshotStaging(stagingDirectory, error);
++    if (!snapshot.path.has_value()) {
++      kLog.error("{}", error);
++      return 1;
++    }
++    stagingDirectory = *snapshot.path;
++  }
+   if (!greeter::appearance::installFromStaging(stagingDirectory, error)) {
+     kLog.error("{}", error);
+     return 1;
