@@ -2,8 +2,10 @@ package hardwareconfig
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
+	"io/fs"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -154,8 +156,8 @@ func generate(
 
 	backup := ""
 	if _, err := os.Stat(target); err == nil {
-		backup = target + ".bak." + now.Format("20060102150405")
-		if err := copyFile(target, backup); err != nil {
+		backup, err = backupFile(target, now)
+		if err != nil {
 			return "", err
 		}
 	} else if !os.IsNotExist(err) {
@@ -286,6 +288,20 @@ func bytesContainNixModule(data []byte) bool {
 		strings.Contains(text, "config") &&
 		strings.Contains(text, "lib") &&
 		strings.Contains(text, "pkgs")
+}
+
+// backupFile copies target beside itself. A second run within the same
+// second gets a numbered name instead of failing on the existing backup.
+func backupFile(target string, now time.Time) (string, error) {
+	base := target + ".bak." + now.Format("20060102150405")
+	backup := base
+	for n := 1; ; n++ {
+		err := copyFile(target, backup)
+		if !errors.Is(err, fs.ErrExist) || n > 99 {
+			return backup, err
+		}
+		backup = fmt.Sprintf("%s.%d", base, n)
+	}
 }
 
 func copyFile(source, target string) error {

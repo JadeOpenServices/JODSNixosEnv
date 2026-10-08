@@ -24,6 +24,7 @@ import (
 	"github.com/bakanura/gjallarOS/internal/input/xkb"
 	"github.com/bakanura/gjallarOS/internal/installer/baremetalinstall"
 	"github.com/bakanura/gjallarOS/internal/installer/bootstrap"
+	"github.com/bakanura/gjallarOS/internal/installer/checkoutowner"
 	"github.com/bakanura/gjallarOS/internal/installer/config"
 	"github.com/bakanura/gjallarOS/internal/installer/credential"
 	"github.com/bakanura/gjallarOS/internal/installer/deploy"
@@ -242,6 +243,20 @@ func run(ctx context.Context, args []string, in io.Reader, out, errOut io.Writer
 	if err := requireNixOS("/etc/os-release"); err != nil {
 		return fail(errOut, err)
 	}
+	// A previous run as root may have left root-owned files in the checkout
+	// (generated/hardware.nix 0600 and its backups); hand them back first,
+	// and hand back whatever this run writes when it runs as root itself.
+	if err := checkoutowner.Ensure(ctx, root, func(ctx context.Context, args ...string) error {
+		_, err := privilegedCommand(ctx, args...)
+		return err
+	}); err != nil {
+		return fail(errOut, err)
+	}
+	defer func() {
+		if err := checkoutowner.Repair(root); err != nil {
+			fmt.Fprintf(errOut, "WARNING: %v\n", err)
+		}
+	}()
 	ui := prompt.New(in, out)
 	s := state{control: controlBinary()}
 	installedRoot := "/"

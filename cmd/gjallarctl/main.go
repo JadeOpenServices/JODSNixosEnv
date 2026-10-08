@@ -37,6 +37,7 @@ import (
 	"github.com/bakanura/gjallarOS/internal/ai/research"
 	"github.com/bakanura/gjallarOS/internal/input/xkb"
 	"github.com/bakanura/gjallarOS/internal/installer/bootstrap"
+	"github.com/bakanura/gjallarOS/internal/installer/checkoutowner"
 	"github.com/bakanura/gjallarOS/internal/installer/config"
 	"github.com/bakanura/gjallarOS/internal/installer/credential"
 	"github.com/bakanura/gjallarOS/internal/installer/deploy"
@@ -827,7 +828,19 @@ func runGenerateHardware(args []string, stdout, stderr io.Writer) int {
 	if !*apply {
 		return 0
 	}
+	if err := checkoutowner.Ensure(context.Background(), *repo, func(ctx context.Context, args ...string) error {
+		if status := runPrivilegedCommand(ctx, stdout, stderr, args...); status != 0 {
+			return fmt.Errorf("%s exited %d", args[0], status)
+		}
+		return nil
+	}); err != nil {
+		fmt.Fprintf(stderr, "ERROR: %v\n", err)
+		return 1
+	}
 	backup, err := hardwareconfig.Generate(context.Background(), *repo, *target, time.Now())
+	if repairErr := checkoutowner.Repair(*repo); repairErr != nil {
+		fmt.Fprintf(stderr, "WARNING: %v\n", repairErr)
+	}
 	if err != nil {
 		fmt.Fprintf(stderr, "ERROR: %v\n", err)
 		return 1
@@ -1912,6 +1925,23 @@ func runRebuild(args []string, stdout, stderr io.Writer) int {
 		return 2
 	}
 	repo = resolvedRepo
+
+	// A root rebuild or installer run leaves root-owned files in the
+	// checkout that this user's flake staging cannot read; hand them back.
+	if err := checkoutowner.Ensure(context.Background(), repo, func(ctx context.Context, args ...string) error {
+		if status := runPrivilegedCommand(ctx, stdout, stderr, args...); status != 0 {
+			return fmt.Errorf("%s exited %d", args[0], status)
+		}
+		return nil
+	}); err != nil {
+		fmt.Fprintf(stderr, "[GjallarOS] Error: %v\n", err)
+		return 1
+	}
+	defer func() {
+		if err := checkoutowner.Repair(repo); err != nil {
+			fmt.Fprintf(stderr, "[GjallarOS] Warning: %v\n", err)
+		}
+	}()
 
 	if (stage != "" || switchNow != "") && !hardwareUpdate {
 		fmt.Fprintln(stderr, "ERROR: --stage and --switch require --hardware-update")

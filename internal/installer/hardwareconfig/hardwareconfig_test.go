@@ -389,3 +389,23 @@ func callsText(calls [][]string) string {
 	}
 	return strings.Join(lines, "\n")
 }
+
+func TestBackupFileNumbersSameSecondReruns(t *testing.T) {
+	target := filepath.Join(t.TempDir(), "hardware.nix")
+	if err := os.WriteFile(target, []byte("A\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	now := time.Date(2026, 10, 8, 12, 41, 29, 0, time.UTC)
+
+	first, err := backupFile(target, now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	second, err := backupFile(target, now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if first != target+".bak.20261008124129" || second != first+".1" {
+		t.Fatalf("backups %s, %s", first, second)
+	}
+}
