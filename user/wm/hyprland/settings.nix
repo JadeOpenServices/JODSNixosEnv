@@ -217,5 +217,12 @@ in
       disable_splash_rendering = true;
       exit_window_retains_fullscreen = true;
     };
+
+    # Hyprland updates arrive through GjallarOS rebuilds; its release-notes
+    # and donation windows only interrupt the first login after one.
+    ecosystem = {
+      no_update_news = true;
+      no_donation_nag = true;
+    };
   };
 }
