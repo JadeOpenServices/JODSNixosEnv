@@ -21,6 +21,10 @@ pkgs.stdenvNoCC.mkDerivation {
     # Reporting placeholders out of sync re-ran a no-op job on ~18k unchanged
     # files every sync run, a full core for hours (2026-10-05).
     grep -A6 'bool OpenVFS::isPlaceHolderInSync' "$f" | grep -Fq 'return true;'
+    # qt6ct's KDE patch swaps Fusion for the missing org.kde.desktop style
+    # during app construction, so "Add account" did nothing (2026-10-08).
+    grep -A6 'OCC::Application app(argc, argv);' src/gui/main.cpp \
+      | grep -Fq 'QQuickStyle::setStyle(qmlStyle);'
     touch $out
   '';
 }

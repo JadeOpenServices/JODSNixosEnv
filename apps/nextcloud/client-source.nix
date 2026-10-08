@@ -18,5 +18,7 @@
     ./patches/nextcloud-openvfs-effective-pin.patch
     # Skip the no-op VFS metadata job for every unchanged file on each sync.
     ./patches/nextcloud-openvfs-in-sync.patch
+    # Keep the Fusion QML style; qt6ct's KDE patch breaks the account wizard.
+    ./patches/nextcloud-qml-style.patch
   ];
 }
