@@ -1,6 +1,7 @@
 { pkgs, lib, settings, ... }:
 let
   gjallarctl = pkgs.callPackage ../../../pkgs/gjallarctl { };
+  releasePolicy = builtins.fromJSON (builtins.readFile ../../../deployment/release-policy.json);
   checkInstaller = pkgs.writeShellScriptBin "check-installer" ''
     exec ${gjallarctl}/bin/gjallarctl check --repo ${lib.escapeShellArg settings.dotfilesDir} "$@"
   '';
@@ -32,6 +33,16 @@ in
   # gjallarctl falls back to it when no --repo is given.
   environment.etc."gjallar/repository" = lib.mkIf (settings.dotfilesDir != "") {
     text = settings.dotfilesDir + "\n";
+  };
+
+  # Trust root for `update`: read from the running system, never from the
+  # checkout being updated.
+  environment.etc."gjallar/update.json".text = builtins.toJSON {
+    channel = if (settings.updateChannel or "") == "" then "stable" else settings.updateChannel;
+    remote = releasePolicy.updateRemote;
+    release = releasePolicy.release;
+    allowedSigners = "${../../../deployment/update-signers}";
+    sshKeygen = "${pkgs.openssh}/bin/ssh-keygen";
   };
 
   environment.systemPackages = [

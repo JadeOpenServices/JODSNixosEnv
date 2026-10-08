@@ -1,0 +1,5 @@
+# GjallarOS release signing keys (git "allowed signers" format).
+# `update` installs only tags (stable) or main commits signed by one of
+# these keys. One key per line:
+#   release@gjallaros namespaces="git" ssh-ed25519 AAAA... comment
+# Until a key is listed here, `update` refuses to run.
