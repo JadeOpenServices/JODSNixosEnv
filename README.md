@@ -248,6 +248,17 @@ that staging path. This prevents skipping the normal preparation workflow. It
 is not an authorization boundary against root or someone who can change the
 source. Package builds and recovery ISO builds remain available directly.
 
+To bring an install up to date with upstream, run:
+
+```bash
+update
+```
+
+It runs `git pull --ff-only` in that checkout and then `rebuild`. Local
+commits or uncommitted edits stop the pull, and nothing is rebuilt.
+`update --pull-only` skips the rebuild. `update --inputs` moves every flake
+input (for development checkouts), and `update --check` runs `nix flake check`.
+
 ### Recovery and rollback
 
 With `recoveryEnable`, the boot menu lists only the newest generation and its

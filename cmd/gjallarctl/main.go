@@ -2194,33 +2194,62 @@ func rebuildCommandArgs(
 	return append(commandArgs, rebuildArgs...)
 }
 
+// runUpdate brings the system's checkout up to date and rebuilds it: one
+// command for every install, since all of them track the same upstream.
+// The pull is fast-forward only, so local commits or edits stop it with
+// git's own message and nothing is rebuilt.
 func runUpdate(args []string, stdout, stderr io.Writer) int {
-	repo := os.Getenv("GJALLAROS_REPO")
-	if repo == "" {
-		repo = "."
-	}
-	mode := "update"
+	usage := "Usage: update [--pull-only|--inputs|--check]"
+	mode := ""
 	if len(args) > 1 {
-		fmt.Fprintln(stderr, "Usage: update [--rebuild|-r|--check]")
+		fmt.Fprintln(stderr, usage)
 		return 2
 	}
 	if len(args) == 1 {
 		mode = args[0]
 	}
-	if mode == "--check" {
-		return runCommand(context.Background(), stdout, stderr, "nix", "flake", "check", repo)
-	}
-	if mode != "update" && mode != "--rebuild" && mode != "-r" {
-		fmt.Fprintln(stderr, "Usage: update [--rebuild|-r|--check]")
+	switch mode {
+	case "", "--pull-only", "--inputs", "--check":
+	default:
+		fmt.Fprintln(stderr, usage)
 		return 2
 	}
-	if status := runCommand(context.Background(), stdout, stderr, "nix", "flake", "update", repo); status != 0 {
+	repo, err := installercheck.DiscoverRepository("")
+	if err != nil {
+		fmt.Fprintf(stderr, "ERROR: resolve GjallarOS repository: %v\n", err)
+		return 2
+	}
+	ctx := context.Background()
+	switch mode {
+	case "--check":
+		return runCommand(ctx, stdout, stderr, "nix", "flake", "check", repo)
+	case "--inputs":
+		// Moves every flake input past what upstream tested; for
+		// development checkouts, not endpoints.
+		return runCommand(ctx, stdout, stderr, "nix", "flake", "update", "--flake", repo)
+	}
+	before := gitHead(repo)
+	if status := runCommand(ctx, stdout, stderr, "git", "-C", repo, "pull", "--ff-only"); status != 0 {
+		fmt.Fprintf(stderr, "ERROR: git pull --ff-only in %s failed; nothing rebuilt\n", repo)
 		return status
 	}
-	if mode == "--rebuild" || mode == "-r" {
-		return runCommand(context.Background(), stdout, stderr, "rebuild")
+	if after := gitHead(repo); before == after {
+		fmt.Fprintf(stdout, "GjallarOS: %s already at %s\n", repo, after)
+	} else {
+		fmt.Fprintf(stdout, "GjallarOS: %s %s -> %s\n", repo, before, after)
 	}
-	return 0
+	if mode == "--pull-only" {
+		return 0
+	}
+	return runCommand(ctx, stdout, stderr, "rebuild", "--repo", repo)
+}
+
+func gitHead(repo string) string {
+	out, err := exec.Command("git", "-C", repo, "rev-parse", "--short", "HEAD").Output()
+	if err != nil {
+		return "unknown"
+	}
+	return strings.TrimSpace(string(out))
 }
 
 const (
@@ -2398,7 +2427,7 @@ func runHelpme(args []string, stdout, stderr io.Writer) int {
 	if len(args) > 1 || len(args) == 1 && args[0] != "--text" {
 		return 2
 	}
-	text := "GjallarOS tools\n\n  rebuild            Apply the current NixOS configuration.\n  update             Update flake inputs.\n  cleanup            Remove old generations and collect garbage.\n  thermal-status     Show temperatures and power state.\n  thermal-test       Pause/resume processes for troubleshooting.\n  check-installer    Check installer configuration.\n  gjallar-preflight  Run fast repository wiring checks.\n"
+	text := "GjallarOS tools\n\n  rebuild            Apply the current NixOS configuration.\n  update             Pull the system checkout and rebuild.\n  cleanup            Remove old generations and collect garbage.\n  thermal-status     Show temperatures and power state.\n  thermal-test       Pause/resume processes for troubleshooting.\n  check-installer    Check installer configuration.\n  gjallar-preflight  Run fast repository wiring checks.\n"
 	if len(args) == 1 || os.Getenv("DISPLAY")+os.Getenv("WAYLAND_DISPLAY") == "" {
 		fmt.Fprint(stdout, text)
 		return 0
@@ -2411,7 +2440,7 @@ func runHelpme(args []string, stdout, stderr io.Writer) int {
 		"--list", "--title=GjallarOS tools", "--width=900", "--height=520", "--center", "--button=Close:0",
 		"--column=Command", "--column=Description",
 		"rebuild", "Apply the current NixOS configuration.",
-		"update", "Update flake inputs.",
+		"update", "Pull the system checkout and rebuild.",
 		"cleanup", "Remove old generations and collect garbage.",
 		"thermal-status", "Show temperatures and power state.",
 		"thermal-test", "Pause/resume processes for troubleshooting.",
