@@ -22,7 +22,9 @@ let
     name = "gjallar-recover";
     runtimeInputs = with pkgs; [
       config.nix.package
+      coreutils
       cryptsetup
+      gawk
       git
       nixos-install-tools
       sbctl
@@ -255,6 +257,17 @@ let
             printf '%s\n' 'ERROR: target is not a mounted NixOS installation.' >&2
             exit 1
           }
+          # open-root mounts only the root; without the ESP, bootctl would
+          # write into the root's empty /boot (real HP, 2026-10-08).
+          if ! findmnt -rn --mountpoint "$root/boot" >/dev/null 2>&1; then
+            esp="$(awk '$2 == "/boot" { print $1 }' "$root/etc/fstab")"
+            [ -n "$esp" ] && [ "$(printf '%s\n' "$esp" | wc -l)" -eq 1 ] || {
+              printf '%s\n' 'ERROR: installed fstab must define exactly one /boot.' >&2
+              exit 1
+            }
+            mkdir -p "$root/boot"
+            mount "$esp" "$root/boot"
+          fi
           confirm_phrase REPAIR-BOOT
           NIXOS_INSTALL_BOOTLOADER=1 nixos-enter --root "$root" -- \
             /run/current-system/bin/switch-to-configuration boot
