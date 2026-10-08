@@ -2,9 +2,8 @@ package oddccli
 
 import (
 	"bytes"
-	"net/http"
-	"net/http/httptest"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -12,61 +11,69 @@ import (
 	"github.com/JadeOpenServices/gjallarOS/internal/installer/oddc"
 )
 
-// upstreamRepo is a checkout with this repository's flake.lock, answered
-// by a GitHub API stand-in that names rev as the branch head.
-func upstreamRepo(t *testing.T, rev func(pinned string) string, status int) (string, string) {
+// upstreamRemote makes a git repository with one commit, points oddc.Remote
+// at it and returns the commit.
+func upstreamRemote(t *testing.T) string {
 	t.Helper()
-	repo := t.TempDir()
+
+	remote := t.TempDir()
+	git := func(args ...string) string {
+		cmd := exec.Command("git", append([]string{"-C", remote}, args...)...)
+		cmd.Env = append(os.Environ(),
+			"GIT_AUTHOR_NAME=test", "GIT_AUTHOR_EMAIL=test@example.invalid",
+			"GIT_COMMITTER_NAME=test", "GIT_COMMITTER_EMAIL=test@example.invalid",
+		)
+		out, err := cmd.CombinedOutput()
+		if err != nil {
+			t.Fatalf("git %s: %v: %s", args[0], err, out)
+		}
+		return strings.TrimSpace(string(out))
+	}
+	git("init", "-q", "-b", "main")
+	git("commit", "-q", "--allow-empty", "-m", "upstream")
+
+	previous := oddc.Remote
+	oddc.Remote = remote
+	t.Cleanup(func() { oddc.Remote = previous })
+
+	return git("rev-parse", "HEAD")
+}
+
+// lockedRepo is a checkout with this repository's flake.lock, its ODDC
+// input moved to rev.
+func lockedRepo(t *testing.T, rev string) string {
+	t.Helper()
+
 	lock, err := os.ReadFile(realLock)
 	if err != nil {
 		t.Fatal(err)
 	}
+	if !bytes.Contains(lock, []byte(lockedODDC)) {
+		t.Fatalf("flake.lock no longer pins ODDC at %s", lockedODDC)
+	}
+	repo := t.TempDir()
+	lock = bytes.ReplaceAll(lock, []byte(lockedODDC), []byte(rev))
 	if err := os.WriteFile(filepath.Join(repo, "flake.lock"), lock, 0o644); err != nil {
 		t.Fatal(err)
 	}
-	pinned, err := oddc.LockedRevision(repo)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path != "/repos/JadeOpenServices/oddc/commits/HEAD" ||
-			r.Header.Get("Accept") != "application/vnd.github.sha" {
-			http.NotFound(w, r)
-			return
-		}
-		w.WriteHeader(status)
-		w.Write([]byte(rev(pinned)))
-	}))
-	t.Cleanup(server.Close)
-
-	previous := UpstreamAPI
-	UpstreamAPI = server.URL
-	t.Cleanup(func() { UpstreamAPI = previous })
-
-	return repo, pinned
+	return repo
 }
 
 func TestCheckUpdateReportsMovedBranch(t *testing.T) {
-	moved := func(pinned string) string {
-		if pinned == parentODDC {
-			return lockedODDC
-		}
-		return parentODDC
-	}
-	repo, pinned := upstreamRepo(t, moved, http.StatusOK)
+	head := upstreamRemote(t)
+	repo := lockedRepo(t, lockedODDC)
 
 	var out bytes.Buffer
 	CheckUpdate(repo, &out)
 
-	want := "ODDC update available: " + short(pinned) + " -> " + short(moved(pinned))
+	want := "ODDC update available: " + short(lockedODDC) + " -> " + short(head)
 	if !strings.Contains(out.String(), want) || !strings.Contains(out.String(), "rebuild --hardware-update") {
 		t.Fatalf("output = %q, want %q and the apply hint", out.String(), want)
 	}
 }
 
 func TestCheckUpdateQuietWhenCurrent(t *testing.T) {
-	repo, _ := upstreamRepo(t, func(pinned string) string { return pinned }, http.StatusOK)
+	repo := lockedRepo(t, upstreamRemote(t))
 
 	var out bytes.Buffer
 	CheckUpdate(repo, &out)
@@ -75,16 +82,12 @@ func TestCheckUpdateQuietWhenCurrent(t *testing.T) {
 	}
 }
 
-func TestCheckUpdateQuietOnFailure(t *testing.T) {
-	repo, _ := upstreamRepo(t, func(string) string { return "rate limited" }, http.StatusForbidden)
+func TestCheckUpdateQuietOffline(t *testing.T) {
+	upstreamRemote(t)
+	repo := lockedRepo(t, lockedODDC)
+	oddc.Remote = filepath.Join(t.TempDir(), "missing")
 
 	var out bytes.Buffer
-	CheckUpdate(repo, &out)
-	if out.Len() != 0 {
-		t.Fatalf("output = %q, want none", out.String())
-	}
-
-	UpstreamAPI = "http://127.0.0.1:1"
 	CheckUpdate(repo, &out)
 	if out.Len() != 0 {
 		t.Fatalf("offline output = %q, want none", out.String())

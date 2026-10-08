@@ -3,22 +3,23 @@ package oddc
 import (
 	"errors"
 	"fmt"
-	"net/http"
 	"os"
 	"path/filepath"
-	"time"
+	"strings"
 
 	portable "github.com/JadeOpenServices/oddc/pkg/oddc"
 )
+
+// Remote is the git repository ODDC answers come from.
+var Remote = portable.Remote
 
 // FetchedSource asks ODDC for this machine only: on first resolve it
 // fetches the matched model's answer (reference closure, evidence and
 // revision) at commit Rev into Root, replacing an earlier answer, and
 // resolves from it. Nothing else of the catalog reaches the machine.
 type FetchedSource struct {
-	Root   string
-	Rev    string
-	Client *http.Client
+	Root string
+	Rev  string
 
 	fetched bool
 	err     error
@@ -47,10 +48,11 @@ func (source *FetchedSource) fetch(identity Identity) error {
 }
 
 func (source *FetchedSource) ask(identity Identity) error {
-	upstream, err := gitHub(source.Client, source.Rev)
+	upstream, done, err := gitSource(source.Rev)
 	if err != nil {
 		return err
 	}
+	defer done()
 
 	if err := os.MkdirAll(filepath.Dir(source.Root), 0o755); err != nil {
 		return err
@@ -87,33 +89,33 @@ func (source *FetchedSource) ask(identity Identity) error {
 	return os.Rename(next, source.Root)
 }
 
-func gitHub(client *http.Client, rev string) (*portable.GitHubSource, error) {
-	if rev == "" {
-		return nil, errors.New("ask ODDC: no commit to ask")
-	}
-	if client == nil {
-		client = &http.Client{Timeout: time.Minute}
+// gitSource fetches ODDC's tree at commit rev into a scratch repository;
+// done removes it.
+func gitSource(rev string) (*portable.GitSource, func(), error) {
+	if len(rev) != 40 || strings.Trim(rev, "0123456789abcdef") != "" {
+		return nil, nil, fmt.Errorf("ask ODDC: %q is not a commit", rev)
 	}
 
-	upstream, err := portable.NewGitHubSource(
-		client,
-		portable.GitHubAPI,
-		portable.GitHubRaw,
-		portable.Repository,
-		rev,
-	)
+	scratch, err := os.MkdirTemp("", "gjallar-oddc-")
 	if err != nil {
-		return nil, fmt.Errorf("ask ODDC: %w", err)
+		return nil, nil, err
+	}
+	done := func() { os.RemoveAll(scratch) }
+
+	upstream, err := portable.NewGitSource(filepath.Join(scratch, "git"), Remote, rev)
+	if err != nil {
+		done()
+		return nil, nil, fmt.Errorf("ask ODDC: %w", err)
 	}
 
-	return upstream, nil
+	return upstream, done, nil
 }
 
 // Refresh moves the answer in root to commit rev: it fetches the same
 // model again and replaces the answer only once the new one is complete.
 // It returns the answer's earlier revision. Without an answer (no model
 // matched this machine) there is nothing to refresh, and it returns "".
-func Refresh(root, rev string, client *http.Client) (string, error) {
+func Refresh(root, rev string) (string, error) {
 	current := AnswerRevision(root)
 	if current == "" || current == rev {
 		return current, nil
@@ -124,10 +126,11 @@ func Refresh(root, rev string, client *http.Client) (string, error) {
 		return current, err
 	}
 
-	upstream, err := gitHub(client, rev)
+	upstream, done, err := gitSource(rev)
 	if err != nil {
 		return current, err
 	}
+	defer done()
 
 	next := root + ".next"
 	if err := os.RemoveAll(next); err != nil {

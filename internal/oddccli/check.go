@@ -3,16 +3,10 @@ package oddccli
 import (
 	"fmt"
 	"io"
-	"net/http"
 	"time"
 
 	"github.com/JadeOpenServices/gjallarOS/internal/installer/oddc"
-
-	portable "github.com/JadeOpenServices/oddc/pkg/oddc"
 )
-
-// UpstreamAPI is the GitHub API CheckUpdate asks.
-var UpstreamAPI = portable.GitHubAPI
 
 // CheckUpdate tells whether ODDC's branch moved past the commit flake.lock
 // pins. It only reports: the pin moves with `rebuild --hardware-update`.
@@ -23,8 +17,7 @@ func CheckUpdate(repo string, stdout io.Writer) {
 		return
 	}
 
-	client := &http.Client{Timeout: 5 * time.Second}
-	upstream, err := oddc.UpstreamRevision(client, UpstreamAPI, portable.Repository, ref)
+	upstream, err := oddc.UpstreamRevision(oddc.Remote, ref, 5*time.Second)
 	if err != nil || upstream == pinned {
 		return
 	}

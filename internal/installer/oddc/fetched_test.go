@@ -2,8 +2,8 @@ package oddc
 
 import (
 	"errors"
-	"net/http"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -13,21 +13,74 @@ import (
 	"github.com/JadeOpenServices/gjallarOS/internal/installer/oddc/oddctest"
 )
 
-// offline fails every request, as a rebuild without network does.
-var offline = &http.Client{Transport: roundTripper(func(*http.Request) (*http.Response, error) {
-	return nil, errors.New("offline")
-})}
+// offline points Remote at a repository that is not there, as a rebuild
+// without network finds ODDC.
+func offline(t *testing.T) {
+	previous := Remote
+	Remote = filepath.Join(t.TempDir(), "missing")
+	t.Cleanup(func() { Remote = previous })
+}
 
-type roundTripper func(*http.Request) (*http.Response, error)
+// catalogRemote commits the go.mod catalog to a git repository, points
+// Remote at it and returns the commit.
+func catalogRemote(t *testing.T) string {
+	t.Helper()
 
-func (fn roundTripper) RoundTrip(request *http.Request) (*http.Response, error) {
-	return fn(request)
+	remote := t.TempDir()
+	if err := os.CopyFS(remote, os.DirFS(oddctest.Catalog(t))); err != nil {
+		t.Fatal(err)
+	}
+	git := func(args ...string) string {
+		cmd := exec.Command("git", append([]string{"-C", remote}, args...)...)
+		cmd.Env = append(os.Environ(),
+			"GIT_AUTHOR_NAME=test", "GIT_AUTHOR_EMAIL=test@example.invalid",
+			"GIT_COMMITTER_NAME=test", "GIT_COMMITTER_EMAIL=test@example.invalid",
+		)
+		out, err := cmd.CombinedOutput()
+		if err != nil {
+			t.Fatalf("git %s: %v: %s", args[0], err, out)
+		}
+		return strings.TrimSpace(string(out))
+	}
+	git("init", "-q")
+	// GitHub serves partial clones of any commit; a local repository
+	// only when told to.
+	git("config", "uploadpack.allowFilter", "true")
+	git("config", "uploadpack.allowAnySHA1InWant", "true")
+	git("add", "-A")
+	git("commit", "-q", "-m", "catalog")
+
+	previous := Remote
+	Remote = remote
+	t.Cleanup(func() { Remote = previous })
+
+	return git("rev-parse", "HEAD")
+}
+
+func TestRefreshFetchesFromGit(t *testing.T) {
+	rev := catalogRemote(t)
+
+	for _, answer := range oddctest.Answers(t) {
+		current := portable.DirSource{Root: answer.Root}.Revision()
+
+		before, err := Refresh(answer.Root, rev)
+		if err != nil || before != current {
+			t.Fatalf("%s: Refresh = %q, %v; want %q", answer.Model, before, err, current)
+		}
+		if got := AnswerRevision(answer.Root); got != rev {
+			t.Errorf("%s: answer at %q, want %q", answer.Model, got, rev)
+		}
+		if model, err := AnswerModel(answer.Root); err != nil || model != answer.Model {
+			t.Errorf("%s: answer holds %q, %v", answer.Model, model, err)
+		}
+	}
 }
 
 func TestRefreshWithoutAnswerDoesNothing(t *testing.T) {
+	offline(t)
 	root := filepath.Join(t.TempDir(), "oddc")
 
-	before, err := Refresh(root, "4e311931ed5fac2dca79b99d01e50e620624afa0", offline)
+	before, err := Refresh(root, "4e311931ed5fac2dca79b99d01e50e620624afa0")
 	if err != nil || before != "" {
 		t.Fatalf("Refresh = %q, %v; want no answer, no error", before, err)
 	}
@@ -37,10 +90,11 @@ func TestRefreshWithoutAnswerDoesNothing(t *testing.T) {
 }
 
 func TestRefreshAtSameRevisionDoesNotAsk(t *testing.T) {
+	offline(t)
 	for _, answer := range oddctest.Answers(t) {
 		current := portable.DirSource{Root: answer.Root}.Revision()
 
-		before, err := Refresh(answer.Root, current, offline)
+		before, err := Refresh(answer.Root, current)
 		if err != nil || before != current {
 			t.Fatalf("%s: Refresh = %q, %v; want %q without asking", answer.Model, before, err, current)
 		}
@@ -48,11 +102,12 @@ func TestRefreshAtSameRevisionDoesNotAsk(t *testing.T) {
 }
 
 func TestRefreshOfflineKeepsAnswer(t *testing.T) {
+	offline(t)
 	for _, answer := range oddctest.Answers(t) {
 		current := portable.DirSource{Root: answer.Root}.Revision()
 		rev := strings.Repeat("0", 40)
 
-		before, err := Refresh(answer.Root, rev, offline)
+		before, err := Refresh(answer.Root, rev)
 		if err == nil {
 			t.Fatalf("%s: Refresh offline succeeded", answer.Model)
 		}
@@ -70,12 +125,13 @@ func TestRefreshOfflineKeepsAnswer(t *testing.T) {
 }
 
 func TestRefreshRejectsWholeCatalog(t *testing.T) {
+	offline(t)
 	catalog := t.TempDir()
 	if err := os.CopyFS(catalog, os.DirFS(oddctest.Catalog(t))); err != nil {
 		t.Fatal(err)
 	}
 
-	if _, err := Refresh(catalog, strings.Repeat("0", 40), offline); err == nil ||
+	if _, err := Refresh(catalog, strings.Repeat("0", 40)); err == nil ||
 		!strings.Contains(err.Error(), "want 1") {
 		t.Fatalf("Refresh of a whole catalog: %v", err)
 	}

@@ -36,7 +36,6 @@ func RefreshAnswer(repo string) (string, string, error) {
 	before, err := oddc.Refresh(
 		filepath.Join(repo, filepath.FromSlash(AnswerDir)),
 		rev,
-		nil,
 	)
 	return before, rev, err
 }
