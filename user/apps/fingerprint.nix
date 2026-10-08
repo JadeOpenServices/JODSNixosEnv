@@ -25,14 +25,6 @@ let
 
     [ ! -e "$marker" ] || exit 0
 
-    if ! ${pkgs.fprintd}/bin/fprintd-list "$USER" >/dev/null 2>&1; then
-      printf 'No supported fingerprint reader was found.\n'
-      touch "$marker"
-      printf 'Press Enter to close.\n'
-      read -r _
-      exit 0
-    fi
-
     printf 'Set up a fingerprint for login and sudo? [Y/n] '
     read -r answer
 
@@ -59,8 +51,17 @@ let
 
     [ ! -e "$marker" ] || exit 0
 
+    # ODDC may list a reader the machine lacks (a model profile in a VM, a
+    # disabled reader); asking then only opens a dead-end window at login.
+    if ! ${pkgs.fprintd}/bin/fprintd-list "$USER" >/dev/null 2>&1; then
+      mkdir -p "$(dirname "$marker")"
+      touch "$marker"
+      exit 0
+    fi
+
+    # Ghostty takes --key=value only; a separate value is a config error.
     exec ${lib.getExe pkgs.ghostty} \
-      --title 'GjallarOS fingerprint setup' \
+      --title='GjallarOS fingerprint setup' \
       -e ${enrollment}
   '';
 in
