@@ -687,16 +687,30 @@ func run(ctx context.Context, args []string, in io.Reader, out, errOut io.Writer
 			firmwareOn,
 			firmwareErr == nil,
 		))
-		if firmwareOn && !s.user.UnattendedInstall {
-			continued, err := ui.Confirm(
+		if firmwareOn {
+			if s.user.UnattendedInstall {
+				return fail(errOut, errors.New(
+					"firmware enforces Secure Boot but ODDC has no Secure Boot setup for this machine; turn Secure Boot off in firmware setup and rerun",
+				))
+			}
+			choice, err := ui.Choice(
 				ctx,
-				"Continue without GjallarOS Secure Boot (turn it off in firmware before rebooting)?",
-				false,
+				"Secure Boot is on in firmware",
+				secureBootOffReboot,
+				[]string{secureBootOffReboot, secureBootOffLater, secureBootOffCancel},
 			)
 			if err != nil {
 				return fail(errOut, err)
 			}
-			if !continued {
+			switch choice {
+			case secureBootOffReboot:
+				fmt.Fprintln(out, "Nothing has been installed yet. Turn Secure Boot off in firmware setup, then start the installer again.")
+				fmt.Fprintln(out, "Rebooting directly into firmware setup...")
+				if err := attached(ctx, "sudo", "systemctl", "reboot", "--firmware-setup"); err != nil {
+					return fail(errOut, fmt.Errorf("reboot into firmware setup: %w", err))
+				}
+				return 0
+			case secureBootOffCancel:
 				fmt.Fprintln(out, "Installation cancelled. Nothing was changed.")
 				return 0
 			}

@@ -2,6 +2,14 @@ package app
 
 import "strings"
 
+// Choices when the firmware enforces Secure Boot on a machine ODDC has no
+// Secure Boot setup for.
+const (
+	secureBootOffReboot = "Reboot into firmware setup now to turn Secure Boot off"
+	secureBootOffLater  = "Continue; I turn Secure Boot off before the first reboot"
+	secureBootOffCancel = "Cancel the installation"
+)
+
 func mayOfferSecureBootFallback(
 	secureBootEnabled bool,
 	managed bool,
@@ -43,7 +51,8 @@ func noSecureBootPolicyNotice(modelID string, firmwareOn, firmwareKnown bool) st
 	case firmwareOn:
 		lines = append(lines,
 			"  The firmware reports Secure Boot ON. The installed boot loader is not signed, so this",
-			"  firmware will refuse to start it. Turn Secure Boot off in firmware setup before rebooting.",
+			"  firmware will refuse to start it. Secure Boot has to be off in firmware setup before",
+			"  the installed system boots.",
 		)
 	default:
 		lines = append(lines, "  The firmware reports Secure Boot off; the machine boots as before.")

@@ -190,15 +190,24 @@ Ideas worth taking:
 
 ## 8. Secure Boot on devices without an ODDC setup
 
-- [ ] **Best-effort Secure Boot for draft profiles.** When ODDC has no
-      Secure Boot setup for a model, the installer can offer to try the
-      generic setup anyway: own keys through setup mode, Microsoft keys kept.
-      Off unless the user asks. Before anything is written, warn and ask for
-      typed confirmation that this can fail in ways nobody has tested on this
-      model, and that recovering may need clearing the Secure Boot keys or
-      resetting them to factory defaults by hand in firmware setup. Record
-      the result in the draft profile so ODDC can turn a working attempt into
-      a real setup.
+- [ ] **Best-effort Secure Boot where ODDC has no setup.** Covers unknown
+      machines with a draft profile and known models without a Secure Boot
+      setup, like the HP ZBook x2 G4. The installer asks whether the user
+      wants to try the generic setup anyway: own keys through setup mode,
+      Microsoft keys kept. The default is no. Before anything is written,
+      warn and ask for typed confirmation that this can fail in ways nobody
+      has tested on this model, and that recovering may need clearing the
+      Secure Boot keys or resetting them to factory defaults by hand in
+      firmware setup.
+      - When the firmware already enforces Secure Boot, this question comes
+        first. Only when the user says no does the installer warn and offer
+        to reboot into firmware setup or continue (done in the installer
+        today, without the question).
+      - The result goes into the draft profile. Contributing it is optional
+        and separate from the rest: a user can share the other hardware facts
+        without the Secure Boot result, so ODDC still grows from many
+        installs, and someone can turn a working attempt into a real setup
+        later.
 - [ ] **Desktop notice for Secure Boot state.** Keys enrolled but firmware
       enforcement still off shows only in the journal today. Show it like the
       low-battery warning.
