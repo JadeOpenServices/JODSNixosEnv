@@ -40,7 +40,7 @@ let
 
       timezone = getSetting "timezone" "UTC";
       locale = getSetting "locale" "en_US.UTF-8";
-      keyboardLayout = getSetting "keyboardLayout" "us";
+      keyboardLayout = getSetting "keyboardLayout" "de";
       keyboardVariant = getSetting "keyboardVariant" "";
 
       touchpadWorkspaceSwipe = getSetting "touchpadWorkspaceSwipe" true;

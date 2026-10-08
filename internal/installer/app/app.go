@@ -1930,7 +1930,7 @@ func collectInteractive(ctx context.Context, ui prompt.UI, root string, partitio
 	if err != nil {
 		return err
 	}
-	layout, err := ui.Value(ctx, "Keyboard layout", "us")
+	layout, err := ui.Value(ctx, "Keyboard layout", "de")
 	if err != nil {
 		return err
 	}

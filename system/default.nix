@@ -66,6 +66,9 @@
 
   i18n.defaultLocale = settings.locale;
   i18n.extraLocaleSettings.LC_ALL = settings.locale;
+  # TTYs and the boot PIN/recovery-key prompt use the desktop layout too;
+  # otherwise a PIN set in a de session fails at boot on y/z or symbols.
+  console.useXkbConfig = true;
 
   programs.${settings.shell}.enable = true;
 
