@@ -253,13 +253,13 @@ source. Package builds and recovery ISO builds remain available directly.
 To bring an install up to date with upstream, run:
 
 ```bash
-update
+rebuild --update
 ```
 
-It runs `git pull --ff-only` in that checkout and then `rebuild`. Local
+It runs `git pull --ff-only` in that checkout and then rebuilds. Local
 commits or uncommitted edits stop the pull, and nothing is rebuilt.
-`update --pull-only` skips the rebuild. `update --inputs` moves every flake
-input (for development checkouts), and `update --check` runs `nix flake check`.
+`rebuild --update-inputs` moves every flake input first (for development
+checkouts). `rebuild --help` lists every option.
 
 ### Recovery and rollback
 

@@ -37,10 +37,6 @@ in
   environment.systemPackages = [
     (goCommand "helpme" "helpme")
     rebuild
-    (pkgs.writeShellScriptBin "update" ''
-      export GJALLAROS_REPO=${lib.escapeShellArg settings.dotfilesDir}
-      exec ${gjallarctl}/bin/gjallarctl update "$@"
-    '')
     (goCommand "cleanup" "cleanup")
     (goCommand "cleanup-old-generations" "cleanup-old-generations")
     (goCommand "thermal-status" "thermal-status")

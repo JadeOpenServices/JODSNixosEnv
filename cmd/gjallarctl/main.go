@@ -99,8 +99,6 @@ func run(args []string, stdout, stderr io.Writer) int {
 		return runAuth(args[1:], stderr)
 	case "rebuild":
 		return runRebuild(args[1:], stdout, stderr)
-	case "update":
-		return runUpdate(args[1:], stdout, stderr)
 	case "cleanup":
 		return runCleanup(args[1:], stdout, stderr)
 	case "cleanup-old-generations":
@@ -1844,7 +1842,7 @@ func printUsage(out io.Writer) {
 	fmt.Fprintln(out, "       gjallarctl preflight [--repo PATH]")
 	oddccli.Usage(out)
 	fmt.Fprintln(out, "       gjallarctl auth")
-	fmt.Fprintln(out, "       gjallarctl rebuild [--repo PATH] [--host HOST] [-d|--debug] [-n|--no-cleanup] [--hardware-update [--stage main|staging] [--switch 0|1]] [NIXOS-REBUILD-ARGS...]")
+	fmt.Fprintln(out, "       gjallarctl rebuild [--repo PATH] [--host HOST] [-d|--debug] [-n|--no-cleanup] [--update] [--update-inputs] [--hardware-update [--stage main|staging] [--switch 0|1]] [NIXOS-REBUILD-ARGS...]")
 	fmt.Fprintln(out, "       gjallarctl device-probe refresh [--output PATH]")
 	fmt.Fprintln(out, "       gjallarctl fan {status|list|reconcile}")
 	fmt.Fprintln(out, "       gjallarctl ai profile [--config PATH]")
@@ -1878,9 +1876,17 @@ func runRebuild(args []string, stdout, stderr io.Writer) int {
 	repo, host := "", ""
 	debug, cleanup := false, true
 	hardwareUpdate, stage, switchNow := false, "", ""
+	update, updateInputs := false, false
 	var rebuildArgs []string
 	for i := 0; i < len(args); i++ {
 		switch args[i] {
+		case "-h", "--help":
+			printRebuildHelp(stdout)
+			return 0
+		case "--update":
+			update = true
+		case "--update-inputs":
+			updateInputs = true
 		case "--hardware-update":
 			hardwareUpdate = true
 		case "--stage":
@@ -1942,6 +1948,20 @@ func runRebuild(args []string, stdout, stderr io.Writer) int {
 			fmt.Fprintf(stderr, "[GjallarOS] Warning: %v\n", err)
 		}
 	}()
+
+	if update {
+		if code := pullCheckout(repo, stdout, stderr); code != 0 {
+			return code
+		}
+	}
+	// Moves every flake input past what upstream tested; for development
+	// checkouts, not endpoints.
+	if updateInputs {
+		if code := runCommand(context.Background(), stdout, stderr, "nix", "flake", "update", "--flake", repo); code != 0 {
+			fmt.Fprintf(stderr, "[GjallarOS] Error: nix flake update failed (exit %d); nothing rebuilt\n", code)
+			return code
+		}
+	}
 
 	if (stage != "" || switchNow != "") && !hardwareUpdate {
 		fmt.Fprintln(stderr, "ERROR: --stage and --switch require --hardware-update")
@@ -2194,54 +2214,42 @@ func rebuildCommandArgs(
 	return append(commandArgs, rebuildArgs...)
 }
 
-// runUpdate brings the system's checkout up to date and rebuilds it: one
-// command for every install, since all of them track the same upstream.
-// The pull is fast-forward only, so local commits or edits stop it with
-// git's own message and nothing is rebuilt.
-func runUpdate(args []string, stdout, stderr io.Writer) int {
-	usage := "Usage: update [--pull-only|--inputs|--check]"
-	mode := ""
-	if len(args) > 1 {
-		fmt.Fprintln(stderr, usage)
-		return 2
-	}
-	if len(args) == 1 {
-		mode = args[0]
-	}
-	switch mode {
-	case "", "--pull-only", "--inputs", "--check":
-	default:
-		fmt.Fprintln(stderr, usage)
-		return 2
-	}
-	repo, err := installercheck.DiscoverRepository("")
-	if err != nil {
-		fmt.Fprintf(stderr, "ERROR: resolve GjallarOS repository: %v\n", err)
-		return 2
-	}
-	ctx := context.Background()
-	switch mode {
-	case "--check":
-		return runCommand(ctx, stdout, stderr, "nix", "flake", "check", repo)
-	case "--inputs":
-		// Moves every flake input past what upstream tested; for
-		// development checkouts, not endpoints.
-		return runCommand(ctx, stdout, stderr, "nix", "flake", "update", "--flake", repo)
-	}
+// pullCheckout brings the system's checkout up to date before the rebuild:
+// every install tracks the same upstream. The pull is fast-forward only, so
+// local commits or edits stop it with git's own message and nothing is
+// rebuilt.
+func pullCheckout(repo string, stdout, stderr io.Writer) int {
 	before := gitHead(repo)
-	if status := runCommand(ctx, stdout, stderr, "git", "-C", repo, "pull", "--ff-only"); status != 0 {
-		fmt.Fprintf(stderr, "ERROR: git pull --ff-only in %s failed; nothing rebuilt\n", repo)
+	if status := runCommand(context.Background(), stdout, stderr, "git", "-C", repo, "pull", "--ff-only"); status != 0 {
+		fmt.Fprintf(stderr, "[GjallarOS] Error: git pull --ff-only in %s failed; nothing rebuilt\n", repo)
 		return status
 	}
 	if after := gitHead(repo); before == after {
-		fmt.Fprintf(stdout, "GjallarOS: %s already at %s\n", repo, after)
+		fmt.Fprintf(stdout, "[GjallarOS] %s already at %s\n", repo, after)
 	} else {
-		fmt.Fprintf(stdout, "GjallarOS: %s %s -> %s\n", repo, before, after)
+		fmt.Fprintf(stdout, "[GjallarOS] %s %s -> %s\n", repo, before, after)
 	}
-	if mode == "--pull-only" {
-		return 0
-	}
-	return runCommand(ctx, stdout, stderr, "rebuild", "--repo", repo)
+	return 0
+}
+
+func printRebuildHelp(out io.Writer) {
+	fmt.Fprint(out, `Usage: rebuild [OPTIONS] [NIXOS-REBUILD-ARGS...]
+
+Apply the GjallarOS configuration in the system checkout.
+
+  --update              Pull the checkout from upstream first (fast-forward
+                        only; local commits or edits stop it).
+  --update-inputs       Move every flake input to its newest version first.
+                        For development checkouts, not normal installs.
+  --hardware-update     Move the ODDC hardware catalogue pin first.
+    --stage main|staging  ODDC branch to follow.
+    --switch 0|1          0 moves the pin without rebuilding.
+  --repo PATH           Use this checkout instead of the system one.
+  --host HOST           Build this host instead of the configured one.
+  -d, --debug           Show the full nixos-rebuild output.
+  -n, --no-cleanup      Keep old system generations.
+  -h, --help            Show this help.
+`)
 }
 
 func gitHead(repo string) string {
@@ -2427,7 +2435,7 @@ func runHelpme(args []string, stdout, stderr io.Writer) int {
 	if len(args) > 1 || len(args) == 1 && args[0] != "--text" {
 		return 2
 	}
-	text := "GjallarOS tools\n\n  rebuild            Apply the current NixOS configuration.\n  update             Pull the system checkout and rebuild.\n  cleanup            Remove old generations and collect garbage.\n  thermal-status     Show temperatures and power state.\n  thermal-test       Pause/resume processes for troubleshooting.\n  check-installer    Check installer configuration.\n  gjallar-preflight  Run fast repository wiring checks.\n"
+	text := "GjallarOS tools\n\n  rebuild            Apply the current NixOS configuration.\n  rebuild --update   Pull the system checkout and rebuild.\n  cleanup            Remove old generations and collect garbage.\n  thermal-status     Show temperatures and power state.\n  thermal-test       Pause/resume processes for troubleshooting.\n  check-installer    Check installer configuration.\n  gjallar-preflight  Run fast repository wiring checks.\n"
 	if len(args) == 1 || os.Getenv("DISPLAY")+os.Getenv("WAYLAND_DISPLAY") == "" {
 		fmt.Fprint(stdout, text)
 		return 0
@@ -2440,7 +2448,7 @@ func runHelpme(args []string, stdout, stderr io.Writer) int {
 		"--list", "--title=GjallarOS tools", "--width=900", "--height=520", "--center", "--button=Close:0",
 		"--column=Command", "--column=Description",
 		"rebuild", "Apply the current NixOS configuration.",
-		"update", "Pull the system checkout and rebuild.",
+		"rebuild --update", "Pull the system checkout and rebuild.",
 		"cleanup", "Remove old generations and collect garbage.",
 		"thermal-status", "Show temperatures and power state.",
 		"thermal-test", "Pause/resume processes for troubleshooting.",
