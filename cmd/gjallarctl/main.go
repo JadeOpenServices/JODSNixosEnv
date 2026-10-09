@@ -314,7 +314,7 @@ func runTPM2(args []string, stdout, stderr io.Writer) int {
 		fmt.Fprintln(stdout, "luks_tpm2_enable=false")
 		return 0
 	}
-	if err := diskcrypto.EnableTPMConfig(resolved, mappingInfo.Name); err != nil {
+	if err := diskcrypto.EnableTPMConfig(resolved); err != nil {
 		fmt.Fprintf(stderr, "ERROR: TPM2 preparation failed: %v\n", err)
 		return 1
 	}

@@ -22,15 +22,18 @@ func TestMappingAndTPMConfig(t *testing.T) {
 	if err != nil || details.Device != "/dev/disk/by-uuid/example" {
 		t.Fatalf("unexpected mapping details: %#v %v", details, err)
 	}
-	if err := EnableTPMConfig(path, mapping); err != nil {
+	if err := EnableTPMConfig(path); err != nil {
 		t.Fatal(err)
 	}
-	if err := EnableTPMConfig(path, mapping); err != nil {
+	if err := EnableTPMConfig(path); err != nil {
 		t.Fatal(err)
 	}
 	data, _ := os.ReadFile(path)
 	if strings.Count(string(data), "boot.initrd.systemd.tpm2.enable") != 1 {
 		t.Fatalf("not idempotent:\n%s", data)
+	}
+	if strings.Contains(string(data), "tpm2-device") {
+		t.Fatalf("crypttab option belongs to measured-boot.nix:\n%s", data)
 	}
 }
 

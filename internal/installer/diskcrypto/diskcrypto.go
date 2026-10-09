@@ -155,7 +155,7 @@ func enrollmentArgs(device, key string) []string {
 	}
 }
 
-func EnableTPMConfig(path, mapping string) error {
+func EnableTPMConfig(path string) error {
 	data, err := os.ReadFile(path)
 	if err != nil {
 		return err
@@ -167,7 +167,9 @@ func EnableTPMConfig(path, mapping string) error {
 	if index < 0 {
 		return fmt.Errorf("hardware configuration has no closing brace")
 	}
-	addition := fmt.Sprintf("    boot.initrd.systemd.enable = true;\n    boot.initrd.systemd.tpm2.enable = true;\n    boot.initrd.luks.devices.%q.crypttabExtraOpts = [ \"tpm2-device=auto\" ];\n", mapping)
+	// measured-boot.nix adds tpm2-device=auto once luksTpm2Enable is set;
+	// adding it here too doubled the crypttab option.
+	addition := "    boot.initrd.systemd.enable = true;\n    boot.initrd.systemd.tpm2.enable = true;\n"
 	updated := append(append([]byte{}, data[:index]...), append([]byte(addition), data[index:]...)...)
 	return atomicWrite(path, updated)
 }
