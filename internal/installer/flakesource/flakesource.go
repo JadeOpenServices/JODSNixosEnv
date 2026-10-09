@@ -31,6 +31,12 @@ func excluded(rel string, entry fs.DirEntry) bool {
 	if strings.ContainsRune(rel, filepath.Separator) {
 		return false
 	}
+	return Scratch(name)
+}
+
+// Scratch reports whether a top-level checkout entry is local scratch (VM
+// disks, agent settings, build links) that never leaves the machine.
+func Scratch(name string) bool {
 	switch {
 	case name == ".vm", name == ".claude", name == ".direnv", name == BuildContextName:
 		return true

@@ -40,6 +40,8 @@ func runFreshBareMetal(
 	repo string,
 	targetPath string,
 	hostname string,
+	username string,
+	dotfilesDir string,
 	hardware discovery.Hardware,
 	resolvedDevice oddc.Resolved,
 	recovery bool,
@@ -263,6 +265,19 @@ func runFreshBareMetal(
 			out,
 			"PASS: machine-local ODDC host state committed to fresh target.",
 		)
+	}
+
+	fmt.Fprintln(out, "STAGE: copying the checkout into the target")
+
+	if err := copyFreshCheckout(
+		ctx,
+		repo,
+		rootResult.MountPoint,
+		dotfilesDir,
+		username,
+		out,
+	); err != nil {
+		return freshBareMetalResult{}, err
 	}
 
 	result := freshBareMetalResult{

@@ -1384,6 +1384,8 @@ func run(ctx context.Context, args []string, in io.Reader, out, errOut io.Writer
 				root,
 				targetDisk,
 				s.user.Hostname,
+				s.user.Username,
+				s.user.DotfilesDir,
 				hardware,
 				resolvedDevice,
 				opt.recovery,
