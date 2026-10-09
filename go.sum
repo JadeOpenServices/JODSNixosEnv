@@ -1,2 +1,6 @@
 github.com/JadeOpenServices/oddc v0.0.0-20261008221508-e5577ae0374c h1:idY7xilB6w/qZ+cVI7vik1MVWzmRkC6ypMS/eW++e+0=
 github.com/JadeOpenServices/oddc v0.0.0-20261008221508-e5577ae0374c/go.mod h1:9l7zayhzIV4bZvV4Xr0aXdw0YlPBAf5oVMT25oU/Gys=
+github.com/godbus/dbus/v5 v5.2.2 h1:TUR3TgtSVDmjiXOgAAyaZbYmIeP3DPkld3jgKGV8mXQ=
+github.com/godbus/dbus/v5 v5.2.2/go.mod h1:3AAv2+hPq5rdnr5txxxRwiGjPXamgoIHgz9FPBfOp3c=
+golang.org/x/sys v0.27.0 h1:wBqf8DvsY9Y/2P8gAfPDEYNuS30J4lPHJxXSb/nJZ+s=
+golang.org/x/sys v0.27.0/go.mod h1:/VUhepiaJMQUp4+oa/7Zr1D23ma6VTLIYjOOTFZPUcA=

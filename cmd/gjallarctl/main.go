@@ -2817,7 +2817,9 @@ func runPrivilegeAuthentication(ctx context.Context, stderr io.Writer) int {
 		"[GjallarOS] Authenticate for privileged operation.",
 	)
 
-	if fingerprintEnrolled(ctx) {
+	if probe := probeFingerprint(ctx); probe.State != fingerprintReady {
+		fmt.Fprintln(tty, "[GjallarOS] "+probe.Message())
+	} else {
 		fingerprint := privilegeFingerprintCommand(ctx, tty, authHelper)
 		fingerprintStatus := authenticationCommandStatus(
 			ctx,
@@ -2834,7 +2836,7 @@ func runPrivilegeAuthentication(ctx context.Context, stderr io.Writer) int {
 
 		fmt.Fprintln(
 			tty,
-			"[GjallarOS] Fingerprint not verified; using secure password fallback.",
+			"[GjallarOS] Fingerprint did not match, timed out or was skipped; using password.",
 		)
 	}
 

@@ -30,7 +30,7 @@ buildGoModule {
     ];
   };
 
-  vendorHash = "sha256-RbV3flwjJeCj5BrWvE1Md0xp7YWYyBey3MLutfY/g2M=";
+  vendorHash = "sha256-Tv+2dyGsXKvQQEsTi/UNN5uRnOuV5z0BqaUqLqDl5xE=";
   # Module mode: ODDC's catalog files stay in the module cache, which the
   # tests read as the real catalog.
   proxyVendor = true;
