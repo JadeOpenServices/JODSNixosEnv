@@ -398,6 +398,41 @@ func TestCollectUSBTrustAskedWithODDCModel(t *testing.T) {
 	}
 }
 
+// Galaxy Book 12-like VM (2026-10-10): no ODDC model, the managed path ran
+// the whole interview and then failed the Secure Boot check.
+func TestCollectJODSManagementSkippedWithoutSecureBootSupport(t *testing.T) {
+	var output bytes.Buffer
+	u := config.User{EndpointManagedDevice: true}
+	blocker := jodsManagementBlocker(false, true)
+	if err := collectJODSManagement(context.Background(), prompt.New(strings.NewReader("yes\n"), &output), blocker, &u); err != nil {
+		t.Fatal(err)
+	}
+	if u.EndpointManagedDevice || strings.Contains(output.String(), "Manage this machine with JODS?") ||
+		!strings.Contains(output.String(), "Secure Boot") {
+		t.Fatalf("managed=%t output:\n%s", u.EndpointManagedDevice, output.String())
+	}
+}
+
+func TestJODSManagementBlockerNamesTPM2(t *testing.T) {
+	if got := jodsManagementBlocker(true, false); !strings.Contains(got, "TPM2") {
+		t.Fatalf("blocker = %q", got)
+	}
+	if got := jodsManagementBlocker(true, true); got != "" {
+		t.Fatalf("supported machine blocked: %q", got)
+	}
+}
+
+func TestCollectJODSManagementAskedWhenSupported(t *testing.T) {
+	var output bytes.Buffer
+	u := config.User{}
+	if err := collectJODSManagement(context.Background(), prompt.New(strings.NewReader("yes\n"), &output), "", &u); err != nil {
+		t.Fatal(err)
+	}
+	if !u.EndpointManagedDevice {
+		t.Fatalf("managed not enabled:\n%s", output.String())
+	}
+}
+
 func TestManagedPresetRequiresRecoveryPartitionProvisioning(t *testing.T) {
 	u := config.User{
 		EndpointManagedDevice:   true,

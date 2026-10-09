@@ -564,7 +564,7 @@ func run(ctx context.Context, args []string, in io.Reader, out, errOut io.Writer
 		if s.user.USBGuardEnable && resolvedDevice.ModelID == "" {
 			return fail(errOut, errors.New("usbguardEnable needs an ODDC model, and ODDC has none for this machine; set usbguardEnable to false"))
 		}
-	} else if err := collectInteractive(ctx, ui, root, !persistentInstalledHost || rootEncrypted(ctx, "/"), resolvedDevice.ModelID != "", hardware, choices, &s.user); err != nil {
+	} else if err := collectInteractive(ctx, ui, root, !persistentInstalledHost || rootEncrypted(ctx, "/"), resolvedDevice.ModelID != "", jodsManagementBlocker(s.secureBootFirmware.Policy.Supported, diskcrypto.TPMAvailable()), hardware, choices, &s.user); err != nil {
 		return fail(errOut, err)
 	}
 	if err := configureWeatherLocation(ctx, ui, &s.user, out); err != nil {
@@ -1912,7 +1912,7 @@ func containsValue(values []string, want string) bool {
 
 // partitionable is false for an in-place install on an unencrypted root,
 // which recovery partitioning cannot resize.
-func collectInteractive(ctx context.Context, ui prompt.UI, root string, partitionable, modelSelected bool, hardware discovery.Hardware, o discovery.Options, u *config.User) error {
+func collectInteractive(ctx context.Context, ui prompt.UI, root string, partitionable, modelSelected bool, managedBlocker string, hardware discovery.Hardware, o discovery.Options, u *config.User) error {
 	var err error
 	host, _ := os.Hostname()
 	if host == "" || host == "nixos" {
@@ -1929,8 +1929,7 @@ func collectInteractive(ctx context.Context, ui prompt.UI, root string, partitio
 	if u.Username, err = ui.Value(ctx, "Username", username); err != nil {
 		return err
 	}
-	u.EndpointManagedDevice, err = ui.Confirm(ctx, "Manage this machine with JODS?", false)
-	if err != nil {
+	if err := collectJODSManagement(ctx, ui, managedBlocker, u); err != nil {
 		return err
 	}
 	if u.EndpointManagedDevice {
@@ -2069,12 +2068,6 @@ func collectInteractive(ctx context.Context, ui prompt.UI, root string, partitio
 	}
 	if err := collectRecovery(ctx, ui, partitionable, u); err != nil {
 		return err
-	}
-	if u.RecoveryEnable && u.EndpointManagedDevice {
-		u.JODSPrebootLockEnable, err = ui.Confirm(ctx, "Require Secure Boot and measured-boot TPM policy for JODS preboot access?", true)
-		if err != nil {
-			return err
-		}
 	}
 	// Device-specific hardware policy is resolved through ODDC.
 	// Do not ask users to manually select a vendor/model that hardware
@@ -2661,6 +2654,33 @@ func mountSourceDevice(source string) string {
 // collectUSBTrust offers USB trust review only with an ODDC model: the
 // system refuses USB trust without one, since the model names the internal
 // devices that must stay trusted.
+// collectJODSManagement asks for JODS management only where the managed
+// security contract (Secure Boot, TPM2 unlock, recovery, preboot lock; see
+// normalizeManagementSafety) can hold. Elsewhere the install would stop at
+// the Secure Boot check after the whole interview.
+func collectJODSManagement(ctx context.Context, ui prompt.UI, blocker string, u *config.User) error {
+	if blocker != "" {
+		u.EndpointManagedDevice = false
+		fmt.Fprintf(ui.Out, "No JODS management: %s\n", blocker)
+		return nil
+	}
+	var err error
+	u.EndpointManagedDevice, err = ui.Confirm(ctx, "Manage this machine with JODS?", false)
+	return err
+}
+
+// jodsManagementBlocker names why this machine cannot be a managed
+// endpoint, or returns "" when it can.
+func jodsManagementBlocker(secureBootSupported, tpm2 bool) string {
+	switch {
+	case !tpm2:
+		return "a managed machine needs TPM2, and none was detected."
+	case !secureBootSupported:
+		return "a managed machine needs GjallarOS Secure Boot, and ODDC has no Secure Boot setup for this machine."
+	}
+	return ""
+}
+
 func collectUSBTrust(ctx context.Context, ui prompt.UI, modelSelected bool, u *config.User) error {
 	if !modelSelected {
 		u.USBGuardEnable = false
