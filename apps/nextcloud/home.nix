@@ -17,11 +17,6 @@ let
   browserNeedles =
     if preferredBrowser == "librewolf" then
       [ "librewolf" ]
-    else if preferredBrowser == "zen-browser" then
-      [
-        "zen"
-        "zen-browser"
-      ]
     else
       [ preferredBrowser ];
 

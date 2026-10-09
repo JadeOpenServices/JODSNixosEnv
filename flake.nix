@@ -26,11 +26,6 @@
 
     caelestia.url = "github:caelestia-dots/shell";
 
-    zen-browser = {
-      url = "github:0xc000022070/zen-browser-flake";
-      inputs.nixpkgs.follows = "nixpkgs";
-    };
-
     noctalia-greeter = {
       url = "github:noctalia-dev/noctalia-greeter";
       inputs.nixpkgs.follows = "nixpkgs";
@@ -219,7 +214,6 @@
 
               home-manager.sharedModules = [
                 inputs.sops-nix.homeManagerModules.sops
-                inputs.zen-browser.homeModules.twilight
                 inputs.noctalia.homeModules.default
               ];
 
@@ -266,7 +260,6 @@
             ./user/default.nix
             inputs.stylix.homeModules.stylix
             inputs.sops-nix.homeManagerModules.sops
-            inputs.zen-browser.homeModules.twilight
             inputs.noctalia.homeModules.default
           ];
 

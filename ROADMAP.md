@@ -127,7 +127,7 @@ options.
 | **LibreWolf** (current) | Firefox stable | Removed at build; no studies, no Pocket | Mature, Codeberg, widely reviewed | Yes | **Keep**; fix the USB and hidraw path |
 | Firefox + policies | upstream | Opt-out; disable through `programs.firefox.policies` (`DisableTelemetry`, `DisableFirefoxStudies`, …) | Highest, Mozilla security team | Yes | Fallback if LibreWolf lags on patches |
 | Mullvad Browser | Firefox ESR (Tor Project) | None; independently audited (Cure53) | High | Yes, but private mode always on | Privacy tool; bad for staying logged in |
-| Zen | Firefox | Disabled by default; young project | Growing, smaller | Yes | Already packaged here; watch update cadence |
+| Zen | Firefox | Disabled by default; young project | Growing, smaller | Yes | Removed 2026-10-09; not needed next to Firefox |
 | Floorp | Firefox ESR | Disabled | Small | Yes | No clear gain over LibreWolf |
 | Waterfox | Firefox ESR | Minimal; search partnership | Moderate | Yes | No clear gain |
 | ungoogled-chromium | Chromium | Google services stripped | High | Yes (HW key); hybrid questionable | **Used** for the web apps and "Register key" (Chromium sets a missing key PIN) |
