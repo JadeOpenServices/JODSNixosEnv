@@ -260,19 +260,35 @@ func TestRebuildLocalDerivationsSummarizesUniqueBuilds(t *testing.T) {
 
 func TestRebuildNetworkErrorFindsUnreachableHosts(t *testing.T) {
 	// Output of nix 2.x and git for an unresolvable and a refused host.
-	for _, line := range []string{
+	retried := []string{
 		"warning: unable to download 'https://gjallar-test.invalid/x': Could not resolve hostname (6) Could not resolve host: gjallar-test.invalid; retrying in 332 ms (attempt 1/5)",
 		"warning: unable to download 'http://127.0.0.1:9/x': Could not connect to server (7) Failed to connect to 127.0.0.1:9 after 0 ms: Could not connect to server; retrying in 260 ms (attempt 1/5)",
+	}
+	fatal := []string{
+		"error: unable to download 'https://gjallar-test.invalid/x': Could not resolve hostname (6) Could not resolve host: gjallar-test.invalid",
 		"fatal: unable to access 'https://gjallar-test.invalid/x/': Could not resolve host: gjallar-test.invalid",
-	} {
+	}
+	for _, line := range append(retried, fatal...) {
 		log := strings.NewReader("building '/nix/store/aaaaaaaa-etc.drv'...\n" + line + "\n")
-		if got := rebuildNetworkError(log); got != line {
+		if got := rebuildNetworkError(log, true); got != line {
+			t.Fatalf("network error = %q, want %q", got, line)
+		}
+	}
+	for _, line := range fatal {
+		log := strings.NewReader(retried[1] + "\n" + line + "\n")
+		if got := rebuildNetworkError(log, false); got != line {
 			t.Fatalf("network error = %q, want %q", got, line)
 		}
 	}
 
-	log := strings.NewReader("building '/nix/store/aaaaaaaa-etc.drv'...\n")
-	if got := rebuildNetworkError(log); got != "" {
+	// A retried download is not why a build failed (fw13 VM, 2026-10-09).
+	log := strings.NewReader(retried[1] + "\nerror: builder for '/nix/store/aaaaaaaa-etc.drv' failed with exit code 1\n")
+	if got := rebuildNetworkError(log, false); got != "" {
+		t.Fatalf("network error = %q, want none", got)
+	}
+
+	log = strings.NewReader("building '/nix/store/aaaaaaaa-etc.drv'...\n")
+	if got := rebuildNetworkError(log, true); got != "" {
 		t.Fatalf("network error = %q, want none", got)
 	}
 }

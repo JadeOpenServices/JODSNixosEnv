@@ -2566,6 +2566,7 @@ func runRebuildQuiet(stdout, stderr io.Writer, host string, messages []string, s
 		log,
 		commandArgs...,
 	)
+	cancelled := ctx.Err() != nil
 	cancel()
 	if interactive {
 		close(stop)
@@ -2575,7 +2576,8 @@ func runRebuildQuiet(stdout, stderr io.Writer, host string, messages []string, s
 
 	elapsed := time.Since(started)
 	localBuilds := rebuildLocalDerivations(log)
-	networkError := rebuildNetworkError(log)
+	retriedError := rebuildNetworkError(log, true)
+	networkError := rebuildNetworkError(log, false)
 	if elapsed >= time.Minute {
 		keepLog = true
 		fmt.Fprintf(
@@ -2592,8 +2594,8 @@ func runRebuildQuiet(stdout, stderr io.Writer, host string, messages []string, s
 			)
 		}
 		fmt.Fprintf(stdout, "[rebuild] Detailed log retained: %s\n", log.Name())
-		if status == 0 && networkError != "" {
-			fmt.Fprintf(stdout, "[rebuild] Downloads failed and were retried: %s\n", networkError)
+		if status == 0 && retriedError != "" {
+			fmt.Fprintf(stdout, "[rebuild] Downloads failed and were retried: %s\n", retriedError)
 		}
 	}
 	if status != 0 {
@@ -2602,7 +2604,7 @@ func runRebuildQuiet(stdout, stderr io.Writer, host string, messages []string, s
 			_, _ = io.Copy(stderr, log)
 		}
 		fmt.Fprintf(stderr, "[rebuild] Detailed log retained: %s\n", log.Name())
-		if networkError != "" {
+		if networkError != "" && !cancelled {
 			fmt.Fprintf(stderr, "[rebuild] No network: %s\n", networkError)
 			fmt.Fprintln(stderr, "[rebuild] Check the connection (Wi-Fi, DHCP lease, VPN, router) and run rebuild again.")
 		}
@@ -2624,7 +2626,11 @@ var rebuildNetworkErrorMarkers = []string{
 }
 
 // rebuildNetworkError returns the first network failure in the log, or "".
-func rebuildNetworkError(log io.ReadSeeker) string {
+// Nix logs a failed download it will retry as "warning:"; such a line only
+// counts with retries set. Otherwise one hiccup of a substituter blamed the
+// network for a build that failed or was cancelled for another reason (fw13
+// VM, 2026-10-09).
+func rebuildNetworkError(log io.ReadSeeker, retries bool) string {
 	if _, err := log.Seek(0, io.SeekStart); err != nil {
 		return ""
 	}
@@ -2632,6 +2638,9 @@ func rebuildNetworkError(log io.ReadSeeker) string {
 	scanner.Buffer(make([]byte, 64*1024), 1024*1024)
 	for scanner.Scan() {
 		line := strings.TrimSpace(scanner.Text())
+		if !retries && strings.HasPrefix(line, "warning:") {
+			continue
+		}
 		for _, marker := range rebuildNetworkErrorMarkers {
 			if strings.Contains(line, marker) {
 				return line
