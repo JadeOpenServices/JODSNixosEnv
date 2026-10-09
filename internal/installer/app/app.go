@@ -594,11 +594,11 @@ func run(ctx context.Context, args []string, in io.Reader, out, errOut io.Writer
 			fmt.Fprint(out, tpm12Notice)
 		} else {
 			fmt.Fprintln(out, "TPM2 hardware was not detected.")
+			fmt.Fprintln(
+				out,
+				"GjallarOS requires TPM2 for its Secure Boot and measured-boot security policy.",
+			)
 		}
-		fmt.Fprintln(
-			out,
-			"GjallarOS requires TPM2 for its Secure Boot and measured-boot security policy.",
-		)
 		fmt.Fprintln(
 			out,
 			"Secure Boot, TPM2 LUKS unlock, and TPM-dependent JODS preboot locking must be disabled to continue.",
