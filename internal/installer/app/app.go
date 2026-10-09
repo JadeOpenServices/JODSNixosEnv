@@ -2019,7 +2019,7 @@ func collectInteractive(ctx context.Context, ui prompt.UI, root string, partitio
 	if err != nil {
 		return err
 	}
-	u.DotfilesDir, err = ui.Value(ctx, "Absolute dotfiles path", root)
+	u.DotfilesDir, err = ui.Value(ctx, "Absolute dotfiles path", defaultDotfilesDir(u.Username, root))
 	if err != nil {
 		return err
 	}
@@ -2447,9 +2447,20 @@ func checkEndpoint(endpoint string) error {
 	return err
 }
 
+// defaultDotfilesDir is where the new user's checkout lives. The checkout the
+// installer runs from only counts when it already sits in that user's home;
+// otherwise it names the installing account, not the one being created.
+func defaultDotfilesDir(username, root string) string {
+	home := filepath.Join("/home", username)
+	if rel, err := filepath.Rel(home, filepath.Clean(root)); err == nil && rel != "." && !strings.HasPrefix(rel, "..") {
+		return filepath.Clean(root)
+	}
+	return filepath.Join(home, "Documents", "gjallarOS")
+}
+
 func normalizePreset(u *config.User, root string) {
 	if u.DotfilesDir == "" {
-		u.DotfilesDir = filepath.Join("/home", u.Username, "Documents", "gjallarOS")
+		u.DotfilesDir = defaultDotfilesDir(u.Username, root)
 	}
 	u.DotfilesDir = strings.ReplaceAll(u.DotfilesDir, "usernamehere", u.Username)
 	if normalized, err := xkb.Normalize(u.KeyboardLayout); err == nil {

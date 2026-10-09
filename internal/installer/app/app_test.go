@@ -516,3 +516,19 @@ func TestDisableTPMDependentSecurity(t *testing.T) {
 		t.Fatal("JODS preboot TPM policy remained enabled")
 	}
 }
+
+func TestDefaultDotfilesDirFollowsNewUser(t *testing.T) {
+	for _, tc := range []struct{ user, root, want string }{
+		// Installer started from another account's checkout or live media.
+		{"alice", "/home/baka/Documents/gjallarOS", "/home/alice/Documents/gjallarOS"},
+		{"alice", "/run/gjallarOS/repo", "/home/alice/Documents/gjallarOS"},
+		{"alice", "/home/alicex/gjallarOS", "/home/alice/Documents/gjallarOS"},
+		{"alice", "/home/alice", "/home/alice/Documents/gjallarOS"},
+		// In-place install from the user's own checkout keeps it.
+		{"alice", "/home/alice/src/gjallarOS/", "/home/alice/src/gjallarOS"},
+	} {
+		if got := defaultDotfilesDir(tc.user, tc.root); got != tc.want {
+			t.Errorf("defaultDotfilesDir(%q, %q) = %q, want %q", tc.user, tc.root, got, tc.want)
+		}
+	}
+}
