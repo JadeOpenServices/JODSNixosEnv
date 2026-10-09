@@ -108,7 +108,7 @@ let
     ${pkgs.buildPackages.systemdUkify}/lib/systemd/ukify build \
       --linux=${config.boot.kernelPackages.kernel}/${config.system.boot.loader.kernelFile} \
       --initrd=${config.system.build.initialRamdisk}/${config.system.boot.loader.initrdFile} \
-      --cmdline="init=${config.system.build.toplevel}/init ${toString config.boot.kernelParams} findiso=/gjallar-recovery.iso" \
+      --cmdline="init=${config.system.build.toplevel}/init ${toString config.boot.kernelParams} findiso=/gjallar-recovery.iso gjallar.recovery=partition" \
       --stub=${pkgs.systemd}/lib/systemd/boot/efi/linux${pkgs.stdenv.hostPlatform.efiArch}.efi.stub \
       --uname=${config.boot.kernelPackages.kernel.modDirVersion} \
       --os-release=@${config.system.build.etc}/etc/os-release \
@@ -158,6 +158,47 @@ in
   programs.ssh.startAgent = false;
 
   services.fprintd.enable = true;
+
+  # Firmware boots the recovery partition even with USB boot locked, so it
+  # must not hand out the passwordless nixos/root login the installer media
+  # has. Apple recoveryOS asks for an admin password before Terminal;
+  # Android and ChromeOS recovery offer only wipe and reinstall
+  # (support.apple.com/en-us/102633, support.google.com/chromebook/answer/1080595).
+  # With the flag the partition UKI carries, tty1 runs the recovery console
+  # and no getty starts. Under Secure Boot the UKI command line is signed.
+  systemd.generators.gjallar-recovery-gate = pkgs.writeShellScript "gjallar-recovery-gate" ''
+    case " $(${pkgs.coreutils}/bin/cat /proc/cmdline) " in
+      *" gjallar.recovery=partition "*) ;;
+      *) exit 0 ;;
+    esac
+    for unit in getty@ getty@tty1 autovt@ serial-getty@ serial-getty@ttyS0 console-getty container-getty@ debug-shell; do
+      ${pkgs.coreutils}/bin/ln -sf /dev/null "$2/$unit.service"
+    done
+  '';
+  systemd.services.gjallar-recovery-console = {
+    description = "GjallarOS recovery console";
+    wantedBy = [ "multi-user.target" ];
+    after = [
+      "installer-repository.service"
+      "systemd-user-sessions.service"
+    ];
+    unitConfig.ConditionKernelCommandLine = "gjallar.recovery=partition";
+    environment.TERM = "linux";
+    serviceConfig = {
+      Type = "idle";
+      ExecStart = "${tools.recoveryConsole}/bin/gjallar-recovery-console";
+      StandardInput = "tty-force";
+      StandardOutput = "tty";
+      StandardError = "tty";
+      TTYPath = "/dev/tty1";
+      TTYReset = true;
+      TTYVHangup = true;
+      Restart = "always";
+      RestartSec = 1;
+    };
+  };
+  # Emergency mode would otherwise open a root shell with the empty password.
+  users.users.root.initialHashedPassword = lib.mkForce "!";
 
   systemd.services.installer-repository = {
     description = "Prepare writable installer repository";
@@ -269,6 +310,7 @@ in
     tools.gjallarctl
     tools.installer
     tools.recovery
+    tools.recoveryConsole
     tools.recoveryExecutor
   ];
 

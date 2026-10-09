@@ -49,7 +49,8 @@ let
           '  gjallar-recover rollback ROOT GENERATION' \
           '  gjallar-recover repair-boot ROOT' \
           '  gjallar-recover rebuild ROOT FLAKE#HOST' \
-          '  gjallar-recover jods {repair|reinstall|fresh}'
+          '  gjallar-recover jods {repair|reinstall|fresh}' \
+          '  gjallar-recover install'
       }
 
       require_root() {
@@ -172,7 +173,7 @@ let
 
           printf '%s\n'             'GjallarOS installed root is encrypted.'             'Authentication is required before its files can be viewed or modified.'
 
-          systemd-ask-password -n             'GjallarOS recovery: enter the installed root LUKS passphrase:' |
+          systemd-ask-password -n             'GjallarOS recovery: enter the recovery key or disk passphrase:' |
             cryptsetup open               --type luks               --key-file=-               "$device"               "$name"
 
           cleanup_mapping=true
@@ -328,9 +329,31 @@ let
               ;;
           esac
           ;;
+        install)
+          # The recovery console runs this after it erased the disk.
+          run_installer --recovery
+          ;;
         *) usage ;;
       esac
     '';
+  };
+
+  recoveryConsole = pkgs.writeShellApplication {
+    name = "gjallar-recovery-console";
+    runtimeInputs = with pkgs; [
+      bashInteractive
+      coreutils
+      cryptsetup
+      systemd
+      util-linux
+      recovery
+    ];
+    # A failed command returns to the menu instead of ending the console.
+    bashOptions = [
+      "nounset"
+      "pipefail"
+    ];
+    text = builtins.readFile ../../scripts/recovery/console.sh;
   };
 in
 {
@@ -338,6 +361,7 @@ in
     gjallarctl
     installer
     recovery
+    recoveryConsole
     recoveryExecutor
     ;
 }
