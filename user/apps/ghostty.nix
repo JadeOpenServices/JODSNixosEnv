@@ -8,7 +8,10 @@
 let
   semanticTheme = import ../../themes/lib/semantic.nix { inherit config; };
 
-  ghosttyShell = pkgs.writeShellScript "gjallar-ghostty-shell" ''
+  # Run by the login shell itself: fastfetch names its parent process as the
+  # shell, and a bash wrapper made it print bash.
+  ghosttyShell = pkgs.writeScript "gjallar-ghostty-shell" ''
+    #!${lib.getExe pkgs.${settings.shell}}
     if [ -t 1 ]; then
       printf '\n'
       ${lib.getExe pkgs.fastfetch} || true

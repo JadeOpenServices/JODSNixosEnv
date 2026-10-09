@@ -71,6 +71,9 @@
   console.useXkbConfig = true;
 
   programs.${settings.shell}.enable = true;
+  # Home Manager runs compinit in the user's .zshrc. A second run from
+  # /etc/zshrc repeated the completion audit at every shell start.
+  programs.zsh.enableGlobalCompInit = false;
 
   users.users.${settings.username} = {
     isNormalUser = true;

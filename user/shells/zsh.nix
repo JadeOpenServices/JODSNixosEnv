@@ -60,6 +60,11 @@
     initContent = ''
       set -o emacs
 
+      # Pasted scripts of several KB grew the history file to 24 MB, and zsh
+      # reads all of it at every start. Larger entries stay in this
+      # session's history but are not saved to the file.
+      zshaddhistory() { (( ''${#1} <= 4096 )) || return 2; }
+
       # Authenticate plain sudo through the GjallarOS flow: fingerprint
       # first, then a terminal password prompt. Non-interactive and explicit
       # authentication modes go straight to sudo.
