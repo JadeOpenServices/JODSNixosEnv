@@ -1,7 +1,8 @@
 { ... }:
 {
   # Two-line prompt framed on the left: user, path and repo state on top,
-  # input below. The icons need a Nerd Font, which every theme ships.
+  # input below. Languages show only their icon, Go gets the gopher. The
+  # icons need a Nerd Font, which every theme ships.
   programs.starship = {
     enable = true;
     settings = {
@@ -38,22 +39,27 @@
         style = "bold bright-magenta";
       };
       python = {
+        format = "[$symbol]($style)";
         symbol = " ";
         style = "bold bright-yellow";
       };
       golang = {
+        format = "[$symbol]($style)";
         symbol = " ";
         style = "bold bright-cyan";
       };
       rust = {
+        format = "[$symbol]($style)";
         symbol = " ";
         style = "bold bright-red";
       };
       lua = {
+        format = "[$symbol]($style)";
         symbol = " ";
         style = "bold bright-blue";
       };
       c = {
+        format = "[$symbol]($style)";
         symbol = " ";
         style = "bold bright-magenta";
       };
