@@ -114,6 +114,15 @@ in
 
   config.environment.systemPackages = lib.mkIf tpm2Enabled [ tpm2Reenroll ];
 
+  # make-policy rewrites the credential on the ESP here too (boot, enrollment,
+  # re-enroll); its own fsyncs do not make that durable on vfat, see
+  # lanzaboote.nix.
+  config.systemd.services.systemd-pcrlock-make-policy = lib.mkIf tpm2Enabled {
+    serviceConfig.ExecStartPost = [
+      "${pkgs.coreutils}/bin/sync --file-system ${lib.escapeShellArg config.boot.loader.efi.efiSysMountPoint}"
+    ];
+  };
+
   config.assertions = lib.optionals settings.luksTpm2Enable [
     {
       assertion = settings.secureBootEnable;
