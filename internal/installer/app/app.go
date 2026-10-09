@@ -578,7 +578,14 @@ func run(ctx context.Context, args []string, in io.Reader, out, errOut io.Writer
 
 	if !tpmAvailable && securityRequested {
 		fmt.Fprintln(out)
-		fmt.Fprintln(out, "TPM2 hardware was not detected.")
+		if diskcrypto.TPMMajorVersion("/") == 1 {
+			// TPM 1.2 has only SHA-1 PCRs; systemd-cryptenroll and the
+			// measured-boot policy need TPM 2.0.
+			fmt.Fprintln(out, "This machine has a TPM 1.2, which GjallarOS does not use: it only supports SHA-1 measurements.")
+			fmt.Fprintln(out, "Some vendors ship a firmware update that turns it into a TPM 2.0; check the vendor's support page.")
+		} else {
+			fmt.Fprintln(out, "TPM2 hardware was not detected.")
+		}
 		fmt.Fprintln(
 			out,
 			"GjallarOS requires TPM2 for its Secure Boot and measured-boot security policy.",

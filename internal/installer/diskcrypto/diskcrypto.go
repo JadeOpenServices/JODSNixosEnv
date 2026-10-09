@@ -85,10 +85,30 @@ func parseLUKSDevices(output string) []string {
 	return devices
 }
 
+// TPMAvailable reports a TPM 2.0. A TPM 1.2 also creates /dev/tpm0, but
+// systemd-cryptenroll and the measured-boot policy need TPM 2.0, so a 1.2
+// chip counts as no TPM here instead of failing later at enrollment.
 func TPMAvailable() bool {
-	_, a := os.Stat("/dev/tpmrm0")
-	_, b := os.Stat("/dev/tpm0")
-	return a == nil || b == nil
+	return TPMMajorVersion("/") == 2
+}
+
+// TPMMajorVersion returns the TPM spec major version (1 or 2) of the first
+// TPM under root, or 0 without one. Only TPM 2.0 has the in-kernel resource
+// manager (/dev/tpmrm0), which settles kernels without tpm_version_major.
+func TPMMajorVersion(root string) int {
+	raw, err := os.ReadFile(filepath.Join(root, "sys/class/tpm/tpm0/tpm_version_major"))
+	if err == nil {
+		if v, err := strconv.Atoi(strings.TrimSpace(string(raw))); err == nil {
+			return v
+		}
+	}
+	if _, err := os.Stat(filepath.Join(root, "dev/tpmrm0")); err == nil {
+		return 2
+	}
+	if _, err := os.Stat(filepath.Join(root, "dev/tpm0")); err == nil {
+		return 1
+	}
+	return 0
 }
 
 func TPMPolicyAvailable() error {

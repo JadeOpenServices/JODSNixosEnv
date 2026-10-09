@@ -175,3 +175,38 @@ func TestCheckPCRLockPolicyRequiresEveryRequestedPCR(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+func TestTPMMajorVersion(t *testing.T) {
+	write := func(t *testing.T, root, name, body string) {
+		t.Helper()
+		path := filepath.Join(root, name)
+		if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(path, []byte(body), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	tests := []struct {
+		name  string
+		files map[string]string
+		want  int
+	}{
+		{"none", nil, 0},
+		{"tpm2 sysfs", map[string]string{"sys/class/tpm/tpm0/tpm_version_major": "2\n", "dev/tpm0": "", "dev/tpmrm0": ""}, 2},
+		{"tpm1.2 sysfs", map[string]string{"sys/class/tpm/tpm0/tpm_version_major": "1\n", "dev/tpm0": ""}, 1},
+		{"tpm1.2 old kernel", map[string]string{"dev/tpm0": ""}, 1},
+		{"tpm2 old kernel", map[string]string{"dev/tpm0": "", "dev/tpmrm0": ""}, 2},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			root := t.TempDir()
+			for name, body := range test.files {
+				write(t, root, name, body)
+			}
+			if got := TPMMajorVersion(root); got != test.want {
+				t.Fatalf("TPMMajorVersion = %d, want %d", got, test.want)
+			}
+		})
+	}
+}
