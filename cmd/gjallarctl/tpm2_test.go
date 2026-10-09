@@ -11,7 +11,7 @@ func TestTPM2ReenrollArgvUsesSudoForUsers(t *testing.T) {
 	if got := tpm2ReenrollArgv(0); !reflect.DeepEqual(got, []string{"gjallar-tpm2-reenroll"}) {
 		t.Fatalf("root argv = %q", got)
 	}
-	if got := tpm2ReenrollArgv(1000); !reflect.DeepEqual(got, []string{"sudo", "gjallar-tpm2-reenroll"}) {
+	if got := tpm2ReenrollArgv(1000); !reflect.DeepEqual(got, []string{"sudo", "-k", "gjallar-tpm2-reenroll"}) {
 		t.Fatalf("user argv = %q", got)
 	}
 }

@@ -63,7 +63,9 @@ const (
 )
 
 func main() {
-	os.Exit(run(os.Args[1:], os.Stdout, os.Stderr))
+	status := run(os.Args[1:], os.Stdout, os.Stderr)
+	endPrivilegeSession()
+	os.Exit(status)
 }
 
 func run(args []string, stdout, stderr io.Writer) int {
@@ -1083,6 +1085,13 @@ func runAISetToken(args []string, stdout, stderr io.Writer) int {
 	}
 	defer tty.Close()
 	token, err := credential.ReadSecret(tty, bufio.NewReader(tty), stdout, "AI server token: ")
+	if err == nil && os.Geteuid() != 0 {
+		// Store runs sudo several times; one authentication covers them and
+		// the restart below.
+		if status := runPrivilegeAuthentication(context.Background(), stderr); status != 0 {
+			return status
+		}
+	}
 	if err == nil {
 		err = aitoken.Store(context.Background(), token, aitoken.Pending)
 	}
@@ -1090,11 +1099,9 @@ func runAISetToken(args []string, stdout, stderr io.Writer) int {
 		fmt.Fprintf(stderr, "ERROR: %v\n", err)
 		return 1
 	}
-	restart := exec.Command("sudo", "systemctl", "restart",
-		"ai-endpoint-token-seal.service", "ai-model-broker.service", "ollama-model-provision.service")
-	restart.Stdout, restart.Stderr = stdout, stderr
-	if err := restart.Run(); err != nil {
-		fmt.Fprintf(stderr, "ERROR: token stored but AI services did not restart: %v\n", err)
+	if runPrivilegedCommand(context.Background(), stdout, stderr, "systemctl", "restart",
+		"ai-endpoint-token-seal.service", "ai-model-broker.service", "ollama-model-provision.service") != 0 {
+		fmt.Fprintln(stderr, "ERROR: token stored but AI services did not restart")
 		return 1
 	}
 	fmt.Fprintln(stdout, "AI server token sealed; AI services restarted.")
@@ -2472,7 +2479,8 @@ func tpm2ReenrollArgv(euid int) []string {
 	if euid == 0 {
 		return []string{tpm2ReenrollTool}
 	}
-	return []string{"sudo", tpm2ReenrollTool}
+	// -k: ask now and leave no timestamp behind.
+	return []string{"sudo", "-k", tpm2ReenrollTool}
 }
 
 func runHelpme(args []string, stdout, stderr io.Writer) int {
@@ -2836,10 +2844,39 @@ func runAuth(args []string, stderr io.Writer) int {
 		return 0
 	}
 
-	return runPrivilegeAuthentication(context.Background(), stderr)
+	return authenticatePrivilege(context.Background(), stderr)
+}
+
+// A gjallarctl operation always asks for authentication and leaves no sudo
+// timestamp behind (timestamp_timeout 0 for gjallarctl); plain sudo keeps
+// the 5 minute default. The follow-up commands run with sudo -n on the
+// timestamp gjallar-sudo-auth creates, so it is dropped on exit, not avoided.
+var (
+	privilegeSessionStarted bool
+	invalidateSudoTimestamp = func() { _ = exec.Command("sudo", "-k").Run() }
+)
+
+func beginPrivilegeSession() {
+	if privilegeSessionStarted {
+		return
+	}
+	privilegeSessionStarted = true
+	invalidateSudoTimestamp()
+}
+
+func endPrivilegeSession() {
+	if privilegeSessionStarted {
+		invalidateSudoTimestamp()
+		privilegeSessionStarted = false
+	}
 }
 
 func runPrivilegeAuthentication(ctx context.Context, stderr io.Writer) int {
+	beginPrivilegeSession()
+	return authenticatePrivilege(ctx, stderr)
+}
+
+func authenticatePrivilege(ctx context.Context, stderr io.Writer) int {
 	askpass, err := siblingExecutable("gjallar-sudo-askpass")
 	if err != nil {
 		fmt.Fprintf(stderr, "ERROR: privilege authentication helper: %v\n", err)

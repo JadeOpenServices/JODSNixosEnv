@@ -166,3 +166,26 @@ func TestAuthRejectsArguments(t *testing.T) {
 		t.Fatalf("missing usage: %q", stderr.String())
 	}
 }
+
+// gjallarctl operations ask every time and leave no sudo timestamp; plain
+// sudo keeps its own timeout.
+func TestPrivilegeSessionDropsTimestampBeforeAndAfter(t *testing.T) {
+	calls := 0
+	saved := invalidateSudoTimestamp
+	invalidateSudoTimestamp = func() { calls++ }
+	t.Cleanup(func() { invalidateSudoTimestamp = saved; privilegeSessionStarted = false })
+
+	endPrivilegeSession()
+	if calls != 0 {
+		t.Fatalf("no privileged operation ran, but the timestamp was dropped %d times", calls)
+	}
+	beginPrivilegeSession()
+	beginPrivilegeSession()
+	if calls != 1 {
+		t.Fatalf("a second privileged step in one operation must reuse the fresh timestamp, dropped %d times", calls)
+	}
+	endPrivilegeSession()
+	if calls != 2 {
+		t.Fatalf("timestamp not dropped at exit: %d calls", calls)
+	}
+}
