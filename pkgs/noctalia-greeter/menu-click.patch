@@ -1,0 +1,159 @@
+diff --git a/src/greeter/greeter_surface.cpp b/src/greeter/greeter_surface.cpp
+--- a/src/greeter/greeter_surface.cpp
++++ b/src/greeter/greeter_surface.cpp
+@@ -2989,26 +2989,34 @@
+   return false;
+ }
+ 
++// Menus are rebuilt on every layout pass. Forget pointer state only for the
++// nodes being removed, so a press elsewhere (one that moved focus and dirtied
++// the layout) still delivers its click on release.
++void GreeterSurface::removeMenuNode(Node* node) {
++  m_inputDispatcher.forgetSubtree(node);
++  (void)m_root.removeChild(node);
++}
++
+ void GreeterSurface::clearUserMenuRows() {
+   if (m_userMenuEmptyLabel != nullptr) {
+-    (void)m_root.removeChild(m_userMenuEmptyLabel);
++    removeMenuNode(m_userMenuEmptyLabel);
+     m_userMenuEmptyLabel = nullptr;
+   }
+   if (m_userMenuPanel != nullptr) {
+-    (void)m_root.removeChild(m_userMenuPanel);
++    removeMenuNode(m_userMenuPanel);
+     m_userMenuPanel = nullptr;
+   }
+   for (auto* label : m_userMenuLabels) {
+-    (void)m_root.removeChild(label);
++    removeMenuNode(label);
+   }
+   for (auto* icon : m_userMenuRowIcons) {
+-    (void)m_root.removeChild(icon);
++    removeMenuNode(icon);
+   }
+   for (auto* area : m_userMenuAreas) {
+-    (void)m_root.removeChild(area);
++    removeMenuNode(area);
+   }
+   for (auto* row : m_userMenuRows) {
+-    (void)m_root.removeChild(row);
++    removeMenuNode(row);
+   }
+   m_userMenuLabels.clear();
+   m_userMenuRowIcons.clear();
+@@ -3017,7 +3025,6 @@
+ }
+ 
+ void GreeterSurface::clearUserMenu() {
+-  m_inputDispatcher.invalidateTransientPointers();
+   clearUserMenuRows();
+   m_userMenuSearchQuery.clear();
+   m_userMenuScrollOffset = 0;
+@@ -3029,19 +3036,18 @@
+ }
+ 
+ void GreeterSurface::clearSessionMenu() {
+-  m_inputDispatcher.invalidateTransientPointers();
+   if (m_sessionMenuPanel != nullptr) {
+-    (void)m_root.removeChild(m_sessionMenuPanel);
++    removeMenuNode(m_sessionMenuPanel);
+     m_sessionMenuPanel = nullptr;
+   }
+   for (auto* label : m_sessionMenuLabels) {
+-    (void)m_root.removeChild(label);
++    removeMenuNode(label);
+   }
+   for (auto* area : m_sessionMenuAreas) {
+-    (void)m_root.removeChild(area);
++    removeMenuNode(area);
+   }
+   for (auto* row : m_sessionMenuRows) {
+-    (void)m_root.removeChild(row);
++    removeMenuNode(row);
+   }
+   m_sessionMenuLabels.clear();
+   m_sessionMenuAreas.clear();
+@@ -3049,19 +3055,18 @@
+ }
+ 
+ void GreeterSurface::clearSchemeMenu() {
+-  m_inputDispatcher.invalidateTransientPointers();
+   if (m_schemeMenuPanel != nullptr) {
+-    (void)m_root.removeChild(m_schemeMenuPanel);
++    removeMenuNode(m_schemeMenuPanel);
+     m_schemeMenuPanel = nullptr;
+   }
+   for (auto* label : m_schemeMenuLabels) {
+-    (void)m_root.removeChild(label);
++    removeMenuNode(label);
+   }
+   for (auto* area : m_schemeMenuAreas) {
+-    (void)m_root.removeChild(area);
++    removeMenuNode(area);
+   }
+   for (auto* row : m_schemeMenuRows) {
+-    (void)m_root.removeChild(row);
++    removeMenuNode(row);
+   }
+   m_schemeMenuLabels.clear();
+   m_schemeMenuAreas.clear();
+diff --git a/src/greeter/greeter_surface.h b/src/greeter/greeter_surface.h
+--- a/src/greeter/greeter_surface.h
++++ b/src/greeter/greeter_surface.h
+@@ -143,6 +143,7 @@
+   void layoutUserMenuSearchField(float x, float y, float w, float h);
+   void rebuildSessionMenu();
+   void rebuildSchemeMenu();
++  void removeMenuNode(Node* node);
+   void clearUserMenu();
+   void clearUserMenuRows();
+   void clearSessionMenu();
+diff --git a/src/render/scene/input_dispatcher.cpp b/src/render/scene/input_dispatcher.cpp
+--- a/src/render/scene/input_dispatcher.cpp
++++ b/src/render/scene/input_dispatcher.cpp
+@@ -182,3 +182,32 @@
+   m_hoveredArea = nullptr;
+   m_capturedArea = nullptr;
+ }
++
++namespace {
++  bool isInSubtree(const Node* node, const Node* root) {
++    for (; node != nullptr; node = node->parent()) {
++      if (node == root) {
++        return true;
++      }
++    }
++    return false;
++  }
++} // namespace
++
++void InputDispatcher::forgetSubtree(const Node* root) {
++  if (root == nullptr) {
++    return;
++  }
++  if (m_hoveredArea != nullptr && isInSubtree(m_hoveredArea, root)) {
++    m_hoveredArea->m_hovered = false;
++    m_hoveredArea->m_pressed = false;
++    if (m_hoveredArea->m_onLeave) {
++      m_hoveredArea->m_onLeave();
++    }
++    m_hoveredArea = nullptr;
++  }
++  if (m_capturedArea != nullptr && isInSubtree(m_capturedArea, root)) {
++    m_capturedArea->m_pressed = false;
++    m_capturedArea = nullptr;
++  }
++}
+diff --git a/src/render/scene/input_dispatcher.h b/src/render/scene/input_dispatcher.h
+--- a/src/render/scene/input_dispatcher.h
++++ b/src/render/scene/input_dispatcher.h
+@@ -23,6 +23,8 @@
+   void setFocus(InputArea* area);
+   void setCursorShapeCallback(std::function<void(std::uint32_t serial, std::uint32_t shape)> callback);
+   void invalidateTransientPointers();
++  // Drops hover/capture state that points into a subtree about to be removed.
++  void forgetSubtree(const Node* root);
+ 
+ private:
+   Node* m_sceneRoot = nullptr;
