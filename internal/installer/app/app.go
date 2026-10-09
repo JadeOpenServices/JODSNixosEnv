@@ -1911,6 +1911,10 @@ func collectInteractive(ctx context.Context, ui prompt.UI, root string, partitio
 	if u.Username, err = ui.Value(ctx, "Username", username); err != nil {
 		return err
 	}
+	// Ask about Secure Boot later, as default.user.config.json does. Left at
+	// false, interactive installs never offered GjallarOS Secure Boot and
+	// never said why it stayed off (real HP, 2026-10-09).
+	u.SecureBootPrompt = true
 	u.EndpointManagedDevice, err = ui.Confirm(ctx, "Manage this machine with JODS?", false)
 	if err != nil {
 		return err
