@@ -211,3 +211,14 @@ Ideas worth taking:
 - [ ] **Desktop notice for Secure Boot state.** Keys enrolled but firmware
       enforcement still off shows only in the journal today. Show it like the
       low-battery warning.
+
+## 9. Accounts
+
+- [ ] **Separate daily and admin accounts.** Today the installer creates one
+      account that is in `wheel` and does everything. Malware running as that
+      user can wait for a sudo or `rebuild` password and reuse it. Option at
+      install time: a daily account without admin rights, and a second admin
+      account that only `gjallarctl` operations and polkit ask for. The daily
+      user then types the admin password, not their own, so a keylogger in the
+      daily session still has to catch the separate password. Default stays a
+      single account until the flow is tested on real hardware.
