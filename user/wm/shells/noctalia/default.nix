@@ -11,37 +11,6 @@ let
   semanticTheme = import ../../../../themes/lib/semantic.nix { inherit config; };
   contrastGuard = import ../../../../themes/lib/contrast.nix { inherit pkgs; };
 
-  # Noctalia re-stages the greeter look on every login and theme load, and
-  # each sync is a pkexec password prompt. Ask only when the staged files
-  # differ from the last answered sync. No passwordless polkit rule: the
-  # greeter look is shared by every account on the machine.
-  greeterSyncPrivilege = pkgs.writeShellScript "gjallar-greeter-sync-privilege" ''
-    set -eu
-    PATH=${lib.makeBinPath [ pkgs.coreutils pkgs.findutils ]}:$PATH
-    staging="$2"
-    state="''${XDG_STATE_HOME:-$HOME/.local/state}/gjallar/greeter-sync.sha256"
-    sum=$(cd "$staging" && find . -maxdepth 1 -type f -print0 | sort -z \
-      | xargs -0 sha256sum | sha256sum)
-    if [ -r "$state" ] && [ "$(cat "$state")" = "$sum" ]; then
-      exit 0
-    fi
-    mkdir -p "$(dirname "$state")"
-    # First sync of a new account is the default look the greeter already
-    # shows: record it, do not ask during the welcome flow.
-    if [ ! -e "$state" ]; then
-      printf '%s\n' "$sum" > "$state"
-      exit 0
-    fi
-    # A dismissed prompt counts as the answer for this look; the next change
-    # asks again instead of re-prompting for the same files.
-    rc=0
-    /run/wrappers/bin/pkexec "$@" || rc=$?
-    if [ "$rc" -eq 0 ] || [ "$rc" -eq 126 ]; then
-      printf '%s\n' "$sum" > "$state"
-    fi
-    exit "$rc"
-  '';
-
   palette = {
     dark = {
       mPrimary = "#${semanticTheme.fallback.primary}";
@@ -127,7 +96,7 @@ in
           templates.user.ghostty = {
             input_path = "$XDG_CONFIG_HOME/noctalia/templates/ghostty.conf";
             output_path = "$XDG_CONFIG_HOME/ghostty/themes/noctalia";
-      pre_hook = contrastGuard.preHook;
+            pre_hook = contrastGuard.preHook;
             post_hook = "${pkgs.systemd}/bin/systemctl reload --user app-com.mitchellh.ghostty.service >/dev/null 2>&1 || true";
           };
           templates.user.gjallar_plymouth = {
@@ -145,7 +114,8 @@ in
           polkit_agent = true;
           greeter_sync = {
             auto_sync = true;
-            privilege_command = "${greeterSyncPrivilege}";
+            # gjallar-greeter-sync-privilege: system/wm/common/wayland.nix
+            privilege_command = "/run/current-system/sw/bin/gjallar-greeter-sync-privilege";
           };
           screenshot = {
             directory = "${config.home.homeDirectory}/Pictures/Screenshots";
