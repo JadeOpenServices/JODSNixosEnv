@@ -58,10 +58,6 @@ in
     };
   };
 
-  # jods-register-key opens its registration page in this browser too.
-  # Chromium stays off PATH; the sealed launcher above keeps its own copy.
-  environment.sessionVariables.JODS_BROWSER = lib.getExe pkgs.ungoogled-chromium;
-
   environment.systemPackages = [
     registerKey
     (pkgs.makeDesktopItem {
