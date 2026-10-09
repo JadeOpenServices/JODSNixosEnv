@@ -32,7 +32,13 @@ func RefreshAnswer(repo string) (string, string, error) {
 	if err != nil {
 		return "", "", fmt.Errorf("find the ODDC commit to ask: %w", err)
 	}
+	return RefreshAnswerAt(repo, rev)
+}
 
+// RefreshAnswerAt moves repo's ODDC answer to commit rev, for a rebuild that
+// overrides the oddc input: the answer has to come from the same commit as
+// the catalogue code the build evaluates.
+func RefreshAnswerAt(repo, rev string) (string, string, error) {
 	before, err := oddc.Refresh(
 		filepath.Join(repo, filepath.FromSlash(AnswerDir)),
 		rev,

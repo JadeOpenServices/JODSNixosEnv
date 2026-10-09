@@ -54,3 +54,26 @@ func TestRebuildHelpListsUpdate(t *testing.T) {
 		t.Fatalf("help: %q", stdout.String())
 	}
 }
+
+func TestODDCOverrideRevision(t *testing.T) {
+	const sha = "9958ddcb93c26721a60f033e21cbb27c8c89325f"
+	cases := []struct {
+		args    []string
+		want    string
+		wantErr bool
+	}{
+		{nil, "", false},
+		{[]string{"--show-trace"}, "", false},
+		{[]string{"--override-input", "nixpkgs", "github:NixOS/nixpkgs/" + sha}, "", false},
+		{[]string{"--override-input", "oddc", "github:JadeOpenServices/oddc/" + sha, "--no-write-lock-file"}, sha, false},
+		{[]string{"--override-input", "oddc", "git+https://github.com/JadeOpenServices/oddc?ref=main&rev=" + sha}, sha, false},
+		{[]string{"--override-input", "oddc", "github:JadeOpenServices/oddc/main"}, "", true},
+		{[]string{"--override-input", "oddc", "path:/home/user/oddc"}, "", true},
+	}
+	for _, c := range cases {
+		got, err := oddcOverrideRevision(c.args)
+		if (err != nil) != c.wantErr || got != c.want {
+			t.Errorf("oddcOverrideRevision(%q) = %q, %v; want %q, error %v", c.args, got, err, c.want, c.wantErr)
+		}
+	}
+}

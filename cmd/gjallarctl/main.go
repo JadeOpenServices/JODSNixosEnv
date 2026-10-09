@@ -2042,7 +2042,17 @@ func runRebuild(args []string, stdout, stderr io.Writer) int {
 	// The device's ODDC answer follows the commit flake.lock pins, so
 	// `nix flake update oddc` and a rebuild take a new catalog revision.
 	// Offline, the rebuild keeps the answer it has.
-	before, pinned, err := deviceprofile.RefreshAnswer(repo)
+	overrideRev, err := oddcOverrideRevision(rebuildArgs)
+	if err != nil {
+		fmt.Fprintf(stderr, "[GjallarOS] Error: %v\n", err)
+		return 2
+	}
+	var before, pinned string
+	if overrideRev != "" {
+		before, pinned, err = deviceprofile.RefreshAnswerAt(repo, overrideRev)
+	} else {
+		before, pinned, err = deviceprofile.RefreshAnswer(repo)
+	}
 	if err != nil {
 		fmt.Fprintf(stderr, "[GjallarOS] Warning: keeping ODDC answer at %s: %v\n", before, err)
 	} else if before != pinned && before != "" {
@@ -2176,6 +2186,36 @@ func runRebuild(args []string, stdout, stderr io.Writer) int {
 	return status
 }
 
+// oddcOverrideRevision returns the commit a `--override-input oddc <ref>`
+// in the nixos-rebuild arguments points at, or "" without such an override.
+// The ODDC answer is fetched at that commit, so a ref that names no commit
+// (a branch, a local path) is refused instead of building code and answer
+// from different revisions.
+func oddcOverrideRevision(rebuildArgs []string) (string, error) {
+	rev := ""
+	for i := 0; i+2 < len(rebuildArgs); i++ {
+		if rebuildArgs[i] != "--override-input" || rebuildArgs[i+1] != "oddc" {
+			continue
+		}
+		ref := rebuildArgs[i+2]
+		candidate := ref
+		if base, query, ok := strings.Cut(ref, "?"); ok {
+			candidate = base
+			for _, field := range strings.Split(query, "&") {
+				if value, ok := strings.CutPrefix(field, "rev="); ok {
+					candidate = value
+				}
+			}
+		}
+		candidate = candidate[strings.LastIndexAny(candidate, "/:")+1:]
+		if len(candidate) != 40 || strings.Trim(candidate, "0123456789abcdef") != "" {
+			return "", fmt.Errorf("--override-input oddc %s names no commit; pin it to one (github:JadeOpenServices/oddc/<40-hex commit>) so the ODDC answer matches", ref)
+		}
+		rev = candidate
+	}
+	return rev, nil
+}
+
 func rebuildCommandArgs(
 	repo, host, rebuildHome string,
 	debug bool,
@@ -2249,6 +2289,10 @@ Apply the GjallarOS configuration in the system checkout.
   -d, --debug           Show the full nixos-rebuild output.
   -n, --no-cleanup      Keep old system generations.
   -h, --help            Show this help.
+
+Arguments after -- go to nixos-rebuild. --override-input oddc must name a
+commit (github:JadeOpenServices/oddc/<commit>); the ODDC answer for this
+machine is fetched at that commit too.
 `)
 }
 
