@@ -1,0 +1,16 @@
+diff --git a/src/compositor/noctalia_compositor.c b/src/compositor/noctalia_compositor.c
+--- a/src/compositor/noctalia_compositor.c
++++ b/src/compositor/noctalia_compositor.c
+@@ -91,6 +91,12 @@ static void compositor_log_stderr(int priority, const char* format, ...) {
+ }
+ 
+ static void compositor_wlr_log(enum wlr_log_importance importance, const char* format, va_list args) {
++  // wlroots hands every message to a custom callback; the level given to
++  // wlr_log_init only filters in its own default logger.
++  if (importance > wlr_log_get_verbosity()) {
++    return;
++  }
++
+   va_list stderr_args;
+   va_copy(stderr_args, args);
+   if (compositor_syslog_enabled) {
