@@ -481,7 +481,7 @@ func usbOrNone(value string) string {
 // cached for the command is dropped again afterwards.
 func usbAuthorize(ctx context.Context, name string, command []string) ([]byte, error) {
 	const sudo = "/run/wrappers/bin/sudo"
-	authHelper, err := siblingExecutable("gjallar-sudo-auth")
+	authHelper, err := helperExecutable("gjallar-sudo-auth")
 	if err != nil {
 		return []byte(err.Error()), err
 	}

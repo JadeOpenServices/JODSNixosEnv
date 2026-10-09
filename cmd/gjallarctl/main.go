@@ -2760,7 +2760,19 @@ func environmentWithOverride(key, value string) []string {
 	return append(env, prefix+value)
 }
 
-func siblingExecutable(name string) (string, error) {
+// systemHelperDir holds the helpers of the running system. The sudoers PAM
+// split names this system's gjallar-sudo-auth, so it is used even when
+// gjallarctl itself runs from a dev checkout (go run, nix build result).
+var systemHelperDir = "/run/current-system/sw/bin"
+
+// helperExecutable resolves a gjallarctl helper script: the running system's
+// copy first, then the one next to this binary (installer media, systems
+// without gjallarctl installed).
+func helperExecutable(name string) (string, error) {
+	if helper, err := resolveExecutable(filepath.Join(systemHelperDir, name)); err == nil {
+		return helper, nil
+	}
+
 	executable, err := os.Executable()
 	if err != nil {
 		return "", fmt.Errorf("resolve gjallarctl executable: %w", err)
@@ -2771,17 +2783,33 @@ func siblingExecutable(name string) (string, error) {
 		return "", fmt.Errorf("resolve gjallarctl executable symlink: %w", err)
 	}
 
-	sibling := filepath.Join(filepath.Dir(resolved), name)
+	helper, err := resolveExecutable(filepath.Join(filepath.Dir(resolved), name))
+	if err != nil {
+		return "", fmt.Errorf(
+			"%w (not in %s either; is gjallarctl installed on this system?)",
+			err,
+			systemHelperDir,
+		)
+	}
+	return helper, nil
+}
 
-	info, err := os.Stat(sibling)
+func resolveExecutable(path string) (string, error) {
+	name := filepath.Base(path)
+	resolved, err := filepath.EvalSymlinks(path)
+	if err != nil {
+		return "", fmt.Errorf("resolve %s: %w", name, err)
+	}
+
+	info, err := os.Stat(resolved)
 	if err != nil {
 		return "", fmt.Errorf("resolve %s: %w", name, err)
 	}
 	if info.IsDir() || info.Mode()&0111 == 0 {
-		return "", fmt.Errorf("%s is not executable", sibling)
+		return "", fmt.Errorf("%s is not executable", resolved)
 	}
 
-	return sibling, nil
+	return resolved, nil
 }
 
 func privilegeFingerprintCommand(
@@ -2916,13 +2944,13 @@ func runPrivilegeAuthentication(ctx context.Context, stderr io.Writer) int {
 }
 
 func authenticatePrivilege(ctx context.Context, stderr io.Writer) int {
-	askpass, err := siblingExecutable("gjallar-sudo-askpass")
+	askpass, err := helperExecutable("gjallar-sudo-askpass")
 	if err != nil {
 		fmt.Fprintf(stderr, "ERROR: privilege authentication helper: %v\n", err)
 		return 1
 	}
 
-	authHelper, err := siblingExecutable("gjallar-sudo-auth")
+	authHelper, err := helperExecutable("gjallar-sudo-auth")
 	if err != nil {
 		fmt.Fprintf(stderr, "ERROR: privilege authentication helper: %v\n", err)
 		return 1

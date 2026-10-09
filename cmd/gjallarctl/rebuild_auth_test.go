@@ -5,6 +5,7 @@ import (
 	"errors"
 	"io"
 	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 )
@@ -187,5 +188,46 @@ func TestPrivilegeSessionDropsTimestampBeforeAndAfter(t *testing.T) {
 	endPrivilegeSession()
 	if calls != 2 {
 		t.Fatalf("timestamp not dropped at exit: %d calls", calls)
+	}
+}
+
+func TestHelperExecutablePrefersSystemCopy(t *testing.T) {
+	store := t.TempDir()
+	helper := filepath.Join(store, "gjallar-sudo-auth")
+	if err := os.WriteFile(helper, []byte("#!/bin/sh\nexit 0\n"), 0o555); err != nil {
+		t.Fatal(err)
+	}
+	system := t.TempDir()
+	if err := os.Symlink(helper, filepath.Join(system, "gjallar-sudo-auth")); err != nil {
+		t.Fatal(err)
+	}
+
+	old := systemHelperDir
+	systemHelperDir = system
+	t.Cleanup(func() { systemHelperDir = old })
+
+	// sudoers names the store path, so the symlink must be resolved.
+	got, err := helperExecutable("gjallar-sudo-auth")
+	if err != nil {
+		t.Fatal(err)
+	}
+	want, err := filepath.EvalSymlinks(helper)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got != want {
+		t.Fatalf("helperExecutable = %q, want %q", got, want)
+	}
+}
+
+func TestHelperExecutableMissingNamesSystemDir(t *testing.T) {
+	old := systemHelperDir
+	systemHelperDir = t.TempDir()
+	t.Cleanup(func() { systemHelperDir = old })
+
+	// The test binary has no helpers next to it, like go run.
+	_, err := helperExecutable("gjallar-sudo-auth")
+	if err == nil || !strings.Contains(err.Error(), systemHelperDir) {
+		t.Fatalf("expected error naming %s, got %v", systemHelperDir, err)
 	}
 }

@@ -259,7 +259,9 @@ func checkPresetCompatibility(r *Report, preset, user map[string]json.RawMessage
 	if len(missing) == 0 {
 		r.Findings = append(r.Findings, Finding{OK, "user.config.json explicitly sets every preset field"})
 	} else {
-		r.Findings = append(r.Findings, Finding{Warn, fmt.Sprintf("installer defaults apply to missing preset fields: %s", strings.Join(missing, ", "))})
+		// Fields added after this machine was installed. Nix falls back to the
+		// same defaults the installer writes, so this is not a problem.
+		r.Findings = append(r.Findings, Finding{OK, fmt.Sprintf("preset fields not in user.config.json use their defaults: %s", strings.Join(missing, ", "))})
 	}
 	if len(managed) != 0 {
 		r.Findings = append(r.Findings, Finding{OK, fmt.Sprintf("installer-managed fields are intentionally absent: %s", strings.Join(managed, ", "))})
