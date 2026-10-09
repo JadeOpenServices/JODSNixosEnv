@@ -28,6 +28,7 @@
     "librewolf"
   ],
   "clamshellEnable": true,
+  "consoleLoginEnable": false,
   "debugFunctions": false,
   "dotfilesDir": "",
   "editors": [

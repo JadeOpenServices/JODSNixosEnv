@@ -23,6 +23,7 @@
 
     ./security/firewall.nix
     ./security/local-hardening.nix
+    ./security/console-lockdown.nix
     ./security/keyring.nix
     ./maintenance/storage.nix
     ./maintenance/installer-resume.nix

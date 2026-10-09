@@ -45,6 +45,7 @@ let
 
       touchpadWorkspaceSwipe = getSetting "touchpadWorkspaceSwipe" true;
       clamshellEnable = getSetting "clamshellEnable" true;
+      consoleLoginEnable = getSetting "consoleLoginEnable" false;
       usbguardEnable = getSetting "usbguardEnable" false;
       usbTrustEnforce = getSetting "usbTrustEnforce" false;
       usbTrustTpmHandle = getSetting "usbTrustTpmHandle" "";

@@ -87,6 +87,7 @@ type Settings struct {
 	TouchpadWorkspaceSwipe, TouchscreenEnable                                               bool
 	PenTabletEnable, OrientationSensorEnable                                                bool
 	ClamshellEnable, USBGuardEnable, USBTrustEnforce, PrintingEnable, NetworkPrintingEnable bool
+	ConsoleLoginEnable                                                                      bool
 	USBTrustTPMHandle                                                                       string
 	Name, Email, GitHubUsername, DotfilesDir                                                string
 	RootPasswordFile                                                                        string
@@ -136,6 +137,7 @@ func FromUser(user config.User) Settings {
 		WeatherCountry:                      user.WeatherCountry,
 		TouchpadWorkspaceSwipe:              user.TouchpadWorkspaceSwipe,
 		ClamshellEnable:                     user.ClamshellEnable,
+		ConsoleLoginEnable:                  user.ConsoleLoginEnable,
 		USBGuardEnable:                      user.USBGuardEnable,
 		USBTrustEnforce:                     user.USBTrustEnforce,
 		USBTrustTPMHandle:                   user.USBTrustTPMHandle,
@@ -219,6 +221,7 @@ var userIntentKeys = []string{
 	"weatherCountry",
 	"touchpadWorkspaceSwipe",
 	"clamshellEnable",
+	"consoleLoginEnable",
 	"usbguardEnable",
 	"usbTrustEnforce",
 	"usbTrustTpmHandle",
@@ -390,6 +393,7 @@ func Render(s Settings) []byte {
 	boolean("penTabletEnable", s.PenTabletEnable)
 	boolean("orientationSensorEnable", s.OrientationSensorEnable)
 	boolean("clamshellEnable", s.ClamshellEnable)
+	boolean("consoleLoginEnable", s.ConsoleLoginEnable)
 	boolean("usbguardEnable", s.USBGuardEnable)
 	boolean("usbTrustEnforce", s.USBTrustEnforce)
 	str("usbTrustTpmHandle", s.USBTrustTPMHandle)

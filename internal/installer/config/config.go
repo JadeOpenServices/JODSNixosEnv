@@ -27,6 +27,7 @@ type User struct {
 	WeatherCountry         string                 `json:"weatherCountry"`
 	TouchpadWorkspaceSwipe bool                   `json:"touchpadWorkspaceSwipe"`
 	ClamshellEnable        bool                   `json:"clamshellEnable"`
+	ConsoleLoginEnable     bool                   `json:"consoleLoginEnable"`
 	USBGuardEnable         bool                   `json:"usbguardEnable"`
 	USBTrustEnforce        bool                   `json:"usbTrustEnforce"`
 	USBTrustTPMHandle      string                 `json:"usbTrustTpmHandle"`

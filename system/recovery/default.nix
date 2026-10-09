@@ -116,6 +116,9 @@ lib.mkMerge [
       systemd.services.plymouth-quit.enable = lib.mkForce true;
       systemd.services.plymouth-quit-wait.enable = lib.mkForce true;
       systemd.targets.getty.wants = [ "getty@tty1.service" ];
+      # The normal boot has no tty logins (console-lockdown.nix); this
+      # entry is the place for one.
+      systemd.services."getty@".enable = lib.mkForce true;
 
       environment.etc."gjallar/recovery".text = ''
         Trusted GjallarOS recovery entry.

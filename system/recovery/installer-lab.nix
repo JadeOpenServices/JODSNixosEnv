@@ -43,6 +43,8 @@ config["secureBootPrompt"] = False
 config["luksTpm2Enable"] = False
 config["jodsPrebootLockEnable"] = False
 config["endpointManagedDevice"] = False
+# The harness drives installed VMs through a root login on tty2.
+config["consoleLoginEnable"] = True
 
 config["recoveryEnable"] = True
 config["recoveryPartitionEnable"] = True
