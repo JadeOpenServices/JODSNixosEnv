@@ -261,6 +261,13 @@ commits or uncommitted edits stop the pull, and nothing is rebuilt.
 `rebuild --update-inputs` moves every flake input first (for development
 checkouts). `rebuild --help` lists every option.
 
+To try a `gjallarctl` change before rebuilding, run it from the checkout with
+`go run ./cmd/gjallarctl rebuild` (or any other command). It uses the sudo
+helpers of the installed system, so this works only on a machine that already
+runs GjallarOS. If you need the package itself, build it with
+`nix build "git+file://$PWD#gjallarctl"`. A `path:` flake reference copies the
+whole directory into the Nix store, untracked files and VM disks included.
+
 ### Recovery and rollback
 
 With `recoveryEnable`, the boot menu lists only the newest generation and its
