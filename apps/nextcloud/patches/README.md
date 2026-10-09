@@ -22,6 +22,13 @@ These patches apply to the source revisions pinned in `../home.nix` and
   record that it finished, so tens of thousands of no-op jobs repeated forever.
   Missing placeholder attributes are still repaired by the separate metadata
   check.
+- Hydration closes the downloaded file before restoring the server mtime.
+  Upstream closed it later, so the final buffered write bumped the mtime and
+  every file opened from an online-only folder was uploaded again.
+- OpenVFS skips pin writes that change nothing and never marks conflict files
+  Excluded. Every xattr write wakes the folder watcher, which resets a conflict
+  file to Inherited and schedules a sync that marks it Excluded again: the
+  client synced every few seconds and other uploads looked stuck.
 - Ignore-app suffix matching recognizes Nix's `-wrapped` executables. The
   upstream ignore list therefore also applies to wrapped previews. KIO file
   protocol workers are exempt from the generic suffix rule so intentional copies

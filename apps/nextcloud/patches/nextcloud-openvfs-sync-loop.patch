@@ -1,0 +1,62 @@
+--- a/src/libsync/hydrationjob.cpp
++++ b/src/libsync/hydrationjob.cpp
+@@ -7,6 +7,8 @@
+ #include "common/vfs.h"
+ #include "propagatedownload.h"
+ 
++#include <QFileDevice>
++
+ using namespace OCC;
+ 
+ HydrationJob::HydrationJob(Vfs *vfs, const QByteArray &fileId, std::unique_ptr<QIODevice> &&device, QObject *parent)
+@@ -74,6 +76,14 @@
+         //     errorMsg = tr("Aborted.");
+         // }
+ 
++        // QFile buffers the last chunk until close. Closing only on destruction
++        // wrote it after slotHydrateJobFinished() restored the server mtime, so
++        // every hydrated file looked locally modified and was uploaded again.
++        if (auto *file = qobject_cast<QFileDevice *>(_device.get()); file && !file->flush() && errorMsg.isEmpty()) {
++            errorMsg = file->errorString();
++        }
++        _device->close();
++
+         if (!errorMsg.isEmpty()) {
+             Q_EMIT error(errorMsg);
+             return;
+--- a/src/libsync/vfs/openvfs/vfs_openvfs.cpp
++++ b/src/libsync/vfs/openvfs/vfs_openvfs.cpp
+@@ -9,6 +9,7 @@
+ #include "account.h"
+ #include "common/path.h"
+ #include "common/syncjournaldb.h"
++#include "common/utility.h"
+ #include "filesystem.h"
+ #include "hydrationjob.h"
+ #include "syncfileitem.h"
+@@ -622,6 +623,11 @@
+         // the file is not yet converted
+         return false;
+     }
++    // Every xattr write is an inotify event for the folder watcher. Rewriting
++    // an unchanged pin on each sync woke the watcher for every excluded file.
++    if (attribs.pinState == convertPinState(state)) {
++        return true;
++    }
+     attribs.pinState = convertPinState(state);
+     if (!setPlaceholderAttributes(attribs)) {
+         return false;
+@@ -678,6 +684,13 @@
+ void OpenVFS::fileStatusChanged(const QString &systemFileName, SyncFileStatus fileStatus)
+ {
+     if (fileStatus.tag() == SyncFileStatus::StatusExcluded) {
++        // Folder::pathIsIgnored() watches conflict files and resets their
++        // Excluded pin to Inherited on the resulting xattr event, which
++        // schedules the next sync, which sets Excluded again: a sync every
++        // few seconds for as long as a conflict file exists.
++        if (Utility::isConflictFile(systemFileName)) {
++            return;
++        }
+         const FileSystem::Path rel = FileSystem::Path(systemFileName)->lexically_relative(params().root());
+         setPinState(rel.toString(), PinState::Excluded);
+         return;
