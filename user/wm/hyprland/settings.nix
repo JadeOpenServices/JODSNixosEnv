@@ -124,6 +124,9 @@ in
       gaps_out = 16;
       border_size = 2;
       allow_tearing = true;
+      # Drag the gap between tiled windows (or a floating window's edge) to
+      # resize it, e.g. narrow a chat column beside a stream.
+      resize_on_border = true;
     };
 
     cursor = {

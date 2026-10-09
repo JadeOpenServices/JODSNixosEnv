@@ -9,7 +9,11 @@
     {"key":"XF86MonBrightnessUp","action":"exec","command":"brightnessUp"},
     {"key":"XF86MonBrightnessDown","action":"exec","command":"brightnessDown"},
     {"mods":"$mod ALT","key":"k","action":"exec","command":"volumeUp"},
-    {"mods":"$mod ALT","key":"j","action":"exec","command":"volumeDown"}
+    {"mods":"$mod ALT","key":"j","action":"exec","command":"volumeDown"},
+    {"mods":"$mod CTRL","key":"Left","action":"resizeactive","args":"-40 0"},
+    {"mods":"$mod CTRL","key":"Right","action":"resizeactive","args":"40 0"},
+    {"mods":"$mod CTRL","key":"Up","action":"resizeactive","args":"0 -40"},
+    {"mods":"$mod CTRL","key":"Down","action":"resizeactive","args":"0 40"}
   ],
   "bind": [
     {"mods":"$mod","key":"Q","action":"killactive"},
