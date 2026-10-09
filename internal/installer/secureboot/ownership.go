@@ -446,8 +446,12 @@ func readPEMCertificate(ctx context.Context, path string) ([]byte, string, error
 }
 
 // FirmwareSecureBoot reports the UEFI SecureBoot variable: whether the
-// firmware enforces Secure Boot on this boot.
+// firmware enforces Secure Boot on this boot. Firmware without the variable
+// has no Secure Boot support and enforces nothing.
 func FirmwareSecureBoot() (bool, error) {
+	if _, present, err := efivarPayload("SecureBoot"); err == nil && !present {
+		return false, nil
+	}
 	return efivarBool("SecureBoot")
 }
 

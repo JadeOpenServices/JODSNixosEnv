@@ -1,6 +1,7 @@
 package app
 
 import (
+	"errors"
 	"strings"
 	"testing"
 )
@@ -82,20 +83,24 @@ func TestTPM2FollowsRequestOnFreshInstalls(t *testing.T) {
 }
 
 func TestNoSecureBootPolicyNoticeNamesTheCause(t *testing.T) {
-	notice := noSecureBootPolicyNotice("model/hp/zbook-x2-g4", false, true)
+	notice := noSecureBootPolicyNotice("model/hp/zbook-x2-g4")
 	if !strings.Contains(notice, "ODDC has no Secure Boot setup for model/hp/zbook-x2-g4") {
 		t.Fatalf("notice does not name the missing ODDC setup:\n%s", notice)
 	}
-	if !strings.Contains(notice, "reports Secure Boot off") {
-		t.Fatalf("notice does not report the firmware state:\n%s", notice)
+	if !strings.Contains(noSecureBootPolicyNotice(""), "no model for this machine") {
+		t.Fatal("notice without a model must say ODDC has no model")
 	}
+}
 
-	on := noSecureBootPolicyNotice("model/hp/zbook-x2-g4", true, true)
-	if !strings.Contains(on, "Secure Boot ON") || !strings.Contains(on, "refuse to start") {
+func TestFirmwareSecureBootNotice(t *testing.T) {
+	if off := firmwareSecureBootNotice(false, nil); !strings.Contains(off, "Secure Boot is off") {
+		t.Fatalf("firmware-off notice does not report the state:\n%s", off)
+	}
+	on := firmwareSecureBootNotice(true, nil)
+	if !strings.Contains(on, "Secure Boot is ON") || !strings.Contains(on, "refuse to start") {
 		t.Fatalf("firmware-on notice does not warn about the unsigned boot loader:\n%s", on)
 	}
-
-	if !strings.Contains(noSecureBootPolicyNotice("", false, false), "no model for this machine") {
-		t.Fatal("notice without a model must say ODDC has no model")
+	if bad := firmwareSecureBootNotice(false, errors.New("boom")); !strings.Contains(bad, "could not be read (boom)") {
+		t.Fatalf("unreadable state not reported:\n%s", bad)
 	}
 }

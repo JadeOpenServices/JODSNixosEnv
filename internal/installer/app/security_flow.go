@@ -35,7 +35,7 @@ func tpm2FollowsRequest(endpointManaged, persistentInstalledHost bool) bool {
 // alone on this machine. A generic "Secure Boot is disabled" read like a
 // misdetection on the real HP, where nobody had said that ODDC simply has no
 // Secure Boot setup for the model (2026-10-09).
-func noSecureBootPolicyNotice(modelID string, firmwareOn, firmwareKnown bool) string {
+func noSecureBootPolicyNotice(modelID string) string {
 	lines := []string{"Secure Boot setup:"}
 	if modelID == "" {
 		lines = append(lines, "  ODDC has no model for this machine, so it has no Secure Boot setup for it either.")
@@ -45,17 +45,24 @@ func noSecureBootPolicyNotice(modelID string, firmwareOn, firmwareKnown bool) st
 	lines = append(lines,
 		"  GjallarOS will not install its own Secure Boot keys here, and TPM2 disk unlock stays off because it depends on them.",
 	)
-	switch {
-	case !firmwareKnown:
-		lines = append(lines, "  The firmware's Secure Boot state could not be read.")
-	case firmwareOn:
-		lines = append(lines,
-			"  The firmware reports Secure Boot ON. The installed boot loader is not signed, so this",
-			"  firmware will refuse to start it. Secure Boot has to be off in firmware setup before",
-			"  the installed system boots.",
-		)
-	default:
-		lines = append(lines, "  The firmware reports Secure Boot off; the machine boots as before.")
-	}
 	return strings.Join(lines, "\n") + "\n"
+}
+
+// firmwareSecureBootNotice reports the firmware's own Secure Boot state when
+// GjallarOS installs without its Secure Boot keys. It used to print only
+// inside the no-ODDC-setup branch, which needs a TPM and secureBootPrompt, so
+// other paths installed an unbootable system without a word. Firmware
+// without a SecureBoot variable has no Secure Boot and boots anything.
+func firmwareSecureBootNotice(firmwareOn bool, firmwareErr error) string {
+	switch {
+	case firmwareErr != nil:
+		return "Firmware Secure Boot state could not be read (" + firmwareErr.Error() + ").\n"
+	case firmwareOn:
+		return strings.Join([]string{
+			"Firmware Secure Boot is ON, but GjallarOS Secure Boot is not set up for this install.",
+			"The installed boot loader is not signed, so this firmware will refuse to start it.",
+			"Secure Boot has to be off in firmware setup before the installed system boots.",
+		}, "\n") + "\n"
+	}
+	return "Firmware Secure Boot is off; the machine boots as before.\n"
 }
