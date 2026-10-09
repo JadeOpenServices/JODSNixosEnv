@@ -1,0 +1,175 @@
+diff --git a/src/shell/notification/notification_toast.cpp b/src/shell/notification/notification_toast.cpp
+index b5a3cec..5aa60aa 100644
+--- a/src/shell/notification/notification_toast.cpp
++++ b/src/shell/notification/notification_toast.cpp
+@@ -2264,6 +2264,108 @@ void NotificationToast::applyCardReveal(Instance::CardState& cs, float reveal, f
+   );
+ }
+ 
++// Swipe a card sideways to dismiss it: drag with a mouse or finger, or scroll
++// horizontally on a touchpad. Short swipes spring back.
++void NotificationToast::installSwipeToDismiss(
++    Instance& inst, InputArea* area, const std::shared_ptr<SwipeState>& swipe, uint32_t notificationId, float cardW,
++    float scale
++) {
++  SwipeState* const state = swipe.get();
++  const float restX = horizontalInnerPad(scale);
++  const float slop = 8.0F * scale;
++  const float threshold = cardW * 0.3F;
++
++  const auto moveTo = [area, state, restX, cardW](float dx) {
++    state->dx = dx;
++    area->setPosition(restX + dx, area->y());
++    area->setOpacity(std::clamp(1.0F - std::abs(dx) / cardW, 0.0F, 1.0F));
++  };
++
++  const auto settle = [this, &inst, area, state, moveTo, threshold, cardW, notificationId]() {
++    if (state->animId != 0) {
++      inst.animations.cancel(state->animId);
++      state->animId = 0;
++    }
++    const float from = state->dx;
++    if (std::abs(from) >= threshold) {
++      const float to = std::copysign(cardW, from);
++      state->animId = inst.animations.animate(
++          from, to, Style::animFast, Easing::EaseOutCubic, moveTo,
++          [this, area, state, notificationId]() {
++            state->animId = 0;
++            area->setOpacity(0.0F);
++            DeferredCall::callLater([this, notificationId]() { requestClose(notificationId, CloseReason::Dismissed); });
++          },
++          area
++      );
++    } else if (from != 0.0F) {
++      state->animId = inst.animations.animate(
++          from, 0.0F, Style::animNormal, Easing::EaseOutCubic, moveTo, [state]() { state->animId = 0; }, area
++      );
++    }
++    inst.surface->requestRedraw();
++  };
++
++  area->setOnPress([&inst, area, state, settle](const InputArea::PointerData& data) {
++    if (data.button != BTN_LEFT) {
++      return;
++    }
++    if (data.pressed) {
++      if (state->animId != 0) {
++        inst.animations.cancel(state->animId);
++        state->animId = 0;
++      }
++      state->tracking = true;
++      state->moved = false;
++      state->startX = data.localX + area->x() - state->dx;
++      return;
++    }
++    if (state->tracking) {
++      state->tracking = false;
++      settle();
++    }
++  });
++
++  area->setOnMotion([area, state, moveTo, slop](const InputArea::PointerData& data) {
++    if (!state->tracking || !area->pressed()) {
++      return;
++    }
++    // Local coordinates move with the card, so add the card position back.
++    const float dx = data.localX + area->x() - state->startX;
++    if (!state->moved && std::abs(dx) < slop) {
++      return;
++    }
++    state->moved = true;
++    moveTo(dx);
++  });
++
++  area->setOnCancel([state, settle]() {
++    if (state->tracking) {
++      state->tracking = false;
++      settle();
++    }
++  });
++
++  area->setOnAxisHandler([&inst, state, moveTo, settle](const InputArea::PointerData& data) {
++    if (data.axis != WL_POINTER_AXIS_HORIZONTAL_SCROLL || data.axisSource != WL_POINTER_AXIS_SOURCE_FINGER
++        || state->tracking) {
++      return false;
++    }
++    if (state->animId != 0) {
++      inst.animations.cancel(state->animId);
++      state->animId = 0;
++    }
++    state->moved = true;
++    moveTo(state->dx - static_cast<float>(data.axisValue));
++    // Touchpads send no reliable end event here; settle once the fingers stop.
++    state->axisIdle.start(std::chrono::milliseconds(120), [state, settle]() {
++      state->moved = false;
++      settle();
++    });
++    return true;
++  });
++}
++
+ InputArea* NotificationToast::buildCard(
+     Instance& outputInstance, const PopupEntry& entry, Node** outCardContent, Node** outCardForeground,
+     ProgressBar** outProgress, Node** outActionsRow, Node** outInlineReplyRow, Input** outInlineReplyInput
+@@ -2284,9 +2386,13 @@ InputArea* NotificationToast::buildCard(
+   auto viewport = ui::inputArea({});
+   viewport->setAcceptedButtons(InputArea::buttonMask({BTN_LEFT, BTN_RIGHT}));
+   wl_surface* const sourceSurface = outputInstance.surface->wlSurface();
+-  viewport->setOnClick([this, id = entry.notificationId, sourceSurface,
++  auto swipe = std::make_shared<SwipeState>();
++  viewport->setOnClick([this, id = entry.notificationId, sourceSurface, swipe,
+                         hasDefaultAction =
+                             hasNotificationAction(entry.actions, "default")](const InputArea::PointerData& data) {
++    if (swipe->moved) {
++      return;
++    }
+     if (data.button == BTN_RIGHT) {
+       requestClose(id, CloseReason::Dismissed);
+     } else if (data.button == BTN_LEFT && hasDefaultAction) {
+@@ -2300,6 +2406,7 @@ InputArea* NotificationToast::buildCard(
+     }
+   });
+   viewport->setCursorShape(WP_CURSOR_SHAPE_DEVICE_V1_SHAPE_DEFAULT);
++  installSwipeToDismiss(outputInstance, viewport.get(), swipe, entry.notificationId, cardW, scale);
+ 
+   auto cardRoot = ui::node({.out = outCardContent});
+ 
+@@ -2928,6 +3035,14 @@ bool NotificationToast::onPointerEvent(const PointerEvent& event) {
+       }
+       break;
+     case PointerEvent::Type::Axis:
++      if (inst->pointerInside) {
++        consumed = inst->inputDispatcher.pointerAxis(
++                       static_cast<float>(event.sx), static_cast<float>(event.sy), event.axis, event.axisSource,
++                       event.axisValue, event.axisDiscrete, event.axisValue120, event.axisLines,
++                       event.axisGestureSerial
++                   )
++            || consumed;
++      }
+       break;
+     }
+ 
+diff --git a/src/shell/notification/notification_toast.h b/src/shell/notification/notification_toast.h
+index 7c3f9a3..4464b57 100644
+--- a/src/shell/notification/notification_toast.h
++++ b/src/shell/notification/notification_toast.h
+@@ -119,6 +119,19 @@ private:
+     float lastPointerY = 0.0F;
+   };
+ 
++  struct SwipeState {
++    bool tracking = false;
++    bool moved = false;
++    float startX = 0.0F;
++    float dx = 0.0F;
++    AnimationManager::Id animId = 0;
++    Timer axisIdle;
++  };
++  void installSwipeToDismiss(
++      Instance& inst, InputArea* area, const std::shared_ptr<SwipeState>& swipe, uint32_t notificationId, float cardW,
++      float scale
++  );
++
+   void onNotificationEvent(const Notification& n, NotificationEvent event);
+   void schedulePendingAdds();
+   void flushPendingAdds();
