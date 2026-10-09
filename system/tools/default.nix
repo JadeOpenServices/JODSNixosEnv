@@ -107,6 +107,7 @@ in
 {
   imports = [
     ./android.nix
+    ./chromium.nix
     ./commands/default.nix
     ./fido2.nix
     ./network-diagnostics.nix

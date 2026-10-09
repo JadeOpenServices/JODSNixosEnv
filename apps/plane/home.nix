@@ -26,8 +26,8 @@ let
 
   planeLauncher = webApplication.mkIsolatedWebApplication {
     name = "plane";
-    browser = pkgs.brave;
-    profile = ".config/gjallarOS/brave-plane";
+    browser = pkgs.ungoogled-chromium;
+    profile = ".config/gjallarOS/chromium-plane";
     url = planeHost;
     browserArguments = [
       "--no-first-run"

@@ -37,8 +37,8 @@ let
 
   drawioLauncher = webApplication.mkIsolatedWebApplication {
     name = "gjallar-drawio";
-    browser = pkgs.brave;
-    profile = ".config/gjallarOS/brave-drawio";
+    browser = pkgs.ungoogled-chromium;
+    profile = ".config/gjallarOS/chromium-drawio";
     url = endpoint;
     browserArguments = [
       "--no-first-run"
