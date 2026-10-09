@@ -2,6 +2,12 @@ package app
 
 import "strings"
 
+// tpm12Notice is printed when the only TPM is a TPM 1.2.
+const tpm12Notice = `This machine has a TPM 1.2. GjallarOS cannot use Secure Boot or TPM disk unlock on it:
+TPM 1.2 only supports SHA-1 measurements, and the boot policy needs TPM 2.0.
+Some vendors ship a firmware update that turns it into a TPM 2.0; check the vendor's support page.
+`
+
 // Choices when the firmware enforces Secure Boot on a machine ODDC has no
 // Secure Boot setup for.
 const (

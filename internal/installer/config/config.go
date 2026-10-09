@@ -88,6 +88,47 @@ type User struct {
 	ForceRedeploy             bool   `json:"forceRedeploy"`
 }
 
+// Defaults is the starting point of every interactive install and the content
+// of scripts/installation/user_PresetJSON/default.user.config.json. The file
+// is a template for automating many machines; it must never enable anything
+// the interactive installer cannot reach. TestDefaultsMatchPresetFile keeps
+// the two equal.
+func Defaults() (User, error) {
+	ids, err := apps.Defaults()
+	if err != nil {
+		return User{}, err
+	}
+	return User{
+		Hostname:                "gjallarOS",
+		Username:                "usernamehere",
+		Timezone:                "Europe/Berlin",
+		Locale:                  "en_US.UTF-8",
+		KeyboardLayout:          "de",
+		TouchpadWorkspaceSwipe:  true,
+		ClamshellEnable:         true,
+		Name:                    "Your Name",
+		Email:                   "you@example.com",
+		GitHubUsername:          "UsernameHere",
+		Shell:                   "zsh",
+		Editors:                 []string{"vscodium"},
+		Browsers:                []string{"librewolf"},
+		PreferredEditor:         "vscodium",
+		PreferredBrowser:        "librewolf",
+		WebApplications:         []WebApplicationIntent{},
+		Apps:                    ids,
+		Theme:                   "noctalia",
+		AIAgentMode:             "workspace",
+		RecoveryPartitionEnable: true,
+		SecureBootPrompt:        true,
+		FirmwarePasswordLock:    true,
+		JODSEnrollmentMode:      "manual",
+		JODSDeviceClass:         "laptop",
+		JODSDesktopProfile:      "headless",
+		WriteConfig:             true,
+		RunRebuild:              true,
+	}, nil
+}
+
 // HasApp reports whether the catalogue app id is selected.
 func (u User) HasApp(id string) bool {
 	return slices.Contains(u.Apps, id)

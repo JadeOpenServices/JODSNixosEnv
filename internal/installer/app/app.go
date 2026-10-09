@@ -272,6 +272,11 @@ func run(ctx context.Context, args []string, in io.Reader, out, errOut io.Writer
 			return fail(errOut, err)
 		}
 		s.preset = true
+	} else {
+		// Interactive installs start where the preset template starts.
+		if s.user, err = config.Defaults(); err != nil {
+			return fail(errOut, err)
+		}
 	}
 	if opt.recovery {
 		if opt.acceptExisting {
@@ -576,13 +581,17 @@ func run(ctx context.Context, args []string, in io.Reader, out, errOut io.Writer
 		s.user.LUKSTPM2Enable ||
 		s.user.JODSPrebootLockEnable
 
-	if !tpmAvailable && securityRequested {
+	// TPM 1.2 has only SHA-1 PCRs; systemd-cryptenroll and the measured-boot
+	// policy need TPM 2.0. Its owner may expect Secure Boot, so always say
+	// so and ask, even when nothing asked for Secure Boot.
+	tpm12 := !tpmAvailable && diskcrypto.TPMMajorVersion("/") == 1
+	if tpm12 && !securityRequested && s.user.UnattendedInstall {
 		fmt.Fprintln(out)
-		if diskcrypto.TPMMajorVersion("/") == 1 {
-			// TPM 1.2 has only SHA-1 PCRs; systemd-cryptenroll and the
-			// measured-boot policy need TPM 2.0.
-			fmt.Fprintln(out, "This machine has a TPM 1.2, which GjallarOS does not use: it only supports SHA-1 measurements.")
-			fmt.Fprintln(out, "Some vendors ship a firmware update that turns it into a TPM 2.0; check the vendor's support page.")
+		fmt.Fprint(out, tpm12Notice)
+	} else if !tpmAvailable && (securityRequested || tpm12) {
+		fmt.Fprintln(out)
+		if tpm12 {
+			fmt.Fprint(out, tpm12Notice)
 		} else {
 			fmt.Fprintln(out, "TPM2 hardware was not detected.")
 		}
@@ -1918,10 +1927,6 @@ func collectInteractive(ctx context.Context, ui prompt.UI, root string, partitio
 	if u.Username, err = ui.Value(ctx, "Username", username); err != nil {
 		return err
 	}
-	// Ask about Secure Boot later, as default.user.config.json does. Left at
-	// false, interactive installs never offered GjallarOS Secure Boot and
-	// never said why it stayed off (real HP, 2026-10-09).
-	u.SecureBootPrompt = true
 	u.EndpointManagedDevice, err = ui.Confirm(ctx, "Manage this machine with JODS?", false)
 	if err != nil {
 		return err

@@ -77,7 +77,10 @@ let
       recoveryPartitionEnable = getSetting "recoveryPartitionEnable" true;
 
       secureBootEnable = getSetting "secureBootEnable" false;
-      secureBootPrompt = false;
+      # As in config.Defaults(): a reinstall from recovery is offered
+      # Secure Boot like any other install. Generated state does not carry
+      # this key, so a fixed false here meant never.
+      secureBootPrompt = true;
 
       endpointManagedDevice = false;
       jodsPrebootLockEnable = false;
