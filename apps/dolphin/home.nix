@@ -128,8 +128,6 @@ lib.mkIf config.gjallar.apps.dolphin.enable {
     fi
   '';
 
-  # Seed the managed Nextcloud root into Dolphin Places without
-  # taking ownership of the user's live Places configuration.
   # Do not restore an ever-growing collection of old tabs, and do
   # not funnel externally opened folders into the current Dolphin window.
   home.activation.dolphinSessionPolicy = lib.hm.dag.entryAfter [ "dolphinDefaults" ] ''
@@ -176,46 +174,6 @@ lib.mkIf config.gjallar.apps.dolphin.enable {
       run "$write_config" --file dolphinrc --group General --key OpenExternallyCalledFolderInNewTab false
     fi
   '';
-
-  home.activation.dolphinNextcloudPlace = lib.mkIf (settings.nextcloudEnable or false) (
-    lib.hm.dag.entryAfter [ "dolphinDefaults" "dolphinSessionPolicy" ] ''
-      places=${lib.escapeShellArg "${config.xdg.dataHome}/user-places.xbel"}
-    nextcloud_uri="file://$HOME/Nextcloud"
-
-    if [ -f "$places" ] &&
-       ! ${pkgs.gnugrep}/bin/grep -Fq "href=\"$nextcloud_uri\"" "$places"
-    then
-      tmp="$places.gjallar-nextcloud.$$"
-      base="$(${pkgs.coreutils}/bin/date +%s)"
-      n=0
-
-      while ${pkgs.gnugrep}/bin/grep -Fq "<ID>$base/$n</ID>" "$places"
-      do
-        n=$((n + 1))
-      done
-
-      nextcloud_id="$base/$n"
-
-      ${pkgs.gnused}/bin/sed \
-        "/<bookmark href=\"remote:\\/\">/i\\
- <bookmark href=\"$nextcloud_uri\">\\
-  <title>Nextcloud</title>\\
-  <info>\\
-   <metadata owner=\"http://freedesktop.org\">\\
-    <bookmark:icon name=\"${dolphinNextcloudIcons.places}\"/>\\
-   </metadata>\\
-   <metadata owner=\"http://www.kde.org\">\\
-    <ID>$nextcloud_id</ID>\\
-   </metadata>\\
-  </info>\\
- </bookmark>" \
-        "$places" > "$tmp"
-
-      ${pkgs.coreutils}/bin/chmod --reference="$places" "$tmp"
-        ${pkgs.coreutils}/bin/mv "$tmp" "$places"
-      fi
-    ''
-  );
 
   # Migrate only GjallarOS' previous Nextcloud icon defaults. Preserve any
   # user-selected custom icon and every unrelated Places entry.

@@ -25,6 +25,10 @@ pkgs.stdenvNoCC.mkDerivation {
     # during app construction, so "Add account" did nothing (2026-10-08).
     grep -A6 'OCC::Application app(argc, argv);' src/gui/main.cpp \
       | grep -Fq 'QQuickStyle::setStyle(qmlStyle);'
+    # Upstream defaults Linux to classic sync; with the preset server and
+    # folder the wizard never asks, and new accounts downloaded everything
+    # (2026-10-09).
+    ! grep -Fq '#ifndef Q_OS_LINUX' src/gui/wizard/accountwizardcontroller.cpp
     touch $out
   '';
 }

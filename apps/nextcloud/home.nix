@@ -70,6 +70,9 @@ let
 
     cmakeFlags = (old.cmakeFlags or [ ]) ++ [
       "-DENFORCE_SINGLE_ACCOUNT=ON"
+      # No classic-sync choice, and a classic folder becomes virtual files
+      # on the next client start.
+      "-DENFORCE_VIRTUAL_FILES_SYNC_FOLDER=ON"
     ];
 
     postPatch = (old.postPatch or "") + ''
@@ -806,6 +809,10 @@ if fields.get("virtualFilesMode", "").strip().lower() != "openvfs":
 PY
   '';
 
+  dolphinPlace = pkgs.writeShellScript "nextcloud-dolphin-place" ''
+    exec ${lib.getExe pkgs.python3} ${./dolphin-place.py} ${lib.escapeShellArg dolphinNextcloudIcons.places}
+  '';
+
   enrollmentLauncher = pkgs.writeShellScriptBin "nextcloud-enroll" ''
     config="''${XDG_CONFIG_HOME:-$HOME/.config}/Nextcloud/nextcloud.cfg"
     root="$HOME/Nextcloud"
@@ -819,6 +826,7 @@ PY
 
     case "$policy_status" in
       0)
+        ${dolphinPlace} || true
         exec ${lib.getExe client} --logdir "$logdir" --logflush "$@"
         ;;
       10)
@@ -833,6 +841,7 @@ PY
     esac
 
     ${pkgs.coreutils}/bin/install -d -m 0700 "$root"
+    ${dolphinPlace} || true
 
     if [ "$policy_status" -eq 10 ]; then
       auth_session="$$-$RANDOM-$RANDOM"
@@ -933,6 +942,8 @@ if isinstance(wid, int) and wid > 0:
         ;;
     esac
 
+    ${dolphinPlace} || true
+
     exec ${managedClient}/bin/nextcloud --background
   '';
 in
@@ -959,6 +970,12 @@ lib.mkIf config.gjallar.apps.nextcloud.enable {
       ${pkgs.coreutils}/bin/rm -f \
         "$HOME/.config/autostart/Nextcloud.desktop" \
         "$HOME/.config/autostart/com.nextcloud.desktopclient.nextcloud.desktop"
+    ''
+  );
+
+  home.activation.dolphinNextcloudPlace = lib.mkIf enable (
+    lib.hm.dag.entryAfter [ "writeBoundary" ] ''
+      run ${dolphinPlace} || true
     ''
   );
 

@@ -20,5 +20,7 @@
     ./patches/nextcloud-openvfs-in-sync.patch
     # Keep the Fusion QML style; qt6ct's KDE patch breaks the account wizard.
     ./patches/nextcloud-qml-style.patch
+    # New accounts start as virtual-files folders on Linux too.
+    ./patches/nextcloud-vfs-default.patch
   ];
 }
