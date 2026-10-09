@@ -7,6 +7,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"regexp"
+	"strconv"
 	"strings"
 
 	"github.com/JadeOpenServices/gjallarOS/internal/installer/buildlimits"
@@ -49,11 +50,18 @@ func Apply(ctx context.Context, repo, hostname string) error {
 }
 
 func apply(ctx context.Context, target string) error {
+	// Before the swap below: build parallelism follows real memory.
+	limits := buildlimits.Args()
+	cleanup, err := enableEvalSwap(ctx)
+	if err != nil {
+		return err
+	}
+	defer cleanup()
 	if err := run(ctx, "sudo", "nixos-rebuild", "dry-build", "--flake", target, "--show-trace"); err != nil {
 		return fmt.Errorf("validation failed: %w", err)
 	}
 	args := []string{"nixos-rebuild", "boot", "--flake", target}
-	if limits := buildlimits.Args(); len(limits) > 0 {
+	if len(limits) > 0 {
 		fmt.Printf("Low memory: limiting local builds (%s).\n", strings.Join(limits, " "))
 		args = append(args, limits...)
 	}
@@ -69,4 +77,72 @@ func run(ctx context.Context, name string, args ...string) error {
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
 	return cmd.Run()
+}
+
+// maxEvalSwap caps the temporary zram device, as Fedora's zram-generator
+// does: RAM, at most 8 GiB.
+const maxEvalSwap = 8 << 30
+
+// enableEvalSwap adds a temporary zram swap when none is active. Evaluating
+// the configuration takes about 3.5 GiB; on a 4 GiB machine without swap Nix
+// was OOM-killed ("validation failed: exit status 247", Galaxy Book 12-like
+// VM, 2026-10-10). zram stays in RAM, so an unencrypted in-place root never
+// receives swapped secrets. The installed system brings its own zram swap.
+func enableEvalSwap(ctx context.Context) (func(), error) {
+	noop := func() {}
+	active, err := exec.CommandContext(ctx, "swapon", "--show=NAME", "--noheadings").Output()
+	if err != nil {
+		return nil, fmt.Errorf("inspect active swap: %w", err)
+	}
+	meminfo, err := os.ReadFile("/proc/meminfo")
+	if err != nil {
+		return nil, fmt.Errorf("read memory size: %w", err)
+	}
+	size := evalSwapSize(strings.TrimSpace(string(active)) != "", meminfo)
+	if size == 0 {
+		return noop, nil
+	}
+	if err := run(ctx, "sudo", "modprobe", "zram"); err != nil {
+		return nil, fmt.Errorf("load zram module: %w", err)
+	}
+	found, err := exec.CommandContext(ctx, "sudo", "zramctl", "--find", "--algorithm", "zstd", "--size", strconv.FormatUint(size, 10)).Output()
+	if err != nil {
+		return nil, fmt.Errorf("create temporary zram swap: %w", err)
+	}
+	device := strings.TrimSpace(string(found))
+	cleanupCtx := context.WithoutCancel(ctx)
+	reset := func() { _ = run(cleanupCtx, "sudo", "zramctl", "--reset", device) }
+	if err := run(ctx, "sudo", "mkswap", device); err != nil {
+		reset()
+		return nil, fmt.Errorf("format temporary zram swap: %w", err)
+	}
+	if err := run(ctx, "sudo", "swapon", device); err != nil {
+		reset()
+		return nil, fmt.Errorf("enable temporary zram swap: %w", err)
+	}
+	fmt.Printf("No swap active: temporary %d MiB compressed swap in RAM on %s.\n", size>>20, device)
+	return func() {
+		_ = run(cleanupCtx, "sudo", "swapoff", device)
+		reset()
+	}, nil
+}
+
+// evalSwapSize returns the temporary zram size in bytes, or 0 when swap is
+// already active or MemTotal is unreadable.
+func evalSwapSize(swapActive bool, meminfo []byte) uint64 {
+	if swapActive {
+		return 0
+	}
+	for _, line := range strings.Split(string(meminfo), "\n") {
+		fields := strings.Fields(line)
+		if len(fields) < 2 || fields[0] != "MemTotal:" {
+			continue
+		}
+		kib, err := strconv.ParseUint(fields[1], 10, 64)
+		if err != nil {
+			return 0
+		}
+		return min(kib<<10, maxEvalSwap)
+	}
+	return 0
 }

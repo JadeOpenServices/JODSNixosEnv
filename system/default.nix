@@ -20,6 +20,7 @@
     ./hardware/fingerprint.nix
     ./hardware/input.nix
     ./hardware/fan-control.nix
+    ./hardware/memory.nix
 
     ./security/firewall.nix
     ./security/local-hardening.nix
