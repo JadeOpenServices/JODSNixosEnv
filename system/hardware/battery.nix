@@ -131,6 +131,17 @@ let
             >/dev/null 2>&1 || true
       }
 
+      close_warnings() {
+        runtime="/run/user/$(id -u ${lib.escapeShellArg settings.username})"
+        [ -S "$runtime/bus" ] || return 0
+
+        runuser -u ${lib.escapeShellArg settings.username} -- env \
+          XDG_RUNTIME_DIR="$runtime" \
+          DBUS_SESSION_BUS_ADDRESS="unix:path=$runtime/bus" \
+          systemctl --user stop 'battery-notification-*' battery-shutdown-countdown \
+            >/dev/null 2>&1 || true
+      }
+
       while :; do
         capacity=100
         status=Unknown
@@ -145,6 +156,10 @@ let
         done
 
         if [ "$found" -eq 0 ] || [ "$status" != Discharging ]; then
+          # Power came back while a warning was open: take the dialogs down.
+          if [ "$warned10" -eq 1 ] || [ "$warned5" -eq 1 ]; then
+            close_warnings
+          fi
           warned10=0
           warned5=0
           sleep 20
@@ -169,7 +184,13 @@ let
             "<b>Low battery: $capacity%</b>\n\nConnect power soon. A shutdown countdown starts at ${toString criticalWarningValue}%, with emergency shutdown at ${toString shutdownValue}%."
         fi
 
-        sleep 20
+        # Poll faster while a warning is on screen so it closes soon after
+        # the charger is plugged in.
+        if [ "$warned10" -eq 1 ] || [ "$warned5" -eq 1 ]; then
+          sleep 2
+        else
+          sleep 20
+        fi
       done
     '';
   };
