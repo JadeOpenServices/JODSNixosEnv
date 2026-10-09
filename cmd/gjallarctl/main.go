@@ -2575,6 +2575,7 @@ func runRebuildQuiet(stdout, stderr io.Writer, host string, messages []string, s
 
 	elapsed := time.Since(started)
 	localBuilds := rebuildLocalDerivations(log)
+	networkError := rebuildNetworkError(log)
 	if elapsed >= time.Minute {
 		keepLog = true
 		fmt.Fprintf(
@@ -2591,6 +2592,9 @@ func runRebuildQuiet(stdout, stderr io.Writer, host string, messages []string, s
 			)
 		}
 		fmt.Fprintf(stdout, "[rebuild] Detailed log retained: %s\n", log.Name())
+		if status == 0 && networkError != "" {
+			fmt.Fprintf(stdout, "[rebuild] Downloads failed and were retried: %s\n", networkError)
+		}
 	}
 	if status != 0 {
 		keepLog = true
@@ -2598,8 +2602,43 @@ func runRebuildQuiet(stdout, stderr io.Writer, host string, messages []string, s
 			_, _ = io.Copy(stderr, log)
 		}
 		fmt.Fprintf(stderr, "[rebuild] Detailed log retained: %s\n", log.Name())
+		if networkError != "" {
+			fmt.Fprintf(stderr, "[rebuild] No network: %s\n", networkError)
+			fmt.Fprintln(stderr, "[rebuild] Check the connection (Wi-Fi, DHCP lease, VPN, router) and run rebuild again.")
+		}
 	}
 	return status
+}
+
+// rebuildNetworkErrorMarkers are curl and git messages for a host that
+// cannot be resolved or reached. A broken DHCP lease looked like a hung or
+// crashed rebuild (DDR3 box, 2026-10-09), because nix only retries quietly.
+var rebuildNetworkErrorMarkers = []string{
+	"Could not resolve host",
+	"Couldn't resolve host",
+	"Could not connect to server",
+	"Couldn't connect to server",
+	"Timeout was reached",
+	"Network is unreachable",
+	"Temporary failure in name resolution",
+}
+
+// rebuildNetworkError returns the first network failure in the log, or "".
+func rebuildNetworkError(log io.ReadSeeker) string {
+	if _, err := log.Seek(0, io.SeekStart); err != nil {
+		return ""
+	}
+	scanner := bufio.NewScanner(log)
+	scanner.Buffer(make([]byte, 64*1024), 1024*1024)
+	for scanner.Scan() {
+		line := strings.TrimSpace(scanner.Text())
+		for _, marker := range rebuildNetworkErrorMarkers {
+			if strings.Contains(line, marker) {
+				return line
+			}
+		}
+	}
+	return ""
 }
 
 func rebuildLocalDerivations(log io.ReadSeeker) []string {

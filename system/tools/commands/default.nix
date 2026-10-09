@@ -14,11 +14,15 @@ let
     repo=${lib.escapeShellArg settings.dotfilesDir}
     if [ -n "$repo" ] && [ -f "$repo/pkgs/gjallarctl/default.nix" ]; then
       echo "[GjallarOS] Building gjallarctl from $repo..." >&2
+      errors="$(${pkgs.coreutils}/bin/mktemp)"
       if current="$(${pkgs.nix}/bin/nix-build --no-out-link -E \
-        "(import ${pkgs.path} { }).callPackage (/. + \"$repo/pkgs/gjallarctl\") { }" 2>/dev/null)"; then
+        "(import ${pkgs.path} { }).callPackage (/. + \"$repo/pkgs/gjallarctl\") { }" 2>"$errors")"; then
+        rm -f "$errors"
         exec "$current/bin/gjallarctl" rebuild "$@"
       fi
-      echo "[GjallarOS] Building it failed; using the installed gjallarctl." >&2
+      echo "[GjallarOS] Building it failed; using the installed gjallarctl:" >&2
+      ${pkgs.coreutils}/bin/tail -n 3 "$errors" >&2
+      rm -f "$errors"
     fi
     exec ${gjallarctl}/bin/gjallarctl rebuild "$@"
   '';

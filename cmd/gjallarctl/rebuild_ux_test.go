@@ -258,6 +258,25 @@ func TestRebuildLocalDerivationsSummarizesUniqueBuilds(t *testing.T) {
 	}
 }
 
+func TestRebuildNetworkErrorFindsUnreachableHosts(t *testing.T) {
+	// Output of nix 2.x and git for an unresolvable and a refused host.
+	for _, line := range []string{
+		"warning: unable to download 'https://gjallar-test.invalid/x': Could not resolve hostname (6) Could not resolve host: gjallar-test.invalid; retrying in 332 ms (attempt 1/5)",
+		"warning: unable to download 'http://127.0.0.1:9/x': Could not connect to server (7) Failed to connect to 127.0.0.1:9 after 0 ms: Could not connect to server; retrying in 260 ms (attempt 1/5)",
+		"fatal: unable to access 'https://gjallar-test.invalid/x/': Could not resolve host: gjallar-test.invalid",
+	} {
+		log := strings.NewReader("building '/nix/store/aaaaaaaa-etc.drv'...\n" + line + "\n")
+		if got := rebuildNetworkError(log); got != line {
+			t.Fatalf("network error = %q, want %q", got, line)
+		}
+	}
+
+	log := strings.NewReader("building '/nix/store/aaaaaaaa-etc.drv'...\n")
+	if got := rebuildNetworkError(log); got != "" {
+		t.Fatalf("network error = %q, want none", got)
+	}
+}
+
 func TestSystemGenerationCleanupArgsUseCountRetention(t *testing.T) {
 	got := systemGenerationCleanupArgs(5)
 	want := []string{
