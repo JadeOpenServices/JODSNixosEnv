@@ -35,6 +35,17 @@ pkgs.stdenvNoCC.mkDerivation {
     # folder the wizard never asks, and new accounts downloaded everything
     # (2026-10-09).
     ! grep -Fq '#ifndef Q_OS_LINUX' src/gui/wizard/accountwizardcontroller.cpp
+    # QML windows used fixed colors keyed off the color scheme while Kvantum
+    # drew controls from the Noctalia palette: white windows with light text
+    # and dark buttons (2026-10-10). Colors and dark mode come from the palette.
+    grep -A8 'bool Theme::darkMode() const' src/libsync/theme.cpp \
+      | grep -Fq 'isDarkColor(QGuiApplication::palette().window().color())'
+    grep -A16 'void Theme::systemPaletteHasChanged' src/libsync/theme.cpp \
+      | grep -Fq 'Q_EMIT darkModeChanged();'
+    grep -Fq 'readonly property color wizardWindowBackground: pal.window' theme/Style/Style.qml
+    # Only warning and error colors stay fixed.
+    ! grep -E 'property color (wizard|listItemHover)[A-Za-z]*: .*"#' theme/Style/Style.qml \
+      | grep -Ev 'wizard(Warning|Error)'
     touch $out
   '';
 }

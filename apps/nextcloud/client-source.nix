@@ -24,5 +24,8 @@
     ./patches/nextcloud-qml-style.patch
     # New accounts start as virtual-files folders on Linux too.
     ./patches/nextcloud-vfs-default.patch
+    # Windows, menus and popups follow the Qt palette (Noctalia via qt6ct,
+    # else the system palette) instead of hardcoded light/dark colors.
+    ./patches/nextcloud-palette-theme.patch
   ];
 }

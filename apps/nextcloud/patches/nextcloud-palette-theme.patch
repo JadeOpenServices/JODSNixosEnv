@@ -1,0 +1,99 @@
+--- a/src/libsync/theme.cpp
++++ b/src/libsync/theme.cpp
+@@ -1121,6 +1121,12 @@
+ bool Theme::darkMode() const
+ {
+     connectToPaletteSignal();
++#if !defined(Q_OS_WIN) && !defined(Q_OS_MACOS)
++    // Windows are drawn with the application palette, so judge dark mode by
++    // that palette. A light color scheme reported next to a dark platform
++    // palette (qt6ct, Kvantum) gave white windows with light text.
++    return Theme::isDarkColor(QGuiApplication::palette().window().color());
++#endif
+     const auto isDarkFromStyle = [] {
+         switch (qGuiApp->styleHints()->colorScheme())
+         {
+@@ -1204,6 +1210,9 @@
+     if (darkMode() && !isWindows11OrGreater()) {
+         qApp->setPalette(reserveDarkPalette);
+     }
++#else
++    // A new palette can flip dark mode without a color scheme change.
++    Q_EMIT darkModeChanged();
+ #endif
+ }
+ 
+--- a/theme/Style/Style.qml
++++ b/theme/Style/Style.qml
+@@ -20,36 +20,46 @@
+     readonly property color adjustedCurrentUserHeaderColor: Theme.darkMode ? Qt.lighter(currentUserHeaderColor, 2)
+                                                                            : Qt.darker(currentUserHeaderColor, 1.5)
+ 
++    // Window colors follow the Qt palette: the desktop theme (Noctalia
++    // through qt6ct) when one is set, else the platform default.
++    readonly property SystemPalette pal: SystemPalette {
++        colorGroup: SystemPalette.Active
++    }
++
++    function withAlpha(c, a) {
++        return Qt.rgba(c.r, c.g, c.b, a)
++    }
++
+     // Account wizard colors
+-    readonly property color wizardWindowBackground: darkMode ? "#202124" : "#ffffff"
+-    readonly property color wizardPrimaryText: darkMode ? "#f1f3f4" : "#111111"
+-    readonly property color wizardSecondaryText: darkMode ? Qt.rgba(1, 1, 1, 0.68) : Qt.rgba(0, 0, 0, 0.62)
+-    readonly property color wizardPlaceholderText: darkMode ? Qt.rgba(1, 1, 1, 0.50) : Qt.rgba(0, 0, 0, 0.50)
+-    readonly property color wizardDisabledText: "#8a949c"
+-    readonly property color wizardFieldBackground: darkMode ? "#292a2d" : "#ffffff"
+-    readonly property color wizardFieldBorder: darkMode ? Qt.rgba(1, 1, 1, 0.24) : Qt.rgba(0, 0, 0, 0.24)
+-    readonly property color wizardRowBackground: darkMode ? "#292d30" : "#f5f8fa"
+-    readonly property color wizardRowBorder: darkMode ? "#3c454c" : "#e1e8ee"
+-    readonly property color wizardRowDisabledBackground: darkMode ? "#252729" : "#fafafa"
+-    readonly property color wizardRowDisabledBorder: darkMode ? "#343a3f" : "#edf1f4"
+-    readonly property color wizardSelectedBackground: darkMode ? "#263b4a" : "#eef5fb"
+-    readonly property color wizardSelectedBorder: darkMode ? "#365b73" : "#d8e7f1"
+-    readonly property color wizardRadioAccent: darkMode ? "#4da3d4" : "#0076b5"
+-    readonly property color wizardRadioDisabled: darkMode ? "#65727a" : "#b7c0c7"
+-    readonly property color wizardSecondaryButtonBackground: darkMode ? "#303b43" : "#e7eef4"
+-    readonly property color wizardSecondaryButtonPressed: darkMode ? "#394852" : "#dce8f0"
+-    readonly property color wizardSecondaryButtonBorder: darkMode ? "#4a5963" : "#d5e0e7"
+-    readonly property color wizardDisabledButtonBackground: darkMode ? "#292f33" : "#eef3f7"
+-    readonly property color wizardDisabledButtonBorder: darkMode ? "#39434a" : "#dde7ee"
+-    readonly property color wizardPrimaryButtonBackground: "#2b659a"
+-    readonly property color wizardPrimaryButtonPressed: "#245783"
++    readonly property color wizardWindowBackground: pal.window
++    readonly property color wizardPrimaryText: pal.windowText
++    readonly property color wizardSecondaryText: withAlpha(pal.windowText, 0.68)
++    readonly property color wizardPlaceholderText: withAlpha(pal.windowText, 0.50)
++    readonly property color wizardDisabledText: withAlpha(pal.windowText, 0.40)
++    readonly property color wizardFieldBackground: pal.base
++    readonly property color wizardFieldBorder: withAlpha(pal.windowText, 0.24)
++    readonly property color wizardRowBackground: pal.alternateBase
++    readonly property color wizardRowBorder: withAlpha(pal.windowText, 0.16)
++    readonly property color wizardRowDisabledBackground: pal.window
++    readonly property color wizardRowDisabledBorder: withAlpha(pal.windowText, 0.10)
++    readonly property color wizardSelectedBackground: withAlpha(pal.highlight, 0.20)
++    readonly property color wizardSelectedBorder: pal.highlight
++    readonly property color wizardRadioAccent: pal.highlight
++    readonly property color wizardRadioDisabled: withAlpha(pal.windowText, 0.30)
++    readonly property color wizardSecondaryButtonBackground: pal.button
++    readonly property color wizardSecondaryButtonPressed: darkMode ? Qt.lighter(pal.button, 1.2) : Qt.darker(pal.button, 1.1)
++    readonly property color wizardSecondaryButtonBorder: withAlpha(pal.windowText, 0.20)
++    readonly property color wizardDisabledButtonBackground: withAlpha(pal.button, 0.5)
++    readonly property color wizardDisabledButtonBorder: withAlpha(pal.windowText, 0.10)
++    readonly property color wizardPrimaryButtonBackground: pal.highlight
++    readonly property color wizardPrimaryButtonPressed: Qt.darker(pal.highlight, 1.2)
+     readonly property color wizardWarningBorder: darkMode ? "#d99832" : "#b36b00"
+     readonly property color wizardWarningText: darkMode ? "#f2b84b" : "#8a5200"
+     readonly property color wizardErrorBorder: darkMode ? "#e06c75" : "#d84b4b"
+     readonly property color wizardErrorText: darkMode ? "#ff7b86" : "#b00020"
+-    readonly property color wizardAvatarPlaceholder: darkMode ? "#3b464d" : "#dfe8ee"
+-    readonly property color wizardSelectedText: "#ffffff"
+-    readonly property color listItemHoverBackground: darkMode ? "#3a3a3a" : "#f2f2f2"
++    readonly property color wizardAvatarPlaceholder: pal.alternateBase
++    readonly property color wizardSelectedText: pal.highlightedText
++    readonly property color listItemHoverBackground: withAlpha(pal.highlight, 0.15)
+ 
+     // ErrorBox colors
+     readonly property color errorBoxBackgroundColor: Qt.rgba(0.89, 0.18, 0.18, 1)
