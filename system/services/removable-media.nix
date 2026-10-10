@@ -11,11 +11,14 @@ let
   usbtrustd = pkgs.callPackage ../../pkgs/gjallar-usbtrustd { };
   resolved = pkgs.writeText "gjallar-usbtrust-oddc.json" (builtins.toJSON config.oddc.resolved);
 
+  # zenity --password has no --text option and silently drops it, so the
+  # reason line needs --entry --hide-text. Output is the same: text + newline.
   usbTrustAskpass = pkgs.writeShellScript "gjallar-usbtrust-askpass" ''
     exec ${pkgs.zenity}/bin/zenity \
-      --password \
+      --entry \
+      --hide-text \
       --title="Authorize USB device" \
-      --text="Fingerprint authentication was unavailable, failed, or timed out. Enter your password to authorize this USB decision."
+      --text="Fingerprint authentication was unavailable, failed, or timed out.\nEnter your password to authorize this USB decision."
   '';
   start = pkgs.writeShellScript "gjallar-usbtrustd-start" ''
     ownerUID="$(${pkgs.coreutils}/bin/id -u ${lib.escapeShellArg settings.username})"
