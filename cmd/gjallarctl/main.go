@@ -1116,6 +1116,10 @@ func runAISetToken(args []string, stdout, stderr io.Writer) int {
 	if err == nil {
 		err = aitoken.Store(context.Background(), token, aitoken.Pending)
 	}
+	if errors.Is(err, credential.ErrInterrupted) {
+		fmt.Fprintln(stderr, "Stopped; the stored token is unchanged.")
+		return 130
+	}
 	if err != nil {
 		fmt.Fprintf(stderr, "ERROR: %v\n", err)
 		return 1
