@@ -12,7 +12,10 @@ import (
 )
 
 // ProvisionTPM explicitly creates a non-exportable P-256 signing primary at
-// an unoccupied owner persistent handle. It never evicts an existing object.
+// an owner persistent handle. It never evicts an existing object. A handle
+// that already holds the same primary (left by an earlier install on this TPM)
+// is adopted: primaries derive from the owner seed and template, so a match is
+// the very key this call would create.
 func ProvisionTPM(ctx context.Context, dir, handle string) error {
 	signer, err := NewTPMSigner(handle)
 	if err != nil {
@@ -38,9 +41,7 @@ func provisionTPM(ctx context.Context, dir, handle string, signer Signer, comman
 	if err != nil {
 		return fmt.Errorf("inspect TPM handles: %w: %s", err, output)
 	}
-	if strings.Contains(strings.ToLower(string(output)), strings.ToLower(handle)) {
-		return fmt.Errorf("TPM handle %s is occupied; choose an unused handle", handle)
-	}
+	occupied := strings.Contains(strings.ToLower(string(output)), strings.ToLower(handle))
 	tmp, err := os.MkdirTemp("", "gjallar-usbtrust-provision-*")
 	if err != nil {
 		return err
@@ -62,6 +63,19 @@ func provisionTPM(ctx context.Context, dir, handle string, signer Signer, comman
 		defer cancel()
 		_, _ = command(cleanup, "tpm2_flushcontext", object)
 	}()
+	if occupied {
+		same, err := sameTPMObject(ctx, command, handle, object)
+		if err != nil {
+			return err
+		}
+		if !same {
+			return fmt.Errorf("TPM handle %s is occupied by a different object; choose an unused handle", handle)
+		}
+		if err := ValidateSigner(ctx, signer); err != nil {
+			return fmt.Errorf("existing key at %s failed the self-test: %w", handle, err)
+		}
+		return nil
+	}
 	if err := run("tpm2_evictcontrol", "-Q", "-C", "o", "-c", object, handle); err != nil {
 		return err
 	}
@@ -82,4 +96,32 @@ func provisionTPM(ctx context.Context, dir, handle string, signer Signer, comman
 	}
 	committed = true
 	return nil
+}
+
+// sameTPMObject compares TPM object names. A name hashes the whole public
+// area (key, template and attributes), so equal names mean the same key.
+func sameTPMObject(ctx context.Context, command provisionCommand, a, b string) (bool, error) {
+	name := func(object string) (string, error) {
+		output, err := command(ctx, "tpm2_readpublic", "-c", object)
+		if err != nil {
+			return "", fmt.Errorf("tpm2_readpublic %s: %w: %s", object, err, output)
+		}
+		for _, line := range strings.Split(string(output), "\n") {
+			if value, ok := strings.CutPrefix(strings.TrimSpace(line), "name:"); ok {
+				if value = strings.TrimSpace(value); value != "" {
+					return value, nil
+				}
+			}
+		}
+		return "", fmt.Errorf("tpm2_readpublic %s printed no object name", object)
+	}
+	first, err := name(a)
+	if err != nil {
+		return false, err
+	}
+	second, err := name(b)
+	if err != nil {
+		return false, err
+	}
+	return first == second, nil
 }

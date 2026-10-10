@@ -21,6 +21,10 @@ and only the disk encryption passphrase can turn blocking off again.
       leaves USBGuard's configured fallback alone.
 - [x] The `gjallar-usbtrustd` and `gjallarctl` packages build in the Nix
       sandbox, with tests.
+- [x] The installer sets the TPM handle and offers blocking from first boot
+      (encrypted root and TPM2 only, default no). The broker creates or
+      adopts the signing key on first start. VM-tested arm, block, disarm and
+      re-arm on fw13 (2026-10-10).
 - [ ] **Rollout** (on the live host, run by the user):
   1. `rebuild` with `usbTrustEnforce = false`. Check that
      `gjallarctl usb status` reports `"armed": false` and that the review

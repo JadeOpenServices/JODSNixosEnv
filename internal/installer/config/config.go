@@ -182,6 +182,11 @@ func WriteAtomic(path string, user User) error {
 var usernamePattern = regexp.MustCompile(`^[a-z_][a-z0-9_-]*$`)
 var usbTrustTPMHandlePattern = regexp.MustCompile(`^0x810[0-9a-fA-F]{5}$`)
 
+// DefaultUSBTrustTPMHandle is where the USB trust broker creates its signing
+// key on first boot. It stays clear of the handles systemd and Windows use
+// (0x81000001, 0x81000002) and the endorsement range (0x8101xxxx).
+const DefaultUSBTrustTPMHandle = "0x81000042"
+
 func Load(path string) (User, error) {
 	contents, err := os.ReadFile(path)
 	if err != nil {

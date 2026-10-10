@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"flag"
 	"fmt"
 	"io"
@@ -97,12 +98,23 @@ func run(
 		control.Provision = func(ctx context.Context) error { return usbtrust.ProvisionTPM(ctx, cfg.stateDir, cfg.tpmHandle) }
 
 		probeCtx, cancel := context.WithTimeout(ctx, cfg.requestTimeout)
-		if err := usbtrust.ValidateSigner(probeCtx, signer); err != nil {
+		if present, presentErr := usbtrust.SignedStatePresent(cfg.stateDir); presentErr == nil && !present {
+			// Nothing signed yet (first start after install): set up the key
+			// now. ProvisionTPM creates it, adopts the same key left by an
+			// earlier install, and refuses any other object at the handle, so
+			// a key planted there before first boot is never trusted.
+			if err = usbtrust.ProvisionTPM(probeCtx, cfg.stateDir, cfg.tpmHandle); err == nil {
+				fmt.Fprintf(stderr, "INFO: USB trust signing key ready at TPM handle %s\n", cfg.tpmHandle)
+			}
+		} else {
+			err = errors.Join(presentErr, usbtrust.ValidateSigner(probeCtx, signer))
+		}
+		cancel()
+		if err != nil {
 			fmt.Fprintf(stderr, "WARN: permanent USB trust is unavailable until the TPM signing key is provisioned and verified: %v\n", err)
 		} else {
 			control.SetPersistenceReady(true)
 		}
-		cancel()
 	}
 	source := usbguardsource.LiveSource{Runner: usbguardsource.ExecRunner{}, Binary: cfg.usbguardBinary}
 	// The signed armed state decides whether Apply runs; --enforce only asks

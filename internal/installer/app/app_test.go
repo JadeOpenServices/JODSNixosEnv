@@ -378,23 +378,46 @@ func TestCollectRecoveryAsksPartitionWhenPossible(t *testing.T) {
 
 func TestCollectUSBTrustSkippedWithoutODDCModel(t *testing.T) {
 	var output bytes.Buffer
-	u := config.User{USBGuardEnable: true}
-	if err := collectUSBTrust(context.Background(), prompt.New(strings.NewReader("yes\n"), &output), false, &u); err != nil {
+	u := config.User{USBGuardEnable: true, USBTrustEnforce: true, USBTrustTPMHandle: config.DefaultUSBTrustTPMHandle}
+	if err := collectUSBTrust(context.Background(), prompt.New(strings.NewReader("yes\nyes\n"), &output), false, true, true, &u); err != nil {
 		t.Fatal(err)
 	}
-	if u.USBGuardEnable || strings.Contains(output.String(), "Enable USB trust review") {
-		t.Fatalf("usb trust=%t output:\n%s", u.USBGuardEnable, output.String())
+	if u.USBGuardEnable || u.USBTrustEnforce || u.USBTrustTPMHandle != "" || strings.Contains(output.String(), "Enable USB trust review") {
+		t.Fatalf("usb trust=%t enforce=%t handle=%q output:\n%s", u.USBGuardEnable, u.USBTrustEnforce, u.USBTrustTPMHandle, output.String())
 	}
 }
 
-func TestCollectUSBTrustAskedWithODDCModel(t *testing.T) {
-	var output bytes.Buffer
-	u := config.User{}
-	if err := collectUSBTrust(context.Background(), prompt.New(strings.NewReader("yes\n"), &output), true, &u); err != nil {
-		t.Fatal(err)
-	}
-	if !u.USBGuardEnable {
-		t.Fatalf("usb trust not enabled:\n%s", output.String())
+func TestCollectUSBTrust(t *testing.T) {
+	for _, test := range []struct {
+		name                    string
+		encryptedRoot, tpm2     bool
+		input                   string
+		wantReview, wantEnforce bool
+		wantHandle              string
+		wantBlockQuestion       bool
+	}{
+		{name: "review declined", encryptedRoot: true, tpm2: true, input: "no\n"},
+		{name: "blocking asked, default no", encryptedRoot: true, tpm2: true, input: "yes\n\n",
+			wantReview: true, wantHandle: config.DefaultUSBTrustTPMHandle, wantBlockQuestion: true},
+		{name: "blocking chosen", encryptedRoot: true, tpm2: true, input: "yes\nyes\n",
+			wantReview: true, wantEnforce: true, wantHandle: config.DefaultUSBTrustTPMHandle, wantBlockQuestion: true},
+		{name: "no TPM2: review only, no key", encryptedRoot: true, input: "yes\nyes\n", wantReview: true},
+		{name: "plain root: key, no blocking", tpm2: true, input: "yes\nyes\n",
+			wantReview: true, wantHandle: config.DefaultUSBTrustTPMHandle},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			var output bytes.Buffer
+			u := config.User{}
+			if err := collectUSBTrust(context.Background(), prompt.New(strings.NewReader(test.input), &output), true, test.encryptedRoot, test.tpm2, &u); err != nil {
+				t.Fatal(err)
+			}
+			if u.USBGuardEnable != test.wantReview || u.USBTrustEnforce != test.wantEnforce || u.USBTrustTPMHandle != test.wantHandle {
+				t.Fatalf("review=%t enforce=%t handle=%q output:\n%s", u.USBGuardEnable, u.USBTrustEnforce, u.USBTrustTPMHandle, output.String())
+			}
+			if strings.Contains(output.String(), "Block unknown USB devices") != test.wantBlockQuestion {
+				t.Fatalf("block question shown=%t output:\n%s", !test.wantBlockQuestion, output.String())
+			}
+		})
 	}
 }
 

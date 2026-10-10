@@ -564,7 +564,10 @@ func run(ctx context.Context, args []string, in io.Reader, out, errOut io.Writer
 		if s.user.USBGuardEnable && resolvedDevice.ModelID == "" {
 			return fail(errOut, errors.New("usbguardEnable needs an ODDC model, and ODDC has none for this machine; set usbguardEnable to false"))
 		}
-	} else if err := collectInteractive(ctx, ui, root, !persistentInstalledHost || rootEncrypted(ctx, "/"), resolvedDevice.ModelID != "", jodsManagementBlocker(s.secureBootFirmware.Policy.Supported, diskcrypto.TPMAvailable()), hardware, choices, &s.user); err != nil {
+		if s.user.USBGuardEnable && s.user.USBTrustTPMHandle == "" && diskcrypto.TPMAvailable() {
+			s.user.USBTrustTPMHandle = config.DefaultUSBTrustTPMHandle
+		}
+	} else if err := collectInteractive(ctx, ui, root, !persistentInstalledHost || rootEncrypted(ctx, "/"), resolvedDevice.ModelID != "", diskcrypto.TPMAvailable(), jodsManagementBlocker(s.secureBootFirmware.Policy.Supported, diskcrypto.TPMAvailable()), hardware, choices, &s.user); err != nil {
 		return fail(errOut, err)
 	}
 	if err := configureWeatherLocation(ctx, ui, &s.user, out); err != nil {
@@ -579,7 +582,8 @@ func run(ctx context.Context, args []string, in io.Reader, out, errOut io.Writer
 	securityRequested := s.user.SecureBootPrompt ||
 		s.user.SecureBootEnable ||
 		s.user.LUKSTPM2Enable ||
-		s.user.JODSPrebootLockEnable
+		s.user.JODSPrebootLockEnable ||
+		s.user.USBTrustEnforce
 
 	// TPM 1.2 has only SHA-1 PCRs; systemd-cryptenroll and the measured-boot
 	// policy need TPM 2.0. Its owner may expect Secure Boot, so always say
@@ -601,7 +605,7 @@ func run(ctx context.Context, args []string, in io.Reader, out, errOut io.Writer
 		}
 		fmt.Fprintln(
 			out,
-			"Secure Boot, TPM2 LUKS unlock, and TPM-dependent JODS preboot locking must be disabled to continue.",
+			"Secure Boot, TPM2 LUKS unlock, TPM-dependent JODS preboot locking, and USB blocking must be disabled to continue.",
 		)
 
 		if s.user.UnattendedInstall {
@@ -644,7 +648,7 @@ func run(ctx context.Context, args []string, in io.Reader, out, errOut io.Writer
 
 			fmt.Fprintln(
 				out,
-				"Updated user.config.json for this TPM-less machine: secureBootPrompt=false, secureBootEnable=false, luksTpm2Enable=false, jodsPrebootLockEnable=false.",
+				"Updated user.config.json for this TPM-less machine: secureBootPrompt=false, secureBootEnable=false, luksTpm2Enable=false, jodsPrebootLockEnable=false, usbTrustEnforce=false, usbTrustTpmHandle=\"\".",
 			)
 		}
 	}
@@ -1931,7 +1935,7 @@ func defaultUsername(root string) string {
 	return account.Username
 }
 
-func collectInteractive(ctx context.Context, ui prompt.UI, root string, partitionable, modelSelected bool, managedBlocker string, hardware discovery.Hardware, o discovery.Options, u *config.User) error {
+func collectInteractive(ctx context.Context, ui prompt.UI, root string, partitionable, modelSelected, tpm2 bool, managedBlocker string, hardware discovery.Hardware, o discovery.Options, u *config.User) error {
 	var err error
 	host, _ := os.Hostname()
 	if host == "" || host == "nixos" {
@@ -2020,7 +2024,7 @@ func collectInteractive(ctx context.Context, ui prompt.UI, root string, partitio
 	if err != nil {
 		return err
 	}
-	if err := collectUSBTrust(ctx, ui, modelSelected, u); err != nil {
+	if err := collectUSBTrust(ctx, ui, modelSelected, partitionable, tpm2, u); err != nil {
 		return err
 	}
 	u.Name, err = ui.Value(ctx, "Full name", u.Username)
@@ -2515,6 +2519,8 @@ func disableTPMDependentSecurity(u *config.User) {
 	u.SecureBootEnable = false
 	u.LUKSTPM2Enable = false
 	u.JODSPrebootLockEnable = false
+	u.USBTrustEnforce = false
+	u.USBTrustTPMHandle = ""
 }
 
 func normalizeManagementSafety(u *config.User) {
@@ -2698,9 +2704,11 @@ func mountSourceDevice(source string) string {
 
 // rootEncrypted reports whether mountpoint sits on a device-mapper (LUKS)
 // mapping, the first thing discoverInstalledRecoveryTopology requires.
-// collectUSBTrust offers USB trust review only with an ODDC model: the
-// system refuses USB trust without one, since the model names the internal
-// devices that must stay trusted.
+func rootEncrypted(ctx context.Context, mountpoint string) bool {
+	mounted, err := exec.CommandContext(ctx, "findmnt", "-nvro", "SOURCE", "--target", mountpoint).Output()
+	return err == nil && strings.HasPrefix(mountSourceDevice(string(mounted)), "/dev/mapper/")
+}
+
 // collectJODSManagement asks for JODS management only where the managed
 // security contract (Secure Boot, TPM2 unlock, recovery, preboot lock; see
 // normalizeManagementSafety) can hold. Elsewhere the install would stop at
@@ -2728,20 +2736,42 @@ func jodsManagementBlocker(secureBootSupported, tpm2 bool) string {
 	return ""
 }
 
-func collectUSBTrust(ctx context.Context, ui prompt.UI, modelSelected bool, u *config.User) error {
+// collectUSBTrust offers USB trust review only with an ODDC model: the
+// system refuses USB trust without one, since the model names the internal
+// devices that must stay trusted. Blocking is offered only with TPM2 (the
+// approved-device list is signed by a TPM key the system creates on first
+// boot) and an encrypted root (turning blocking off asks for the disk
+// passphrase).
+func collectUSBTrust(ctx context.Context, ui prompt.UI, modelSelected, encryptedRoot, tpm2 bool, u *config.User) error {
+	u.USBTrustEnforce = false
 	if !modelSelected {
 		u.USBGuardEnable = false
+		u.USBTrustTPMHandle = ""
 		fmt.Fprintln(ui.Out, "No USB trust review: ODDC has no model for this machine, and USB trust needs one to know its internal devices.")
 		return nil
 	}
 	var err error
-	u.USBGuardEnable, err = ui.Confirm(ctx, "Enable USB trust review in audit mode? Blocking requires separate activation after device enrollment.", false)
+	u.USBGuardEnable, err = ui.Confirm(ctx, "Enable USB trust review? New USB devices are logged and you can approve them.", false)
+	if err != nil || !u.USBGuardEnable {
+		u.USBTrustTPMHandle = ""
+		return err
+	}
+	if !tpm2 {
+		u.USBTrustTPMHandle = ""
+		fmt.Fprintln(ui.Out, "USB blocking stays off: it needs TPM2 to sign the list of approved devices.")
+		return nil
+	}
+	if u.USBTrustTPMHandle == "" {
+		u.USBTrustTPMHandle = config.DefaultUSBTrustTPMHandle
+	}
+	if !encryptedRoot {
+		fmt.Fprintln(ui.Out, "USB blocking stays off: turning it off again needs the disk passphrase, and this root is not encrypted.")
+		return nil
+	}
+	fmt.Fprintln(ui.Out, "With blocking on, only built-in devices and devices you approve work.")
+	fmt.Fprintln(ui.Out, "A USB keyboard or mouse that is not built in stays blocked until you approve it with the built-in keyboard.")
+	u.USBTrustEnforce, err = ui.Confirm(ctx, "Block unknown USB devices from the first boot?", false)
 	return err
-}
-
-func rootEncrypted(ctx context.Context, mountpoint string) bool {
-	mounted, err := exec.CommandContext(ctx, "findmnt", "-nvro", "SOURCE", "--target", mountpoint).Output()
-	return err == nil && strings.HasPrefix(mountSourceDevice(string(mounted)), "/dev/mapper/")
 }
 
 func discoverInstalledRecoveryTopology(

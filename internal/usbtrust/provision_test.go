@@ -5,6 +5,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 )
@@ -33,12 +34,38 @@ func TestTPMProvisionAndSignedPersistenceSimulator(t *testing.T) {
 	defer cancel()
 	dir := filepath.Join(root, "trust")
 	const handle = "0x81000042"
+	// Production talks to /dev/tpmrm0, whose resource manager flushes
+	// transient objects when each tool exits. swtpm has none, so flush them
+	// between steps or the three object slots run out.
+	flushTransient := func() {
+		if output, err := exec.CommandContext(ctx, "tpm2_flushcontext", "-t").CombinedOutput(); err != nil {
+			t.Fatalf("flush transient objects: %v: %s", err, output)
+		}
+	}
 	if err := ProvisionTPM(ctx, dir, handle); err != nil {
 		t.Fatal(err)
 	}
-	if err := ProvisionTPM(ctx, dir, handle); err == nil {
-		t.Fatal("occupied TPM handle replaced")
+	flushTransient()
+	// The same primary left at the handle by an earlier install is adopted.
+	if err := ProvisionTPM(ctx, dir, handle); err != nil {
+		t.Fatalf("same key not adopted: %v", err)
 	}
+	flushTransient()
+	const foreign = "0x81000043"
+	foreignCtx := filepath.Join(root, "foreign.ctx")
+	for _, args := range [][]string{
+		{"tpm2_createprimary", "-Q", "-C", "o", "-G", "ecc256:ecdsa-sha256", "-g", "sha256", "-a", "fixedtpm|fixedparent|sensitivedataorigin|userwithauth|sign|noda", "-c", foreignCtx},
+		{"tpm2_evictcontrol", "-Q", "-C", "o", "-c", foreignCtx, foreign},
+	} {
+		if output, err := exec.CommandContext(ctx, args[0], args[1:]...).CombinedOutput(); err != nil {
+			t.Fatalf("%v: %v: %s", args, err, output)
+		}
+	}
+	flushTransient()
+	if err := ProvisionTPM(ctx, dir, foreign); err == nil || !strings.Contains(err.Error(), "different object") {
+		t.Fatal("different object at TPM handle adopted")
+	}
+	flushTransient()
 	signer, _ := NewTPMSigner(handle)
 	if err := CommitSigned(ctx, dir, sampleDocument(), signer); err != nil {
 		t.Fatal(err)

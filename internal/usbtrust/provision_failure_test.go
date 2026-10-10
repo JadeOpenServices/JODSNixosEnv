@@ -37,6 +37,7 @@ func TestTPMProvisionRollbackOnlyNewUnverifiedKeys(t *testing.T) {
 	for _, test := range []struct {
 		name                    string
 		occupied, cancelOnSign  bool
+		sameKey                 bool
 		signErr, verifyErr      error
 		persistErr, rollbackErr error
 		wantCalls               []string
@@ -45,8 +46,18 @@ func TestTPMProvisionRollbackOnlyNewUnverifiedKeys(t *testing.T) {
 		wantErr                 error
 	}{
 		{
-			name: "occupied handle untouched", occupied: true,
-			wantCalls: []string{"inspect"}, wantPersistent: true,
+			name: "different key at handle untouched", occupied: true,
+			wantCalls: []string{"inspect", "create", "name", "name", "flush"}, wantPersistent: true,
+		},
+		{
+			name: "same key at handle adopted", occupied: true, sameKey: true,
+			wantCalls: []string{"inspect", "create", "name", "name", "flush"},
+			wantSign:  1, wantVerify: 1, wantPersistent: true,
+		},
+		{
+			name: "adopted key failing self-test stays", occupied: true, sameKey: true, signErr: signFailure,
+			wantCalls: []string{"inspect", "create", "name", "name", "flush"},
+			wantSign:  1, wantPersistent: true, wantErr: signFailure,
 		},
 		{
 			name: "failed persistence never evicts", persistErr: persistFailure,
@@ -101,6 +112,12 @@ func TestTPMProvisionRollbackOnlyNewUnverifiedKeys(t *testing.T) {
 					}
 				case "tpm2_createprimary":
 					calls = append(calls, "create")
+				case "tpm2_readpublic":
+					calls = append(calls, "name")
+					if args[1] == handle || test.sameKey {
+						return []byte("name-alg:\n  value: sha256\nname: 000b1111\n"), nil
+					}
+					return []byte("name: 000b2222\n"), nil
 				case "tpm2_evictcontrol":
 					if len(args) == 6 {
 						calls = append(calls, "persist")
@@ -131,8 +148,8 @@ func TestTPMProvisionRollbackOnlyNewUnverifiedKeys(t *testing.T) {
 				return nil, nil
 			}
 			err := provisionTPM(ctx, t.TempDir(), handle, signer, command)
-			if test.occupied {
-				if err == nil || !strings.Contains(err.Error(), "occupied") {
+			if test.occupied && !test.sameKey {
+				if err == nil || !strings.Contains(err.Error(), "occupied by a different object") {
 					t.Fatalf("occupied handle was not refused: %v", err)
 				}
 			} else if !errors.Is(err, test.wantErr) {

@@ -304,13 +304,19 @@ This adds a new generation with that system; nothing newer is deleted.
 
 ### USB trust
 
-USB review offers permanent trust after a configured, unused TPM signing handle
-has been provisioned with `sudo gjallarctl usb provision-key`. Existing TPM
-objects are never overwritten. Provisioning does not automatically trust devices
-or enable enforcement; inspect `gjallarctl usb status` and review devices first.
+The installer asks for USB trust review on machines with an ODDC model. On a
+machine with TPM2 it sets the signing handle (`usbTrustTpmHandle`, default
+`0x81000042`), and the broker creates the TPM signing key on its first start.
+A key left at that handle by an earlier install on the same TPM is reused; any
+other object there is never overwritten, and permanent trust stays off until
+you pick a free handle. `sudo gjallarctl usb provision-key` does the same step
+by hand. Creating the key trusts no devices; inspect `gjallarctl usb status`
+and review devices first.
 
-Enforcement is turned on with `"usbTrustEnforce": true` in `user.config.json`
-and a `rebuild`. To turn it off, set it back to `false`, `rebuild`, then run
+With an encrypted root, the installer also asks "Block unknown USB devices from
+the first boot?" (default no). Say no on a desktop with a USB keyboard: it is
+not built in, so it stays blocked until approved. Enforcement can be turned on
+later with `"usbTrustEnforce": true` in `user.config.json` and a `rebuild`. To turn it off, set it back to `false`, `rebuild`, then run
 `sudo gjallarctl usb disarm` and enter the disk encryption passphrase. Disarm
 alone is temporary: the broker re-arms from the config on its next restart.
 
