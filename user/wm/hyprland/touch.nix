@@ -14,13 +14,12 @@ let
     ];
     text = ''
       set -euo pipefail
+      # wvkbd(1): SIGUSR2 only shows, SIGRTMIN toggles.
       if pgrep -x wvkbd-mobintl >/dev/null; then
-        pkill -USR2 -x wvkbd-mobintl
+        pkill -RTMIN -x wvkbd-mobintl
       else
-        ${pkgs.wvkbd}/bin/wvkbd-mobintl --hidden -H 320 -L 240 >/dev/null 2>&1 &
+        ${pkgs.wvkbd}/bin/wvkbd-mobintl -H 320 -L 240 >/dev/null 2>&1 &
         disown
-        sleep 0.1
-        pkill -USR2 -x wvkbd-mobintl
       fi
     '';
   };
