@@ -91,10 +91,15 @@ in
       gaps_out = 16;
       border_size = 2;
       allow_tearing = true;
-      # Drag the gap between tiled windows (or a floating window's edge) to
-      # resize it, e.g. narrow a chat column beside a stream.
-      resize_on_border = true;
+      # Resize only with Super + right-drag (or Super + Ctrl + arrows), so a
+      # click near a border never resizes a window by accident.
+      resize_on_border = false;
     };
+
+    # Super + click without moving the mouse starts no drag. Otherwise
+    # Hyprland re-inserts the tiled window on release and its split ratio
+    # falls back to the default.
+    binds.drag_threshold = 10;
 
     cursor = {
       inactive_timeout = 5;

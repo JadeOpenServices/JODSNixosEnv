@@ -141,7 +141,8 @@ with `systemd-creds` (TPM2-bound when present) into
 | <kbd>Super</kbd> + <kbd>H</kbd> <kbd>J</kbd> <kbd>K</kbd> <kbd>L</kbd> | Move focus |
 | <kbd>Super</kbd> + <kbd>Shift</kbd> + <kbd>H</kbd> <kbd>J</kbd> <kbd>K</kbd> <kbd>L</kbd> | Move window |
 | <kbd>Super</kbd> + <kbd>Ctrl</kbd> + arrow keys | Resize window (hold to repeat) |
-| Drag the gap between windows | Resize window (or <kbd>Super</kbd> + right-drag) |
+| <kbd>Super</kbd> + left-drag | Move window |
+| <kbd>Super</kbd> + right-drag | Resize window |
 | <kbd>Super</kbd> + <kbd>1</kbd>…<kbd>0</kbd> | Switch workspace |
 | <kbd>Super</kbd> + <kbd>Shift</kbd> + <kbd>1</kbd>…<kbd>0</kbd> | Move window to workspace |
 | <kbd>Super</kbd> + <kbd>S</kbd> | Scratchpad workspace |
