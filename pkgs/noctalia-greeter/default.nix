@@ -6,10 +6,14 @@
 # alive when the press moves focus and the menus get rebuilt.
 # wlr-log-level.patch stops wlroots debug lines (one per frame with a
 # software cursor) from flooding the journal.
+# osk.patch lets the compositor start an on-screen keyboard
+# ($NOCTALIA_GREETER_OSK, wvkbd) for touch-only machines. Layer-shell and
+# virtual-keyboard are offered to that one client only.
 noctalia-greeter.overrideAttrs (old: {
   patches = (old.patches or [ ]) ++ [
     ./staging-snapshot.patch
     ./menu-click.patch
     ./wlr-log-level.patch
+    ./osk.patch
   ];
 })

@@ -1,0 +1,843 @@
+diff --git a/meson.build b/meson.build
+index 0ae8981..c27642b 100644
+--- a/meson.build
++++ b/meson.build
+@@ -272,12 +272,19 @@ install_data(
+   install_dir: get_option('prefix') / 'lib' / 'tmpfiles.d',
+ )
+ 
++# wlroots' layer-shell header includes the server header by this name.
++_layer_shell_server_h = custom_target('wlr-layer-shell-unstable-v1-server-header',
++  input:   'protocols/wlr-layer-shell-unstable-v1.xml',
++  output:  'wlr-layer-shell-unstable-v1-protocol.h',
++  command: [wayland_scanner, 'server-header', '@INPUT@', '@OUTPUT@'],
++)
++
+ executable('noctalia-greeter-compositor',
+   sources: files(
+     'src/compositor/noctalia_compositor.c',
+     'src/core/log.cpp',
+     'src/greeter/greeter_config_io.cpp',
+-  ),
++  ) + [_layer_shell_server_h],
+   dependencies: [
+     wlroots_dep,
+     libinput_dep,
+diff --git a/protocols/wlr-layer-shell-unstable-v1.xml b/protocols/wlr-layer-shell-unstable-v1.xml
+new file mode 100644
+index 0000000..e9f27e4
+--- /dev/null
++++ b/protocols/wlr-layer-shell-unstable-v1.xml
+@@ -0,0 +1,407 @@
++<?xml version="1.0" encoding="UTF-8"?>
++<protocol name="wlr_layer_shell_unstable_v1">
++  <copyright>
++    Copyright © 2017 Drew DeVault
++
++    Permission to use, copy, modify, distribute, and sell this
++    software and its documentation for any purpose is hereby granted
++    without fee, provided that the above copyright notice appear in
++    all copies and that both that copyright notice and this permission
++    notice appear in supporting documentation, and that the name of
++    the copyright holders not be used in advertising or publicity
++    pertaining to distribution of the software without specific,
++    written prior permission.  The copyright holders make no
++    representations about the suitability of this software for any
++    purpose.  It is provided "as is" without express or implied
++    warranty.
++
++    THE COPYRIGHT HOLDERS DISCLAIM ALL WARRANTIES WITH REGARD TO THIS
++    SOFTWARE, INCLUDING ALL IMPLIED WARRANTIES OF MERCHANTABILITY AND
++    FITNESS, IN NO EVENT SHALL THE COPYRIGHT HOLDERS BE LIABLE FOR ANY
++    SPECIAL, INDIRECT OR CONSEQUENTIAL DAMAGES OR ANY DAMAGES
++    WHATSOEVER RESULTING FROM LOSS OF USE, DATA OR PROFITS, WHETHER IN
++    AN ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION,
++    ARISING OUT OF OR IN CONNECTION WITH THE USE OR PERFORMANCE OF
++    THIS SOFTWARE.
++  </copyright>
++
++  <interface name="zwlr_layer_shell_v1" version="5">
++    <description summary="create surfaces that are layers of the desktop">
++      Clients can use this interface to assign the surface_layer role to
++      wl_surfaces. Such surfaces are assigned to a "layer" of the output and
++      rendered with a defined z-depth respective to each other. They may also be
++      anchored to the edges and corners of a screen and specify input handling
++      semantics. This interface should be suitable for the implementation of
++      many desktop shell components, and a broad number of other applications
++      that interact with the desktop.
++    </description>
++
++    <request name="get_layer_surface">
++      <description summary="create a layer_surface from a surface">
++        Create a layer surface for an existing surface. This assigns the role of
++        layer_surface, or raises a protocol error if another role is already
++        assigned.
++
++        Creating a layer surface from a wl_surface which has a buffer attached
++        or committed is a client error, and any attempts by a client to attach
++        or manipulate a buffer prior to the first layer_surface.configure call
++        must also be treated as errors.
++
++        After creating a layer_surface object and setting it up, the client
++        must perform an initial commit without any buffer attached.
++        The compositor will reply with a layer_surface.configure event.
++        The client must acknowledge it and is then allowed to attach a buffer
++        to map the surface.
++
++        You may pass NULL for output to allow the compositor to decide which
++        output to use. Generally this will be the one that the user most
++        recently interacted with.
++
++        Clients can specify a namespace that defines the purpose of the layer
++        surface.
++      </description>
++      <arg name="id" type="new_id" interface="zwlr_layer_surface_v1"/>
++      <arg name="surface" type="object" interface="wl_surface"/>
++      <arg name="output" type="object" interface="wl_output" allow-null="true"/>
++      <arg name="layer" type="uint" enum="layer" summary="layer to add this surface to"/>
++      <arg name="namespace" type="string" summary="namespace for the layer surface"/>
++    </request>
++
++    <enum name="error">
++      <entry name="role" value="0" summary="wl_surface has another role"/>
++      <entry name="invalid_layer" value="1" summary="layer value is invalid"/>
++      <entry name="already_constructed" value="2" summary="wl_surface has a buffer attached or committed"/>
++    </enum>
++
++    <enum name="layer">
++      <description summary="available layers for surfaces">
++        These values indicate which layers a surface can be rendered in. They
++        are ordered by z depth, bottom-most first. Traditional shell surfaces
++        will typically be rendered between the bottom and top layers.
++        Fullscreen shell surfaces are typically rendered at the top layer.
++        Multiple surfaces can share a single layer, and ordering within a
++        single layer is undefined.
++      </description>
++
++      <entry name="background" value="0"/>
++      <entry name="bottom" value="1"/>
++      <entry name="top" value="2"/>
++      <entry name="overlay" value="3"/>
++    </enum>
++
++    <!-- Version 3 additions -->
++
++    <request name="destroy" type="destructor" since="3">
++      <description summary="destroy the layer_shell object">
++        This request indicates that the client will not use the layer_shell
++        object any more. Objects that have been created through this instance
++        are not affected.
++      </description>
++    </request>
++  </interface>
++
++  <interface name="zwlr_layer_surface_v1" version="5">
++    <description summary="layer metadata interface">
++      An interface that may be implemented by a wl_surface, for surfaces that
++      are designed to be rendered as a layer of a stacked desktop-like
++      environment.
++
++      Layer surface state (layer, size, anchor, exclusive zone,
++      margin, interactivity) is double-buffered, and will be applied at the
++      time wl_surface.commit of the corresponding wl_surface is called.
++
++      Attaching a null buffer to a layer surface unmaps it.
++
++      Unmapping a layer_surface means that the surface cannot be shown by the
++      compositor until it is explicitly mapped again. The layer_surface
++      returns to the state it had right after layer_shell.get_layer_surface.
++      The client can re-map the surface by performing a commit without any
++      buffer attached, waiting for a configure event and handling it as usual.
++    </description>
++
++    <request name="set_size">
++      <description summary="sets the size of the surface">
++        Sets the size of the surface in surface-local coordinates. The
++        compositor will display the surface centered with respect to its
++        anchors.
++
++        If you pass 0 for either value, the compositor will assign it and
++        inform you of the assignment in the configure event. You must set your
++        anchor to opposite edges in the dimensions you omit; not doing so is a
++        protocol error. Both values are 0 by default.
++
++        Size is double-buffered, see wl_surface.commit.
++      </description>
++      <arg name="width" type="uint"/>
++      <arg name="height" type="uint"/>
++    </request>
++
++    <request name="set_anchor">
++      <description summary="configures the anchor point of the surface">
++        Requests that the compositor anchor the surface to the specified edges
++        and corners. If two orthogonal edges are specified (e.g. 'top' and
++        'left'), then the anchor point will be the intersection of the edges
++        (e.g. the top left corner of the output); otherwise the anchor point
++        will be centered on that edge, or in the center if none is specified.
++
++        Anchor is double-buffered, see wl_surface.commit.
++      </description>
++      <arg name="anchor" type="uint" enum="anchor"/>
++    </request>
++
++    <request name="set_exclusive_zone">
++      <description summary="configures the exclusive geometry of this surface">
++        Requests that the compositor avoids occluding an area with other
++        surfaces. The compositor's use of this information is
++        implementation-dependent - do not assume that this region will not
++        actually be occluded.
++
++        A positive value is only meaningful if the surface is anchored to one
++        edge or an edge and both perpendicular edges. If the surface is not
++        anchored, anchored to only two perpendicular edges (a corner), anchored
++        to only two parallel edges or anchored to all edges, a positive value
++        will be treated the same as zero.
++
++        A positive zone is the distance from the edge in surface-local
++        coordinates to consider exclusive.
++
++        Surfaces that do not wish to have an exclusive zone may instead specify
++        how they should interact with surfaces that do. If set to zero, the
++        surface indicates that it would like to be moved to avoid occluding
++        surfaces with a positive exclusive zone. If set to -1, the surface
++        indicates that it would not like to be moved to accommodate for other
++        surfaces, and the compositor should extend it all the way to the edges
++        it is anchored to.
++
++        For example, a panel might set its exclusive zone to 10, so that
++        maximized shell surfaces are not shown on top of it. A notification
++        might set its exclusive zone to 0, so that it is moved to avoid
++        occluding the panel, but shell surfaces are shown underneath it. A
++        wallpaper or lock screen might set their exclusive zone to -1, so that
++        they stretch below or over the panel.
++
++        The default value is 0.
++
++        Exclusive zone is double-buffered, see wl_surface.commit.
++      </description>
++      <arg name="zone" type="int"/>
++    </request>
++
++    <request name="set_margin">
++      <description summary="sets a margin from the anchor point">
++        Requests that the surface be placed some distance away from the anchor
++        point on the output, in surface-local coordinates. Setting this value
++        for edges you are not anchored to has no effect.
++
++        The exclusive zone includes the margin.
++
++        Margin is double-buffered, see wl_surface.commit.
++      </description>
++      <arg name="top" type="int"/>
++      <arg name="right" type="int"/>
++      <arg name="bottom" type="int"/>
++      <arg name="left" type="int"/>
++    </request>
++
++    <enum name="keyboard_interactivity">
++      <description summary="types of keyboard interaction possible for a layer shell surface">
++        Types of keyboard interaction possible for layer shell surfaces. The
++        rationale for this is twofold: (1) some applications are not interested
++        in keyboard events and not allowing them to be focused can improve the
++        desktop experience; (2) some applications will want to take exclusive
++        keyboard focus.
++      </description>
++
++      <entry name="none" value="0">
++        <description summary="no keyboard focus is possible">
++          This value indicates that this surface is not interested in keyboard
++          events and the compositor should never assign it the keyboard focus.
++
++          This is the default value, set for newly created layer shell surfaces.
++
++          This is useful for e.g. desktop widgets that display information or
++          only have interaction with non-keyboard input devices.
++        </description>
++      </entry>
++      <entry name="exclusive" value="1">
++        <description summary="request exclusive keyboard focus">
++          Request exclusive keyboard focus if this surface is above the shell surface layer.
++
++          For the top and overlay layers, the seat will always give
++          exclusive keyboard focus to the top-most layer which has keyboard
++          interactivity set to exclusive. If this layer contains multiple
++          surfaces with keyboard interactivity set to exclusive, the compositor
++          determines the one receiving keyboard events in an implementation-
++          defined manner. In this case, no guarantee is made when this surface
++          will receive keyboard focus (if ever).
++
++          For the bottom and background layers, the compositor is allowed to use
++          normal focus semantics.
++
++          This setting is mainly intended for applications that need to ensure
++          they receive all keyboard events, such as a lock screen or a password
++          prompt.
++        </description>
++      </entry>
++      <entry name="on_demand" value="2" since="4">
++        <description summary="request regular keyboard focus semantics">
++          This requests the compositor to allow this surface to be focused and
++          unfocused by the user in an implementation-defined manner. The user
++          should be able to unfocus this surface even regardless of the layer
++          it is on.
++
++          Typically, the compositor will want to use its normal mechanism to
++          manage keyboard focus between layer shell surfaces with this setting
++          and regular toplevels on the desktop layer (e.g. click to focus).
++          Nevertheless, it is possible for a compositor to require a special
++          interaction to focus or unfocus layer shell surfaces (e.g. requiring
++          a click even if focus follows the mouse normally, or providing a
++          keybinding to switch focus between layers).
++
++          This setting is mainly intended for desktop shell components (e.g.
++          panels) that allow keyboard interaction. Using this option can allow
++          implementing a desktop shell that can be fully usable without the
++          mouse.
++        </description>
++      </entry>
++    </enum>
++
++    <request name="set_keyboard_interactivity">
++      <description summary="requests keyboard events">
++        Set how keyboard events are delivered to this surface. By default,
++        layer shell surfaces do not receive keyboard events; this request can
++        be used to change this.
++
++        This setting is inherited by child surfaces set by the get_popup
++        request.
++
++        Layer surfaces receive pointer, touch, and tablet events normally. If
++        you do not want to receive them, set the input region on your surface
++        to an empty region.
++
++        Keyboard interactivity is double-buffered, see wl_surface.commit.
++      </description>
++      <arg name="keyboard_interactivity" type="uint" enum="keyboard_interactivity"/>
++    </request>
++
++    <request name="get_popup">
++      <description summary="assign this layer_surface as an xdg_popup parent">
++        This assigns an xdg_popup's parent to this layer_surface.  This popup
++        should have been created via xdg_surface::get_popup with the parent set
++        to NULL, and this request must be invoked before committing the popup's
++        initial state.
++
++        See the documentation of xdg_popup for more details about what an
++        xdg_popup is and how it is used.
++      </description>
++      <arg name="popup" type="object" interface="xdg_popup"/>
++    </request>
++
++    <request name="ack_configure">
++      <description summary="ack a configure event">
++        When a configure event is received, if a client commits the
++        surface in response to the configure event, then the client
++        must make an ack_configure request sometime before the commit
++        request, passing along the serial of the configure event.
++
++        If the client receives multiple configure events before it
++        can respond to one, it only has to ack the last configure event.
++
++        A client is not required to commit immediately after sending
++        an ack_configure request - it may even ack_configure several times
++        before its next surface commit.
++
++        A client may send multiple ack_configure requests before committing, but
++        only the last request sent before a commit indicates which configure
++        event the client really is responding to.
++      </description>
++      <arg name="serial" type="uint" summary="the serial from the configure event"/>
++    </request>
++
++    <request name="destroy" type="destructor">
++      <description summary="destroy the layer_surface">
++        This request destroys the layer surface.
++      </description>
++    </request>
++
++    <event name="configure">
++      <description summary="suggest a surface change">
++        The configure event asks the client to resize its surface.
++
++        Clients should arrange their surface for the new states, and then send
++        an ack_configure request with the serial sent in this configure event at
++        some point before committing the new surface.
++
++        The client is free to dismiss all but the last configure event it
++        received.
++
++        The width and height arguments specify the size of the window in
++        surface-local coordinates.
++
++        The size is a hint, in the sense that the client is free to ignore it if
++        it doesn't resize, pick a smaller size (to satisfy aspect ratio or
++        resize in steps of NxM pixels). If the client picks a smaller size and
++        is anchored to two opposite anchors (e.g. 'top' and 'bottom'), the
++        surface will be centered on this axis.
++
++        If the width or height arguments are zero, it means the client should
++        decide its own window dimension.
++      </description>
++      <arg name="serial" type="uint"/>
++      <arg name="width" type="uint"/>
++      <arg name="height" type="uint"/>
++    </event>
++
++    <event name="closed">
++      <description summary="surface should be closed">
++        The closed event is sent by the compositor when the surface will no
++        longer be shown. The output may have been destroyed or the user may
++        have asked for it to be removed. Further changes to the surface will be
++        ignored. The client should destroy the resource after receiving this
++        event, and create a new surface if they so choose.
++      </description>
++    </event>
++
++    <enum name="error">
++      <entry name="invalid_surface_state" value="0" summary="provided surface state is invalid"/>
++      <entry name="invalid_size" value="1" summary="size is invalid"/>
++      <entry name="invalid_anchor" value="2" summary="anchor bitfield is invalid"/>
++      <entry name="invalid_keyboard_interactivity" value="3" summary="keyboard interactivity is invalid"/>
++      <entry name="invalid_exclusive_edge" value="4" summary="exclusive edge is invalid given the surface anchors"/>
++    </enum>
++
++    <enum name="anchor" bitfield="true">
++      <entry name="top" value="1" summary="the top edge of the anchor rectangle"/>
++      <entry name="bottom" value="2" summary="the bottom edge of the anchor rectangle"/>
++      <entry name="left" value="4" summary="the left edge of the anchor rectangle"/>
++      <entry name="right" value="8" summary="the right edge of the anchor rectangle"/>
++    </enum>
++
++    <!-- Version 2 additions -->
++
++    <request name="set_layer" since="2">
++      <description summary="change the layer of the surface">
++        Change the layer that the surface is rendered on.
++
++        Layer is double-buffered, see wl_surface.commit.
++      </description>
++      <arg name="layer" type="uint" enum="zwlr_layer_shell_v1.layer" summary="layer to move this surface to"/>
++    </request>
++
++    <!-- Version 5 additions -->
++
++    <request name="set_exclusive_edge" since="5">
++      <description summary="set the edge the exclusive zone will be applied to">
++        Requests an edge for the exclusive zone to apply. The exclusive
++        edge will be automatically deduced from anchor points when possible,
++        but when the surface is anchored to a corner, it will be necessary
++        to set it explicitly to disambiguate, as it is not possible to deduce
++        which one of the two corner edges should be used.
++
++        The edge must be one the surface is anchored to, otherwise the
++        invalid_exclusive_edge protocol error will be raised.
++      </description>
++      <arg name="edge" type="uint" enum="anchor"/>
++    </request>
++  </interface>
++</protocol>
+diff --git a/src/compositor/noctalia_compositor.c b/src/compositor/noctalia_compositor.c
+index d9daf64..29df870 100644
+--- a/src/compositor/noctalia_compositor.c
++++ b/src/compositor/noctalia_compositor.c
+@@ -3,6 +3,7 @@
+ #include "greeter/greeter_config_io.h"
+ 
+ #include <ctype.h>
++#include <fcntl.h>
+ #include <libinput.h>
+ #include <limits.h>
+ #include <signal.h>
+@@ -12,6 +13,7 @@
+ #include <stdio.h>
+ #include <stdlib.h>
+ #include <string.h>
++#include <sys/socket.h>
+ #include <sys/timerfd.h>
+ #include <sys/wait.h>
+ #include <syslog.h>
+@@ -32,6 +34,7 @@
+ #include <wlr/types/wlr_fractional_scale_v1.h>
+ #include <wlr/types/wlr_input_device.h>
+ #include <wlr/types/wlr_keyboard.h>
++#include <wlr/types/wlr_layer_shell_v1.h>
+ #include <wlr/types/wlr_output.h>
+ #include <wlr/types/wlr_output_layout.h>
+ #include <wlr/types/wlr_pointer.h>
+@@ -40,6 +43,7 @@
+ #include <wlr/types/wlr_subcompositor.h>
+ #include <wlr/types/wlr_touch.h>
+ #include <wlr/types/wlr_viewporter.h>
++#include <wlr/types/wlr_virtual_keyboard_v1.h>
+ #include <wlr/types/wlr_xcursor_manager.h>
+ #include <wlr/types/wlr_xdg_shell.h>
+ #include <wlr/util/log.h>
+@@ -138,11 +142,21 @@ struct greeter_keyboard {
+   struct wl_list link;
+   struct greeter_server* server;
+   struct wlr_keyboard* wlr_keyboard;
++  bool is_virtual;
+   struct wl_listener modifiers;
+   struct wl_listener key;
+   struct wl_listener destroy;
+ };
+ 
++struct greeter_layer_surface {
++  struct wl_list link;
++  struct greeter_server* server;
++  struct wlr_layer_surface_v1* layer_surface;
++  struct wlr_scene_layer_surface_v1* scene;
++  struct wl_listener commit;
++  struct wl_listener destroy;
++};
++
+ struct greeter_touch_point {
+   struct wl_list link;
+   int32_t touch_id;
+@@ -241,9 +255,24 @@ struct greeter_server {
+   struct greeter_output_placement output_placements[16];
+   size_t output_placement_count;
+   struct wlr_fractional_scale_manager_v1* fractional_scale;
++  // On-screen keyboard (NOCTALIA_GREETER_OSK): one trusted client that alone
++  // sees layer-shell and virtual-keyboard.
++  struct wlr_layer_shell_v1* layer_shell;
++  struct wlr_virtual_keyboard_manager_v1* virtual_keyboard_mgr;
++  struct wlr_scene_tree* overlay_tree;
++  struct wl_list layer_surfaces;
++  struct wl_listener new_layer_surface;
++  struct wl_listener new_virtual_keyboard;
++  struct wl_listener osk_client_destroy;
++  struct wl_client* osk_client;
++  pid_t osk_pid;
++  bool osk_visible;
+   bool shutting_down;
+ };
+ 
++static void osk_set_visible(struct greeter_server* server, bool visible);
++static void remove_listener_if_set(struct wl_listener* listener);
++
+ static char* trim(char* value) {
+   while (isspace((unsigned char)*value)) {
+     value++;
+@@ -1457,6 +1486,14 @@ static void handle_output_destroy(struct wl_listener* listener, void* data) {
+   struct greeter_output* output = wl_container_of(listener, output, destroy);
+   struct greeter_server* server = output->server;
+ 
++  struct greeter_layer_surface* layer;
++  struct greeter_layer_surface* layer_tmp;
++  wl_list_for_each_safe(layer, layer_tmp, &server->layer_surfaces, link) {
++    if (layer->layer_surface->output == output->wlr_output) {
++      wlr_layer_surface_v1_destroy(layer->layer_surface);
++    }
++  }
++
+   wl_list_remove(&output->frame.link);
+   wl_list_remove(&output->request_state.link);
+   wl_list_remove(&output->destroy.link);
+@@ -1550,6 +1587,9 @@ static void handle_cursor_touch_down(struct wl_listener* listener, void* data) {
+   if (surface == NULL) {
+     return;
+   }
++  if (wlr_layer_surface_v1_try_from_wlr_surface(wlr_surface_get_root_surface(surface)) == NULL) {
++    osk_set_visible(server, true);
++  }
+ 
+   wlr_seat_touch_notify_down(server->seat, surface, event->time_msec, event->touch_id, sx, sy);
+   if (wlr_seat_touch_get_point(server->seat, event->touch_id) == NULL) {
+@@ -1744,6 +1784,9 @@ static void handle_keyboard_key(struct wl_listener* listener, void* data) {
+ 
+   if (event->state == WL_KEYBOARD_KEY_STATE_PRESSED) {
+     note_activity(server);
++    if (!keyboard->is_virtual) {
++      osk_set_visible(server, false);
++    }
+   }
+   wlr_seat_set_keyboard(server->seat, keyboard->wlr_keyboard);
+   wlr_seat_keyboard_notify_key(server->seat, event->time_msec, event->keycode, event->state);
+@@ -1821,6 +1864,22 @@ static void add_keyboard(struct greeter_server* server, struct wlr_input_device*
+   }
+   keyboard->server = server;
+   keyboard->wlr_keyboard = wlr_keyboard_from_input_device(device);
++  keyboard->is_virtual = wlr_input_device_get_virtual_keyboard(device) != NULL;
++
++  // A virtual keyboard sends its own keymap; it becomes the seat keyboard on
++  // its first key.
++  if (keyboard->is_virtual) {
++    wlr_keyboard_set_repeat_info(keyboard->wlr_keyboard, 25, 600);
++    keyboard->modifiers.notify = handle_keyboard_modifiers;
++    wl_signal_add(&keyboard->wlr_keyboard->events.modifiers, &keyboard->modifiers);
++    keyboard->key.notify = handle_keyboard_key;
++    wl_signal_add(&keyboard->wlr_keyboard->events.key, &keyboard->key);
++    keyboard->destroy.notify = handle_keyboard_destroy;
++    wl_signal_add(&device->events.destroy, &keyboard->destroy);
++    wl_list_insert(server->keyboards.prev, &keyboard->link);
++    wlr_log(WLR_INFO, "keyboard: added virtual keyboard");
++    return;
++  }
+ 
+   struct xkb_context* context = xkb_context_new(XKB_CONTEXT_NO_FLAGS);
+   struct xkb_keymap* keymap = compose_keyboard_keymap(context, server);
+@@ -1973,6 +2032,7 @@ static void handle_new_toplevel(struct wl_listener* listener, void* data) {
+   view->toplevel = toplevel;
+   view->scene_tree = wlr_scene_xdg_surface_create(&server->scene->tree, toplevel->base);
+   view->scene_tree->node.data = view;
++  wlr_scene_node_raise_to_top(&server->overlay_tree->node);
+ 
+   view->map.notify = handle_view_map;
+   wl_signal_add(&toplevel->base->surface->events.map, &view->map);
+@@ -1990,12 +2050,201 @@ static void handle_request_set_selection(struct wl_listener* listener, void* dat
+   wlr_seat_set_selection(server->seat, event->source, event->serial);
+ }
+ 
++static void osk_set_visible(struct greeter_server* server, bool visible) {
++  if (server->osk_pid <= 0 || server->osk_visible == visible) {
++    return;
++  }
++  // wvkbd(1): SIGUSR1 hides, SIGUSR2 shows.
++  if (kill(server->osk_pid, visible ? SIGUSR2 : SIGUSR1) == 0) {
++    server->osk_visible = visible;
++  }
++}
++
++// Layer-shell and virtual-keyboard let a client cover the greeter and type
++// into it, so only the keyboard started by start_osk gets to see them.
++static bool filter_global(const struct wl_client* client, const struct wl_global* global, void* data) {
++  struct greeter_server* server = data;
++  const bool osk_only = (server->layer_shell != NULL && global == server->layer_shell->global) ||
++                        (server->virtual_keyboard_mgr != NULL && global == server->virtual_keyboard_mgr->global);
++  if (!osk_only) {
++    return true;
++  }
++  return server->osk_client != NULL && client == server->osk_client;
++}
++
++static void handle_osk_client_destroy(struct wl_listener* listener, void* data) {
++  (void)data;
++  struct greeter_server* server = wl_container_of(listener, server, osk_client_destroy);
++  remove_listener_if_set(&server->osk_client_destroy);
++  server->osk_client = NULL;
++}
++
++static void handle_new_virtual_keyboard(struct wl_listener* listener, void* data) {
++  struct greeter_server* server = wl_container_of(listener, server, new_virtual_keyboard);
++  struct wlr_virtual_keyboard_v1* virtual_keyboard = data;
++  if (server->shutting_down || wl_resource_get_client(virtual_keyboard->resource) != server->osk_client) {
++    return;
++  }
++  add_keyboard(server, &virtual_keyboard->keyboard.base);
++  recompute_keyboard_capability(server);
++}
++
++static void handle_layer_surface_commit(struct wl_listener* listener, void* data) {
++  (void)data;
++  struct greeter_layer_surface* layer = wl_container_of(listener, layer, commit);
++  struct wlr_layer_surface_v1* layer_surface = layer->layer_surface;
++  if (!layer_surface->initialized || (!layer_surface->initial_commit && layer_surface->current.committed == 0)) {
++    return;
++  }
++  struct wlr_box full_area;
++  wlr_output_layout_get_box(layer->server->output_layout, layer_surface->output, &full_area);
++  if (wlr_box_empty(&full_area)) {
++    return;
++  }
++  struct wlr_box usable_area = full_area;
++  wlr_scene_layer_surface_v1_configure(layer->scene, &full_area, &usable_area);
++}
++
++static void handle_layer_surface_destroy(struct wl_listener* listener, void* data) {
++  (void)data;
++  struct greeter_layer_surface* layer = wl_container_of(listener, layer, destroy);
++  wl_list_remove(&layer->commit.link);
++  wl_list_remove(&layer->destroy.link);
++  wl_list_remove(&layer->link);
++  free(layer);
++}
++
++static struct greeter_output* output_for_layer_surface(struct greeter_server* server) {
++  struct greeter_output* fallback = NULL;
++  struct greeter_output* output;
++  wl_list_for_each(output, &server->outputs, link) {
++    if (!output->active) {
++      continue;
++    }
++    if (output->view != NULL) {
++      return output;
++    }
++    if (fallback == NULL) {
++      fallback = output;
++    }
++  }
++  return fallback;
++}
++
++static void handle_new_layer_surface(struct wl_listener* listener, void* data) {
++  struct greeter_server* server = wl_container_of(listener, server, new_layer_surface);
++  struct wlr_layer_surface_v1* layer_surface = data;
++  if (layer_surface->output == NULL) {
++    struct greeter_output* output = output_for_layer_surface(server);
++    if (output == NULL) {
++      wlr_layer_surface_v1_destroy(layer_surface);
++      return;
++    }
++    layer_surface->output = output->wlr_output;
++  }
++
++  struct greeter_layer_surface* layer = calloc(1, sizeof(*layer));
++  if (layer == NULL) {
++    wlr_layer_surface_v1_destroy(layer_surface);
++    return;
++  }
++  layer->server = server;
++  layer->layer_surface = layer_surface;
++  layer->scene = wlr_scene_layer_surface_v1_create(server->overlay_tree, layer_surface);
++  if (layer->scene == NULL) {
++    free(layer);
++    wlr_layer_surface_v1_destroy(layer_surface);
++    return;
++  }
++  layer->commit.notify = handle_layer_surface_commit;
++  wl_signal_add(&layer_surface->surface->events.commit, &layer->commit);
++  layer->destroy.notify = handle_layer_surface_destroy;
++  wl_signal_add(&layer_surface->events.destroy, &layer->destroy);
++  wl_list_insert(&server->layer_surfaces, &layer->link);
++}
++
++// The keyboard gets a connection made here before the fork (WAYLAND_SOCKET),
++// so the compositor knows which client it is without trusting pids.
++static void start_osk(struct greeter_server* server) {
++  const char* osk_bin = getenv("NOCTALIA_GREETER_OSK");
++  if (osk_bin == NULL || osk_bin[0] == '\0' || server->layer_shell == NULL) {
++    return;
++  }
++
++  int fds[2];
++  if (socketpair(AF_UNIX, SOCK_STREAM | SOCK_CLOEXEC, 0, fds) != 0) {
++    wlr_log(WLR_ERROR, "on-screen keyboard: socketpair failed: %s", strerror(errno));
++    return;
++  }
++  server->osk_client = wl_client_create(server->display, fds[0]);
++  if (server->osk_client == NULL) {
++    wlr_log(WLR_ERROR, "on-screen keyboard: wl_client_create failed");
++    close(fds[0]);
++    close(fds[1]);
++    return;
++  }
++  server->osk_client_destroy.notify = handle_osk_client_destroy;
++  wl_client_add_destroy_listener(server->osk_client, &server->osk_client_destroy);
++
++  // Build the child's environment before fork; only exec-safe calls after it.
++  extern char** environ;
++  size_t env_count = 0;
++  while (environ[env_count] != NULL) {
++    env_count++;
++  }
++  char** envp = calloc(env_count + 2, sizeof(char*));
++  char socket_env[32];
++  snprintf(socket_env, sizeof(socket_env), "WAYLAND_SOCKET=%d", fds[1]);
++  if (envp == NULL) {
++    close(fds[1]);
++    wl_client_destroy(server->osk_client);
++    return;
++  }
++  size_t env_out = 0;
++  for (size_t i = 0; i < env_count; ++i) {
++    if (strncmp(environ[i], "WAYLAND_SOCKET=", 15) != 0) {
++      envp[env_out++] = environ[i];
++    }
++  }
++  envp[env_out++] = socket_env;
++  envp[env_out] = NULL;
++
++  pid_t pid = fork();
++  if (pid < 0) {
++    wlr_log(WLR_ERROR, "on-screen keyboard: fork failed: %s", strerror(errno));
++    free(envp);
++    close(fds[1]);
++    wl_client_destroy(server->osk_client);
++    return;
++  }
++  if (pid == 0) {
++    int flags = fcntl(fds[1], F_GETFD);
++    if (flags < 0 || fcntl(fds[1], F_SETFD, flags & ~FD_CLOEXEC) != 0) {
++      _exit(127);
++    }
++    char* const argv[] = {(char*)osk_bin, (char*)"--hidden", NULL};
++    execve(osk_bin, argv, envp);
++    _exit(127);
++  }
++  free(envp);
++  close(fds[1]);
++  server->osk_pid = pid;
++  server->osk_visible = false;
++  wlr_log(WLR_INFO, "started on-screen keyboard: %s", osk_bin);
++}
++
+ static int handle_sigchld(int signal, void* data) {
+   (void)signal;
+   struct greeter_server* server = data;
+   int status = 0;
+   pid_t pid;
+   while ((pid = waitpid(-1, &status, WNOHANG)) > 0) {
++    if (pid == server->osk_pid) {
++      wlr_log(WLR_INFO, "on-screen keyboard exited");
++      server->osk_pid = 0;
++      server->osk_visible = false;
++      continue;
++    }
+     if (pid == server->child_pid) {
+       if (WIFEXITED(status)) {
+         wlr_log(WLR_INFO, "greeter exited with status %d", WEXITSTATUS(status));
+@@ -2070,6 +2319,7 @@ static void try_launch_greeter(void* data) {
+   }
+ 
+   server->child_launched = true;
++  start_osk(server);
+   const char* greeter_bin = getenv("GREETER_BIN");
+   if (greeter_bin == NULL || greeter_bin[0] == '\0') {
+     greeter_bin = NOCTALIA_GREETER_INSTALLED_BINDIR "/noctalia-greeter";
+@@ -2128,6 +2378,9 @@ static void cleanup_server_listeners(struct greeter_server* server) {
+   remove_listener_if_set(&server->request_set_cursor);
+   remove_listener_if_set(&server->request_set_selection);
+   remove_listener_if_set(&server->session_active);
++  remove_listener_if_set(&server->new_layer_surface);
++  remove_listener_if_set(&server->new_virtual_keyboard);
++  remove_listener_if_set(&server->osk_client_destroy);
+ 
+   struct greeter_touch_point* point;
+   struct greeter_touch_point* tmp;
+@@ -2206,6 +2459,7 @@ int main(int argc, char** argv) {
+   wl_list_init(&server.outputs);
+   wl_list_init(&server.keyboards);
+   wl_list_init(&server.touch_points);
++  wl_list_init(&server.layer_surfaces);
+   read_greeter_config(&server);
+   clock_gettime(CLOCK_MONOTONIC, &server.last_activity);
+ 
+@@ -2245,6 +2499,17 @@ int main(int argc, char** argv) {
+   server.xdg_shell = wlr_xdg_shell_create(server.display, 6);
+   server.seat = wlr_seat_create(server.display, "seat0");
+   server.cursor = wlr_cursor_create();
++  server.overlay_tree = wlr_scene_tree_create(&server.scene->tree);
++  wl_display_set_global_filter(server.display, filter_global, &server);
++  const char* osk_bin = getenv("NOCTALIA_GREETER_OSK");
++  if (osk_bin != NULL && osk_bin[0] != '\0') {
++    server.layer_shell = wlr_layer_shell_v1_create(server.display, 4);
++    server.virtual_keyboard_mgr = wlr_virtual_keyboard_manager_v1_create(server.display);
++    server.new_layer_surface.notify = handle_new_layer_surface;
++    wl_signal_add(&server.layer_shell->events.new_surface, &server.new_layer_surface);
++    server.new_virtual_keyboard.notify = handle_new_virtual_keyboard;
++    wl_signal_add(&server.virtual_keyboard_mgr->events.new_virtual_keyboard, &server.new_virtual_keyboard);
++  }
+ 
+   const char* cursor_theme = NULL;
+   if (server.cursor_theme[0] != '\0') {
+@@ -2365,6 +2630,9 @@ int main(int argc, char** argv) {
+   if (server.child_pid > 0) {
+     kill(server.child_pid, SIGTERM);
+   }
++  if (server.osk_pid > 0) {
++    kill(server.osk_pid, SIGTERM);
++  }
+   cleanup_server_resources(&server);
+   return 0;
+ }

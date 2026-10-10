@@ -9,6 +9,12 @@
 let
   greeterHelper = "${config.programs.noctalia-greeter.package}/bin/noctalia-greeter-apply-appearance";
 
+  # On-screen keyboard at the login screen of touchscreen machines. The
+  # greeter compositor starts it with --hidden and shows it on touch.
+  greeterOsk = pkgs.writeShellScript "gjallar-greeter-osk" ''
+    exec ${pkgs.wvkbd}/bin/wvkbd-mobintl -H 320 -L 240 "$@"
+  '';
+
   # Noctalia re-stages the greeter look on every login and theme load, and
   # each sync is a pkexec password prompt. Ask only when the staged files
   # differ from the last answered sync. No passwordless polkit rule: the
@@ -124,6 +130,11 @@ in
   };
 
   services.greetd.greeterManagesPlymouth = true;
+
+  services.greetd.settings.default_session.command = lib.mkIf (settings.touchscreenEnable or false) (
+    "${pkgs.coreutils}/bin/env NOCTALIA_GREETER_OSK=${greeterOsk} "
+    + "${config.programs.noctalia-greeter.package}/bin/noctalia-greeter-session --"
+  );
 
   security.polkit.enable = true;
 }
