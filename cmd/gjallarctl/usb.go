@@ -354,65 +354,92 @@ func usbReviewFacts(d usbtrust.Decision) []usbFact {
 	return facts
 }
 
-// The review view button toggles between these labels. The choice is a
-// per-user presentation preference; the decision itself is unaffected.
+// The review opens in the simple view. The view button switches only the
+// open dialog; the "always" box makes the techy view the start view. Both
+// are per-user presentation preferences; the decision itself is unaffected.
 const (
-	usbTechyView  = "Techy view"
-	usbSimpleView = "Simple view"
+	usbTechyView        = "Techy view"
+	usbSimpleView       = "Simple view"
+	usbAlwaysTechyOff   = "☐ Always techy view"
+	usbAlwaysTechyOn    = "☑ Always techy view"
+	usbReviewViewEnv    = "GJALLAR_USB_REVIEW_VIEW"
+	usbReviewTechnicalV = "technical"
+	usbReviewSimpleV    = "simple"
 )
 
 // usbReviewDialog shows the review until an action is chosen or the dialog
 // is closed. It returns the chosen action.
 func usbReviewDialog(ctx context.Context, d usbtrust.Decision, enforcing bool, rows []string) (string, bool) {
+	always := usbReviewAlwaysTechnical()
+	technical := always
 	for {
-		technical := usbReviewTechnical()
 		toggle := usbTechyView
 		if technical {
 			toggle = usbSimpleView
 		}
-		dialog := []string{"--list", "--radiolist", "--title=USB device review", "--text=" + usbReviewSummary(d, enforcing, technical), "--extra-button=" + toggle, "--column=", "--column=Action", "--column=What to do", "--hide-column=2", "--print-column=2"}
+		box := usbAlwaysTechyOff
+		if always {
+			box = usbAlwaysTechyOn
+		}
+		dialog := []string{"--list", "--radiolist", "--title=USB device review", "--text=" + usbReviewSummary(d, enforcing, technical), "--extra-button=" + toggle, "--extra-button=" + box, "--column=", "--column=Action", "--column=What to do", "--hide-column=2", "--print-column=2"}
 		choice, err := exec.CommandContext(ctx, "zenity", append(dialog, rows...)...).Output()
 		picked := strings.TrimSpace(string(choice))
 		if err == nil {
 			return picked, true
 		}
-		// Zenity reports the extra button as a non-zero exit with its label.
-		if picked != toggle || ctx.Err() != nil {
+		if ctx.Err() != nil {
 			return "", false
 		}
-		setUSBReviewTechnical(!technical)
+		// Zenity reports an extra button as a non-zero exit with its label.
+		switch picked {
+		case toggle:
+			technical = !technical
+		case box:
+			always = !always
+			technical = always
+			setUSBReviewAlwaysTechnical(always)
+		default:
+			return "", false
+		}
 	}
 }
 
-func usbReviewTechnicalPath() string {
+func usbReviewViewPath() string {
 	dir, err := os.UserConfigDir()
 	if err != nil {
 		return ""
 	}
-	return filepath.Join(dir, "gjallar", "usb-review-technical")
+	return filepath.Join(dir, "gjallar", "usb-review-view")
 }
 
-// usbReviewTechnical reports whether the user chose the detailed view.
-func usbReviewTechnical() bool {
-	path := usbReviewTechnicalPath()
-	if path == "" {
-		return false
+// usbReviewAlwaysTechnical reports whether the review starts in the techy
+// view. The user's own tick wins; without one, user.config.json decides
+// through the service environment.
+func usbReviewAlwaysTechnical() bool {
+	if path := usbReviewViewPath(); path != "" {
+		if data, err := os.ReadFile(path); err == nil {
+			switch strings.TrimSpace(string(data)) {
+			case usbReviewTechnicalV:
+				return true
+			case usbReviewSimpleV:
+				return false
+			}
+		}
 	}
-	_, err := os.Stat(path)
-	return err == nil
+	return os.Getenv(usbReviewViewEnv) == usbReviewTechnicalV
 }
 
-func setUSBReviewTechnical(on bool) {
-	path := usbReviewTechnicalPath()
+func setUSBReviewAlwaysTechnical(on bool) {
+	path := usbReviewViewPath()
 	if path == "" {
 		return
 	}
-	if !on {
-		_ = os.Remove(path)
-		return
+	view := usbReviewSimpleV
+	if on {
+		view = usbReviewTechnicalV
 	}
 	if os.MkdirAll(filepath.Dir(path), 0o700) == nil {
-		_ = os.WriteFile(path, nil, 0o600)
+		_ = os.WriteFile(path, []byte(view+"\n"), 0o600)
 	}
 }
 

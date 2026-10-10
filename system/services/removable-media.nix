@@ -152,6 +152,10 @@ in
               Environment = [
                 "PATH=${lib.makeBinPath [ pkgs.zenity pkgs.libnotify ]}"
                 "SUDO_ASKPASS=${usbTrustAskpass}"
+                # Start view until the user ticks "Always techy view" themselves.
+                "GJALLAR_USB_REVIEW_VIEW=${
+                  if settings.usbReviewTechnicalView or false then "technical" else "simple"
+                }"
               ];
               Restart = "on-failure";
               RestartSec = 3;

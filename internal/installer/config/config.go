@@ -31,6 +31,7 @@ type User struct {
 	USBGuardEnable         bool                   `json:"usbguardEnable"`
 	USBTrustEnforce        bool                   `json:"usbTrustEnforce"`
 	USBTrustTPMHandle      string                 `json:"usbTrustTpmHandle"`
+	USBReviewTechnical     bool                   `json:"usbReviewTechnicalView"`
 	PrintingEnable         bool                   `json:"printingEnable"`
 	NetworkPrintingEnable  bool                   `json:"networkPrintingEnable"`
 	Name                   string                 `json:"name"`

@@ -41,6 +41,7 @@ func TestRenderRecoveryPolicyDefaultsDisabled(t *testing.T) {
 		"secureBootEnable = false;",
 		"usbTrustEnforce = false;",
 		`usbTrustTpmHandle = "";`,
+		"usbReviewTechnicalView = false;",
 		"endpointManagedDevice = false;",
 	} {
 		if !strings.Contains(got, want) {

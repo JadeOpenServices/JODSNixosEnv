@@ -175,18 +175,24 @@ func TestUSBReviewSimpleViewStaysPlain(t *testing.T) {
 	}
 }
 
-func TestUSBReviewTechnicalPreferenceToggles(t *testing.T) {
+func TestUSBReviewAlwaysTechnicalPreference(t *testing.T) {
 	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
-	if usbReviewTechnical() {
-		t.Fatal("technical view must be off by default")
+	t.Setenv(usbReviewViewEnv, "")
+	if usbReviewAlwaysTechnical() {
+		t.Fatal("review must start in the simple view by default")
 	}
-	setUSBReviewTechnical(true)
-	if !usbReviewTechnical() {
-		t.Fatal("technical view was not remembered")
+	t.Setenv(usbReviewViewEnv, usbReviewTechnicalV)
+	if !usbReviewAlwaysTechnical() {
+		t.Fatal("user.config.json default was ignored")
 	}
-	setUSBReviewTechnical(false)
-	if usbReviewTechnical() {
-		t.Fatal("technical view was not switched off")
+	setUSBReviewAlwaysTechnical(false)
+	if usbReviewAlwaysTechnical() {
+		t.Fatal("unticking the box must override the config default")
+	}
+	t.Setenv(usbReviewViewEnv, "")
+	setUSBReviewAlwaysTechnical(true)
+	if !usbReviewAlwaysTechnical() {
+		t.Fatal("ticked box was not remembered")
 	}
 }
 

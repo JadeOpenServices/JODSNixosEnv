@@ -307,6 +307,11 @@ and a `rebuild`. To turn it off, set it back to `false`, `rebuild`, then run
 `sudo gjallarctl usb disarm` and enter the disk encryption passphrase. Disarm
 alone is temporary: the broker re-arms from the config on its next restart.
 
+The review dialog opens in a simple view. "Techy view" shows IDs, ports and
+interfaces for that dialog only. Ticking "Always techy view" makes it the start
+view for your user; `"usbReviewTechnicalView": true` in `user.config.json` sets
+the same default until the box is ticked or unticked.
+
 Unformatted USB disks offer an explicit exFAT setup prompt. Cancelling leaves the
 disk unchanged. Existing partitions, recognized filesystems, mounted devices,
 and readers with no media are excluded. Formatting uses UDisks/Polkit and

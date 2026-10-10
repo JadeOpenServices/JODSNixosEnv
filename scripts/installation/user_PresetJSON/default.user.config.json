@@ -73,6 +73,7 @@
   "timezone": "Europe/Berlin",
   "touchpadWorkspaceSwipe": true,
   "unattendedInstall": false,
+  "usbReviewTechnicalView": false,
   "usbTrustEnforce": false,
   "usbTrustTpmHandle": "",
   "usbguardEnable": false,
