@@ -6,8 +6,9 @@ lib.mkIf (!(settings.consoleLoginEnable or false)) {
   # (https://www.chromium.org/chromium-os/chromiumos-design-docs/developer-shell-access/),
   # kiosk setups turn off autovt the same way
   # (https://manpages.debian.org/testing/systemd/logind.conf.5.en.html).
-  # Deeper access goes through the maintenance boot entry, which keeps its
-  # tty1 login. The installer resume unit writes to tty1 itself.
+  # Deeper access goes through the trusted-recovery boot entry, which keeps
+  # its tty1 login (system/recovery/default.nix). The installer resume unit
+  # writes to tty1 itself.
   services.logind.settings.Login = {
     NAutoVTs = 0;
     ReserveVT = 0;
