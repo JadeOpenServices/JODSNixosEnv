@@ -54,14 +54,10 @@ let
     # The repository ships no wallpapers: until a wallpaper is picked in
     # Noctalia the background is the theme's base colour.
     if [ -n "$selected_wallpaper" ] && [ -r "$selected_wallpaper" ]; then
-      ${pkgs.swaybg}/bin/swaybg --image "$selected_wallpaper" --mode fill &
+      exec ${pkgs.swaybg}/bin/swaybg --image "$selected_wallpaper" --mode fill
     else
-      ${pkgs.swaybg}/bin/swaybg --color "#${config.lib.stylix.colors.base00}" &
+      exec ${pkgs.swaybg}/bin/swaybg --color "#${config.lib.stylix.colors.base00}"
     fi
-    ${pkgs.coreutils}/bin/sleep 0.1
-    ${pkgs.networkmanager}/bin/nm-online -q -t 10 || true
-
-    exec ${lib.getExe config.programs.noctalia.package}
   '';
 in
 {

@@ -94,6 +94,9 @@ in
     # drops AppChooser and with it OpenURI, so xdg-open fails.
     portalPackage = null;
     systemd.enable = true;
+    # Noctalia and the apps it launches run as user units. They need the
+    # whole session environment, XDG_SESSION_ID for the polkit agent among it.
+    systemd.variables = [ "--all" ];
     extraConfig = ''
       source = ~/.local/state/noctalia/hyprland-colors.conf
       source = ~/.config/hypr/monitors.conf

@@ -74,7 +74,10 @@ in
 
   programs.noctalia = {
     enable = true;
-    systemd.enable = false;
+    # A user unit, so home-manager restarts the shell when a rebuild changes
+    # it. Started from the Hyprland session it kept running the old build
+    # until the next login.
+    systemd.enable = true;
     package = pkgs.callPackage ../../../../pkgs/noctalia {
       noctalia = inputs.noctalia.packages.${pkgs.stdenv.hostPlatform.system}.default;
     };
@@ -117,6 +120,9 @@ in
           corner_radius_scale = 2.0;
           font_family = themeDetails.font;
           polkit_agent = true;
+          # Apps get their own unit, so a shell restart after a rebuild does
+          # not take them down with it.
+          launch_apps_as_systemd_services = true;
           greeter_sync = {
             auto_sync = true;
             # gjallar-greeter-sync-privilege: system/wm/common/wayland.nix
@@ -422,6 +428,9 @@ in
       "base0F": "{{colors.error.default.hex_stripped}}"
     }
   '';
+
+  # Weather and plugins fetch at start; give the network a moment first.
+  systemd.user.services.noctalia.Service.ExecStartPre = "-${pkgs.networkmanager}/bin/nm-online -q -t 10";
 
   home.activation.gjallarNoctaliaHyprlandFallback = lib.hm.dag.entryAfter [ "writeBoundary" ] ''
         theme_file="$HOME/.local/state/noctalia/hyprland-colors.conf"
