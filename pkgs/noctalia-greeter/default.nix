@@ -9,11 +9,15 @@
 # osk.patch lets the compositor start an on-screen keyboard
 # ($NOCTALIA_GREETER_OSK, wvkbd) for touch-only machines. Layer-shell and
 # virtual-keyboard are offered to that one client only.
+# runtime-dir.patch keeps the session's own /run/user dir instead of a fixed
+# /tmp path that any local user could create first and so block the login
+# screen.
 noctalia-greeter.overrideAttrs (old: {
   patches = (old.patches or [ ]) ++ [
     ./staging-snapshot.patch
     ./menu-click.patch
     ./wlr-log-level.patch
     ./osk.patch
+    ./runtime-dir.patch
   ];
 })

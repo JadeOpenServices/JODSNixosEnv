@@ -1,0 +1,23 @@
+--- a/scripts/noctalia-greeter-session
++++ b/scripts/noctalia-greeter-session
+@@ -40,10 +40,17 @@
+ echo "GREETD_SOCK=${GREETD_SOCK:-unset}"
+ 
+ _pam_runtime="${XDG_RUNTIME_DIR:-unset}"
+-XDG_RUNTIME_DIR="/tmp/noctalia-runtime-$(id -u)"
++# Use the runtime dir logind made for this session when it is ours and
++# private. Otherwise make a fresh one with an unguessable name: a fixed
++# /tmp path can be created first by any local user, and the greeter then
++# fails to start.
++if [ -n "${XDG_RUNTIME_DIR:-}" ] && [ -d "${XDG_RUNTIME_DIR}" ] && [ ! -L "${XDG_RUNTIME_DIR}" ] \
++  && [ -O "${XDG_RUNTIME_DIR}" ] && [ "$(stat -c %a "${XDG_RUNTIME_DIR}")" = 700 ]; then
++  :
++else
++  XDG_RUNTIME_DIR="$(mktemp -d "${TMPDIR:-/tmp}/noctalia-runtime-$(id -u).XXXXXXXXXX")"
++fi
+ export XDG_RUNTIME_DIR
+-mkdir -p "${XDG_RUNTIME_DIR}"
+-chmod 700 "${XDG_RUNTIME_DIR}"
+ 
+ echo "XDG_RUNTIME_DIR=${XDG_RUNTIME_DIR} (pam=${_pam_runtime})"
+ echo "WAYLAND_DISPLAY=${WAYLAND_DISPLAY:-unset}"
