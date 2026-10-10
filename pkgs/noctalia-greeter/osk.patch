@@ -437,7 +437,7 @@ index 0000000..e9f27e4
 +  </interface>
 +</protocol>
 diff --git a/src/compositor/noctalia_compositor.c b/src/compositor/noctalia_compositor.c
-index d9daf64..29df870 100644
+index d9daf64..130ea66 100644
 --- a/src/compositor/noctalia_compositor.c
 +++ b/src/compositor/noctalia_compositor.c
 @@ -3,6 +3,7 @@
@@ -472,7 +472,7 @@ index d9daf64..29df870 100644
  #include <wlr/types/wlr_xcursor_manager.h>
  #include <wlr/types/wlr_xdg_shell.h>
  #include <wlr/util/log.h>
-@@ -138,11 +142,21 @@ struct greeter_keyboard {
+@@ -138,11 +142,28 @@ struct greeter_keyboard {
    struct wl_list link;
    struct greeter_server* server;
    struct wlr_keyboard* wlr_keyboard;
@@ -488,13 +488,20 @@ index d9daf64..29df870 100644
 +  struct wlr_layer_surface_v1* layer_surface;
 +  struct wlr_scene_layer_surface_v1* scene;
 +  struct wl_listener commit;
++  struct wl_listener new_popup;
++  struct wl_listener destroy;
++};
++
++struct greeter_popup {
++  struct wlr_xdg_popup* xdg_popup;
++  struct wl_listener commit;
 +  struct wl_listener destroy;
 +};
 +
  struct greeter_touch_point {
    struct wl_list link;
    int32_t touch_id;
-@@ -241,9 +255,24 @@ struct greeter_server {
+@@ -241,9 +262,24 @@ struct greeter_server {
    struct greeter_output_placement output_placements[16];
    size_t output_placement_count;
    struct wlr_fractional_scale_manager_v1* fractional_scale;
@@ -519,7 +526,7 @@ index d9daf64..29df870 100644
  static char* trim(char* value) {
    while (isspace((unsigned char)*value)) {
      value++;
-@@ -1457,6 +1486,14 @@ static void handle_output_destroy(struct wl_listener* listener, void* data) {
+@@ -1457,6 +1493,14 @@ static void handle_output_destroy(struct wl_listener* listener, void* data) {
    struct greeter_output* output = wl_container_of(listener, output, destroy);
    struct greeter_server* server = output->server;
  
@@ -534,7 +541,7 @@ index d9daf64..29df870 100644
    wl_list_remove(&output->frame.link);
    wl_list_remove(&output->request_state.link);
    wl_list_remove(&output->destroy.link);
-@@ -1550,6 +1587,9 @@ static void handle_cursor_touch_down(struct wl_listener* listener, void* data) {
+@@ -1550,6 +1594,9 @@ static void handle_cursor_touch_down(struct wl_listener* listener, void* data) {
    if (surface == NULL) {
      return;
    }
@@ -544,7 +551,7 @@ index d9daf64..29df870 100644
  
    wlr_seat_touch_notify_down(server->seat, surface, event->time_msec, event->touch_id, sx, sy);
    if (wlr_seat_touch_get_point(server->seat, event->touch_id) == NULL) {
-@@ -1744,6 +1784,9 @@ static void handle_keyboard_key(struct wl_listener* listener, void* data) {
+@@ -1744,6 +1791,9 @@ static void handle_keyboard_key(struct wl_listener* listener, void* data) {
  
    if (event->state == WL_KEYBOARD_KEY_STATE_PRESSED) {
      note_activity(server);
@@ -554,7 +561,7 @@ index d9daf64..29df870 100644
    }
    wlr_seat_set_keyboard(server->seat, keyboard->wlr_keyboard);
    wlr_seat_keyboard_notify_key(server->seat, event->time_msec, event->keycode, event->state);
-@@ -1821,6 +1864,22 @@ static void add_keyboard(struct greeter_server* server, struct wlr_input_device*
+@@ -1821,6 +1871,22 @@ static void add_keyboard(struct greeter_server* server, struct wlr_input_device*
    }
    keyboard->server = server;
    keyboard->wlr_keyboard = wlr_keyboard_from_input_device(device);
@@ -577,7 +584,7 @@ index d9daf64..29df870 100644
  
    struct xkb_context* context = xkb_context_new(XKB_CONTEXT_NO_FLAGS);
    struct xkb_keymap* keymap = compose_keyboard_keymap(context, server);
-@@ -1973,6 +2032,7 @@ static void handle_new_toplevel(struct wl_listener* listener, void* data) {
+@@ -1973,6 +2039,7 @@ static void handle_new_toplevel(struct wl_listener* listener, void* data) {
    view->toplevel = toplevel;
    view->scene_tree = wlr_scene_xdg_surface_create(&server->scene->tree, toplevel->base);
    view->scene_tree->node.data = view;
@@ -585,7 +592,7 @@ index d9daf64..29df870 100644
  
    view->map.notify = handle_view_map;
    wl_signal_add(&toplevel->base->surface->events.map, &view->map);
-@@ -1990,12 +2050,201 @@ static void handle_request_set_selection(struct wl_listener* listener, void* dat
+@@ -1990,12 +2057,242 @@ static void handle_request_set_selection(struct wl_listener* listener, void* dat
    wlr_seat_set_selection(server->seat, event->source, event->serial);
  }
  
@@ -644,10 +651,49 @@ index d9daf64..29df870 100644
 +  wlr_scene_layer_surface_v1_configure(layer->scene, &full_area, &usable_area);
 +}
 +
++// wvkbd draws key previews in an xdg popup of its layer surface and drops
++// every touch until that popup has been configured.
++static void handle_popup_commit(struct wl_listener* listener, void* data) {
++  (void)data;
++  struct greeter_popup* popup = wl_container_of(listener, popup, commit);
++  if (popup->xdg_popup->base->initial_commit) {
++    wlr_xdg_surface_schedule_configure(popup->xdg_popup->base);
++  }
++}
++
++static void handle_popup_destroy(struct wl_listener* listener, void* data) {
++  (void)data;
++  struct greeter_popup* popup = wl_container_of(listener, popup, destroy);
++  wl_list_remove(&popup->commit.link);
++  wl_list_remove(&popup->destroy.link);
++  free(popup);
++}
++
++static void handle_layer_surface_new_popup(struct wl_listener* listener, void* data) {
++  struct greeter_layer_surface* layer = wl_container_of(listener, layer, new_popup);
++  struct wlr_xdg_popup* xdg_popup = data;
++  struct greeter_popup* popup = calloc(1, sizeof(*popup));
++  if (popup == NULL) {
++    wl_client_post_no_memory(wl_resource_get_client(xdg_popup->resource));
++    return;
++  }
++  popup->xdg_popup = xdg_popup;
++  if (wlr_scene_xdg_surface_create(layer->scene->tree, xdg_popup->base) == NULL) {
++    free(popup);
++    wl_client_post_no_memory(wl_resource_get_client(xdg_popup->resource));
++    return;
++  }
++  popup->commit.notify = handle_popup_commit;
++  wl_signal_add(&xdg_popup->base->surface->events.commit, &popup->commit);
++  popup->destroy.notify = handle_popup_destroy;
++  wl_signal_add(&xdg_popup->events.destroy, &popup->destroy);
++}
++
 +static void handle_layer_surface_destroy(struct wl_listener* listener, void* data) {
 +  (void)data;
 +  struct greeter_layer_surface* layer = wl_container_of(listener, layer, destroy);
 +  wl_list_remove(&layer->commit.link);
++  wl_list_remove(&layer->new_popup.link);
 +  wl_list_remove(&layer->destroy.link);
 +  wl_list_remove(&layer->link);
 +  free(layer);
@@ -697,6 +743,8 @@ index d9daf64..29df870 100644
 +  }
 +  layer->commit.notify = handle_layer_surface_commit;
 +  wl_signal_add(&layer_surface->surface->events.commit, &layer->commit);
++  layer->new_popup.notify = handle_layer_surface_new_popup;
++  wl_signal_add(&layer_surface->events.new_popup, &layer->new_popup);
 +  layer->destroy.notify = handle_layer_surface_destroy;
 +  wl_signal_add(&layer_surface->events.destroy, &layer->destroy);
 +  wl_list_insert(&server->layer_surfaces, &layer->link);
@@ -787,7 +835,7 @@ index d9daf64..29df870 100644
      if (pid == server->child_pid) {
        if (WIFEXITED(status)) {
          wlr_log(WLR_INFO, "greeter exited with status %d", WEXITSTATUS(status));
-@@ -2070,6 +2319,7 @@ static void try_launch_greeter(void* data) {
+@@ -2070,6 +2367,7 @@ static void try_launch_greeter(void* data) {
    }
  
    server->child_launched = true;
@@ -795,7 +843,7 @@ index d9daf64..29df870 100644
    const char* greeter_bin = getenv("GREETER_BIN");
    if (greeter_bin == NULL || greeter_bin[0] == '\0') {
      greeter_bin = NOCTALIA_GREETER_INSTALLED_BINDIR "/noctalia-greeter";
-@@ -2128,6 +2378,9 @@ static void cleanup_server_listeners(struct greeter_server* server) {
+@@ -2128,6 +2426,9 @@ static void cleanup_server_listeners(struct greeter_server* server) {
    remove_listener_if_set(&server->request_set_cursor);
    remove_listener_if_set(&server->request_set_selection);
    remove_listener_if_set(&server->session_active);
@@ -805,7 +853,7 @@ index d9daf64..29df870 100644
  
    struct greeter_touch_point* point;
    struct greeter_touch_point* tmp;
-@@ -2206,6 +2459,7 @@ int main(int argc, char** argv) {
+@@ -2206,6 +2507,7 @@ int main(int argc, char** argv) {
    wl_list_init(&server.outputs);
    wl_list_init(&server.keyboards);
    wl_list_init(&server.touch_points);
@@ -813,7 +861,7 @@ index d9daf64..29df870 100644
    read_greeter_config(&server);
    clock_gettime(CLOCK_MONOTONIC, &server.last_activity);
  
-@@ -2245,6 +2499,17 @@ int main(int argc, char** argv) {
+@@ -2245,6 +2547,17 @@ int main(int argc, char** argv) {
    server.xdg_shell = wlr_xdg_shell_create(server.display, 6);
    server.seat = wlr_seat_create(server.display, "seat0");
    server.cursor = wlr_cursor_create();
@@ -831,7 +879,7 @@ index d9daf64..29df870 100644
  
    const char* cursor_theme = NULL;
    if (server.cursor_theme[0] != '\0') {
-@@ -2365,6 +2630,9 @@ int main(int argc, char** argv) {
+@@ -2365,6 +2678,9 @@ int main(int argc, char** argv) {
    if (server.child_pid > 0) {
      kill(server.child_pid, SIGTERM);
    }
