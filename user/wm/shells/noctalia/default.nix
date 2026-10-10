@@ -348,7 +348,6 @@ in
             "weather"
             "divider_media"
             "media"
-            "divider_power"
             "session"
           ];
         };
