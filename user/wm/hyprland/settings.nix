@@ -63,36 +63,13 @@ let
 
     exec ${lib.getExe config.programs.noctalia.package}
   '';
-  virtualKeyboard = pkgs.writeShellApplication {
-    name = "gjallar-virtual-keyboard";
-    runtimeInputs = [
-      pkgs.procps
-      pkgs.wvkbd
-    ];
-    text = ''
-      set -euo pipefail
-      if pgrep -x wvkbd-mobintl >/dev/null; then
-        pkill -USR2 -x wvkbd-mobintl
-      else
-        ${pkgs.wvkbd}/bin/wvkbd-mobintl --hidden -H 320 -L 240 >/dev/null 2>&1 &
-        disown
-        sleep 0.1
-        pkill -USR2 -x wvkbd-mobintl
-      fi
-    '';
-  };
 in
 {
-  home.packages =
-    (with pkgs; [
-      awww
-      swaybg
-      wayvnc
-    ])
-    ++ lib.optionals (settings.touchscreenEnable or false) [
-      virtualKeyboard
-      pkgs.wvkbd
-    ];
+  home.packages = with pkgs; [
+    awww
+    swaybg
+    wayvnc
+  ];
 
   wayland.windowManager.hyprland.settings = {
     bind =
@@ -100,8 +77,6 @@ in
         "SUPER, C, exec, ${lib.getExe config.programs.noctalia.package} msg status >/dev/null 2>&1 && ${lib.getExe config.programs.noctalia.package} msg panel-toggle control-center >/dev/null 2>&1 || true"
       ]
       ++ lib.optionals (settings.touchscreenEnable or false) [
-        "SUPER, K, exec, ${lib.getExe virtualKeyboard}"
-
         "CTRL, V, exec, ${gjallarPasteOnce} ctrl-v"
         "CTRL SHIFT, V, exec, ${gjallarPasteOnce} ctrl-shift-v"
         "SHIFT, INSERT, exec, ${gjallarPasteOnce} shift-insert"
@@ -111,13 +86,9 @@ in
       ",preferred,auto,1"
     ];
 
-    exec-once =
-      lib.optionals config.programs.noctalia.enable [
-        "${sessionStart}"
-      ]
-      ++ lib.optionals (settings.touchscreenEnable or false) [
-        "${pkgs.wvkbd}/bin/wvkbd-mobintl --hidden -H 320 -L 240"
-      ];
+    exec-once = lib.optionals config.programs.noctalia.enable [
+      "${sessionStart}"
+    ];
 
     general = {
       gaps_in = 8;
@@ -202,7 +173,6 @@ in
     ];
 
     gestures = {
-      workspace_swipe_touch = settings.touchscreenEnable or false;
       workspace_swipe_cancel_ratio = 0.15;
       workspace_swipe_forever = true;
       workspace_swipe_distance = 200;

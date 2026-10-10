@@ -24,6 +24,7 @@ in
     ./binds.nix
     ./rules.nix
     ./plugins.nix
+    ./touch.nix
     ./hyprlock.nix
     ../shells/${shell}
     ./settings.nix
