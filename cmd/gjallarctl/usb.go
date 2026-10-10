@@ -17,6 +17,8 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/JadeOpenServices/gjallarOS/internal/installer/config"
+	"github.com/JadeOpenServices/gjallarOS/internal/installercheck"
 	"github.com/JadeOpenServices/gjallarOS/internal/usbtrust"
 	"github.com/JadeOpenServices/gjallarOS/internal/usbtrust/broker"
 )
@@ -360,8 +362,9 @@ func usbReviewFacts(d usbtrust.Decision) []usbFact {
 }
 
 // The review opens in the simple view. The view button switches only the
-// open dialog; the "always" box makes the techy view the start view. Both
-// are per-user presentation preferences; the decision itself is unaffected.
+// open dialog; the "always" box sets usbReviewTechnicalView in
+// user.config.json, which makes the techy view the start view until it is
+// unticked. Neither changes the decision itself.
 const (
 	usbTechyView        = "Techy view"
 	usbSimpleView       = "Simple view"
@@ -369,7 +372,6 @@ const (
 	usbAlwaysTechyOn    = "☑ Always techy view"
 	usbReviewViewEnv    = "GJALLAR_USB_REVIEW_VIEW"
 	usbReviewTechnicalV = "technical"
-	usbReviewSimpleV    = "simple"
 )
 
 // usbReviewDialog shows the review until an action is chosen or the dialog
@@ -402,50 +404,63 @@ func usbReviewDialog(ctx context.Context, d usbtrust.Decision, enforcing, always
 		case box:
 			always = !always
 			technical = always
-			setUSBReviewAlwaysTechnical(always)
+			if err := setUSBReviewAlwaysTechnical(always); err != nil {
+				_ = exec.CommandContext(ctx, "zenity", "--error", "--title=USB device review",
+					"--text="+html.EscapeString("The setting was not saved, so the next review starts as before.\n\n"+err.Error())).Run()
+			}
 		default:
 			return "", false
 		}
 	}
 }
 
-func usbReviewViewPath() string {
-	dir, err := os.UserConfigDir()
+// usbReviewConfigKey is the user.config.json switch behind the "always" box.
+// The box edits the checkout's file directly, so the choice is part of the
+// system configuration and stays until someone unticks it.
+const usbReviewConfigKey = "usbReviewTechnicalView"
+
+func usbReviewConfigPath() (string, error) {
+	repo, err := installercheck.DiscoverRepository("")
 	if err != nil {
-		return ""
+		return "", err
 	}
-	return filepath.Join(dir, "gjallar", "usb-review-view")
+	return filepath.Join(repo, "user.config.json"), nil
 }
 
 // usbReviewAlwaysTechnical reports whether the review starts in the techy
-// view. The user's own tick wins; without one, user.config.json decides
-// through the service environment.
+// view. user.config.json is read at every review so a tick applies at once;
+// the service environment carries the built value if the file is unreadable.
 func usbReviewAlwaysTechnical() bool {
-	if path := usbReviewViewPath(); path != "" {
-		if data, err := os.ReadFile(path); err == nil {
-			switch strings.TrimSpace(string(data)) {
-			case usbReviewTechnicalV:
-				return true
-			case usbReviewSimpleV:
-				return false
-			}
+	if path, err := usbReviewConfigPath(); err == nil {
+		if on, ok := usbReviewConfigValue(path); ok {
+			return on
 		}
 	}
 	return os.Getenv(usbReviewViewEnv) == usbReviewTechnicalV
 }
 
-func setUSBReviewAlwaysTechnical(on bool) {
-	path := usbReviewViewPath()
-	if path == "" {
-		return
+func usbReviewConfigValue(path string) (bool, bool) {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return false, false
 	}
-	view := usbReviewSimpleV
-	if on {
-		view = usbReviewTechnicalV
+	var fields map[string]json.RawMessage
+	if json.Unmarshal(data, &fields) != nil {
+		return false, false
 	}
-	if os.MkdirAll(filepath.Dir(path), 0o700) == nil {
-		_ = os.WriteFile(path, []byte(view+"\n"), 0o600)
+	var on bool
+	if raw, found := fields[usbReviewConfigKey]; !found || json.Unmarshal(raw, &on) != nil {
+		return false, false
 	}
+	return on, true
+}
+
+func setUSBReviewAlwaysTechnical(on bool) error {
+	path, err := usbReviewConfigPath()
+	if err != nil {
+		return fmt.Errorf("find the GjallarOS checkout: %w", err)
+	}
+	return config.SetBool(path, usbReviewConfigKey, on)
 }
 
 // usbReviewVerdict condenses the facts into one plain statement for the

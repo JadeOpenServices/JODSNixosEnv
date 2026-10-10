@@ -1,6 +1,8 @@
 package main
 
 import (
+	"os"
+	"path/filepath"
 	"reflect"
 	"strings"
 	"testing"
@@ -184,23 +186,48 @@ func TestUSBReviewSimpleViewStaysPlain(t *testing.T) {
 }
 
 func TestUSBReviewAlwaysTechnicalPreference(t *testing.T) {
-	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	repo := t.TempDir()
+	for _, marker := range []string{"flake.nix", "scripts/installation/install.sh"} {
+		if err := os.MkdirAll(filepath.Dir(filepath.Join(repo, marker)), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(repo, marker), nil, 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	userConfig := filepath.Join(repo, "user.config.json")
+	if err := os.WriteFile(userConfig, []byte("{\n  \"hostname\": \"box\"\n}\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("GJALLAROS_REPO", repo)
+
 	t.Setenv(usbReviewViewEnv, "")
 	if usbReviewAlwaysTechnical() {
 		t.Fatal("review must start in the simple view by default")
 	}
 	t.Setenv(usbReviewViewEnv, usbReviewTechnicalV)
 	if !usbReviewAlwaysTechnical() {
-		t.Fatal("user.config.json default was ignored")
+		t.Fatal("built default was ignored while the key is missing")
 	}
-	setUSBReviewAlwaysTechnical(false)
+	if err := setUSBReviewAlwaysTechnical(false); err != nil {
+		t.Fatal(err)
+	}
 	if usbReviewAlwaysTechnical() {
-		t.Fatal("unticking the box must override the config default")
+		t.Fatal("unticking the box must override the built default")
 	}
 	t.Setenv(usbReviewViewEnv, "")
-	setUSBReviewAlwaysTechnical(true)
+	if err := setUSBReviewAlwaysTechnical(true); err != nil {
+		t.Fatal(err)
+	}
 	if !usbReviewAlwaysTechnical() {
 		t.Fatal("ticked box was not remembered")
+	}
+	data, err := os.ReadFile(userConfig)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want := "{\n  \"usbReviewTechnicalView\": true,\n  \"hostname\": \"box\"\n}\n"; string(data) != want {
+		t.Fatalf("user.config.json =\n%s\nwant\n%s", data, want)
 	}
 }
 

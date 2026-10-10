@@ -308,9 +308,11 @@ and a `rebuild`. To turn it off, set it back to `false`, `rebuild`, then run
 alone is temporary: the broker re-arms from the config on its next restart.
 
 The review dialog opens in a simple view. "Techy view" shows IDs, ports and
-interfaces for that dialog only. Ticking "Always techy view" makes it the start
-view for your user; `"usbReviewTechnicalView": true` in `user.config.json` sets
-the same default until the box is ticked or unticked.
+interfaces for that dialog only. The "Always techy view" box writes
+`"usbReviewTechnicalView": true` or `false` into `user.config.json`, so the
+choice stays until someone unticks it. Someone debugging the laptop can tick
+it, work, and untick it to give the user the simple view back. Editing the key
+by hand does the same.
 
 Unformatted USB disks offer an explicit exFAT setup prompt. Cancelling leaves the
 disk unchanged. Existing partitions, recognized filesystems, mounted devices,
