@@ -26,6 +26,7 @@ in
     ./plugins.nix
     ./touch.nix
     ./hyprlock.nix
+    ./permissions.nix
     ../shells/${shell}
     ./settings.nix
   ];
