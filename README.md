@@ -215,8 +215,8 @@ stands. `--simple` prints only that as one line; `--debug` lists the lock and
 answer revisions before and after, the model, and whether the answer was
 fetched, kept or left unchanged. When the pinned commit differs from
 `generated/oddc/revision`, the rebuild fetches the same model again at the new
-commit and swaps it in only once complete. Offline, the rebuild warns and
-keeps the answer it has. Without `--rebuild`, the next `rebuild` does the
+commit and swaps it in only once complete. If that fetch fails, for example
+offline, the rebuild stops with the error and changes nothing. Without `--rebuild`, the next `rebuild` does the
 fetch. `gjallarctl oddc doctor` shows the ODDC revision the installed model
 came from.
 

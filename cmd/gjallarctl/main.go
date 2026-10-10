@@ -2073,7 +2073,8 @@ func runRebuild(args []string, stdout, stderr io.Writer) int {
 
 	// The device's ODDC answer follows the commit flake.lock pins, so
 	// `nix flake update oddc` and a rebuild take a new catalog revision.
-	// Offline, the rebuild keeps the answer it has.
+	// A failed fetch stops the rebuild: the old answer no longer matches the
+	// pinned catalogue, and ODDC's revision check would reject it anyway.
 	overrideRev, err := oddcOverrideRevision(rebuildArgs)
 	if err != nil {
 		fmt.Fprintf(stderr, "[GjallarOS] Error: %v\n", err)
@@ -2086,8 +2087,10 @@ func runRebuild(args []string, stdout, stderr io.Writer) int {
 		before, pinned, err = deviceprofile.RefreshAnswer(repo)
 	}
 	if err != nil {
-		fmt.Fprintf(stderr, "[GjallarOS] Warning: keeping ODDC answer at %s: %v\n", before, err)
-	} else if before != pinned && before != "" {
+		fmt.Fprintf(stderr, "[GjallarOS] Error: refresh ODDC answer: %v\n", err)
+		return 1
+	}
+	if before != pinned && before != "" {
 		fmt.Fprintf(stdout, "[GjallarOS] ODDC answer updated: %s -> %s\n", before, pinned)
 	}
 
