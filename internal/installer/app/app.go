@@ -3265,4 +3265,18 @@ func validateSelections(u config.User, o discovery.Options) error {
 	}
 	return nil
 }
-func fail(out io.Writer, err error) int { fmt.Fprintln(out, "ERROR:", err); return 1 }
+func fail(out io.Writer, err error) int {
+	// Ctrl-C at a prompt is the user leaving, not a failure; keep any detail
+	// that came with it, such as a cleanup that went wrong on the way out.
+	if errors.Is(err, context.Canceled) || errors.Is(err, credential.ErrInterrupted) {
+		switch err.Error() {
+		case context.Canceled.Error(), credential.ErrInterrupted.Error():
+			fmt.Fprintln(out, "Installer stopped.")
+		default:
+			fmt.Fprintln(out, "Installer stopped:", err)
+		}
+		return 130
+	}
+	fmt.Fprintln(out, "ERROR:", err)
+	return 1
+}
