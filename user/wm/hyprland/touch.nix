@@ -1,4 +1,5 @@
 {
+  config,
   pkgs,
   lib,
   settings,
@@ -18,6 +19,12 @@ let
       case "''${1:-toggle}" in
         show) signal=USR2 ;;
         hide) signal=USR1 ;;
+        start)
+          # Session start: run hidden unless something already started it.
+          pgrep -x wvkbd-mobintl >/dev/null ||
+            exec ${pkgs.wvkbd}/bin/wvkbd-mobintl --hidden -H 320 -L 240
+          exit 0
+          ;;
         *) signal=RTMIN ;;
       esac
       if pgrep -x wvkbd-mobintl >/dev/null; then
@@ -32,15 +39,23 @@ let
   # per driver (intel-hid, intel-vbtn, thinkpad_acpi, ODDC's own switch, ...).
   # So bind every input device that reports SW_TABLET_MODE, at start, when a
   # device appears, and again after a config reload drops runtime binds.
+  #
+  # Hyprland reports a switch that is already on (device folded at login) once,
+  # when it adds the device, before this unit can bind anything. So every name
+  # also goes into a file Hyprland sources at start; from the next login on the
+  # bind exists before the device does.
+  tabletSwitches = "${config.xdg.stateHome}/gjallar/tablet-switches.conf";
   tabletModeBinds = pkgs.writeShellApplication {
     name = "gjallar-tablet-mode-binds";
     runtimeInputs = [
+      pkgs.gnugrep
       pkgs.hyprland
       pkgs.socat
       pkgs.systemd
     ];
     text = ''
       kbd=${lib.getExe virtualKeyboard}
+      known=${lib.escapeShellArg tabletSwitches}
       declare -A bound=()
       bindSwitches() {
         local caps name words
@@ -57,9 +72,17 @@ let
             echo "skipping tablet mode switch with an unusual name: ''${name@Q}"
             continue
           fi
+          bound[$name]=1
+          # Hyprland already has the binds from the file since its last config load.
+          if grep -qF "switch:on:$name," "$known" 2>/dev/null; then
+            echo "tablet mode switch: $name (known)"
+            continue
+          fi
           hyprctl keyword bindl ", switch:on:$name, exec, $kbd show" >/dev/null
           hyprctl keyword bindl ", switch:off:$name, exec, $kbd hide" >/dev/null
-          bound[$name]=1
+          # By command name, not store path: the file outlives this generation.
+          printf 'bindl = , switch:%s:%s, exec, gjallar-virtual-keyboard %s\n' \
+            on "$name" show off "$name" hide >>"$known"
           echo "tablet mode switch: $name"
         done
       }
@@ -119,6 +142,13 @@ lib.mkIf (settings.touchscreenEnable or false) {
     Install.WantedBy = [ "graphical-session.target" ];
   };
 
+  # Hyprland reports a missing source file as a config error.
+  home.activation.gjallarTabletSwitches = lib.hm.dag.entryAfter [ "writeBoundary" ] ''
+    if [ ! -e ${lib.escapeShellArg tabletSwitches} ]; then
+      run ${pkgs.coreutils}/bin/install -D -m 0644 /dev/null ${lib.escapeShellArg tabletSwitches}
+    fi
+  '';
+
   wayland.windowManager.hyprland = {
     plugins = [ hyprgrass ];
 
@@ -132,7 +162,10 @@ lib.mkIf (settings.touchscreenEnable or false) {
         ", code:382, exec, ${lib.getExe virtualKeyboard}"
       ];
 
-      exec-once = [ "${pkgs.wvkbd}/bin/wvkbd-mobintl --hidden -H 320 -L 240" ];
+      # A switch bind from the file above may have started the keyboard already.
+      exec-once = [ "${lib.getExe virtualKeyboard} start" ];
+
+      source = [ tabletSwitches ];
 
       plugin.touch_gestures = {
         # The default is meant for small phone screens; 4.0 is upstream's
