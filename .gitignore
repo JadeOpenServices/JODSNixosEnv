@@ -24,3 +24,4 @@ generated/
 # END GjallarOS machine-local state
 /result
 /result-*
+.claude/
