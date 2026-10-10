@@ -2,8 +2,11 @@ package app
 
 import (
 	"os"
+	"reflect"
 	"strings"
 	"testing"
+
+	"github.com/JadeOpenServices/gjallarOS/internal/installer/nixrender"
 )
 
 func TestFreshBareMetalPipelineIsWired(t *testing.T) {
@@ -514,7 +517,7 @@ func TestAppDispatchesCanonicalFreshBareMetalPipeline(t *testing.T) {
 		"resolvedDevice",
 		"opt.recovery",
 		"s.user.RecoveryEnable",
-		"[]string{s.render.RootPasswordFile}",
+		"freshPasswordFiles(s.render),",
 	} {
 		if !strings.Contains(freshCall, want) {
 			t.Fatalf(
@@ -540,22 +543,20 @@ func TestFreshPipelineUsesOnlyDeclaredLocalPasswordArtifact(t *testing.T) {
 
 	after := body[call:]
 
-	if !strings.Contains(
-		after,
-		"[]string{s.render.RootPasswordFile}",
-	) {
-		t.Fatal(
-			"fresh install does not stage the declared root password artifact",
-		)
+	if !strings.Contains(after, "freshPasswordFiles(s.render)") {
+		t.Fatal("fresh install does not stage the declared password artifacts")
 	}
+}
 
-	if strings.Contains(
-		after[:min(len(after), 900)],
-		"userPasswordFile",
-	) {
-		t.Fatal(
-			"fresh dispatch invented an undeclared normal-user password artifact",
-		)
+func TestFreshPasswordFilesStageRootAndUser(t *testing.T) {
+	r := nixrender.Settings{RootPasswordFile: "/var/lib/gjallarOS/passwords/root.hash"}
+	if got := freshPasswordFiles(r); !reflect.DeepEqual(got, []string{r.RootPasswordFile}) {
+		t.Fatalf("root only: %q", got)
+	}
+	r.UserPasswordFile = "/var/lib/gjallarOS/passwords/tester.hash"
+	want := []string{r.RootPasswordFile, r.UserPasswordFile}
+	if got := freshPasswordFiles(r); !reflect.DeepEqual(got, want) {
+		t.Fatalf("root and user: %q, want %q", got, want)
 	}
 }
 

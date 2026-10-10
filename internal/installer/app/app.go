@@ -912,6 +912,9 @@ func run(ctx context.Context, args []string, in io.Reader, out, errOut io.Writer
 		}
 		fmt.Fprint(out, path)
 	}
+	if err := s.ensureUserPassword(ctx, persistentInstalledHost, out, errOut); err != nil {
+		return fail(errOut, err)
+	}
 	if s.user.HasApp("ai") && s.user.AIEndpoint != "" {
 		if err := ensureAIToken(ctx, out); err != nil {
 			return fail(errOut, err)
@@ -1390,7 +1393,7 @@ func run(ctx context.Context, args []string, in io.Reader, out, errOut io.Writer
 				resolvedDevice,
 				opt.recovery,
 				s.user.RecoveryEnable,
-				[]string{s.render.RootPasswordFile},
+				freshPasswordFiles(s.render),
 				hostOverlayToCommit,
 				out,
 			)
@@ -3036,12 +3039,14 @@ func detectAndRenderState(
 	}
 
 	rootPasswordFile := s.render.RootPasswordFile
+	userPasswordFile := s.render.UserPasswordFile
 	s.render = nixrender.FromUser(u)
 	s.render.System = system
 	s.render.TouchscreenEnable = s.touchscreen
 	s.render.PenTabletEnable = s.penTablet
 	s.render.OrientationSensorEnable = s.orientationSensor
 	s.render.RootPasswordFile = rootPasswordFile
+	s.render.UserPasswordFile = userPasswordFile
 	s.render.ODDCModel = resolvedDevice.ModelID
 	s.render.GraphicsBusID = g.BusID
 	s.render.GraphicsIntegratedBusID = g.IntegratedBusID
@@ -3094,6 +3099,59 @@ func rootPasswordArgs(persistentInstalledHost bool) []string {
 	}
 	return args
 }
+
+// ensureUserPassword gives the desktop account a password: the greeter, sudo
+// and polkit ask for it. A usable password on this host stays. A new, locked
+// or empty account gets one; a fresh target always does, since its account
+// does not exist yet. NixOS reads hashedPasswordFile only when it creates an
+// account, so an existing one gets the hash through chpasswd.
+func (s *state) ensureUserPassword(ctx context.Context, persistentInstalledHost bool, out, errOut io.Writer) error {
+	username := s.user.Username
+	stored, err := credential.Path(username)
+	if err != nil {
+		return err
+	}
+	exists, usable, err := credential.AccountStatus(ctx, username)
+	if err != nil {
+		return err
+	}
+	if persistentInstalledHost && usable {
+		if privilegedFileExists(ctx, stored) {
+			s.render.UserPasswordFile = stored
+		}
+		fmt.Fprintf(out, "Existing password for %s retained.\n", username)
+		return nil
+	}
+	path, err := controlOutput(ctx, s.control, errOut, userPasswordArgs(username, persistentInstalledHost && exists)...)
+	if err != nil {
+		return err
+	}
+	lines := strings.Fields(strings.TrimSpace(path))
+	if len(lines) > 0 {
+		s.render.UserPasswordFile = lines[len(lines)-1]
+	}
+	fmt.Fprint(out, path)
+	return nil
+}
+
+func userPasswordArgs(username string, applyAccount bool) []string {
+	args := []string{"installer", "local-password", "--username", username, "--apply"}
+	if applyAccount {
+		args = append(args, "--apply-account")
+	}
+	return args
+}
+
+// freshPasswordFiles lists the hashes a fresh target needs: root for local
+// recovery, the user for the greeter.
+func freshPasswordFiles(r nixrender.Settings) []string {
+	files := []string{r.RootPasswordFile}
+	if r.UserPasswordFile != "" {
+		files = append(files, r.UserPasswordFile)
+	}
+	return files
+}
+
 func secureBootNeedsFirmwareReboot(next secureboot.Continuation) bool {
 	return next == secureboot.ContinuationEnroll || next == secureboot.ContinuationEnable
 }

@@ -45,3 +45,16 @@ func TestStoreCommandsKeepPasswordDirectoryRootOnly(t *testing.T) {
 		t.Fatalf("storeCommands = %q, want %q", got, want)
 	}
 }
+
+func TestPasswordUsable(t *testing.T) {
+	for status, want := range map[string]bool{
+		"tester P 2026-10-09 0 99999 7 -1\n": true,
+		"tester L 1970-01-02 -1 -1 -1 -1\n":  false,
+		"tester NP 2026-10-09 0 99999 7 -1":  false,
+		"":                                   false,
+	} {
+		if got := passwordUsable(status); got != want {
+			t.Fatalf("passwordUsable(%q) = %v, want %v", status, got, want)
+		}
+	}
+}

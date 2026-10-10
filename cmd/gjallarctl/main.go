@@ -466,6 +466,14 @@ func runLocalPassword(args []string, stdout, stderr io.Writer) int {
 	}
 	if credential.Exists(context.Background(), target) {
 		fmt.Fprintf(stdout, "Reusing stored password hash for %s.\n", *username)
+		// A hash left by an earlier, interrupted run must still reach a
+		// locked account; a password the account already has stays.
+		if *applyAccount {
+			if err := applyStoredHash(context.Background(), *username, target); err != nil {
+				fmt.Fprintf(stderr, "ERROR: %v\n", err)
+				return 1
+			}
+		}
 		fmt.Fprintln(stdout, target)
 		return 0
 	}
@@ -501,6 +509,18 @@ func runLocalPassword(args []string, stdout, stderr io.Writer) int {
 	hash = ""
 	fmt.Fprintf(stdout, "Stored password hash for %s.\n%s\n", *username, target)
 	return 0
+}
+
+func applyStoredHash(ctx context.Context, username, target string) error {
+	_, usable, err := credential.AccountStatus(ctx, username)
+	if err != nil || usable {
+		return err
+	}
+	hash, err := credential.Load(ctx, target)
+	if err != nil {
+		return err
+	}
+	return credential.Apply(ctx, username, hash)
 }
 
 func runFirmware(args []string, stdout, stderr io.Writer) int {

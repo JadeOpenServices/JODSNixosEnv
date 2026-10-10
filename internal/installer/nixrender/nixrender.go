@@ -90,7 +90,7 @@ type Settings struct {
 	ConsoleLoginEnable                                                                      bool
 	USBTrustTPMHandle                                                                       string
 	Name, Email, GitHubUsername, DotfilesDir                                                string
-	RootPasswordFile                                                                        string
+	RootPasswordFile, UserPasswordFile                                                      string
 	DebugFunctions                                                                          bool
 	Shell                                                                                   string
 	Editors, Browsers                                                                       []string
@@ -404,6 +404,7 @@ func Render(s Settings) []byte {
 	str("githubUsername", s.GitHubUsername)
 	str("dotfilesDir", s.DotfilesDir)
 	str("rootPasswordFile", s.RootPasswordFile)
+	str("userPasswordFile", s.UserPasswordFile)
 	boolean("debugFunctions", s.DebugFunctions)
 	str("shell", s.Shell)
 	list("editors", s.Editors)

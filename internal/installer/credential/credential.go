@@ -25,6 +25,37 @@ func Exists(ctx context.Context, path string) bool {
 	return exec.CommandContext(ctx, "sudo", "test", "-s", path).Run() == nil
 }
 
+// Load reads a stored hash back, for applying it to an account that already
+// exists.
+func Load(ctx context.Context, path string) (string, error) {
+	out, err := exec.CommandContext(ctx, "sudo", "cat", "--", path).Output()
+	if err != nil {
+		return "", fmt.Errorf("read stored password hash %s: %w", path, err)
+	}
+	return strings.TrimSpace(string(out)), nil
+}
+
+// AccountStatus tells whether username exists on this host and can log in
+// with a password. A locked (L) or empty (NP) password is not usable.
+func AccountStatus(ctx context.Context, username string) (exists, usable bool, err error) {
+	if !usernamePattern.MatchString(username) {
+		return false, false, fmt.Errorf("invalid username: %q", username)
+	}
+	if exec.CommandContext(ctx, "getent", "passwd", username).Run() != nil {
+		return false, false, nil
+	}
+	out, err := exec.CommandContext(ctx, "sudo", "passwd", "-S", username).Output()
+	if err != nil {
+		return true, false, fmt.Errorf("password status of %s: %w", username, err)
+	}
+	return true, passwordUsable(string(out)), nil
+}
+
+func passwordUsable(status string) bool {
+	fields := strings.Fields(status)
+	return len(fields) > 1 && fields[1] == "P"
+}
+
 func ReadConfirmedPassword(tty *os.File, out io.Writer, username string) (string, error) {
 	reader := bufio.NewReader(tty)
 	for {
