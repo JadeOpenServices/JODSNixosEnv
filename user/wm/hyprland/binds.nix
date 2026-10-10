@@ -75,8 +75,25 @@ let
     || config.gjallar.apps.${appOf.${binding.command}}.enable;
 
   renderBindm = binding: "${binding.mods or ""}, ${binding.key}, ${binding.action}";
+
+  # Hyprland matches keys without case and mods in any order, so
+  # "$mod, L" and "$mod, l" are the same bind.
+  bindId =
+    binding:
+    let
+      mods = builtins.filter (m: m != "") (lib.splitString " " (lib.toUpper (binding.mods or "")));
+    in
+    "${lib.concatStringsSep " " (lib.sort lib.lessThan mods)}, ${lib.toUpper binding.key}";
+  bindIds = map bindId (profile.bind ++ profile.binde);
+  duplicateBinds = lib.unique (builtins.filter (id: lib.count (x: x == id) bindIds > 1) bindIds);
 in
 {
+  assertions = [
+    {
+      assertion = duplicateBinds == [ ];
+      message = "keybinds.json binds the same key twice: ${lib.concatStringsSep "; " duplicateBinds}";
+    }
+  ];
 
   wayland.windowManager.hyprland.settings = {
     "$mod" = "SUPER";

@@ -24,7 +24,7 @@
     {"mods":"$mod","key":"T","action":"exec","command":"terminal"},
     {"mods":"$mod","key":"F","action":"exec","command":"fileManager"},
     {"mods":"$mod","key":"A","action":"exec","command":"gjallarAI"},
-    {"mods":"$mod","key":"L","action":"exec","command":"libreoffice"},
+    {"mods":"$mod","key":"N","action":"exec","command":"libreoffice"},
     {"mods":"$mod","key":"M","action":"exec","command":"teams"},
 
     {"mods":"$mod","key":"Delete","action":"exit"},

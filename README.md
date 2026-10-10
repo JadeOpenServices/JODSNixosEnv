@@ -135,6 +135,7 @@ with `systemd-creds` (TPM2-bound when present) into
 | <kbd>Super</kbd> + <kbd>F</kbd> | File manager (Dolphin) |
 | <kbd>Super</kbd> + <kbd>E</kbd> | Editor |
 | <kbd>Super</kbd> + <kbd>B</kbd> | Browser |
+| <kbd>Super</kbd> + <kbd>N</kbd> | LibreOffice (when installed) |
 | <kbd>Super</kbd> + <kbd>Q</kbd> | Close window |
 | <kbd>Super</kbd> + <kbd>W</kbd> | Fullscreen |
 | <kbd>Super</kbd> + <kbd>H</kbd> <kbd>J</kbd> <kbd>K</kbd> <kbd>L</kbd> | Move focus |
