@@ -3,6 +3,7 @@ package profile
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -103,5 +104,19 @@ func TestLoadOverrideRejectsControlCharacters(t *testing.T) {
 	}
 	if _, err := LoadOverride(path); err == nil {
 		t.Fatal("control characters must be rejected")
+	}
+}
+
+func TestOverrideErrorsNameFieldOnlyForFiles(t *testing.T) {
+	_, err := NewOverride(true, "bad model!")
+	if err == nil || strings.Contains(err.Error(), "overrideModelWith") || !strings.Contains(err.Error(), `"bad model!"`) {
+		t.Fatalf("typed model error = %v", err)
+	}
+	path := filepath.Join(t.TempDir(), "user.config.json")
+	if err := os.WriteFile(path, []byte(`{"overrideAiSelection":true,"overrideModelWith":"bad model!"}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := LoadOverride(path); err == nil || !strings.HasPrefix(err.Error(), "overrideModelWith: ") {
+		t.Fatalf("file model error = %v", err)
 	}
 }

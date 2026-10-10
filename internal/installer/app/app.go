@@ -1909,17 +1909,29 @@ func containsValue(values []string, want string) bool {
 
 // partitionable is false for an in-place install on an unencrypted root,
 // which recovery partitioning cannot resize.
+// defaultUsername suggests the account that owns the configuration checkout.
+// The installer runs as root (recovery, or sudo on a rerun), so the running
+// account is never the desktop account. Live media keep the repository as
+// root or as the live user, which suggest nothing.
+func defaultUsername(root string) string {
+	uid, _, err := checkoutowner.Owner(root)
+	if err != nil || uid == 0 {
+		return "user"
+	}
+	account, err := user.LookupId(strconv.Itoa(uid))
+	if err != nil || account.Username == "nixos" {
+		return "user"
+	}
+	return account.Username
+}
+
 func collectInteractive(ctx context.Context, ui prompt.UI, root string, partitionable, modelSelected bool, managedBlocker string, hardware discovery.Hardware, o discovery.Options, u *config.User) error {
 	var err error
 	host, _ := os.Hostname()
 	if host == "" || host == "nixos" {
 		host = "gjallarOS"
 	}
-	account, _ := user.Current()
-	username := "user"
-	if account != nil {
-		username = account.Username
-	}
+	username := defaultUsername(root)
 	if u.Hostname, err = ui.Value(ctx, "Hostname", host); err != nil {
 		return err
 	}
@@ -3065,7 +3077,7 @@ func detectAndRenderState(
 		// the file does not exist yet in an interactive install.
 		override, err := profile.NewOverride(u.OverrideAISelection, u.OverrideModelWith)
 		if err != nil {
-			return err
+			return fmt.Errorf("overrideModelWith: %w", err)
 		}
 		ai, err = profile.DetectWith(ctx, override)
 		if err != nil {

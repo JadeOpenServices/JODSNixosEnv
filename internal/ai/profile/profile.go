@@ -4,6 +4,7 @@ package profile
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -152,20 +153,26 @@ func LoadOverride(path string) (Override, error) {
 	if err := json.Unmarshal(contents, &config); err != nil {
 		return Override{}, fmt.Errorf("parse user configuration: %w", err)
 	}
-	return NewOverride(config.Enabled, config.Model)
+	override, err := NewOverride(config.Enabled, config.Model)
+	if err != nil {
+		return Override{}, fmt.Errorf("overrideModelWith: %w", err)
+	}
+	return override, nil
 }
 
-// NewOverride checks an override the same way, wherever it came from.
+// NewOverride checks an override the same way, wherever it came from. Its
+// errors name no configuration field: the installer shows them to someone
+// who typed the model, not a file.
 func NewOverride(enabled bool, model string) (Override, error) {
 	model = strings.TrimSpace(model)
 	if strings.ContainsAny(model, "\x00\r\n") {
-		return Override{}, fmt.Errorf("overrideModelWith must not contain control characters")
+		return Override{}, errors.New("a model identifier must not contain control characters")
 	}
 	if enabled && model == "" {
-		return Override{}, fmt.Errorf("overrideModelWith is required when overrideAiSelection is true")
+		return Override{}, errors.New("a model identifier is required when the model override is on")
 	}
 	if model != "" && (strings.ContainsAny(model, " \t") || strings.HasPrefix(model, "-") || strings.Contains(model, "/../")) {
-		return Override{}, fmt.Errorf("overrideModelWith is not a valid Ollama model identifier")
+		return Override{}, fmt.Errorf("%q is not a valid Ollama model identifier", model)
 	}
 	return Override{Enabled: enabled, Model: model}, nil
 }
