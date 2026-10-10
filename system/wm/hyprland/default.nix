@@ -3,10 +3,19 @@
   config,
   pkgs,
   lib,
+  options,
   settings,
   ...
 }:
 let
+  # Rotate only when ODDC proves an orientation sensor. iio-sensor-proxy alone
+  # says nothing: ODDC may run it for a light sensor. Older ODDC pins have no
+  # such option; there the installer's flag still decides.
+  orientationSensor =
+    if lib.hasAttrByPath [ "oddc" "sensors" "orientation" "present" ] options then
+      config.oddc.sensors.orientation.present
+    else
+      settings.orientationSensorEnable or false;
   gjallarctl = pkgs.callPackage ../../../pkgs/gjallarctl { };
   moniquePackage = pkgs.callPackage ../../../pkgs/monique/nix/package.nix { };
   hyprlandSession = pkgs.writeShellScriptBin "gjallar-hyprland-session" ''
@@ -65,7 +74,7 @@ in
   services.displayManager.sessionPackages = [ hyprlandSessionEntry ];
 
   systemd.user.services.display-input-rotation =
-    lib.mkIf (settings.orientationSensorEnable or false)
+    lib.mkIf orientationSensor
       {
         description = "Automatic display and input rotation";
 
