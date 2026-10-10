@@ -145,8 +145,15 @@ with `systemd-creds` (TPM2-bound when present) into
 | <kbd>Super</kbd> + <kbd>1</kbd>…<kbd>0</kbd> | Switch workspace |
 | <kbd>Super</kbd> + <kbd>Shift</kbd> + <kbd>1</kbd>…<kbd>0</kbd> | Move window to workspace |
 | <kbd>Super</kbd> + <kbd>S</kbd> | Scratchpad workspace |
-| <kbd>Super</kbd> + <kbd>Shift</kbd> + <kbd>Z</kbd> | Screenshot region |
+| <kbd>Super</kbd> + <kbd>Shift</kbd> + <kbd>Z</kbd> or <kbd>Print</kbd> | Screenshot region |
 | <kbd>Super</kbd> + <kbd>Escape</kbd> | Lock screen |
+| <kbd>Super</kbd> + <kbd>Ctrl</kbd> + <kbd>K</kbd> | On-screen keyboard (touch devices) |
+
+On touch devices the on-screen keyboard also opens when the device folds
+into tablet mode and on the keyboard key some convertibles have. The HP ZBook
+x2 bezel Quick Keys have three presets, switched with the third key from the
+top: desktop (on-screen keyboard, screenshot, lock, brightness), media, and a
+free preset that sends `KEY_MACRO11`–`15` for your own binds.
 
 <div align="right"><a href="#gjallaros">↑ back to top</a></div>
 
