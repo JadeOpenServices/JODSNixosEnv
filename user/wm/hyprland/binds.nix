@@ -25,7 +25,9 @@ let
     terminal = "${lib.getExe gjallarRun} ${lib.getExe pkgs.ghostty}";
 
     editor = "${lib.getExe gjallarRun} ${lib.getExe pkgs.${settings.preferredEditor}}";
-    browser = "${lib.getExe gjallarRun} ${lib.getExe pkgs.${settings.preferredBrowser}}";
+    browser = "${lib.getExe gjallarRun} ${
+      lib.getExe config.programs.${settings.preferredBrowser}.finalPackage
+    }";
 
     fileManager = lib.getExe config._module.args.gjallarFileManager;
 

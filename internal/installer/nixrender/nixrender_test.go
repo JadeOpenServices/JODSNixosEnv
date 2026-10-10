@@ -147,9 +147,9 @@ func TestFromUserMapsRoutedIntent(t *testing.T) {
 		JODSFingerprintEnroll:  true,
 		Theme:                  "noctalia",
 		Editors:                []string{"vscodium"},
-		Browsers:               []string{"librewolf"},
+		Browsers:               []string{"firefox"},
 		PreferredEditor:        "vscodium",
-		PreferredBrowser:       "librewolf",
+		PreferredBrowser:       "firefox",
 		Shell:                  "zsh",
 		AIAgentMode:            "workspace",
 	}

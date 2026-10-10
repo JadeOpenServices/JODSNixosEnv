@@ -135,12 +135,12 @@ func TestValidateSelections(t *testing.T) {
 	o := discovery.Options{
 		Shells:   []string{"zsh"},
 		Editors:  []string{"vscodium"},
-		Browsers: []string{"librewolf"},
+		Browsers: []string{"firefox"},
 	}
 	u := config.User{
 		Shell:       "zsh",
 		Editors:     []string{"vscodium"},
-		Browsers:    []string{"librewolf"},
+		Browsers:    []string{"firefox"},
 		DotfilesDir: "/repo",
 	}
 	if err := validateSelections(u, o); err != nil {

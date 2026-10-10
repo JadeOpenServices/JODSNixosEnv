@@ -10,15 +10,10 @@ let
 
   enable = settings.nextcloudEnable or false;
   host = settings.nextcloudHost or "";
-  preferredBrowser = settings.preferredBrowser or "librewolf";
-  browserPackage = pkgs.${preferredBrowser};
-  browserExe = lib.getExe browserPackage;
+  preferredBrowser = settings.preferredBrowser or "firefox";
+  browserExe = lib.getExe config.programs.${preferredBrowser}.finalPackage;
   browserArgs = [ "--new-window" ];
-  browserNeedles =
-    if preferredBrowser == "librewolf" then
-      [ "librewolf" ]
-    else
-      [ preferredBrowser ];
+  browserNeedles = [ preferredBrowser ];
 
   openvfs = pkgs.stdenv.mkDerivation {
     pname = "openvfs";

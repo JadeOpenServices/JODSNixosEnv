@@ -8,7 +8,8 @@
 let
   urlLib = import ../apps/lib/url.nix { inherit lib; };
   cfg = config.gjallar.urlHandler;
-  browser = lib.getExe pkgs.${settings.preferredBrowser};
+  # The configured browser, with its policies and prefs.
+  browser = lib.getExe config.programs.${settings.preferredBrowser}.finalPackage;
 
   # One handler for every http/https link (xdg-open, portal OpenURI, $BROWSER).
   # Apps plug in exact https hosts; everything else goes to the browser.

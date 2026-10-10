@@ -25,7 +25,7 @@
   ],
   "autoReboot": false,
   "browsers": [
-    "librewolf"
+    "firefox"
   ],
   "clamshellEnable": true,
   "consoleLoginEnable": false,
@@ -59,7 +59,7 @@
   "nextcloudHost": "",
   "overrideAiSelection": false,
   "overrideModelWith": "",
-  "preferredBrowser": "librewolf",
+  "preferredBrowser": "firefox",
   "preferredEditor": "vscodium",
   "printingEnable": false,
   "recoveryEnable": false,

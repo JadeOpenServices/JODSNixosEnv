@@ -9,7 +9,7 @@ func TestValidateUSBTrustIntent(t *testing.T) {
 		Theme:             "noctalia",
 		Shell:             "zsh",
 		Editors:           []string{"vscodium"},
-		Browsers:          []string{"librewolf"},
+		Browsers:          []string{"firefox"},
 		AIAgentMode:       "workspace",
 		USBGuardEnable:    true,
 		USBTrustTPMHandle: "0x81000042",

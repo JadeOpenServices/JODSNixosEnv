@@ -157,3 +157,24 @@ func TestDetectHardwareDoesNotTreatALSAsOrientationSensor(t *testing.T) {
 		t.Fatalf("ALS incorrectly detected as orientation sensor: %+v", got)
 	}
 }
+
+func TestDiscoverSkipsRetiredBrowsers(t *testing.T) {
+	repo := t.TempDir()
+	for _, dir := range []string{"user/shells", "user/editors/vscodium", "user/browsers", "themes"} {
+		if err := os.MkdirAll(filepath.Join(repo, dir), 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for _, name := range []string{"firefox", "librewolf"} {
+		if err := os.WriteFile(filepath.Join(repo, "user/browsers", name+".nix"), []byte("{ }\n"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	o, err := Discover(repo)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(o.Browsers) != 1 || o.Browsers[0] != "firefox" {
+		t.Fatalf("Browsers = %v, want [firefox]", o.Browsers)
+	}
+}

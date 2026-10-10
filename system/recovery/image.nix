@@ -61,9 +61,9 @@ let
 
       shell = getSetting "shell" "zsh";
       editors = getSetting "editors" [ "vscodium" ];
-      browsers = getSetting "browsers" [ "librewolf" ];
+      browsers = getSetting "browsers" [ "firefox" ];
       preferredEditor = getSetting "preferredEditor" "vscodium";
-      preferredBrowser = getSetting "preferredBrowser" "librewolf";
+      preferredBrowser = getSetting "preferredBrowser" "firefox";
 
       theme = getSetting "theme" "noctalia";
 

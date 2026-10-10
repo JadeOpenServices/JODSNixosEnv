@@ -6,6 +6,7 @@ import (
 	"github.com/JadeOpenServices/gjallarOS/internal/hardware/orientation"
 	"os"
 	"path/filepath"
+	"slices"
 	"sort"
 	"strings"
 )
@@ -140,6 +141,7 @@ func Discover(repo string) (Options, error) {
 	if err != nil {
 		return Options{}, err
 	}
+	browsers = withoutRetired(browsers, retiredBrowsers)
 	themes, err := nixFiles(filepath.Join(repo, "themes"))
 	if err != nil {
 		return Options{}, err
@@ -166,6 +168,21 @@ func directories(path string) ([]string, error) {
 	sort.Strings(out)
 	return out, nil
 }
+
+// retiredBrowsers keep their module for installs that still list them, but
+// new installs no longer offer them. Firefox replaced LibreWolf.
+var retiredBrowsers = []string{"librewolf"}
+
+func withoutRetired(names, retired []string) []string {
+	out := []string{}
+	for _, name := range names {
+		if !slices.Contains(retired, name) {
+			out = append(out, name)
+		}
+	}
+	return out
+}
+
 func nixFiles(path string) ([]string, error) {
 	entries, err := os.ReadDir(path)
 	if err != nil {
