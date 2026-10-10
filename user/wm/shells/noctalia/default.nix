@@ -191,14 +191,6 @@ in
             scale = 0.98;
           };
 
-          divider_left = {
-            type = "text";
-            text = "│";
-            scale = 0.72;
-            font_scale = 0.9;
-            interactive = false;
-          };
-
           divider_diag = {
             type = "text";
             text = "│";
@@ -223,36 +215,6 @@ in
             interactive = false;
           };
 
-          workspaces = {
-
-            type = "taskbar";
-
-            group_by_workspace = true;
-
-            workspace_group_content = "icons";
-
-            show_workspace_label = false;
-
-            workspace_group_capsule = false;
-
-            group_single_icon_per_app = true;
-
-            only_active_workspace = false;
-
-            hide_empty_workspaces = false;
-
-            icon_scale = 1.20;
-
-            scale = 1.0;
-
-            show_active_indicator = true;
-
-            active_opacity = 1.0;
-
-            inactive_opacity = 0.88;
-
-          };
-
           active_window = {
 
             type = "taskbar";
@@ -262,12 +224,6 @@ in
             show_all_outputs = false;
 
             group_by_workspace = false;
-
-            show_window_title = true;
-
-            window_title_max_width = 200;
-
-            taskbar_max_width = 430;
 
             icon_scale = 1.18;
 
@@ -382,8 +338,6 @@ in
 
           start = [
             "active_window"
-            "divider_left"
-            "workspaces"
           ];
           center = [
             "cpu_usage"
