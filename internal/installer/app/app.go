@@ -2995,8 +2995,17 @@ func provisionRecoveryPartition(ctx context.Context, root string, s state) error
 	return nil
 }
 
+// buildStaged evaluates attr and builds it in two nix processes, so the
+// evaluator's heap is freed before the build starts; one `nix build` keeps it
+// through every compile and ran a 4 GiB machine out of memory.
 func buildStaged(ctx context.Context, source flakesource.Source, attr string) (string, error) {
-	cmd := exec.CommandContext(ctx, "nix", "build", source.Ref(attr), "--no-link", "--print-out-paths")
+	eval := exec.CommandContext(ctx, "nix", "eval", "--raw", source.Ref(attr)+".drvPath")
+	eval.Stderr = os.Stderr
+	drv, err := eval.Output()
+	if err != nil {
+		return "", err
+	}
+	cmd := exec.CommandContext(ctx, "nix", "build", strings.TrimSpace(string(drv))+"^*", "--no-link", "--print-out-paths")
 	cmd.Stderr = os.Stderr
 	output, err := cmd.Output()
 	if err != nil {

@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 
@@ -187,8 +188,8 @@ func TestNormalizeRebuildUserIntentPreservesConfiguredDotfilesDir(t *testing.T) 
 	}
 }
 
-func TestRebuildCommandArgsArePureWithoutPalette(t *testing.T) {
-	args := rebuildCommandArgs(
+func TestRebuildPlanIsPureWithoutPalette(t *testing.T) {
+	plan := newRebuildPlan(
 		"/repo",
 		"host",
 		t.TempDir(),
@@ -196,15 +197,18 @@ func TestRebuildCommandArgsArePureWithoutPalette(t *testing.T) {
 		[]string{"--show-trace-extra"},
 	)
 
-	if got := countString(args, "--impure"); got != 0 {
-		t.Fatalf("--impure count = %d, want 0: %v", got, args)
+	if got := countString(plan.eval, "--impure"); got != 0 {
+		t.Fatalf("--impure count = %d, want 0: %v", got, plan.eval)
 	}
-	if got := countString(args, "--show-trace-extra"); got != 1 {
-		t.Fatalf("forwarded rebuild arg count = %d, want 1: %v", got, args)
+	if got := countString(plan.eval, "--show-trace-extra"); got != 1 {
+		t.Fatalf("forwarded rebuild arg count = %d, want 1: %v", got, plan.eval)
+	}
+	if plan.eval[0] != "nix" {
+		t.Fatalf("eval runs %q, want nix: %v", plan.eval[0], plan.eval)
 	}
 }
 
-func TestRebuildCommandArgsAddOneImpureForNoctaliaPalette(t *testing.T) {
+func TestRebuildPlanAddsOneImpureForNoctaliaPalette(t *testing.T) {
 	home := t.TempDir()
 	palette := filepath.Join(
 		home,
@@ -220,16 +224,58 @@ func TestRebuildCommandArgsAddOneImpureForNoctaliaPalette(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	args := rebuildCommandArgs("/repo", "host", home, true, nil)
+	plan := newRebuildPlan("/repo", "host", home, true, nil)
 
-	if got := countString(args, "--impure"); got != 1 {
-		t.Fatalf("--impure count = %d, want 1: %v", got, args)
+	if got := countString(plan.eval, "--impure"); got != 1 {
+		t.Fatalf("--impure count = %d, want 1: %v", got, plan.eval)
 	}
-	if got := countString(args, "--show-trace"); got != 1 {
-		t.Fatalf("--show-trace count = %d, want 1: %v", got, args)
+	if got := countString(plan.eval, "--show-trace"); got != 1 {
+		t.Fatalf("--show-trace count = %d, want 1: %v", got, plan.eval)
 	}
-	if len(args) < 2 || args[0] != "env" || !strings.HasPrefix(args[1], "GJALLAR_NOCTALIA_PALETTE=") {
-		t.Fatalf("palette environment prefix missing: %v", args)
+	if len(plan.eval) < 2 || plan.eval[0] != "env" || !strings.HasPrefix(plan.eval[1], "GJALLAR_NOCTALIA_PALETTE=") {
+		t.Fatalf("palette environment prefix missing: %v", plan.eval)
+	}
+	if countString(plan.build, "--impure") != 0 || plan.build[0] != "nix" {
+		t.Fatalf("build carries the palette input: %v", plan.build)
+	}
+}
+
+// The evaluation must not run in the process that builds: that process
+// kept the evaluator's heap through every compile and ran a 4 GiB machine
+// out of memory.
+func TestRebuildPlanEvaluatesBeforeItBuilds(t *testing.T) {
+	plan := newRebuildPlan("/repo", "book", "", false, []string{
+		"--option", "substituters", "http://10.0.2.2:8501",
+		"--install-bootloader",
+		"--specialisation", "dock",
+		"-L",
+	})
+
+	wantEval := []string{
+		"nix", "--extra-experimental-features", "nix-command flakes",
+		"eval", "--raw",
+		`path:/repo#nixosConfigurations."book".config.system.build.toplevel.drvPath`,
+		"--option", "substituters", "http://10.0.2.2:8501", "-L",
+	}
+	if !slices.Equal(plan.eval, wantEval) {
+		t.Fatalf("eval = %q\nwant %q", plan.eval, wantEval)
+	}
+	wantBuild := []string{
+		"nix", "--extra-experimental-features", "nix-command flakes",
+		"build", "--no-link", "--print-out-paths",
+		"--option", "substituters", "http://10.0.2.2:8501", "-L",
+	}
+	if !slices.Equal(plan.build, wantBuild) {
+		t.Fatalf("build = %q\nwant %q", plan.build, wantBuild)
+	}
+	wantSwitch := []string{"nixos-rebuild", "switch", "--no-reexec", "--install-bootloader", "--specialisation", "dock"}
+	if !slices.Equal(plan.activate, wantSwitch) {
+		t.Fatalf("switch = %q\nwant %q", plan.activate, wantSwitch)
+	}
+	for _, arg := range plan.activate {
+		if strings.HasPrefix(arg, "path:") || arg == "--flake" {
+			t.Fatalf("switch evaluates the flake again: %v", plan.activate)
+		}
 	}
 }
 

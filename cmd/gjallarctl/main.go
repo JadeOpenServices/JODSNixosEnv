@@ -20,6 +20,7 @@ import (
 	"os/signal"
 	osuser "os/user"
 	"path/filepath"
+	"slices"
 	"strconv"
 	"strings"
 	"sync"
@@ -2170,19 +2171,14 @@ func runRebuild(args []string, stdout, stderr io.Writer) int {
 		return 1
 	}
 	defer source.Close()
-	commandArgs := rebuildCommandArgs(source.Dir, host, rebuildHome, debug, rebuildArgs)
+	plan := newRebuildPlan(source.Dir, host, rebuildHome, debug, rebuildArgs)
 
 	var status int
 	if debug {
 		fmt.Fprintf(stdout, "Rebuilding NixOS for %s\n[GjallarOS] Flake: %s#%s\n\n", host, repo, host)
-		status = runPrivilegedCommand(
-			context.Background(),
-			stdout,
-			stderr,
-			commandArgs...,
-		)
+		status = plan.run(context.Background(), stdout, stderr)
 	} else {
-		status = runRebuildQuiet(stdout, stderr, host, messages, started, commandArgs)
+		status = runRebuildQuiet(stdout, stderr, host, messages, started, plan)
 	}
 	if status == 0 {
 		if err := installercheck.RememberRepository(repo); err != nil {
@@ -2243,16 +2239,74 @@ func oddcOverrideRevision(rebuildArgs []string) (string, error) {
 	return rev, nil
 }
 
-func rebuildCommandArgs(
+// rebuildPlan is a rebuild in three privileged steps. `nixos-rebuild switch
+// --flake` evaluates and builds in one nix process, which keeps the
+// evaluator's heap (about 4 GiB for this configuration) until the last
+// compile ends; with a local C++ build on a 4 GiB machine that ran out of
+// memory and took the terminal with it (book12 VM, 2026-10-10). Here the
+// evaluation exits before anything builds, and nixos-rebuild only switches
+// to the built path.
+type rebuildPlan struct {
+	eval     []string // prints the system's .drv
+	build    []string // the .drv's output is appended
+	activate []string // --store-path and the built system are appended
+}
+
+// rebuildSwitchFlags are the nixos-rebuild arguments that nix itself does
+// not know, with the number of values each takes. Everything else is a nix
+// option and goes to the evaluation and to the build.
+var rebuildSwitchFlags = map[string]int{
+	"--install-bootloader": 0,
+	"--install-grub":       0,
+	"--profile-name":       1,
+	"-p":                   1,
+	"--specialisation":     1,
+	"-c":                   1,
+	"--sudo":               0,
+	"--use-remote-sudo":    0,
+	"--ask-sudo-password":  0,
+	"--no-reexec":          0,
+	"--fast":               0,
+	"--no-ssh-tty":         0,
+	"--target-host":        1,
+	"--build-host":         1,
+	"--no-build-nix":       0,
+	"--diff":               0,
+	"--json":               0,
+}
+
+func newRebuildPlan(
 	repo, host, rebuildHome string,
 	debug bool,
 	rebuildArgs []string,
-) []string {
-	commandArgs := []string{
-		"nixos-rebuild",
-		"switch",
-		"--flake",
-		"path:" + repo + "#" + host,
+) rebuildPlan {
+	var nixArgs, switchArgs []string
+	for i := 0; i < len(rebuildArgs); i++ {
+		values, ok := rebuildSwitchFlags[rebuildArgs[i]]
+		if !ok {
+			nixArgs = append(nixArgs, rebuildArgs[i])
+			continue
+		}
+		end := min(i+1+values, len(rebuildArgs))
+		switchArgs = append(switchArgs, rebuildArgs[i:end]...)
+		i = end - 1
+	}
+	if debug {
+		nixArgs = append([]string{"--show-trace"}, nixArgs...)
+	}
+
+	nix := []string{"nix", "--extra-experimental-features", "nix-command flakes"}
+	plan := rebuildPlan{
+		eval: slices.Concat(nix, []string{
+			"eval",
+			"--raw",
+			"path:" + repo + "#nixosConfigurations." + strconv.Quote(host) + ".config.system.build.toplevel.drvPath",
+		}, nixArgs),
+		build: slices.Concat(nix, []string{"build", "--no-link", "--print-out-paths"}, nixArgs),
+		// Without --no-reexec, nixos-rebuild 26.05 first builds a newer copy
+		// of itself from <nixpkgs/nixos> even for --store-path, which fails
+		// on a flake system and has nothing to offer for a prebuilt one.
+		activate: slices.Concat([]string{"nixos-rebuild", "switch", "--no-reexec"}, switchArgs),
 	}
 
 	// Pure evaluation is the default. The only current impure input is the
@@ -2267,18 +2321,38 @@ func rebuildCommandArgs(
 			"stylix-override.json",
 		)
 		if info, err := os.Stat(palette); err == nil && info.Mode().IsRegular() {
-			commandArgs = append(
+			plan.eval = slices.Concat(
 				[]string{"env", "GJALLAR_NOCTALIA_PALETTE=" + palette},
-				commandArgs...,
+				plan.eval,
+				[]string{"--impure"},
 			)
-			commandArgs = append(commandArgs, "--impure")
 		}
 	}
+	return plan
+}
 
-	if debug {
-		commandArgs = append(commandArgs, "--show-trace")
+func (p rebuildPlan) run(ctx context.Context, stdout, stderr io.Writer) int {
+	var drv bytes.Buffer
+	if status := runPrivilegedCommand(ctx, &drv, stderr, p.eval...); status != 0 {
+		return status
 	}
-	return append(commandArgs, rebuildArgs...)
+	drvPath := strings.TrimSpace(drv.String())
+	if !strings.HasPrefix(drvPath, "/nix/store/") || !strings.HasSuffix(drvPath, ".drv") {
+		fmt.Fprintf(stderr, "ERROR: evaluation printed no derivation: %q\n", drvPath)
+		return 1
+	}
+
+	var built bytes.Buffer
+	if status := runPrivilegedCommand(ctx, &built, stderr, slices.Concat(p.build, []string{drvPath + "^out"})...); status != 0 {
+		return status
+	}
+	system := strings.TrimSpace(built.String())
+	if !strings.HasPrefix(system, "/nix/store/") || strings.ContainsAny(system, " \n") {
+		fmt.Fprintf(stderr, "ERROR: build printed no single system path: %q\n", system)
+		return 1
+	}
+
+	return runPrivilegedCommand(ctx, stdout, stderr, slices.Concat(p.activate, []string{"--store-path", system})...)
 }
 
 // pullCheckout brings the system's checkout up to date before the rebuild:
@@ -2528,7 +2602,7 @@ func runHelpme(args []string, stdout, stderr io.Writer) int {
 		"gjallar-preflight", "Run fast repository wiring checks.")
 }
 
-func runRebuildQuiet(stdout, stderr io.Writer, host string, messages []string, started time.Time, commandArgs []string) int {
+func runRebuildQuiet(stdout, stderr io.Writer, host string, messages []string, started time.Time, plan rebuildPlan) int {
 	log, err := os.CreateTemp("", "gjallar-rebuild-*.log")
 	if err != nil {
 		fmt.Fprintf(stderr, "ERROR: create rebuild log: %v\n", err)
@@ -2580,12 +2654,7 @@ func runRebuildQuiet(stdout, stderr io.Writer, host string, messages []string, s
 	}
 
 	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
-	status := runPrivilegedCommand(
-		ctx,
-		log,
-		log,
-		commandArgs...,
-	)
+	status := plan.run(ctx, log, log)
 	cancelled := ctx.Err() != nil
 	cancel()
 	if interactive {
