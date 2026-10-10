@@ -3017,12 +3017,17 @@ func runAuth(args []string, stderr io.Writer) int {
 }
 
 // A gjallarctl operation always asks for authentication and leaves no sudo
-// timestamp behind (timestamp_timeout 0 for gjallarctl); plain sudo keeps
-// the 5 minute default. The follow-up commands run with sudo -n on the
-// timestamp gjallar-sudo-auth creates, so it is dropped on exit, not avoided.
+// timestamp behind; plain sudo keeps the 5 minute default. The follow-up
+// commands run with sudo -n on the timestamp gjallar-sudo-auth creates, so it
+// is dropped on exit, not avoided. A rebuild can outlast those 5 minutes, so
+// the timestamp is refreshed while the operation runs; without that, the
+// generation cleanup at the end asked again.
 var (
-	privilegeSessionStarted bool
-	invalidateSudoTimestamp = func() { _ = exec.Command("sudo", "-k").Run() }
+	privilegeSessionStarted    bool
+	invalidateSudoTimestamp    = func() { _ = exec.Command("sudo", "-k").Run() }
+	refreshSudoTimestamp       = func() bool { return exec.Command("sudo", "-n", "-v").Run() == nil }
+	privilegeKeepaliveInterval = time.Minute
+	stopPrivilegeKeepalive     func()
 )
 
 func beginPrivilegeSession() {
@@ -3034,15 +3039,52 @@ func beginPrivilegeSession() {
 }
 
 func endPrivilegeSession() {
+	if stopPrivilegeKeepalive != nil {
+		stopPrivilegeKeepalive()
+		stopPrivilegeKeepalive = nil
+	}
 	if privilegeSessionStarted {
 		invalidateSudoTimestamp()
 		privilegeSessionStarted = false
 	}
 }
 
+// keepPrivilegeAlive refreshes the session timestamp until the session ends.
+// sudo -n -v never prompts: once the timestamp is gone, it fails quietly.
+func keepPrivilegeAlive() {
+	if !privilegeSessionStarted || stopPrivilegeKeepalive != nil {
+		return
+	}
+	done, stopped := make(chan struct{}), make(chan struct{})
+	go func() {
+		defer close(stopped)
+		ticker := time.NewTicker(privilegeKeepaliveInterval)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-done:
+				return
+			case <-ticker.C:
+				_ = refreshSudoTimestamp()
+			}
+		}
+	}()
+	// Wait for a refresh in flight, so it cannot land after sudo -k.
+	stopPrivilegeKeepalive = func() { close(done); <-stopped }
+}
+
 func runPrivilegeAuthentication(ctx context.Context, stderr io.Writer) int {
 	beginPrivilegeSession()
-	return authenticatePrivilege(ctx, stderr)
+	// Later steps of the same operation reuse the timestamp without a word;
+	// only a lost one asks again.
+	if stopPrivilegeKeepalive != nil && refreshSudoTimestamp() {
+		return 0
+	}
+	status := authenticatePrivilege(ctx, stderr)
+	if status == 0 {
+		keepPrivilegeAlive()
+	}
+	return status
 }
 
 func authenticatePrivilege(ctx context.Context, stderr io.Writer) int {

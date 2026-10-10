@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 )
 
 func TestPrivilegeFingerprintCommandHasNoPasswordInput(t *testing.T) {
@@ -156,6 +157,10 @@ func TestSudoAskpassPromptsOnControllingTerminal(t *testing.T) {
 	if strings.Contains(script, "--user") {
 		t.Fatal("askpass must not wait for a user password agent")
 	}
+	// An unattended prompt waited all night after a rebuild.
+	if strings.Contains(script, "--timeout=0") || !strings.Contains(script, "--timeout=") {
+		t.Fatal("askpass must give up after a timeout")
+	}
 }
 
 func TestAuthRejectsArguments(t *testing.T) {
@@ -229,5 +234,66 @@ func TestHelperExecutableMissingNamesSystemDir(t *testing.T) {
 	_, err := helperExecutable("gjallar-sudo-auth")
 	if err == nil || !strings.Contains(err.Error(), systemHelperDir) {
 		t.Fatalf("expected error naming %s, got %v", systemHelperDir, err)
+	}
+}
+
+// A rebuild outlasts sudo's 5 minute timestamp; the session keeps it fresh
+// until exit so the cleanup step does not ask again, then stops refreshing.
+func TestPrivilegeSessionKeepsTimestampAliveUntilExit(t *testing.T) {
+	savedRefresh, savedInvalidate, savedInterval := refreshSudoTimestamp, invalidateSudoTimestamp, privilegeKeepaliveInterval
+	refreshed := make(chan struct{}, 16)
+	refreshSudoTimestamp = func() bool { refreshed <- struct{}{}; return true }
+	invalidateSudoTimestamp = func() {}
+	privilegeKeepaliveInterval = time.Millisecond
+	t.Cleanup(func() {
+		refreshSudoTimestamp, invalidateSudoTimestamp, privilegeKeepaliveInterval = savedRefresh, savedInvalidate, savedInterval
+		privilegeSessionStarted, stopPrivilegeKeepalive = false, nil
+	})
+
+	keepPrivilegeAlive()
+	if stopPrivilegeKeepalive != nil {
+		t.Fatal("keepalive started without a privilege session")
+	}
+	beginPrivilegeSession()
+	keepPrivilegeAlive()
+	select {
+	case <-refreshed:
+	case <-time.After(5 * time.Second):
+		t.Fatal("timestamp never refreshed")
+	}
+	endPrivilegeSession()
+	if stopPrivilegeKeepalive != nil {
+		t.Fatal("keepalive still set after exit")
+	}
+	for len(refreshed) > 0 {
+		<-refreshed
+	}
+	time.Sleep(20 * time.Millisecond)
+	if len(refreshed) != 0 {
+		t.Fatal("timestamp refreshed after the session ended")
+	}
+}
+
+func TestPrivilegeAuthenticationReusesLiveSessionQuietly(t *testing.T) {
+	savedRefresh, savedInvalidate := refreshSudoTimestamp, invalidateSudoTimestamp
+	refreshes := 0
+	refreshSudoTimestamp = func() bool { refreshes++; return true }
+	invalidateSudoTimestamp = func() {}
+	t.Cleanup(func() {
+		refreshSudoTimestamp, invalidateSudoTimestamp = savedRefresh, savedInvalidate
+		privilegeSessionStarted, stopPrivilegeKeepalive = false, nil
+	})
+
+	privilegeSessionStarted = true
+	stopPrivilegeKeepalive = func() {}
+	var stderr strings.Builder
+	if status := runPrivilegeAuthentication(context.Background(), &stderr); status != 0 {
+		t.Fatalf("status = %d, want 0", status)
+	}
+	if refreshes != 1 {
+		t.Fatalf("refreshes = %d, want 1", refreshes)
+	}
+	if stderr.Len() != 0 {
+		t.Fatalf("live session printed %q", stderr.String())
 	}
 }
