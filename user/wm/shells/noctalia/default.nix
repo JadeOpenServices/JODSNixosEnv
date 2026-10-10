@@ -429,8 +429,26 @@ in
     }
   '';
 
-  # Weather and plugins fetch at start; give the network a moment first.
-  systemd.user.services.noctalia.Service.ExecStartPre = "-${pkgs.networkmanager}/bin/nm-online -q -t 10";
+  systemd.user.services.noctalia.Service.ExecStartPre = [
+    # A shell started by the session before this unit existed holds the
+    # single-instance lock, so the unit would fail until the next login.
+    # Take its environment (XDG_SESSION_ID for logind and polkit; that
+    # session did not import it) and stop it; the unit takes over.
+    "${pkgs.writeShellScript "noctalia-take-over" ''
+      lock="''${XDG_RUNTIME_DIR:-/tmp}/noctalia-''${WAYLAND_DISPLAY:-wayland-0}.lock"
+      [ -e "$lock" ] || exit 0
+      ${pkgs.util-linux}/bin/flock -n "$lock" true && exit 0
+      for pid in $(${pkgs.psmisc}/bin/fuser "$lock" 2>/dev/null); do
+        ${pkgs.gnugrep}/bin/grep -zE '^[A-Za-z_][A-Za-z0-9_]*=' "/proc/$pid/environ" \
+          | ${pkgs.gnugrep}/bin/grep -zvE '^(_|SHLVL|PWD|OLDPWD)=' \
+          | ${pkgs.findutils}/bin/xargs -0 -r ${pkgs.systemd}/bin/systemctl --user set-environment || true
+        kill -TERM "$pid" 2>/dev/null || true
+      done
+      ${pkgs.util-linux}/bin/flock -w 15 "$lock" true || true
+    ''}"
+    # Weather and plugins fetch at start; give the network a moment first.
+    "-${pkgs.networkmanager}/bin/nm-online -q -t 10"
+  ];
 
   home.activation.gjallarNoctaliaHyprlandFallback = lib.hm.dag.entryAfter [ "writeBoundary" ] ''
         theme_file="$HOME/.local/state/noctalia/hyprland-colors.conf"
