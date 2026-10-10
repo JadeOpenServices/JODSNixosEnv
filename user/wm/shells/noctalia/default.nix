@@ -220,30 +220,13 @@ in
             interactive = false;
           };
 
-          active_window = {
-
-            type = "taskbar";
-
-            only_active_workspace = true;
-
-            show_all_outputs = false;
-
-            group_by_workspace = false;
-
-            icon_scale = 1.18;
-
-            item_spacing = 5;
-
-            show_active_indicator = false;
-
-            active_opacity = 1.0;
-
-            inactive_opacity = 0.92;
-
-            scale = 1.0;
-
-            font_scale = 1.0;
-
+          # Dots for the other used workspaces; the focused one grows into a
+          # pill with the active app's icon, so no separate window widget.
+          workspaces = {
+            style = "focus_hint";
+            show_labels = false;
+            hide_when_empty = true;
+            scale = 0.98;
           };
 
           weather = {
@@ -270,14 +253,6 @@ in
           };
 
           divider_center_left = {
-            type = "text";
-            text = "│";
-            scale = 0.72;
-            font_scale = 0.9;
-            interactive = false;
-          };
-
-          divider_center_right = {
             type = "text";
             text = "│";
             scale = 0.72;
@@ -341,30 +316,29 @@ in
           background_opacity = 0.94;
           shadow = false;
 
+          # System status on the left, workspaces and time in the middle,
+          # controls on the right.
           start = [
-            "active_window"
-          ];
-          center = [
+            "power_profile"
+            "battery"
+            "divider_diag"
             "cpu_usage"
             "cpu_temp"
             "ram"
-
+          ];
+          center = [
+            "workspaces"
             "divider_center_left"
-
             "center_clock"
-
-            "divider_center_right"
-
+          ];
+          end = [
             "network"
             "keyboard_layout"
             "notifications"
             "clipboard"
             "volume"
-            "power_profile"
-            "battery"
             "tray"
-          ];
-          end = [
+            "divider_apps"
             "weather"
             "divider_media"
             "media"
