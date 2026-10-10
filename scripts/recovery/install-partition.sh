@@ -96,6 +96,12 @@ parent="/dev/$parent_name"
   echo "ERROR: recovery partition requires a GPT disk" >&2
   exit 1
 }
+# systemd-boot only lists XBOOTLDR entries on the disk it started from.
+esp=$(findmnt -nro SOURCE --mountpoint /boot || true)
+if [ -n "$esp" ] && [ "$(lsblk -dnro PKNAME "$esp")" != "$parent_name" ]; then
+  echo "ERROR: recovery partition must be on the same disk as the ESP ($esp)" >&2
+  exit 1
+fi
 echo "Target: $partition ($(numfmt --to=iec "$size"))"
 # The installer creates JODS-RECOVERY empty or as vfat JODSRECOV and asks
 # before it gets here; anything else on the partition needs typed consent.
@@ -125,10 +131,15 @@ mount -o nodev,nosuid,noexec "$partition" "$mount_dir"
   echo "ERROR: recovery image does not fit a FAT32 file (4 GiB)" >&2
   exit 1
 }
-install -d "$mount_dir/EFI/BOOT"
+# systemd-boot lists Type #2 entries from EFI/Linux on the XBOOTLDR
+# partition next to its own. Never use the removable-media path
+# \EFI\BOOT\BOOTX64.EFI here: firmware that drops or ignores BootOrder
+# starts any loader it finds there, and every boot landed in recovery (real
+# HP 2026-10-08, book1 2026-10-10).
+install -d "$mount_dir/EFI/Linux"
 xorriso -osirrox on -indev "$image" \
-  -extract /EFI/gjallar/recovery-partition.efi "$mount_dir/EFI/BOOT/BOOTX64.EFI" >/dev/null 2>&1
-[ -f "$mount_dir/EFI/BOOT/BOOTX64.EFI" ] || {
+  -extract /EFI/gjallar/recovery-partition.efi "$mount_dir/EFI/Linux/gjallar-recovery.efi" >/dev/null 2>&1
+[ -f "$mount_dir/EFI/Linux/gjallar-recovery.efi" ] || {
   echo "ERROR: recovery image has no recovery-partition UKI" >&2
   exit 1
 }
@@ -154,35 +165,11 @@ else
   install -m 0600 "$signature" "$mount_dir/.gjallar-release/manifest.sig"
   install -m 0644 "$public_key" "$mount_dir/.gjallar-release/recovery-signing-public.pem"
 fi
-sync -f "$mount_dir/EFI/BOOT/BOOTX64.EFI"
+sync -f "$mount_dir/EFI/Linux/gjallar-recovery.efi"
 
-# Give firmware an explicit independent recovery target. Never delete or
-# rewrite an existing firmware entry here; duplicate creation is avoided by
-# checking the canonical label first. --create would put recovery first in
-# BootOrder and every normal boot would land in it; append it last instead.
-if ! efibootmgr | grep -Fq 'GjallarOS Recovery'; then
-  boot_order=$(efibootmgr | sed -n 's/^BootOrder: //p')
-  efibootmgr \
-    --create-only \
-    --disk "$parent" \
-    --part "$part_number" \
-    --label 'GjallarOS Recovery' \
-    --loader '\EFI\BOOT\BOOTX64.EFI'
-  recovery_entry=$(efibootmgr | sed -n 's/^Boot\([0-9A-Fa-f]\{4\}\)[* ] GjallarOS Recovery\(\t.*\)\{0,1\}$/\1/p' | head -n1)
-  [ -n "$recovery_entry" ] || {
-    echo "ERROR: recovery UEFI boot entry was not created" >&2
-    exit 1
-  }
-  efibootmgr --bootorder "${boot_order:+$boot_order,}$recovery_entry" >/dev/null
-fi
-
-efibootmgr -v | grep -F 'GjallarOS Recovery' >/dev/null || {
-  echo "ERROR: recovery UEFI boot entry was not verified" >&2
-  false
-}
-
-# Appending recovery trusts the old BootOrder to start the installed system
-# first; boot-first.sh puts the installed systemd-boot entry ahead of it.
+# Recovery is a systemd-boot menu entry, never a firmware boot entry of its
+# own; boot-first.sh removes the one older installs created and puts the
+# installed systemd-boot entry first.
 if findmnt -rn --mountpoint /boot >/dev/null; then
   "$(dirname "$(realpath "${BASH_SOURCE[0]}")")/boot-first.sh" /boot
 else
@@ -190,7 +177,7 @@ else
 fi
 
 if $sign; then
-  echo "Installed verified, endpoint-signed, independently bootable recovery environment."
+  echo "Installed verified, endpoint-signed recovery environment (boot menu entry)."
 else
-  echo "Installed verified, independently bootable recovery environment (unsigned; Secure Boot off)."
+  echo "Installed verified recovery environment (boot menu entry; unsigned, Secure Boot off)."
 fi

@@ -2,11 +2,15 @@
 # usage: boot-first.sh ESP_MOUNTPOINT
 #
 # Make the systemd-boot entry of the ESP mounted at ESP_MOUNTPOINT the first
-# UEFI boot target, recreating it when missing, with GjallarOS Recovery right
-# behind it and every other entry after. On the HP (2026-10-08) BootOrder
-# held neither Linux Boot Manager entry, so every boot landed in recovery,
-# and bootctl install appended the restored entry behind USB, PXE and
-# recovery. Never deletes an entry.
+# UEFI boot target, recreating it when missing, with every other entry after.
+# On the HP (2026-10-08) BootOrder held neither Linux Boot Manager entry, so
+# every boot landed in recovery, and bootctl install appended the restored
+# entry behind USB, PXE and recovery.
+#
+# Deletes the "GjallarOS Recovery" entries older installs created: firmware
+# that rebuilds or ignores BootOrder started them ahead of the installed
+# system (book1, 2026-10-10). Recovery is a systemd-boot menu entry now.
+# Never deletes any other entry.
 set -euo pipefail
 
 [ "$#" -eq 1 ] || { echo "usage: $0 ESP_MOUNTPOINT" >&2; exit 2; }
@@ -43,12 +47,15 @@ if [ -z "$esp_entries" ]; then
   }
 fi
 
-recovery_entries=$(efibootmgr | tr '[:upper:]' '[:lower:]' |
-  sed -n 's/^boot\([0-9a-f]\{4\}\)[* ] gjallaros recovery\(\t.*\)\{0,1\}$/\1/p' | paste -sd, -)
+for entry in $(efibootmgr | tr '[:upper:]' '[:lower:]' |
+  sed -n 's/^boot\([0-9a-f]\{4\}\)[* ] gjallaros recovery\(\t.*\)\{0,1\}$/\1/p'); do
+  efibootmgr --quiet --bootnum "$entry" --delete-bootnum
+  echo "Removed firmware entry Boot$entry (GjallarOS Recovery)"
+done
 rest=$(efibootmgr | sed -n 's/^BootOrder: //p' | tr '[:upper:]' '[:lower:]' | tr , '\n' |
-  grep -vxF -f <(printf '%s\n' "$esp_entries,$recovery_entries" | tr , '\n' | grep .) |
+  grep -vxF -f <(printf '%s\n' "$esp_entries" | tr , '\n') |
   paste -sd, - || true)
-new_order=$(printf '%s\n' "$esp_entries" "$recovery_entries" "$rest" | grep . | paste -sd, -)
+new_order=$(printf '%s\n' "$esp_entries" "$rest" | grep . | paste -sd, -)
 efibootmgr --bootorder "$new_order" >/dev/null
 
 first=$(efibootmgr | sed -n 's/^BootOrder: //p' | cut -d, -f1 | tr '[:upper:]' '[:lower:]')

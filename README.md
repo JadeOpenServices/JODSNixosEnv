@@ -297,6 +297,11 @@ sudo gjallar-recover rollback / N
 
 This adds a new generation with that system; nothing newer is deleted.
 
+The recovery partition shows up in the same menu as "GjallarOS recovery
+(partition)". It has no firmware boot entry of its own and no loader at the
+removable-media path, so firmware that ignores the boot order still starts
+GjallarOS. If the ESP itself is broken, boot the recovery ISO from USB.
+
 > [!NOTE]
 > The installed system does not carry the installer. `gjallar-installer` and
 > `gjallar-recovery-maintenance` (package `pkgs/gjallar-installer`) can

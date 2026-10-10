@@ -140,14 +140,18 @@ let
   # found), and the ISO's /iso mount wants an iso9660 device. gjallar.iso=
   # makes stage 1 find the ISO file install-partition.sh copies next to it
   # and gjallar.verity= pins its store.
+  # systemd-boot lists it by its os-release PRETTY_NAME, next to the
+  # installed system's entries.
   recoveryPartitionUki = pkgs.runCommand "gjallar-recovery-partition.efi" { } ''
+    sed 's/^PRETTY_NAME=.*/PRETTY_NAME="GjallarOS recovery (partition)"/' \
+      ${config.system.build.etc}/etc/os-release > os-release
     ${pkgs.buildPackages.systemdUkify}/lib/systemd/ukify build \
       --linux=${config.boot.kernelPackages.kernel}/${config.system.boot.loader.kernelFile} \
       --initrd=${config.system.build.initialRamdisk}/${config.system.boot.loader.initrdFile} \
       --cmdline="init=${config.system.build.toplevel}/init ${toString partitionKernelParams} gjallar.iso=/gjallar-recovery.iso gjallar.verity=$(cat ${recoveryStoreVerity}/params) gjallar.recovery=partition" \
       --stub=${pkgs.systemd}/lib/systemd/boot/efi/linux${pkgs.stdenv.hostPlatform.efiArch}.efi.stub \
       --uname=${config.boot.kernelPackages.kernel.modDirVersion} \
-      --os-release=@${config.system.build.etc}/etc/os-release \
+      --os-release=@os-release \
       --output=$out
   '';
 in
