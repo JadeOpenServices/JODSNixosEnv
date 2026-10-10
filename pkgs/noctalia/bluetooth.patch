@@ -1,0 +1,355 @@
+diff --git a/assets/translations/de.json b/assets/translations/de.json
+index 05f7c47..83f7dfc 100644
+--- a/assets/translations/de.json
++++ b/assets/translations/de.json
+@@ -224,6 +224,7 @@
+         "connected": "Verbunden",
+         "paired": "Gekoppelt"
+       },
++      "show-unnamed": "Geräte ohne Namen anzeigen",
+       "unavailable": "Bluetooth-Dienst nicht verfügbar",
+       "unknown-device": "Unbekanntes Gerät",
+       "visible": "Sichtbar für Geräte in der Nähe"
+diff --git a/assets/translations/en.json b/assets/translations/en.json
+index f424028..c40edce 100644
+--- a/assets/translations/en.json
++++ b/assets/translations/en.json
+@@ -202,7 +202,7 @@
+     "bluetooth": {
+       "accept": "Accept",
+       "address": "Address",
+-      "auto-reconnect": "Auto-reconnect",
++      "auto-reconnect": "Auto-connect",
+       "bluetooth": "Bluetooth",
+       "enter-code": "Enter code",
+       "no-devices": "No devices found. Start scanning to discover nearby Bluetooth devices.",
+@@ -224,6 +224,7 @@
+         "connected": "Connected",
+         "paired": "Paired"
+       },
++      "show-unnamed": "Show devices without a name",
+       "unavailable": "Bluetooth service unavailable",
+       "unknown-device": "Unknown device",
+       "visible": "Discoverable by nearby devices"
+diff --git a/src/config/config_types.h b/src/config/config_types.h
+index 0a5d685..3b466c6 100644
+--- a/src/config/config_types.h
++++ b/src/config/config_types.h
+@@ -1534,6 +1534,11 @@ struct ControlCenterConfig {
+     bool operator==(const CalendarTabConfig&) const = default;
+   };
+ 
++  struct BluetoothTabConfig {
++    bool showUnnamedDevices = false;
++    bool operator==(const BluetoothTabConfig&) const = default;
++  };
++
+   std::vector<ShortcutConfig> shortcuts;
+   std::vector<std::string> hiddenTabs; // tab keys (see kTabs) the user has hidden; empty = all available shown
+   ControlCenterSidebarMode sidebarMode = ControlCenterSidebarMode::Compact;
+@@ -1542,6 +1547,7 @@ struct ControlCenterConfig {
+   bool showShortcutLabels = true;
+   bool showSessionButton = true;
+   CalendarTabConfig calendarTab;
++  BluetoothTabConfig bluetoothTab;
+   bool operator==(const ControlCenterConfig&) const = default;
+ };
+ 
+diff --git a/src/config/schema/config_schema.cpp b/src/config/schema/config_schema.cpp
+index b35e981..66f7be5 100644
+--- a/src/config/schema/config_schema.cpp
++++ b/src/config/schema/config_schema.cpp
+@@ -479,6 +479,13 @@ namespace noctalia::config::schema {
+       };
+       return s;
+     }
++
++    const Schema<ControlCenterConfig::BluetoothTabConfig>& bluetoothTabSchema() {
++      static const Schema<ControlCenterConfig::BluetoothTabConfig> s = {
++          field(&ControlCenterConfig::BluetoothTabConfig::showUnnamedDevices, "show_unnamed_devices"),
++      };
++      return s;
++    }
+   } // namespace
+ 
+   const Schema<ControlCenterConfig>& controlCenterSchema() {
+@@ -490,6 +497,7 @@ namespace noctalia::config::schema {
+         field(&ControlCenterConfig::showSessionButton, "show_session_button"),
+         field(&ControlCenterConfig::hiddenTabs, "hidden_tabs"),
+         subTable(&ControlCenterConfig::calendarTab, "calendar", calendarTabSchema()),
++        subTable(&ControlCenterConfig::bluetoothTab, "bluetooth", bluetoothTabSchema()),
+         arrayOf<ControlCenterConfig, ShortcutConfig>(
+             &ControlCenterConfig::shortcuts, "shortcuts", shortcutSchema(),
+             [](const ShortcutConfig& sc) { return !sc.type.empty(); }
+diff --git a/src/dbus/bluetooth/bluetooth_service.cpp b/src/dbus/bluetooth/bluetooth_service.cpp
+index 6e4e398..8d07f68 100644
+--- a/src/dbus/bluetooth/bluetooth_service.cpp
++++ b/src/dbus/bluetooth/bluetooth_service.cpp
+@@ -184,14 +184,12 @@ namespace {
+     }
+     if (auto it = props.find("Alias"); it != props.end()) {
+       if (auto v = variantGet<std::string>(it->second)) {
+-        out.alias = std::move(*v);
++        out.bluezAlias = std::move(*v);
+       }
+     }
+-    if (out.alias.empty()) {
+-      if (auto it = props.find("Name"); it != props.end()) {
+-        if (auto v = variantGet<std::string>(it->second)) {
+-          out.alias = std::move(*v);
+-        }
++    if (auto it = props.find("Name"); it != props.end()) {
++      if (auto v = variantGet<std::string>(it->second)) {
++        out.bluezName = std::move(*v);
+       }
+     }
+     if (auto it = props.find("Paired"); it != props.end()) {
+@@ -238,8 +236,21 @@ namespace {
+         }
+       }
+     }
+-    if (out.alias.empty()) {
++    // Without a name BlueZ reports the address with dashes as Alias; a user-set alias or
++    // the advertised Name is what people recognise the device by.
++    std::string placeholder = out.address;
++    std::ranges::replace(placeholder, ':', '-');
++    const bool aliasIsAddress =
++        out.bluezAlias.empty() || out.bluezAlias == placeholder || out.bluezAlias == out.address;
++    if (!aliasIsAddress) {
++      out.alias = out.bluezAlias;
++      out.named = true;
++    } else if (!out.bluezName.empty()) {
++      out.alias = out.bluezName;
++      out.named = true;
++    } else {
+       out.alias = out.address.empty() ? i18n::tr("control-center.bluetooth.unknown-device") : out.address;
++      out.named = false;
+     }
+   }
+ 
+@@ -266,6 +277,9 @@ struct BluetoothService::Impl {
+   BluetoothService& self;
+   SystemBus& bus;
+   std::unique_ptr<sdbus::IProxy> root; // ObjectManager on "/"
++  // PropertiesChanged for every BlueZ object. A per-object subscription only starts after
++  // InterfacesAdded is handled, and a name that arrives in that gap was lost.
++  sdbus::Slot propertiesMatch;
+   std::unique_ptr<sdbus::IProxy> adapter;
+   std::unordered_map<std::string, std::unique_ptr<sdbus::IProxy>> objectProxies;
+   std::string adapterPath;
+@@ -284,12 +298,6 @@ struct BluetoothService::Impl {
+       kLog.debug("proxy create failed {}: {}", path, e.what());
+       return nullptr;
+     }
+-    proxy->uponSignal("PropertiesChanged")
+-        .onInterface(kPropertiesInterface)
+-        .call([this, objectPath = path](
+-                  const std::string& interfaceName, const InterfaceProps& changed,
+-                  const std::vector<std::string>& /*invalidated*/
+-              ) { onPropertiesChanged(objectPath, interfaceName, changed); });
+     auto* raw = proxy.get();
+     objectProxies.emplace(path, std::move(proxy));
+     return raw;
+@@ -462,6 +470,25 @@ BluetoothService::BluetoothService(SystemBus& bus, UPowerService* upowerService)
+     : m_impl(std::make_unique<Impl>(*this, bus)), m_upowerService(upowerService) {
+   m_impl->root = sdbus::createProxy(bus.connection(), kBluezBusName, kRootPath);
+ 
++  m_impl->propertiesMatch = bus.connection().addMatch(
++      std::string("type='signal',sender='") + kBluezBusName + "',interface='" + kPropertiesInterface +
++          "',member='PropertiesChanged'",
++      [this](sdbus::Message msg) {
++        try {
++          const char* objectPath = msg.getPath();
++          std::string interfaceName;
++          InterfaceProps changed;
++          msg >> interfaceName >> changed;
++          if (objectPath != nullptr) {
++            m_impl->onPropertiesChanged(objectPath, interfaceName, changed);
++          }
++        } catch (const sdbus::Error& e) {
++          kLog.debug("PropertiesChanged decode failed: {}", e.what());
++        }
++      },
++      sdbus::return_slot
++  );
++
+   m_impl->root->uponSignal("InterfacesAdded")
+       .onInterface(kObjectManagerInterface)
+       .call([this](const sdbus::ObjectPath& path, const ObjectInterfaces& interfaces) {
+diff --git a/src/dbus/bluetooth/bluetooth_service.h b/src/dbus/bluetooth/bluetooth_service.h
+index 9fd121b..b908fba 100644
+--- a/src/dbus/bluetooth/bluetooth_service.h
++++ b/src/dbus/bluetooth/bluetooth_service.h
+@@ -37,7 +37,12 @@ enum class BluetoothDeviceKind : std::uint8_t {
+ struct BluetoothDeviceInfo {
+   std::string path;
+   std::string address;
++  // Display name: the BlueZ Alias, else the advertised Name, else the address.
+   std::string alias;
++  std::string bluezAlias;
++  std::string bluezName;
++  // False while BlueZ knows no name or alias for the device (alias is the address).
++  bool named = false;
+   BluetoothDeviceKind kind = BluetoothDeviceKind::Unknown;
+   bool paired = false;
+   bool trusted = false;
+diff --git a/src/shell/control_center/control_center_panel.cpp b/src/shell/control_center/control_center_panel.cpp
+index 5f56240..b056c96 100644
+--- a/src/shell/control_center/control_center_panel.cpp
++++ b/src/shell/control_center/control_center_panel.cpp
+@@ -65,7 +65,7 @@ ControlCenterPanel::ControlCenterPanel(const ControlCenterServices& services) {
+       std::make_unique<NotificationsTab>(services.notifications, services.platform);
+   m_tabs[tabIndex(TabId::Network)] =
+       std::make_unique<NetworkTab>(services.network, services.networkSecrets, services.externalIp);
+-  m_tabs[tabIndex(TabId::Bluetooth)] = std::make_unique<BluetoothTab>(services.bluetooth, services.bluetoothAgent);
++  m_tabs[tabIndex(TabId::Bluetooth)] = std::make_unique<BluetoothTab>(services.bluetooth, services.bluetoothAgent, services.config);
+   m_tabs[tabIndex(TabId::Monitor)] = std::make_unique<MonitorTab>(services.brightness, services.config);
+   m_tabs[tabIndex(TabId::System)] = std::make_unique<SystemTab>(services.sysmon);
+   m_tabs[tabIndex(TabId::ScreenTime)] = std::make_unique<ScreenTimeTab>(services.screenTime);
+diff --git a/src/shell/control_center/tabs/bluetooth_tab.cpp b/src/shell/control_center/tabs/bluetooth_tab.cpp
+index d7a7b28..48d7931 100644
+--- a/src/shell/control_center/tabs/bluetooth_tab.cpp
++++ b/src/shell/control_center/tabs/bluetooth_tab.cpp
+@@ -1,5 +1,6 @@
+ #include "shell/control_center/tabs/bluetooth_tab.h"
+ 
++#include "config/config_service.h"
+ #include "core/ui_phase.h"
+ #include "i18n/i18n.h"
+ #include "render/core/renderer.h"
+@@ -238,6 +239,25 @@ public:
+     }
+ 
+     if (m_device.paired) {
++      // Trusted devices reconnect on their own; shown in the header so it is visible
++      // without expanding the row.
++      header->addChild(
++          ui::button({
++              .glyph = m_device.trusted ? "repeat" : "repeat-off",
++              .glyphSize = Style::fontSizeBody * scale,
++              .selected = m_device.trusted,
++              .variant = ButtonVariant::Ghost,
++              .tooltip = i18n::tr("control-center.bluetooth.auto-reconnect"),
++              .padding = Style::spaceXs * scale,
++              .radius = Style::scaledRadiusSm(scale),
++              .onClick = [this]() {
++                if (m_service != nullptr) {
++                  m_service->setTrusted(m_device.path, !m_device.trusted);
++                }
++                PanelManager::instance().refresh();
++              },
++          })
++      );
+       header->addChild(
+           ui::button({
+               .glyph = "trash",
+@@ -343,7 +363,8 @@ private:
+   Label* m_signalValue = nullptr;
+ };
+ 
+-BluetoothTab::BluetoothTab(BluetoothService* service, BluetoothAgent* agent) : m_service(service), m_agent(agent) {}
++BluetoothTab::BluetoothTab(BluetoothService* service, BluetoothAgent* agent, ConfigService* config)
++    : m_service(service), m_agent(agent), m_config(config) {}
+ 
+ BluetoothTab::~BluetoothTab() = default;
+ 
+@@ -695,6 +716,7 @@ std::string BluetoothTab::structureKey(const std::vector<BluetoothDeviceInfo>& d
+   }
+   const auto& s = m_service->state();
+   std::string key;
++  key += showUnnamedDevices() ? '1' : '0';
+   key += s.adapterPresent ? '1' : '0';
+   key += s.powered ? '1' : '0';
+   key += s.rfkillSoftBlocked ? '1' : '0';
+@@ -718,6 +740,10 @@ std::string BluetoothTab::structureKey(const std::vector<BluetoothDeviceInfo>& d
+   return key;
+ }
+ 
++bool BluetoothTab::showUnnamedDevices() const {
++  return m_config != nullptr && m_config->config().controlCenter.bluetoothTab.showUnnamedDevices;
++}
++
+ bool BluetoothTab::syncDeviceRows() {
+   if (m_service == nullptr || m_deviceRows.empty()) {
+     return false;
+@@ -745,6 +771,12 @@ void BluetoothTab::rebuildDeviceList(Renderer& renderer) {
+   if (m_service != nullptr) {
+     devices = sortedDevices(m_service->devices());
+   }
++  // Nameless advertisers only add clutter; paired or connected ones always stay listed.
++  if (!showUnnamedDevices()) {
++    std::erase_if(devices, [](const BluetoothDeviceInfo& d) {
++      return !d.named && bucketFor(d) == DeviceBucket::Available;
++    });
++  }
+   const std::string nextKey = structureKey(devices);
+   const bool structureChanged = nextKey != m_lastStructureKey;
+   if (listWidth == m_lastListWidth && !structureChanged) {
+@@ -887,6 +919,34 @@ void BluetoothTab::rebuildDeviceList(Renderer& renderer) {
+ 
+     adapterCard->addChild(std::move(visibleRow));
+ 
++    auto unnamedRow = ui::row(
++        {.align = FlexAlign::Center,
++         .gap = Style::spaceSm * scale,
++         .minHeight = Style::controlHeightSm * scale,
++         .maxHeight = Style::controlHeightSm * scale},
++        ui::label({
++            .text = i18n::tr("control-center.bluetooth.show-unnamed"),
++            .fontSize = Style::fontSizeBody * scale,
++            .color = colorSpecFromRole(ColorRole::OnSurface),
++            .flexGrow = 1.0F,
++        }),
++        ui::checkbox({
++            .checked = showUnnamedDevices(),
++            .enabled = m_config != nullptr,
++            .scale = scale,
++            .onChange = [this](bool checked) {
++              if (m_config == nullptr) {
++                return;
++              }
++              m_config->setOverride({"control_center", "bluetooth", "show_unnamed_devices"}, checked);
++              m_lastStructureKey.clear();
++              PanelManager::instance().refresh();
++            },
++        })
++    );
++
++    adapterCard->addChild(std::move(unnamedRow));
++
+     m_list->addChild(std::move(adapterCard));
+   }
+ 
+diff --git a/src/shell/control_center/tabs/bluetooth_tab.h b/src/shell/control_center/tabs/bluetooth_tab.h
+index 27e635b..3928231 100644
+--- a/src/shell/control_center/tabs/bluetooth_tab.h
++++ b/src/shell/control_center/tabs/bluetooth_tab.h
+@@ -12,6 +12,7 @@
+ 
+ class BluetoothDeviceRow;
+ class Button;
++class ConfigService;
+ class Flex;
+ class Input;
+ class Label;
+@@ -21,7 +22,7 @@ class Toggle;
+ 
+ class BluetoothTab : public Tab {
+ public:
+-  BluetoothTab(BluetoothService* service, BluetoothAgent* agent);
++  BluetoothTab(BluetoothService* service, BluetoothAgent* agent, ConfigService* config = nullptr);
+   ~BluetoothTab() override;
+ 
+   std::unique_ptr<Flex> create() override;
+@@ -55,9 +56,11 @@ private:
+   // Pushes live metric values into the existing rows. Returns true if any changed.
+   bool syncDeviceRows();
+   [[nodiscard]] std::string structureKey(const std::vector<BluetoothDeviceInfo>& devices) const;
++  [[nodiscard]] bool showUnnamedDevices() const;
+ 
+   BluetoothService* m_service = nullptr;
+   BluetoothAgent* m_agent = nullptr;
++  ConfigService* m_config = nullptr;
+ 
+   Flex* m_rootLayout = nullptr;
+ 

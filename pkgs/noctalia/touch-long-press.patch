@@ -1,0 +1,172 @@
+diff --git a/src/render/scene/input_dispatcher.cpp b/src/render/scene/input_dispatcher.cpp
+index 6621f50..b42aedd 100644
+--- a/src/render/scene/input_dispatcher.cpp
++++ b/src/render/scene/input_dispatcher.cpp
+@@ -6,6 +6,7 @@
+ #include "wayland/text_input_service.h"
+ 
+ #include <algorithm>
++#include <chrono>
+ #include <cmath>
+ #include <optional>
+ #include <string>
+@@ -14,6 +15,7 @@
+ 
+ namespace {
+   constexpr float kTouchScrollSlop = 8.0F;
++  constexpr auto kTouchLongPressDelay = std::chrono::milliseconds(500);
+ 
+   bool nodeVisibleInScene(const Node* node) {
+     for (const Node* current = node; current != nullptr; current = current->parent()) {
+@@ -66,6 +68,7 @@ namespace {
+ 
+ void InputDispatcher::setSceneRoot(Node* root) {
+   if (root != m_sceneRoot) {
++    cancelTouchLongPress();
+     cancelPointerCapture();
+     if (m_hoveredArea != nullptr) {
+       auto* old = m_hoveredArea;
+@@ -124,6 +127,7 @@ void InputDispatcher::pointerEnter(float x, float y, std::uint32_t serial) {
+ }
+ 
+ void InputDispatcher::pointerLeave() {
++  cancelTouchLongPress();
+   m_touchGesture = {};
+   cancelPointerCapture();
+   m_hasPointerPosition = false;
+@@ -148,6 +152,11 @@ void InputDispatcher::pointerMotion(float x, float y, std::uint32_t serial) {
+   m_lastPointerY = y;
+   m_hasPointerPosition = true;
+ 
++  if (m_touchLongPress.armed
++      && std::max(std::abs(x - m_touchLongPress.pressX), std::abs(y - m_touchLongPress.pressY)) >= kTouchScrollSlop) {
++    cancelTouchLongPress();
++  }
++
+   if (m_touchGesture.pending) {
+     const float dx = x - m_touchGesture.pressX;
+     const float dy = y - m_touchGesture.pressY;
+@@ -178,6 +187,17 @@ void InputDispatcher::pointerMotion(float x, float y, std::uint32_t serial) {
+ bool InputDispatcher::pointerButton(
+     float x, float y, std::uint32_t button, bool pressed, std::uint32_t serial, std::uint32_t time, bool touch
+ ) {
++  if (touch && pressed) {
++    m_swallowTouchRelease = false;
++    armTouchLongPress(x, y, serial, time);
++  } else if (touch) {
++    cancelTouchLongPress();
++    if (std::exchange(m_swallowTouchRelease, false)) {
++      m_touchGesture = {};
++      m_capturedArea = nullptr;
++      return true;
++    }
++  }
+   if (m_touchGesture.pending && pressed) {
+     m_touchGesture = {};
+   } else if (m_touchGesture.pending && button == m_touchGesture.button) {
+@@ -650,6 +670,44 @@ void InputDispatcher::pruneDetachedAreas() {
+   }
+ }
+ 
++void InputDispatcher::armTouchLongPress(float x, float y, std::uint32_t serial, std::uint32_t time) {
++  m_touchLongPress = TouchLongPress{.armed = true, .pressX = x, .pressY = y, .serial = serial, .time = time};
++  m_touchLongPressTimer.start(kTouchLongPressDelay, [this]() { fireTouchLongPress(); });
++}
++
++void InputDispatcher::cancelTouchLongPress() {
++  m_touchLongPress = {};
++  m_touchLongPressTimer.stop();
++}
++
++void InputDispatcher::fireTouchLongPress() {
++  const auto press = std::exchange(m_touchLongPress, {});
++  if (!press.armed) {
++    return;
++  }
++  pruneDetachedAreas();
++  InputArea* target = inputAreaAcceptingButton(findInputAreaAt(press.pressX, press.pressY), BTN_RIGHT);
++  if (target == nullptr) {
++    // Nothing here has a secondary action; lifting the finger stays a plain tap.
++    return;
++  }
++  // Drop the primary press (or the pending scroll gesture) so the lift cannot click.
++  cancelPointerCapture();
++  m_swallowTouchRelease = true;
++
++  float localX = 0.0F;
++  float localY = 0.0F;
++  (void)Node::mapFromScene(target, press.pressX, press.pressY, localX, localY);
++  m_capturedArea = target;
++  trackArea(target);
++  target->dispatchPress(localX, localY, BTN_RIGHT, true, press.pressX, press.pressY, press.serial, press.time);
++  // The press handler may rebuild the scene; the destroy callback clears the capture then.
++  if (m_capturedArea == target) {
++    m_capturedArea = nullptr;
++    target->dispatchPress(localX, localY, BTN_RIGHT, false, press.pressX, press.pressY, press.serial, press.time);
++  }
++}
++
+ void InputDispatcher::trackArea(InputArea* area) {
+   area->setDestroyCallback([this](InputArea* a) {
+     const bool ownedCursor = m_hoveredArea == a || m_capturedArea == a;
+diff --git a/src/render/scene/input_dispatcher.h b/src/render/scene/input_dispatcher.h
+index 1e9cac8..b9f57e8 100644
+--- a/src/render/scene/input_dispatcher.h
++++ b/src/render/scene/input_dispatcher.h
+@@ -1,5 +1,7 @@
+ #pragma once
+ 
++#include "core/timer_manager.h"
++
+ #include <cstddef>
+ #include <cstdint>
+ #include <functional>
+@@ -22,6 +24,11 @@ public:
+   };
+ 
+   InputDispatcher() = default;
++  // The touch long-press timer calls back into this object, so it must not move.
++  InputDispatcher(const InputDispatcher&) = delete;
++  InputDispatcher& operator=(const InputDispatcher&) = delete;
++  InputDispatcher(InputDispatcher&&) = delete;
++  InputDispatcher& operator=(InputDispatcher&&) = delete;
+ 
+   void setSceneRoot(Node* root);
+   void setCursorShapeCallback(CursorShapeCallback callback);
+@@ -74,6 +81,9 @@ private:
+   void trackArea(InputArea* area);
+   void clearTextInputFocus(InputArea* area);
+   void syncTextInputFocus();
++  void armTouchLongPress(float x, float y, std::uint32_t serial, std::uint32_t time);
++  void cancelTouchLongPress();
++  void fireTouchLongPress();
+ 
+   struct TouchScrollGesture {
+     bool pending = false;
+@@ -86,6 +96,16 @@ private:
+     InputArea* horizontalArea = nullptr;
+   };
+ 
++  // A finger held still on one spot acts as a right click there, the way a
++  // long press opens the secondary action on phones and tablets.
++  struct TouchLongPress {
++    bool armed = false;
++    float pressX = 0.0F;
++    float pressY = 0.0F;
++    std::uint32_t serial = 0;
++    std::uint32_t time = 0;
++  };
++
+   Node* m_sceneRoot = nullptr;
+   CursorShapeCallback m_cursorShapeCallback;
+   HoverChangeCallback m_hoverChangeCallback;
+@@ -105,4 +125,9 @@ private:
+   float m_lastPointerY = 0.0F;
+   bool m_hasPointerPosition = false;
+   bool m_cancelingPointerCapture = false;
++  TouchLongPress m_touchLongPress;
++  // Set once a long press fired, so lifting the finger does not also click.
++  bool m_swallowTouchRelease = false;
++  // Last member: stopped before anything its callback touches is destroyed.
++  Timer m_touchLongPressTimer;
+ };
