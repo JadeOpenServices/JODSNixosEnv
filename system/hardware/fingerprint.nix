@@ -15,16 +15,20 @@ let
   jodsEnrollmentAllowed =
     settings.jodsFingerprintEnrollmentAllowed or false;
 
+  # ODDC marks readers with no Linux driver (the ZBook x2's VFS495) as
+  # support.linux.status = "unsupported". Treat those as no reader, so sudo and
+  # the lock screen do not wait on a scan that never comes. A missing support
+  # entry makes no claim either way.
+  fingerprint = lib.attrByPath [
+    "oddc"
+    "resolved"
+    "hardware"
+    "security"
+    "fingerprint"
+  ] { } config;
   fingerprintPresent =
-    builtins.hasAttr "primary" (
-      lib.attrByPath [
-        "oddc"
-        "resolved"
-        "hardware"
-        "security"
-        "fingerprint"
-      ] { } config
-    );
+    fingerprint ? primary
+    && lib.attrByPath [ "primary" "support" "linux" "status" ] null fingerprint != "unsupported";
 
   fingerprintState = pkgs.writeShellScript "gjallar-fingerprint-state" ''
     set -eu

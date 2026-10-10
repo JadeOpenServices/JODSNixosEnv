@@ -7,15 +7,18 @@
 }:
 
 let
-  fingerprintPresent = builtins.hasAttr "primary" (
-    lib.attrByPath [
-      "oddc"
-      "resolved"
-      "hardware"
-      "security"
-      "fingerprint"
-    ] { } osConfig
-  );
+  # Same test as system/hardware/fingerprint.nix: an "unsupported" reader counts
+  # as none.
+  fingerprint = lib.attrByPath [
+    "oddc"
+    "resolved"
+    "hardware"
+    "security"
+    "fingerprint"
+  ] { } osConfig;
+  fingerprintPresent =
+    fingerprint ? primary
+    && lib.attrByPath [ "primary" "support" "linux" "status" ] null fingerprint != "unsupported";
 
   enrollment = pkgs.writeShellScript "gjallar-fingerprint-enroll" ''
     set -eu
