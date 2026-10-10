@@ -71,6 +71,11 @@ in
 
         wantedBy = [ "graphical-session.target" ];
         after = [ "graphical-session.target" ];
+        # hyprland-rotate runs monitor-sensor and hyprctl.
+        path = [
+          pkgs.iio-sensor-proxy
+          config.programs.hyprland.package
+        ];
 
         serviceConfig = {
           ExecStart = "${gjallarctl}/bin/gjallarctl hyprland-rotate";
