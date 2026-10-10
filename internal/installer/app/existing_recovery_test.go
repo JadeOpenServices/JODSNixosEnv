@@ -11,11 +11,20 @@ import (
 
 	"github.com/JadeOpenServices/gjallarOS/internal/installer/config"
 	"github.com/JadeOpenServices/gjallarOS/internal/installer/prompt"
+	"github.com/JadeOpenServices/gjallarOS/internal/installercheck"
 )
+
+// stubInstalledSystemEvidence keeps the detection tests off the live host.
+func stubInstalledSystemEvidence(t *testing.T, found bool) {
+	original := installedSystemEvidence
+	t.Cleanup(func() { installedSystemEvidence = original })
+	installedSystemEvidence = func(context.Context) bool { return found }
+}
 
 func TestVanillaPersistentRootIsFresh(t *testing.T) {
 	original := inspectCurrentRoot
 	t.Cleanup(func() { inspectCurrentRoot = original })
+	stubInstalledSystemEvidence(t, false)
 
 	inspectCurrentRoot = func(
 		context.Context,
@@ -38,6 +47,7 @@ func TestVanillaPersistentRootIsFresh(t *testing.T) {
 func TestLiveMediaRootIsNotExistingInstalledSystem(t *testing.T) {
 	original := inspectCurrentRoot
 	t.Cleanup(func() { inspectCurrentRoot = original })
+	stubInstalledSystemEvidence(t, true)
 
 	inspectCurrentRoot = func(
 		context.Context,
@@ -54,6 +64,41 @@ func TestLiveMediaRootIsNotExistingInstalledSystem(t *testing.T) {
 	}
 	if existing {
 		t.Fatal("live-media root was treated as an installed system")
+	}
+}
+
+func TestUnmanagedInstallIsExisting(t *testing.T) {
+	original := inspectCurrentRoot
+	t.Cleanup(func() { inspectCurrentRoot = original })
+	stubInstalledSystemEvidence(t, true)
+
+	inspectCurrentRoot = func(
+		context.Context,
+	) (string, string, error) {
+		return "/dev/mapper/cryptroot[/@root]", "btrfs", nil
+	}
+
+	existing, err := detectExistingInstalledSystem(
+		context.Background(),
+		t.TempDir(),
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !existing {
+		t.Fatal("installed GjallarOS without JODS was treated as fresh")
+	}
+}
+
+func TestSystemRepositoryFileIsEvidence(t *testing.T) {
+	original := installercheck.SystemRepositoryFile
+	t.Cleanup(func() { installercheck.SystemRepositoryFile = original })
+	installercheck.SystemRepositoryFile = filepath.Join(t.TempDir(), "repository")
+	if err := os.WriteFile(installercheck.SystemRepositoryFile, []byte("/home/u/gjallarOS\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if !installedSystemEvidence(context.Background()) {
+		t.Fatal("/etc/gjallar/repository not taken as an installed system")
 	}
 }
 

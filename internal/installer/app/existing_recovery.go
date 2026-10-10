@@ -12,6 +12,7 @@ import (
 	"github.com/JadeOpenServices/gjallarOS/internal/installer/config"
 	"github.com/JadeOpenServices/gjallarOS/internal/installer/prompt"
 	"github.com/JadeOpenServices/gjallarOS/internal/installer/recoveryresize"
+	"github.com/JadeOpenServices/gjallarOS/internal/installercheck"
 )
 
 type recoveryCapabilityRunner struct{}
@@ -65,16 +66,28 @@ var detectCurrentRootFilesystem = func(
 	)
 }
 
+// installedSystemEvidence reports whether the running system was deployed by
+// GjallarOS. Every flake-built system names its checkout in
+// /etc/gjallar/repository; installation-complete is written only by JODS
+// enrollment, so unmanaged installs have the first one alone. Swapped in tests,
+// both read the live host.
+var installedSystemEvidence = func(ctx context.Context) bool {
+	if _, err := os.Stat(installercheck.SystemRepositoryFile); err == nil {
+		return true
+	}
+	return privilegedFileExists(ctx, "/var/lib/gjallarOS/installation-complete")
+}
+
 func detectExistingInstalledSystem(
 	ctx context.Context,
 	repo string,
 ) (bool, error) {
-
-	if privilegedFileExists(ctx, "/var/lib/gjallarOS/installation-complete") {
-		return true, nil
+	// Live media can carry the same files; only a disk root is an install.
+	persistent, err := detectPersistentInstalledHost(ctx)
+	if err != nil || !persistent {
+		return false, err
 	}
-
-	return false, nil
+	return installedSystemEvidence(ctx), nil
 }
 
 func handleExistingRecoveryFilesystem(
