@@ -222,3 +222,15 @@ Ideas worth taking:
       user then types the admin password, not their own, so a keylogger in the
       daily session still has to catch the separate password. Default stays a
       single account until the flow is tested on real hardware.
+
+## 10. ODDC beyond GjallarOS
+
+- [ ] **Screen rotation from ODDC on any NixOS install.** Today the GjallarOS
+      installer reads `hardware.sensors.hub.provides.orientation` from the
+      ODDC model and sets `orientationSensorEnable`, and GjallarOS's Hyprland
+      unit does the rotating. ODDC is meant to work without GjallarOS, so the
+      part that does not depend on the compositor could live in ODDC's own
+      NixOS module: turn on `hardware.sensor.iio` (iio-sensor-proxy) when the
+      model has the sensor. GjallarOS would then keep only the Hyprland side
+      (`gjallarctl hyprland-rotate`). Asked the ODDC session on 2026-10-10;
+      waiting for its answer.
