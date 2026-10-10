@@ -86,11 +86,12 @@ pkgs.runCommand "gjallar-recovery-maintenance-check"
 
     # Same bug in every prompt that feeds cryptsetup or systemd-cryptenroll:
     # each systemd-ask-password call must pass -n (no trailing newline).
+    # Unit names such as systemd-ask-password-plymouth.path are not calls.
     sources=(${pkgs.lib.escapeShellArgs (map (source: "${source}") sources)})
     for source in "''${sources[@]}"; do
       test -d "$source"
     done
-    if grep -rn 'systemd-ask-password' "''${sources[@]}" |
+    if grep -rnE 'systemd-ask-password([^-]|$)' "''${sources[@]}" |
       grep -vE '^[^:]+:[0-9]+:[[:space:]]*#' |
       grep -vE -- 'systemd-ask-password( --timeout=0)? -n '
     then
