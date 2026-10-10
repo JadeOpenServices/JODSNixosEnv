@@ -311,19 +311,21 @@ func run(ctx context.Context, args []string, in io.Reader, out, errOut io.Writer
 
 	forceRedeploy := opt.forceRedeploy || s.user.ForceRedeploy
 
-	if s.existing &&
-		!forceRedeploy &&
-		!opt.acceptExisting &&
-		!s.user.UnattendedInstall {
-		forceRedeploy, err = ui.Confirm(
+	if s.existing && !forceRedeploy && !opt.acceptExisting {
+		choice, err := ui.Choice(
 			ctx,
-			"Force a full clean GjallarOS redeployment instead of an in-place update? This reinstalls the system configuration without repartitioning, formatting, or wiping user data.",
-			false,
+			"Existing GjallarOS installation detected",
+			existingLeave,
+			[]string{existingUpdate, existingRedeploy, existingLeave},
 		)
 		if err != nil {
 			return fail(errOut, err)
 		}
-
+		if choice == existingLeave {
+			fmt.Fprintln(out, "Existing installation left unchanged.")
+			return 0
+		}
+		forceRedeploy = choice == existingRedeploy
 	}
 
 	opt.forceRedeploy = forceRedeploy
@@ -340,15 +342,6 @@ func run(ctx context.Context, args []string, in io.Reader, out, errOut io.Writer
 			out,
 			"Force clean redeployment selected; preserving disk layout, credentials, encryption keys, and user data.",
 		)
-	} else if s.existing && !opt.acceptExisting {
-		approved, err := ui.Confirm(ctx, "Existing GjallarOS installation detected. Update it in place while preserving passwords, disk keys, and hardware configuration?", false)
-		if err != nil {
-			return fail(errOut, err)
-		}
-		if !approved {
-			fmt.Fprintln(out, "Existing installation left unchanged.")
-			return 0
-		}
 	}
 	if skip := liveHostPreparationSkip(
 		opt,

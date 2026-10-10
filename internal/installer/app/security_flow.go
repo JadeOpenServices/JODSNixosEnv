@@ -16,6 +16,14 @@ const (
 	secureBootOffCancel = "Cancel the installation"
 )
 
+// Rerun on an installed system: one question instead of "force a clean
+// redeploy?" followed by "update in place?".
+const (
+	existingUpdate   = "Update in place, keeping passwords, disk keys and hardware configuration"
+	existingRedeploy = "Clean redeploy: reinstall the system configuration, keeping disk layout, credentials, disk keys and user data"
+	existingLeave    = "Leave the installation unchanged"
+)
+
 func mayOfferSecureBootFallback(
 	secureBootEnabled bool,
 	managed bool,
