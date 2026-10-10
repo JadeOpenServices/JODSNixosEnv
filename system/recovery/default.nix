@@ -259,13 +259,15 @@ lib.mkMerge [
           # which the locked root account cannot open. Three tries, as
           # systemd-cryptsetup gives; then the normal entry boots, since the
           # one-shot maintenance entry is already used up.
+          # Plymouth hides console text, so the retry notice rides in the
+          # prompt itself; otherwise a wrong key looks like nothing happened.
+          prompt="GjallarOS: enter the LUKS recovery credential for storage maintenance"
+
           for attempt in 1 2 3; do
             # cryptsetup --key-file uses every byte of the file; the newline
             # systemd-ask-password appends by default would reject the
             # correct passphrase.
-            systemd-ask-password --timeout=0 -n \
-              "GjallarOS: enter the LUKS recovery credential for storage maintenance" \
-              > "$keyfile"
+            systemd-ask-password --timeout=0 -n "$prompt" > "$keyfile"
 
             chmod 0600 "$keyfile"
 
@@ -275,6 +277,8 @@ lib.mkMerge [
 
             printf '%s\n' \
               "No configured encrypted Btrfs root accepted that credential (try $attempt of 3)." >&2
+
+            prompt="GjallarOS: that credential did not unlock storage (try $((attempt + 1)) of 3). Enter the LUKS recovery credential for storage maintenance"
           done
 
           if [ -z "$selected_device" ] ||
@@ -285,6 +289,13 @@ lib.mkMerge [
               "ERROR: no configured encrypted Btrfs root accepted the supplied credential." \
               "No storage changes were made." \
               "Rebooting to the normal GjallarOS boot path in 15 seconds..." >&2
+
+            # The initrd ships plymouth whenever the splash is on.
+            if command -v plymouth >/dev/null && plymouth --ping; then
+              plymouth display-message \
+                --text="No storage changes were made. Rebooting to the normal GjallarOS boot in 15 seconds." ||
+                true
+            fi
 
             rm -f -- "$keyfile"
             sleep 15

@@ -57,6 +57,9 @@ assert pkgs.lib.hasInfix "try_candidate cryptroot /dev/disk/by-partlabel/root" s
 assert pkgs.lib.hasInfix "for attempt in 1 2 3; do" script;
 assert pkgs.lib.hasInfix "systemctl reboot --force --force" script;
 assert pkgs.lib.hasInfix "Rebooting to the normal GjallarOS boot path" script;
+# Plymouth hides console text; the retry and reboot notices must reach it.
+assert pkgs.lib.hasInfix "did not unlock storage (try" script;
+assert pkgs.lib.hasInfix "plymouth display-message" script;
 # Without LUKS there is nothing to unlock, so no maintenance entry at all.
 assert !(plain.config.specialisation ? gjallar-recovery-maintenance);
 pkgs.runCommand "gjallar-recovery-maintenance-check"
