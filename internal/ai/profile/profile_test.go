@@ -18,9 +18,10 @@ func TestSelect(t *testing.T) {
 		{"low memory", Hardware{RAMGB: 7}, Override{}, "low-memory", "qwen2.5-coder:7b", 8192},
 		{"too little memory", Hardware{RAMGB: 3, CPUCores: 4}, Override{}, None, "", 0},
 		{"override on little memory", Hardware{RAMGB: 3}, Override{Enabled: true, Model: "qwen2.5-coder:1.5b"}, "user-override", "qwen2.5-coder:1.5b", 8192},
-		{"integrated", Hardware{RAMGB: 16, CPUCores: 4}, Override{}, "integrated", "qwen2.5-coder:14b", 16384},
-		{"dedicated", Hardware{RAMGB: 32, CPUCores: 8, GPUType: "dedicated", VRAMMB: 12288}, Override{}, "dedicated", "qwen3-coder:30b", 32768},
-		{"override", Hardware{RAMGB: 16, CPUCores: 4}, Override{Enabled: true, Model: "mistral"}, "user-override", "mistral", 16384},
+		{"16 GiB stays on 7b", Hardware{RAMGB: 15, CPUCores: 4}, Override{}, "low-memory", "qwen2.5-coder:7b", 8192},
+		{"integrated", Hardware{RAMGB: 23, CPUCores: 4}, Override{}, "integrated", "qwen2.5-coder:14b", 16384},
+		{"dedicated", Hardware{RAMGB: 31, CPUCores: 8, GPUType: "dedicated", VRAMMB: 12288}, Override{}, "dedicated", "qwen3-coder:30b", 32768},
+		{"override", Hardware{RAMGB: 15, CPUCores: 4}, Override{Enabled: true, Model: "mistral"}, "user-override", "mistral", 16384},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
@@ -41,7 +42,7 @@ func TestAccelerationProfileSelection(t *testing.T) {
 	}{
 		{
 			name:     "small integrated automatic",
-			hardware: Hardware{RAMGB: 16, CPUCores: 4, GPUType: "integrated"},
+			hardware: Hardware{RAMGB: 23, CPUCores: 4, GPUType: "integrated"},
 			want:     "auto",
 		},
 		{
@@ -52,7 +53,7 @@ func TestAccelerationProfileSelection(t *testing.T) {
 		{
 			name: "qualified dedicated full",
 			hardware: Hardware{
-				RAMGB:    32,
+				RAMGB:    31,
 				CPUCores: 8,
 				GPUType:  "dedicated",
 				VRAMMB:   12288,

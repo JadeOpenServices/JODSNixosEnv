@@ -106,7 +106,9 @@ integrated graphics it runs on Vulkan instead of ROCm, and it is confined
 below the desktop (memory capped at 65% of RAM, low CPU/IO priority, killed
 first under memory pressure) so a model load cannot take Hyprland down. Below
 8 GiB RAM no local model fits: the installer offers a central server or no
-AI, and local AI then runs only a model you name.
+AI, and local AI then runs only a model you name. From 8 GiB it picks a 7b
+model, from 24 GiB a 14b one, and with 32 GiB plus a 12 GiB graphics card a
+30b one.
 
 Instead of a local model, AI can use a central server: set `aiEndpoint`
 (`https://host[:port]` only), `aiRemoteModel` and `aiRemoteContextTokens`.

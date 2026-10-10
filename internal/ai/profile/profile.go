@@ -47,13 +47,15 @@ type modelProfile struct {
 }
 
 // modelProfiles is the single authoritative automatic-selection table. Order
-// is strongest to weakest. RAMGB is MemTotal rounded down, so an 8 GiB
-// machine reports 7. The 7b model needs about 5 GiB with its context and
-// ollama may use 65% of RAM (apps/ai/nixos.nix): below 8 GiB no profile
-// fits and Select picks none instead of a model that cannot load.
+// is strongest to weakest. RAMGB is MemTotal rounded down, which is one below
+// the installed size: 8 GiB reports 7, 24 GiB 23, 32 GiB 31. ollama is
+// reclaimed above 50% of RAM and capped at 65% (apps/ai/nixos.nix). The 7b
+// model needs about 5 GiB with its context, so below 8 GiB no profile fits
+// and Select picks none instead of a model that cannot load. The 14b model
+// needs about 11 GiB, which a 16 GiB machine cannot give it; 24 GiB can.
 var modelProfiles = []modelProfile{
-	{Name: "dedicated", Model: "qwen3-coder:30b", ContextTokens: 32768, MinRAMGB: 32, MinCPUCores: 8, MinVRAMMB: 12288, DedicatedGPU: true},
-	{Name: "integrated", Model: "qwen2.5-coder:14b", ContextTokens: 16384, MinRAMGB: 16, MinCPUCores: 4},
+	{Name: "dedicated", Model: "qwen3-coder:30b", ContextTokens: 32768, MinRAMGB: 31, MinCPUCores: 8, MinVRAMMB: 12288, DedicatedGPU: true},
+	{Name: "integrated", Model: "qwen2.5-coder:14b", ContextTokens: 16384, MinRAMGB: 23, MinCPUCores: 4},
 	{Name: "low-memory", Model: "qwen2.5-coder:7b", ContextTokens: 8192, MinRAMGB: 7},
 }
 
@@ -96,7 +98,7 @@ func accelerationProfileForHardware(h Hardware, selectedProfile string) string {
 		return "full"
 	}
 
-	if selectedProfile == "integrated" && h.RAMGB >= 32 {
+	if selectedProfile == "integrated" && h.RAMGB >= 31 {
 		return "full"
 	}
 
@@ -119,9 +121,9 @@ func Select(hardware Hardware, override Override) Result {
 	if override.Enabled && override.Model != "" {
 		result.Profile, result.Model = "user-override", override.Model
 		switch {
-		case hardware.RAMGB >= 32:
+		case hardware.RAMGB >= 31:
 			result.ContextTokens = 32768
-		case hardware.RAMGB >= 16:
+		case hardware.RAMGB >= 15:
 			result.ContextTokens = 16384
 		default:
 			result.ContextTokens = 8192
