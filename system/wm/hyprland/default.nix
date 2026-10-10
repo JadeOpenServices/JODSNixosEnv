@@ -7,7 +7,6 @@
   ...
 }:
 let
-  shell = settings.themeDetails.shell or "noctalia";
   gjallarctl = pkgs.callPackage ../../../pkgs/gjallarctl { };
   moniquePackage = pkgs.callPackage ../../../pkgs/monique/nix/package.nix { };
   hyprlandSession = pkgs.writeShellScriptBin "gjallar-hyprland-session" ''
@@ -82,8 +81,7 @@ in
 
   imports = [
     ../common/wayland.nix
-  ]
-  ++ lib.optional (shell == "noctalia") ../shells/noctalia.nix;
+  ];
 
   programs = {
     monique = {
@@ -98,11 +96,6 @@ in
       package = pkgs.hyprland;
       portalPackage = pkgs.xdg-desktop-portal-hyprland;
     };
-  };
-
-  nix.settings = {
-    substituters = [ "https://hyprland.cachix.org" ];
-    trusted-public-keys = [ "hyprland.cachix.org-1:a7pgxzMz7+chwVL3/pzj6jIBMioiJM7ypFP8PwtkuGc=" ];
   };
 
   xdg.portal = {
