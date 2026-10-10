@@ -249,7 +249,10 @@ in
             ln -sf /dev/mapper/gjallar-store /dev/gjallar-store
             return 0
           fi
-          dmsetup remove gjallar-store 2>/dev/null
+          # udev still probes a just-created mapping; removing it before
+          # that ends fails with "busy" and leaves every later try stuck.
+          udevadm settle
+          dmsetup remove --retry gjallar-store 2>/dev/null
           [ -n "$hash" ] && losetup -d "$hash"
         fi
         [ -n "$data" ] && losetup -d "$data"
