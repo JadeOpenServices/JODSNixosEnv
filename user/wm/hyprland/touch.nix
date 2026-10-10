@@ -124,7 +124,9 @@ lib.mkIf (settings.touchscreenEnable or false) {
 
     settings = {
       bind = [
-        "SUPER, K, exec, ${lib.getExe virtualKeyboard}"
+        # Not plain Super+K: that already moves focus up, and Hyprland would
+        # run both.
+        "SUPER CTRL, K, exec, ${lib.getExe virtualKeyboard}"
         # KEY_KEYBOARD (374, xkb 382): the keyboard key some convertibles and
         # the ZBook Quick Keys send.
         ", code:382, exec, ${lib.getExe virtualKeyboard}"
