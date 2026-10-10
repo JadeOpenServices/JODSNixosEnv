@@ -39,6 +39,8 @@
     {"mods":"$mod SHIFT","key":"A","action":"exec","command":"launcher"},
     {"mods":"$mod","key":"D","action":"exec","command":"launcher"},
     {"mods":"$mod SHIFT","key":"Z","action":"exec","command":"screenshot"},
+    {"key":"Print","action":"exec","command":"screenshot"},
+    {"key":"XF86ScreenSaver","action":"exec","command":"lock"},
 
     {"mods":"$mod","key":"h","action":"movefocus","args":"l"},
     {"mods":"$mod","key":"l","action":"movefocus","args":"r"},
@@ -50,6 +52,7 @@
     {"mods":"$mod ALT","key":"h","action":"exec","command":"mediaPrev"},
     {"mods":"$mod ALT","key":"p","action":"exec","command":"mediaToggle"},
 
+    {"key":"XF86AudioMute","action":"exec","command":"volumeMute"},
     {"key":"XF86AudioMicMute","action":"exec","command":"micMute"},
     {"key":"XF86AudioNext","action":"exec","command":"mediaNext"},
     {"key":"XF86AudioPrev","action":"exec","command":"mediaPrev"},

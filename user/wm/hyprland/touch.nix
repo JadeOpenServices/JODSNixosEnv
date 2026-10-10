@@ -123,7 +123,12 @@ lib.mkIf (settings.touchscreenEnable or false) {
     plugins = [ hyprgrass ];
 
     settings = {
-      bind = [ "SUPER, K, exec, ${lib.getExe virtualKeyboard}" ];
+      bind = [
+        "SUPER, K, exec, ${lib.getExe virtualKeyboard}"
+        # KEY_KEYBOARD (374, xkb 382): the keyboard key some convertibles and
+        # the ZBook Quick Keys send.
+        ", code:382, exec, ${lib.getExe virtualKeyboard}"
+      ];
 
       exec-once = [ "${pkgs.wvkbd}/bin/wvkbd-mobintl --hidden -H 320 -L 240" ];
 

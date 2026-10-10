@@ -24,6 +24,7 @@ in
 
     volumeUp = "${ipc} volume-up 2";
     volumeDown = "${ipc} volume-down 2";
+    volumeMute = "${ipc} volume-mute";
     brightnessUp = "${ipc} brightness-up current 5";
     brightnessDown = "${ipc} brightness-down current 5";
     lock = "${ipc} session lock";

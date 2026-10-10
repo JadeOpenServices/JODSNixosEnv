@@ -19,6 +19,7 @@
     ./hardware/firmware.nix
     ./hardware/fingerprint.nix
     ./hardware/input.nix
+    ./hardware/quick-keys.nix
     ./hardware/fan-control.nix
     ./hardware/memory.nix
 

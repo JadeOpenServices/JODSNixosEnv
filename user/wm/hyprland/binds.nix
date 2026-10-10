@@ -14,6 +14,7 @@ let
   commands = {
     volumeUp = shell.volumeUp;
     volumeDown = shell.volumeDown;
+    volumeMute = shell.volumeMute;
 
     brightnessUp = shell.brightnessUp;
     brightnessDown = shell.brightnessDown;
