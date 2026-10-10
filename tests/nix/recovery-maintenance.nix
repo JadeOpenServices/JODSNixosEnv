@@ -7,29 +7,37 @@
 }:
 let
   pkgs = nixpkgs.legacyPackages.${system};
-  evaluated = nixpkgs.lib.nixosSystem {
-    inherit system;
-    modules = [
-      recoveryModule
-      {
-        system.stateVersion = "26.05";
-        fileSystems."/" = {
-          device = "/dev/mapper/cryptroot";
-          fsType = "btrfs";
+  evaluate =
+    extra:
+    nixpkgs.lib.nixosSystem {
+      inherit system;
+      modules = [
+        recoveryModule
+        {
+          system.stateVersion = "26.05";
+          fileSystems."/" = {
+            device = "/dev/mapper/cryptroot";
+            fsType = "btrfs";
+          };
+        }
+        extra
+      ];
+      specialArgs = {
+        sourceRevision = "test";
+        settings = {
+          recoveryEnable = true;
+          jodsPrebootLockEnable = false;
+          endpointManagedDevice = false;
+          secureBootEnable = false;
+          luksTpm2Enable = false;
         };
-        boot.initrd.luks.devices.cryptroot.device = "/dev/disk/by-partlabel/root";
-      }
-    ];
-    specialArgs = {
-      sourceRevision = "test";
-      settings = {
-        recoveryEnable = true;
-        jodsPrebootLockEnable = false;
-        endpointManagedDevice = false;
-        secureBootEnable = false;
-        luksTpm2Enable = false;
       };
     };
+  evaluated = evaluate {
+    boot.initrd.luks.devices.cryptroot.device = "/dev/disk/by-partlabel/root";
+  };
+  plain = evaluate {
+    fileSystems."/".device = nixpkgs.lib.mkForce "/dev/disk/by-partlabel/root";
   };
   # specialisation.<name>.configuration is the evaluated child config.
   maintenance = evaluated.config.specialisation.gjallar-recovery-maintenance.configuration;
@@ -44,6 +52,13 @@ assert pkgs.lib.hasInfix "systemd-ask-password --timeout=0 -n " script;
 # script's cryptsetup open hit EBUSY and dropped to emergency mode.
 assert builtins.elem "systemd-cryptsetup@cryptroot.service" unit.before;
 assert pkgs.lib.hasInfix "try_candidate cryptroot /dev/disk/by-partlabel/root" script;
+# A mistyped credential stopped at the initrd emergency shell, which the
+# locked root account cannot open; now three tries, then a normal reboot.
+assert pkgs.lib.hasInfix "for attempt in 1 2 3; do" script;
+assert pkgs.lib.hasInfix "systemctl reboot --force --force" script;
+assert pkgs.lib.hasInfix "Rebooting to the normal GjallarOS boot path" script;
+# Without LUKS there is nothing to unlock, so no maintenance entry at all.
+assert !(plain.config.specialisation ? gjallar-recovery-maintenance);
 pkgs.runCommand "gjallar-recovery-maintenance-check"
   {
     nativeBuildInputs = [

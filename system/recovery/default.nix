@@ -131,7 +131,10 @@ lib.mkMerge [
     };
   })
 
-  (lib.mkIf settings.recoveryEnable {
+  # Maintenance shrinks an encrypted Btrfs root. Without a LUKS device the
+  # entry could only ask for a credential nothing accepts, then stop at a
+  # locked emergency shell; the installer never arms it there either.
+  (lib.mkIf (settings.recoveryEnable && config.boot.initrd.luks.devices != { }) {
     environment.systemPackages = [
       maintenanceNext
     ];
@@ -198,15 +201,6 @@ lib.mkMerge [
             "The installed root is not mounted as /." \
             "A human LUKS credential is required before /mnt is exposed."
 
-          # cryptsetup --key-file uses every byte of the file; the newline
-          # systemd-ask-password appends by default would reject the correct
-          # passphrase.
-          systemd-ask-password --timeout=0 -n \
-            "GjallarOS: enter the LUKS recovery credential for storage maintenance" \
-            > "$keyfile"
-
-          chmod 0600 "$keyfile"
-
           selected_device=""
           selected_mapping=""
           selected_name=""
@@ -261,7 +255,27 @@ lib.mkMerge [
             selected_name="$name"
           }
 
-          ${maintenanceCandidates}
+          # A mistyped credential used to end at the initrd emergency shell,
+          # which the locked root account cannot open. Three tries, as
+          # systemd-cryptsetup gives; then the normal entry boots, since the
+          # one-shot maintenance entry is already used up.
+          for attempt in 1 2 3; do
+            # cryptsetup --key-file uses every byte of the file; the newline
+            # systemd-ask-password appends by default would reject the
+            # correct passphrase.
+            systemd-ask-password --timeout=0 -n \
+              "GjallarOS: enter the LUKS recovery credential for storage maintenance" \
+              > "$keyfile"
+
+            chmod 0600 "$keyfile"
+
+            ${maintenanceCandidates}
+
+            [ -z "$selected_device" ] || break
+
+            printf '%s\n' \
+              "No configured encrypted Btrfs root accepted that credential (try $attempt of 3)." >&2
+          done
 
           if [ -z "$selected_device" ] ||
              [ -z "$selected_mapping" ] ||
@@ -269,10 +283,12 @@ lib.mkMerge [
           then
             printf '%s\n' \
               "ERROR: no configured encrypted Btrfs root accepted the supplied credential." \
-              "No storage changes were made." >&2
+              "No storage changes were made." \
+              "Rebooting to the normal GjallarOS boot path in 15 seconds..." >&2
 
-            systemctl --no-block emergency
-            false
+            rm -f -- "$keyfile"
+            sleep 15
+            systemctl reboot --force --force
           fi
 
           printf '%s\n' \
