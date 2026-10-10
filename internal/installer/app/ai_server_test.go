@@ -47,6 +47,7 @@ func TestCollectAILowMemory(t *testing.T) {
 	}{
 		{"default turns AI off", []string{""}, []string{"git"}, ""},
 		{"local needs a named model", []string{"local", "", ""}, []string{"git", "ai"}, "qwen2.5-coder:1.5b"},
+		{"bad model asked again", []string{"local", "-x y", "", ""}, []string{"git", "ai"}, "qwen2.5-coder:1.5b"},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {

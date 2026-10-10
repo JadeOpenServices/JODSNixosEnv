@@ -2237,9 +2237,17 @@ func collectAI(ctx context.Context, ui prompt.UI, u *config.User) error {
 			if lowMemory {
 				model = "qwen2.5-coder:1.5b"
 			}
-			u.OverrideModelWith, err = ui.Value(ctx, "Exact Ollama model identifier", model)
-			if err != nil {
-				return err
+			for {
+				value, err := ui.Value(ctx, "Exact Ollama model identifier", model)
+				if err != nil {
+					return err
+				}
+				override, err := profile.NewOverride(true, value)
+				if err == nil {
+					u.OverrideModelWith = override.Model
+					break
+				}
+				fmt.Fprintf(ui.Out, "%v\n", err)
 			}
 		}
 	}
@@ -3057,17 +3065,18 @@ func detectAndRenderState(
 	ai := profile.Result{Model: "qwen3-coder:30b", ContextTokens: 8192}
 	// A central AI server holds the model; local hardware does not matter.
 	if u.HasApp("ai") && u.AIEndpoint == "" {
-		ai, err = profile.Detect(ctx, func() string {
-			if s.preset {
-				return filepath.Join(root, "user.config.json")
-			}
-			return ""
-		}())
+		// u holds the override from either the preset file or the answers;
+		// the file does not exist yet in an interactive install.
+		override, err := profile.NewOverride(u.OverrideAISelection, u.OverrideModelWith)
+		if err != nil {
+			return err
+		}
+		ai, err = profile.DetectWith(ctx, override)
 		if err != nil {
 			return err
 		}
 		if ai.Model == "" {
-			// Only a preset gets here; collectAI asks instead. Rebuilds sync
+			// Only a preset gets here; collectAI sets an override. Rebuilds sync
 			// apps from user.config.json, so the file itself has to change.
 			return fmt.Errorf("user.config.json enables local AI, but no local model fits %d GiB RAM (8 GiB needed): set aiEndpoint, set overrideAiSelection with overrideModelWith, or remove \"ai\" from apps", ai.RAMGB)
 		}

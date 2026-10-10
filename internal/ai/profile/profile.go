@@ -71,11 +71,17 @@ func MemoryGB() (int, error) {
 }
 
 func Detect(ctx context.Context, configPath string) (Result, error) {
-	hardware, vendor, err := detectHardware(ctx)
+	override, err := LoadOverride(configPath)
 	if err != nil {
 		return Result{}, err
 	}
-	override, err := LoadOverride(configPath)
+	return DetectWith(ctx, override)
+}
+
+// DetectWith selects from this machine's hardware and an override the caller
+// already holds, such as answers the installer has not written yet.
+func DetectWith(ctx context.Context, override Override) (Result, error) {
+	hardware, vendor, err := detectHardware(ctx)
 	if err != nil {
 		return Result{}, err
 	}
@@ -144,17 +150,22 @@ func LoadOverride(path string) (Override, error) {
 	if err := json.Unmarshal(contents, &config); err != nil {
 		return Override{}, fmt.Errorf("parse user configuration: %w", err)
 	}
-	model := strings.TrimSpace(config.Model)
+	return NewOverride(config.Enabled, config.Model)
+}
+
+// NewOverride checks an override the same way, wherever it came from.
+func NewOverride(enabled bool, model string) (Override, error) {
+	model = strings.TrimSpace(model)
 	if strings.ContainsAny(model, "\x00\r\n") {
 		return Override{}, fmt.Errorf("overrideModelWith must not contain control characters")
 	}
-	if config.Enabled && model == "" {
+	if enabled && model == "" {
 		return Override{}, fmt.Errorf("overrideModelWith is required when overrideAiSelection is true")
 	}
 	if model != "" && (strings.ContainsAny(model, " \t") || strings.HasPrefix(model, "-") || strings.Contains(model, "/../")) {
 		return Override{}, fmt.Errorf("overrideModelWith is not a valid Ollama model identifier")
 	}
-	return Override{Enabled: config.Enabled, Model: model}, nil
+	return Override{Enabled: enabled, Model: model}, nil
 }
 
 func detectHardware(ctx context.Context) (Hardware, string, error) {
