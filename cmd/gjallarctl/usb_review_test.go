@@ -39,7 +39,7 @@ func TestUSBReviewUsesOnlyDomainActions(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			tc.decision.Actions = []usbtrust.Action{usbtrust.ActionKeepBlocked, usbtrust.ActionAllowOnce}
-			rows, available := usbReviewChoices(tc.decision)
+			rows, available := usbReviewChoices(tc.decision, false)
 			wantRows := []string{
 				"TRUE", "keep-blocked", "Keep blocked",
 				"FALSE", "allow-once", "Allow until unplugged",
@@ -61,10 +61,14 @@ func TestUSBReviewLabelsReplacementExplicitly(t *testing.T) {
 		TrustedID: "device:accepted-camera",
 		Actions:   []usbtrust.Action{usbtrust.ActionAcceptReplacement},
 	}
-	rows, available := usbReviewChoices(d)
+	rows, available := usbReviewChoices(d, true)
 	wantRows := []string{"FALSE", "accept-replacement", "Accept replacement for device:accepted-camera"}
 	if !reflect.DeepEqual(rows, wantRows) {
-		t.Fatalf("replacement must identify the record being replaced: got %q, want %q", rows, wantRows)
+		t.Fatalf("techy view must identify the record being replaced: got %q, want %q", rows, wantRows)
+	}
+	rows, _ = usbReviewChoices(d, false)
+	if strings.Contains(strings.Join(rows, " "), "device:accepted-camera") {
+		t.Fatalf("simple view shows the record ID: %q", rows)
 	}
 	if !reflect.DeepEqual(available, map[string]bool{"accept-replacement": true}) {
 		t.Fatalf("unexpected available actions: %v", available)
@@ -77,7 +81,7 @@ func TestUSBReviewIgnoresUnknownActions(t *testing.T) {
 		{"future-action", usbtrust.ActionKeepBlocked, "another-future-action"},
 	} {
 		d := usbtrust.Decision{Actions: actions}
-		rows, available := usbReviewChoices(d)
+		rows, available := usbReviewChoices(d, false)
 		if available["future-action"] || available["another-future-action"] {
 			t.Fatalf("unknown action became requestable: %v", available)
 		}
@@ -98,10 +102,14 @@ func TestUSBReviewNoticeEscapesDeviceStrings(t *testing.T) {
 	d := usbtrust.Decision{ObservedDevice: usbtrust.ObservedDevice{
 		Identity: usbtrust.Identity{Name: `<b>Keyboard</b>`, VIDPID: "dead:beef"},
 	}}
-	args := usbReviewNotice(d, true)
+	args := usbReviewNotice(d, true, true)
 	body := args[len(args)-1]
 	if body != "&lt;b&gt;Keyboard&lt;/b&gt; (dead:beef)" {
 		t.Fatalf("device name reached notification markup: %q", body)
+	}
+	args = usbReviewNotice(d, true, false)
+	if body := args[len(args)-1]; body != "&lt;b&gt;Keyboard&lt;/b&gt;" {
+		t.Fatalf("simple notice shows hardware IDs: %q", body)
 	}
 }
 
@@ -119,7 +127,7 @@ func TestUSBReviewOpensOnlyOnRequest(t *testing.T) {
 }
 
 func TestUSBReviewNoticeDoesNotClaimBlockInAuditMode(t *testing.T) {
-	args := usbReviewNotice(usbtrust.Decision{}, false)
+	args := usbReviewNotice(usbtrust.Decision{}, false, false)
 	for _, arg := range args {
 		if arg == "USB device blocked" || arg == "--action=keep=Keep blocked" {
 			t.Fatalf("audit-mode notice claims the device is blocked: %q", args)

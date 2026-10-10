@@ -132,7 +132,8 @@ func runUSBReview(args []string, stderr io.Writer) int {
 // action. Every prompt closes as soon as the device is unplugged. It reports
 // false when a failed decision should be offered again.
 func usbReviewDecision(ctx context.Context, executable string, d usbtrust.Decision, enforcing bool) bool {
-	rows, available := usbReviewChoices(d)
+	technical := usbReviewAlwaysTechnical()
+	rows, available := usbReviewChoices(d, technical)
 	if len(rows) == 0 {
 		return true
 	}
@@ -141,14 +142,14 @@ func usbReviewDecision(ctx context.Context, executable string, d usbtrust.Decisi
 
 	// Announce the block quietly; the review dialog opens only on request.
 	// Dismissing the notice keeps the device blocked.
-	notice := exec.CommandContext(ctx, "notify-send", usbReviewNotice(d, enforcing)...)
+	notice := exec.CommandContext(ctx, "notify-send", usbReviewNotice(d, enforcing, technical)...)
 	// SIGINT makes notify-send close the notice it is waiting on.
 	notice.Cancel = func() error { return notice.Process.Signal(os.Interrupt) }
 	picked, err := notice.Output()
 	if err != nil || ctx.Err() != nil || !usbReviewRequested(string(picked)) {
 		return true
 	}
-	action, ok := usbReviewDialog(ctx, d, enforcing, rows)
+	action, ok := usbReviewDialog(ctx, d, enforcing, technical)
 	if !ok || !available[action] {
 		return true
 	}
@@ -165,7 +166,7 @@ func usbReviewDecision(ctx context.Context, executable string, d usbtrust.Decisi
 	case "enroll-internal":
 		request = append(request, "--role", d.Role)
 	case "trust-permanent":
-		portability, err := exec.CommandContext(ctx, "zenity", "--list", "--radiolist", "--title=Permanent USB trust", "--text=Choose whether this device may move between ports and docks on this machine.", "--column=Choose", "--column=Portable", "--column=Meaning", "--hide-column=2", "--print-column=2", "TRUE", "false", "Bind to this topology", "FALSE", "true", "Allow on other ports and docks").Output()
+		portability, err := exec.CommandContext(ctx, "zenity", "--list", "--radiolist", "--title=Permanent USB trust", "--text=Choose whether this device may move between ports and docks on this machine.", "--column=Choose", "--column=Portable", "--column=Meaning", "--hide-column=2", "--print-column=2", "TRUE", "false", "Only on this port", "FALSE", "true", "On any port or dock").Output()
 		if err != nil {
 			return true
 		}
@@ -220,15 +221,19 @@ func usbConnectionActive(policy []usbtrust.Decision, connection string) bool {
 
 // usbReviewNotice builds the notify-send arguments announcing a device that
 // needs a decision. In audit mode the device already works, so the notice
-// must not claim it is blocked.
-func usbReviewNotice(d usbtrust.Decision, enforcing bool) []string {
+// must not claim it is blocked. Hardware IDs only appear in the techy view.
+func usbReviewNotice(d usbtrust.Decision, enforcing, technical bool) []string {
 	name := d.Identity.Name
 	if name == "" {
 		name = "Unknown device"
 	}
+	if technical {
+		name = fmt.Sprintf("%s (%s)", name, d.Identity.VIDPID)
+	}
 	summary, dismiss := "USB device blocked", "--action=keep=Keep blocked"
 	if !enforcing {
-		summary, dismiss = "Untrusted USB device (audit mode, not blocked)", "--action=keep=Ignore"
+		summary, dismiss = "New USB device", "--action=keep=Ignore"
+		name += "\nBlocking is off, so it already works."
 	}
 	return []string{
 		"--app-name=USB Guard",
@@ -239,7 +244,7 @@ func usbReviewNotice(d usbtrust.Decision, enforcing bool) []string {
 		dismiss,
 		summary,
 		// Notification bodies may carry markup; device strings are untrusted.
-		html.EscapeString(fmt.Sprintf("%s (%s)", name, d.Identity.VIDPID)),
+		html.EscapeString(name),
 	}
 }
 
@@ -369,10 +374,10 @@ const (
 
 // usbReviewDialog shows the review until an action is chosen or the dialog
 // is closed. It returns the chosen action.
-func usbReviewDialog(ctx context.Context, d usbtrust.Decision, enforcing bool, rows []string) (string, bool) {
-	always := usbReviewAlwaysTechnical()
+func usbReviewDialog(ctx context.Context, d usbtrust.Decision, enforcing, always bool) (string, bool) {
 	technical := always
 	for {
+		rows, _ := usbReviewChoices(d, technical)
 		toggle := usbTechyView
 		if technical {
 			toggle = usbSimpleView
@@ -595,7 +600,8 @@ func usbReviewRequested(output string) bool {
 }
 
 // The domain supplies available actions; this adapter only gives them labels.
-func usbReviewChoices(d usbtrust.Decision) ([]string, map[string]bool) {
+// Record IDs and role names only appear in the techy view.
+func usbReviewChoices(d usbtrust.Decision, technical bool) ([]string, map[string]bool) {
 	var rows []string
 	available := map[string]bool{}
 	for _, action := range d.Actions {
@@ -608,9 +614,15 @@ func usbReviewChoices(d usbtrust.Decision) ([]string, map[string]bool) {
 		case usbtrust.ActionTrustPermanent:
 			label = "Always allow on this computer"
 		case usbtrust.ActionEnrollInternal:
-			label = "Enroll as expected internal role " + d.Role
+			label = "Trust as a built-in part of this computer"
+			if technical {
+				label = "Enroll as expected internal role " + d.Role
+			}
 		case usbtrust.ActionAcceptReplacement:
-			label = "Accept replacement for " + d.TrustedID
+			label = "Accept as replacement for a trusted device"
+			if technical {
+				label = "Accept replacement for " + d.TrustedID
+			}
 		default:
 			continue
 		}
