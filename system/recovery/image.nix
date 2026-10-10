@@ -101,15 +101,50 @@ let
   installerFallbackPreset =
     if builtins.pathExists sourceUserConfig then sourceUserConfig else generatedInstallerPreset;
 
+  # The ISO's store, built here instead of by isoImage so its dm-verity
+  # root hash can go on the partition UKI's command line. The squashfs holds
+  # the initrd, so the hash cannot live inside it; the UKI sits next to it
+  # and under Secure Boot its command line is signed (loophole 9: before,
+  # the partition booted whatever gjallar-recovery.iso any disk carried).
+  recoveryStore = pkgs.callPackage "${modulesPath}/../lib/make-squashfs.nix" {
+    storeContents = [ config.system.build.toplevel ];
+    comp = config.isoImage.squashfsCompression;
+  };
+
+  recoveryStoreVerity =
+    pkgs.runCommand "gjallar-recovery-store-verity" { nativeBuildInputs = [ pkgs.cryptsetup ]; }
+      ''
+        size=$(stat -c %s ${recoveryStore})
+        [ $((size % 4096)) -eq 0 ] || { echo "squashfs size $size is not 4K aligned" >&2; exit 1; }
+        mkdir $out
+        touch $out/nix-store.squashfs.verity
+        # Fixed salt keeps the build reproducible.
+        salt=$(printf gjallar-recovery-store | sha256sum | cut -d' ' -f1)
+        veritysetup format --no-superblock --hash=sha256 \
+          --data-block-size=4096 --hash-block-size=4096 --salt="$salt" \
+          ${recoveryStore} $out/nix-store.squashfs.verity > $out/format.log
+        root=$(sed -n 's/^Root hash:[[:space:]]*//p' $out/format.log)
+        [ -n "$root" ] || { cat $out/format.log >&2; exit 1; }
+        printf '%s,%s,%s' "$((size / 4096))" "$salt" "$root" > $out/params
+      '';
+
+  # The ISO adds boot.shell_on_fail for its own boot menu; on the partition
+  # any stage 1 failure (a missing or changed ISO) would then offer a root
+  # shell past the recovery console. root= names the ISO volume, unused here.
+  partitionKernelParams = lib.filter (
+    p: p != "boot.shell_on_fail" && !lib.hasPrefix "root=" p
+  ) config.boot.kernelParams;
+
   # The recovery partition starts this UKI, not the ISO's GRUB: GRUB needs
   # shim under Secure Boot (e2e-fw13, 2026-10-07: shim_lock protocol not
-  # found), and the ISO's /iso mount wants an iso9660 device. findiso= makes
-  # stage 1 mount the ISO file install-partition.sh copies next to it.
+  # found), and the ISO's /iso mount wants an iso9660 device. gjallar.iso=
+  # makes stage 1 find the ISO file install-partition.sh copies next to it
+  # and gjallar.verity= pins its store.
   recoveryPartitionUki = pkgs.runCommand "gjallar-recovery-partition.efi" { } ''
     ${pkgs.buildPackages.systemdUkify}/lib/systemd/ukify build \
       --linux=${config.boot.kernelPackages.kernel}/${config.system.boot.loader.kernelFile} \
       --initrd=${config.system.build.initialRamdisk}/${config.system.boot.loader.initrdFile} \
-      --cmdline="init=${config.system.build.toplevel}/init ${toString config.boot.kernelParams} findiso=/gjallar-recovery.iso gjallar.recovery=partition" \
+      --cmdline="init=${config.system.build.toplevel}/init ${toString partitionKernelParams} gjallar.iso=/gjallar-recovery.iso gjallar.verity=$(cat ${recoveryStoreVerity}/params) gjallar.recovery=partition" \
       --stub=${pkgs.systemd}/lib/systemd/boot/efi/linux${pkgs.stdenv.hostPlatform.efiArch}.efi.stub \
       --uname=${config.boot.kernelPackages.kernel.modDirVersion} \
       --os-release=@${config.system.build.etc}/etc/os-release \
@@ -125,14 +160,148 @@ in
   # left it nixos-minimal-*.iso.
   image.baseName = lib.mkForce "gjallar-recovery-${config.system.nixos.label}-${pkgs.stdenv.hostPlatform.system}";
   isoImage.squashfsCompression = "zstd -Xcompression-level 15";
+  isoImage.storeContents = lib.mkForce [ ];
   isoImage.contents = [
     {
       source = recoveryPartitionUki;
       target = "/EFI/gjallar/recovery-partition.efi";
     }
+    {
+      source = recoveryStore;
+      target = "/nix-store.squashfs";
+    }
+    {
+      source = "${recoveryStoreVerity}/nix-store.squashfs.verity";
+      target = "/nix-store.squashfs.verity";
+    }
   ];
-  # findiso= runs only in the scripted stage 1.
+  # The ISO hook below runs only in the scripted stage 1.
   boot.initrd.systemd.enable = lib.mkForce false;
+
+  # Stage 1 sets up both devices before it mounts anything:
+  # - partition UKI (gjallar.iso=): only a vfat JODSRECOV partition whose
+  #   ISO store matches gjallar.verity= is used; the store is read through
+  #   dm-verity, so a changed block fails to read instead of running.
+  # - GRUB findiso= and USB/DVD boot (root=): no hash to check against, the
+  #   store is used as is, like upstream.
+  # installation-cd-base.nix sets the whole fileSystems set with
+  # mkImageMediaOverride and iso-image.nix wraps each entry the same way, so
+  # both levels need it or this definition is dropped.
+  fileSystems = lib.mkImageMediaOverride {
+    "/iso" = lib.mkImageMediaOverride { device = lib.mkForce "/dev/gjallar-iso"; };
+    "/nix/.ro-store" = lib.mkImageMediaOverride {
+      device = lib.mkForce "/dev/gjallar-store";
+      # Drops "loop": the device is already a loop or dm-verity device.
+      options = lib.mkForce (
+        [ "x-initrd.mount" ]
+        ++ lib.optional (config.boot.kernelPackages.kernel.kernelAtLeast "6.2") "threads=multi"
+      );
+    };
+  };
+  boot.initrd.availableKernelModules = [
+    "dm_mod"
+    "dm_verity"
+  ];
+  boot.initrd.postResumeCommands = ''
+    gjallarIso=
+    gjallarVerity=
+    for o in $(cat /proc/cmdline); do
+      case $o in
+        gjallar.iso=*) gjallarIso=''${o#gjallar.iso=} ;;
+        gjallar.verity=*) gjallarVerity=''${o#gjallar.verity=} ;;
+      esac
+    done
+    mkdir -p /gjallar-src /gjallar-iso
+
+    gjallarLoop() {
+      local d
+      d=$(losetup -f) && losetup -r "$d" "$1" && echo "$d"
+    }
+
+    # $1: ISO block device or file. Mounts it and links /dev/gjallar-iso and
+    # /dev/gjallar-store; with $2 = verity params the store goes through
+    # dm-verity. Undoes its own steps on failure.
+    gjallarAttach() {
+      local iso="$1" isoDev= data= hash= blocks salt root rest
+      if [ -b "$iso" ]; then
+        isoDev=$(readlink -f "$iso")
+      else
+        isoDev=$(gjallarLoop "$iso") || return 1
+      fi
+      if mount -t iso9660 -o ro "$isoDev" /gjallar-iso; then
+        if [ -z "$2" ]; then
+          if data=$(gjallarLoop /gjallar-iso/nix-store.squashfs); then
+            ln -sf "$isoDev" /dev/gjallar-iso
+            ln -sf "$data" /dev/gjallar-store
+            return 0
+          fi
+        else
+          blocks=''${2%%,*}
+          rest=''${2#*,}
+          salt=''${rest%%,*}
+          root=''${rest#*,}
+          if data=$(gjallarLoop /gjallar-iso/nix-store.squashfs) \
+            && hash=$(gjallarLoop /gjallar-iso/nix-store.squashfs.verity) \
+            && dmsetup create gjallar-store --readonly \
+              --table "0 $((blocks * 8)) verity 1 $data $hash 4096 4096 $blocks 0 sha256 $root $salt" \
+            && dd if=/dev/mapper/gjallar-store of=/dev/null bs=4096 count=1 2>/dev/null; then
+            ln -sf "$isoDev" /dev/gjallar-iso
+            ln -sf /dev/mapper/gjallar-store /dev/gjallar-store
+            return 0
+          fi
+          dmsetup remove gjallar-store 2>/dev/null
+          [ -n "$hash" ] && losetup -d "$hash"
+        fi
+        [ -n "$data" ] && losetup -d "$data"
+        umount /gjallar-iso
+      fi
+      [ -b "$iso" ] || losetup -d "$isoDev"
+      return 1
+    }
+
+    if [ -n "$gjallarIso" ]; then
+      if [ -z "$gjallarVerity" ]; then
+        echo "gjallar.iso= without gjallar.verity="
+        fail
+      fi
+      modprobe dm_verity
+      gjallarFound=
+      for delay in 0 5 10; do
+        sleep "$delay"
+        udevadm settle
+        for dev in $(blkid -t LABEL=JODSRECOV -o device); do
+          mount -t vfat -o ro,nodev,nosuid,noexec "$dev" /gjallar-src || continue
+          if [ -f "/gjallar-src$gjallarIso" ] \
+            && gjallarAttach "/gjallar-src$gjallarIso" "$gjallarVerity"; then
+            echo "recovery store verified on $dev"
+            gjallarFound=1
+            break 2
+          fi
+          echo "$dev: no recovery image matching this boot entry"
+          umount /gjallar-src
+        done
+      done
+      if [ -z "$gjallarFound" ]; then
+        echo "No recovery image matching this boot entry was found."
+        fail
+      fi
+    elif [ -n "$isoPath" ]; then
+      for delay in 5 10; do
+        for dev in $(blkid -o device); do
+          mount -t "$(blkid -o value -s TYPE "$dev")" -o ro "$dev" /gjallar-src || continue
+          [ -f "/gjallar-src$isoPath" ] && gjallarAttach "/gjallar-src$isoPath" "" && break 2
+          umount /gjallar-src
+        done
+        sleep "$delay"
+      done
+      # Done here; skip the upstream findiso scan.
+      isoPath=
+    else
+      waitDevice /dev/root
+      udevadm settle
+      gjallarAttach /dev/root ""
+    fi
+  '';
   boot.zfs.forceImportRoot = false;
 
   services.xserver.xkb = {

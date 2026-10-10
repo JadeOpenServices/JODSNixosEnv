@@ -118,8 +118,9 @@ cleanup() {
 trap cleanup EXIT
 mount -o nodev,nosuid,noexec "$partition" "$mount_dir"
 # The partition boots the image's UKI, which mounts the ISO file itself
-# (findiso=). The ISO's own GRUB needs shim under Secure Boot, and its files
-# unpacked onto vfat have no iso9660 root to mount.
+# (gjallar.iso=) and checks its store against the hash in its cmdline
+# (gjallar.verity=). The ISO's own GRUB needs shim under Secure Boot, and its
+# files unpacked onto vfat have no iso9660 root to mount.
 [ "$(stat -c '%s' "$image")" -lt 4294967296 ] || {
   echo "ERROR: recovery image does not fit a FAT32 file (4 GiB)" >&2
   exit 1
