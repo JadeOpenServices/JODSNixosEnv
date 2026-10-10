@@ -481,6 +481,11 @@ func run(ctx context.Context, args []string, in io.Reader, out, errOut io.Writer
 	s.touchscreen = hardware.Touchscreen
 	s.penTablet = hardware.PenTablet
 	s.orientationSensor = hardware.OrientationSensor
+	// ODDC owns the fact when the model states it; local IIO discovery
+	// decides only for machines ODDC has no answer for.
+	if present, ok := oddc.OrientationSensor(resolvedDevice); ok {
+		s.orientationSensor = present
+	}
 
 	if _, err := oddc.ResolveGraphicsPolicy(resolvedDevice); err != nil {
 		return fail(errOut, err)
@@ -548,6 +553,7 @@ func run(ctx context.Context, args []string, in io.Reader, out, errOut io.Writer
 
 	fmt.Fprintf(out, "Touchscreen detected: %t\n", hardware.Touchscreen)
 	fmt.Fprintf(out, "Pen/tablet detected: %t\n", hardware.PenTablet)
+	fmt.Fprintf(out, "Orientation sensor: %t\n", s.orientationSensor)
 
 	choices, err := discovery.Discover(root)
 	if err != nil {
