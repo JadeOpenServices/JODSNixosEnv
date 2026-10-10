@@ -4,6 +4,8 @@ import (
 	"bufio"
 	"bytes"
 	"context"
+	"errors"
+	"io"
 	"os"
 	"strings"
 	"testing"
@@ -273,5 +275,26 @@ func TestShowSecureBootRecoveryKeepsSecretOutOfLogs(t *testing.T) {
 	}
 	if strings.Contains(string(data), "passphrase-secret") {
 		t.Fatalf("recovery passphrase written to non-terminal output: %q", data)
+	}
+}
+
+func TestTerminalPromptStopsOnCancel(t *testing.T) {
+	reader, writer := io.Pipe()
+	defer writer.Close()
+	var out strings.Builder
+	u := UI{Reader: bufio.NewReader(reader), Out: &out}
+	ctx, cancel := context.WithCancel(context.Background())
+	errs := make(chan error, 1)
+	go func() {
+		_, err := u.Value(ctx, "Model", "default")
+		errs <- err
+	}()
+	cancel()
+	if err := <-errs; !errors.Is(err, context.Canceled) {
+		t.Fatalf("Value after cancel = %v", err)
+	}
+	// The next question must not take a line typed after Ctrl-C.
+	if _, err := u.Confirm(ctx, "Continue?", true); !errors.Is(err, context.Canceled) {
+		t.Fatalf("Confirm after cancel = %v", err)
 	}
 }

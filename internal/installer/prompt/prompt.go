@@ -196,7 +196,7 @@ func (u UI) Confirm(ctx context.Context, message string, defaultYes bool) (bool,
 		suffix = " [Y/n] "
 	}
 	fmt.Fprint(u.Out, message+suffix)
-	line, err := u.Reader.ReadString('\n')
+	line, err := u.readLine(ctx)
 	if err != nil {
 		return false, err
 	}
@@ -480,7 +480,7 @@ func (u UI) Exact(ctx context.Context, label, expected string) error {
 		value = strings.TrimSuffix(value, "\r")
 	} else {
 		fmt.Fprintf(u.Out, "%s: ", label)
-		line, err := u.Reader.ReadString('\n')
+		line, err := u.readLine(ctx)
 		if err != nil {
 			return err
 		}
@@ -495,6 +495,31 @@ func (u UI) Exact(ctx context.Context, label, expected string) error {
 	return nil
 }
 
+// readLine reads one answer, or gives up when ctx ends. Ctrl-C cancels ctx;
+// a plain read would keep waiting and take the next line typed as the
+// answer to a question the user already walked away from.
+func (u UI) readLine(ctx context.Context) (string, error) {
+	if err := ctx.Err(); err != nil {
+		return "", err
+	}
+	type result struct {
+		line string
+		err  error
+	}
+	done := make(chan result, 1)
+	go func() {
+		line, err := u.Reader.ReadString('\n')
+		done <- result{line, err}
+	}()
+	select {
+	case r := <-done:
+		return r.line, r.err
+	case <-ctx.Done():
+		fmt.Fprintln(u.Out)
+		return "", ctx.Err()
+	}
+}
+
 func (u UI) Value(ctx context.Context, label, def string) (string, error) {
 	if u.GTK {
 		out, err := zenityCommand(ctx, "--entry", "--title=GjallarOS installer", "--text="+label, "--entry-text="+def).Output()
@@ -504,7 +529,7 @@ func (u UI) Value(ctx context.Context, label, def string) (string, error) {
 		return strings.TrimSpace(string(out)), nil
 	}
 	fmt.Fprintf(u.Out, "%s [%s]: ", label, def)
-	line, err := u.Reader.ReadString('\n')
+	line, err := u.readLine(ctx)
 	if err != nil {
 		return "", err
 	}
@@ -575,7 +600,7 @@ func (u UI) Multi(ctx context.Context, label string, defaults, options []string)
 		return values, nil
 	}
 	fmt.Fprintf(u.Out, "%s (comma-separated) [%s]: ", label, strings.Join(defaults, ","))
-	line, err := u.Reader.ReadString('\n')
+	line, err := u.readLine(ctx)
 	if err != nil {
 		return nil, err
 	}

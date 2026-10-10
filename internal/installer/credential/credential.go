@@ -3,13 +3,16 @@ package credential
 import (
 	"bufio"
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"os"
 	"os/exec"
+	"os/signal"
 	"path/filepath"
 	"regexp"
 	"strings"
+	"syscall"
 )
 
 var usernamePattern = regexp.MustCompile(`^[a-z_][a-z0-9_-]*$`)
@@ -79,7 +82,15 @@ func ReadConfirmedPassword(tty *os.File, out io.Writer, username string) (string
 	}
 }
 
+// ErrInterrupted reports Ctrl-C (or SIGTERM, SIGHUP) at a hidden prompt.
+var ErrInterrupted = errors.New("interrupted")
+
+// ReadSecret reads one line with terminal echo off. A signal while it waits
+// ends the read: being killed there left the terminal without echo.
 func ReadSecret(tty *os.File, reader *bufio.Reader, out io.Writer, prompt string) (string, error) {
+	signals := make(chan os.Signal, 1)
+	signal.Notify(signals, os.Interrupt, syscall.SIGTERM, syscall.SIGHUP)
+	defer signal.Stop(signals)
 	fmt.Fprint(out, prompt)
 	off := exec.Command("stty", "-echo")
 	off.Stdin = tty
@@ -87,9 +98,23 @@ func ReadSecret(tty *os.File, reader *bufio.Reader, out io.Writer, prompt string
 		return "", fmt.Errorf("disable terminal echo: %w", err)
 	}
 	defer func() { on := exec.Command("stty", "echo"); on.Stdin = tty; _ = on.Run() }()
-	line, err := reader.ReadString('\n')
-	fmt.Fprintln(out)
-	return strings.TrimRight(line, "\r\n"), err
+	type result struct {
+		line string
+		err  error
+	}
+	done := make(chan result, 1)
+	go func() {
+		line, err := reader.ReadString('\n')
+		done <- result{line, err}
+	}()
+	select {
+	case r := <-done:
+		fmt.Fprintln(out)
+		return strings.TrimRight(r.line, "\r\n"), r.err
+	case <-signals:
+		fmt.Fprintln(out)
+		return "", ErrInterrupted
+	}
 }
 
 func Hash(ctx context.Context, password string) (string, error) {
