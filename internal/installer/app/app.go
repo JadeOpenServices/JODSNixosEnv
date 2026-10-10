@@ -3062,7 +3062,10 @@ func detectAndRenderState(
 	if err != nil {
 		return err
 	}
-	ai := profile.Result{Model: "qwen3-coder:30b", ContextTokens: 8192}
+	// Without local AI there is no model to pick. An empty aiModel makes a
+	// later switch to local AI stop at the Nix assertion instead of pulling a
+	// model sized for some other machine.
+	var ai profile.Result
 	// A central AI server holds the model; local hardware does not matter.
 	if u.HasApp("ai") && u.AIEndpoint == "" {
 		// u holds the override from either the preset file or the answers;
