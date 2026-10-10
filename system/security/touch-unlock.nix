@@ -65,6 +65,25 @@ in
       "i2c-designware-core"
       "i2c-designware-platform"
       "i2c-hid-acpi"
+      # I2C touchscreens on Intel sit behind the LPSS I2C controllers and use
+      # GPIO interrupts. Without these the controller never shows up in stage
+      # 1 and the panel stays dead at the LUKS prompt (book1, Kaby Lake,
+      # 2026-10-10). udev loads only the ones that match the hardware.
+      "intel-lpss"
+      "intel-lpss-pci"
+      "intel-lpss-acpi"
+      "pinctrl-sunrisepoint"
+      "pinctrl-broxton"
+      "pinctrl-geminilake"
+      "pinctrl-cannonlake"
+      "pinctrl-icelake"
+      "pinctrl-jasperlake"
+      "pinctrl-elkhartlake"
+      "pinctrl-tigerlake"
+      "pinctrl-alderlake"
+      "pinctrl-meteorlake"
+      # Wacom panels and pens report through their own HID driver.
+      "wacom"
       "usbtouchscreen"
       # Touchscreens in VMs.
       "virtio_input"
