@@ -1,4 +1,4 @@
-{ noctalia }:
+{ noctalia, libqalculate }:
 
 # Keep the pinned upstream package and dependencies; only repair the shell's
 # metadata admission and generic tray behavior, let notification cards be
@@ -7,14 +7,23 @@
 # treat a touch long press as a right click, trust Bluetooth devices after
 # pairing (upstream 27f2e349, drop it once the pin includes that commit), and
 # let battery-guard own the laptop battery warnings.
-noctalia.overrideAttrs (old: {
-  patches = (old.patches or [ ]) ++ [
-    ./media-tray.patch
-    ./notification-swipe.patch
-    ./bluetooth.patch
-    ./touch-long-press.patch
-    ./bluetooth-trust.patch
-    ./notification-progress-left.patch
-    ./battery-notify.patch
-  ];
-})
+#
+# libqalculate 5.10 frees its random state on exit even when nothing ever
+# created it, so the shell crashes every time it stops. Upstream fixed that in
+# 931c2aa9 (5.11); drop the patch once nixpkgs ships libqalculate 5.11 or newer.
+(noctalia.override {
+  libqalculate = libqalculate.overrideAttrs (old: {
+    patches = (old.patches or [ ]) ++ [ ./libqalculate-randstate.patch ];
+  });
+}).overrideAttrs
+  (old: {
+    patches = (old.patches or [ ]) ++ [
+      ./media-tray.patch
+      ./notification-swipe.patch
+      ./bluetooth.patch
+      ./touch-long-press.patch
+      ./bluetooth-trust.patch
+      ./notification-progress-left.patch
+      ./battery-notify.patch
+    ];
+  })
