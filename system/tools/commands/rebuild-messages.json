@@ -82,6 +82,39 @@
     ],
     "jfk": [
       "Rebuilding NixOS for $runtime_host... we choose to rebuild, not because it is easy, but because the old generation was crusty."
+    ],
+    "jaws": [
+      "Rebuilding NixOS for $runtime_host... you're gonna need a bigger catalog..."
+    ],
+    "princess-bride": [
+      "Rebuilding NixOS for $runtime_host... you keep using that model ID, I do not think it means what you think it means..."
+    ],
+    "cool-hand-luke": [
+      "Rebuilding NixOS for $runtime_host... what we've got here is failure to provide evidence..."
+    ],
+    "wizard-of-oz": [
+      "Rebuilding NixOS for $runtime_host... pay no attention to the DMI string behind the curtain..."
+    ],
+    "a-few-good-men": [
+      "Rebuilding NixOS for $runtime_host... you can't handle the truth, so ODDC wrote it down with evidence..."
+    ],
+    "sunset-boulevard": [
+      "Rebuilding NixOS for $runtime_host... all right Mr. DeMille, ODDC is ready for its DMI close-up..."
+    ],
+    "dr-strangelove": [
+      "Rebuilding NixOS for $runtime_host... gentlemen, you can't fight in here, this is the evidence room..."
+    ],
+    "network": [
+      "Rebuilding NixOS for $runtime_host... I'm mad as hell and I'm not going to guess the hardware anymore..."
+    ],
+    "on-the-waterfront": [
+      "Rebuilding NixOS for $runtime_host... I coulda been a contender, I coulda been verified..."
+    ],
+    "reagan": [
+      "Rebuilding NixOS for $runtime_host... trust, but verify, ODDC skipped the trust part..."
+    ],
+    "sagan": [
+      "Rebuilding NixOS for $runtime_host... extraordinary claims require extraordinary evidence, ODDC settles for a dated record..."
     ]
   },
   "gremlin": [
@@ -156,6 +189,8 @@
     "Rebuilding NixOS for $runtime_host... this spinner has seen things.",
     "Rebuilding NixOS for $runtime_host... the rebuild is coming from inside the terminal.",
     "Rebuilding NixOS for $runtime_host... odds of drama reduced by declarative configuration.",
-    "Rebuilding NixOS for $runtime_host... no thoughts, head empty, just `nh os switch`."
+    "Rebuilding NixOS for $runtime_host... no thoughts, head empty, just `nh os switch`.",
+    "Rebuilding NixOS for $runtime_host... exact model or nothing, ODDC does not do close enough.",
+    "Rebuilding NixOS for $runtime_host... ODDC knows your sys_vendor, and it is not judging. much."
   ]
 }
