@@ -12,6 +12,11 @@ let
   semanticTheme = import ../../../../themes/lib/semantic.nix { inherit config; };
   contrastGuard = import ../../../../themes/lib/contrast.nix { inherit pkgs; };
 
+  # Bezel Quick Keys (system/hardware/quick-keys.nix). Only models that have
+  # them get the preset indicator in the bar.
+  hasQuickKeys =
+    lib.attrByPath [ "oddc" "resolved" "hardware" "input" "quickKeys" ] { } osConfig ? primary;
+
   palette = {
     dark = {
       mPrimary = "#${semanticTheme.fallback.primary}";
@@ -115,6 +120,7 @@ in
         # low and critical battery dialogs; a second toast for them is clutter.
         battery.notify_system_battery =
           !(lib.attrByPath [ "oddc" "resolved" "class" "capabilities" "battery" ] false osConfig);
+        plugins.enabled = lib.optional hasQuickKeys "gjallar/quick-keys";
         shell = {
           clipboard_enabled = false;
           corner_radius_scale = 2.0;
@@ -266,6 +272,11 @@ in
             interactive = false;
           };
 
+          quick_keys = {
+            type = "gjallar/quick-keys:preset";
+            scale = 0.98;
+          };
+
           center_clock = {
             type = "clock";
             format = "{:%a %d %b  %H:%M}";
@@ -339,6 +350,9 @@ in
           ];
           end = [
             "network"
+          ]
+          ++ lib.optional hasQuickKeys "quick_keys"
+          ++ [
             "keyboard_layout"
             "notifications"
             "clipboard"
@@ -362,6 +376,11 @@ in
   };
 
   xdg.configFile."noctalia/palettes/stylix.json".text = builtins.toJSON palette;
+
+  # Noctalia picks up plugins in its local source dir; enabled above.
+  xdg.dataFile."noctalia/plugins/gjallar-quick-keys" = lib.mkIf hasQuickKeys {
+    source = ./plugins/quick-keys;
+  };
 
   xdg.configFile."noctalia/templates/hyprland.conf".text = ''
     $primary = rgb({{colors.primary.default.hex_stripped}})

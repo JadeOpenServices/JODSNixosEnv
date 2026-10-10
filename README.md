@@ -153,7 +153,8 @@ On touch devices the on-screen keyboard also opens when the device folds
 into tablet mode and on the keyboard key some convertibles have. The HP ZBook
 x2 bezel Quick Keys have three presets, switched with the third key from the
 top: desktop (on-screen keyboard, screenshot, lock, brightness), media, and a
-free preset that sends `KEY_MACRO11`–`15` for your own binds.
+free preset that sends `KEY_MACRO11`–`15` for your own binds. The bar shows
+the active preset number next to the network widget after the first key press.
 
 <div align="right"><a href="#gjallaros">↑ back to top</a></div>
 

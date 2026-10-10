@@ -1,0 +1,12 @@
+id          = "gjallar/quick-keys"
+name        = "Quick Keys preset"
+version     = "1.0.0"
+plugin_api  = 3
+author      = "gjallar"
+license     = "AGPL-3.0"
+icon        = "keyboard"
+description = "Shows which bezel Quick Keys preset is active."
+
+[[widget]]
+id    = "preset"
+entry = "widget.luau"
