@@ -1,0 +1,25 @@
+#compdef gjallar-ai opencode-local gjallar-agent-tool gjallar-ai-approve gjallar-research
+
+# Tool names come from internal/ai/agentexec/exec.go.
+local -a agent_tools=(
+  git-inspect repo-search repo-test repo-format nix-eval nix-check nix-build
+  nixos-dry-build system-inspect local-command service-manage nixos-deploy
+)
+
+case $service in
+  gjallar-ai|opencode-local)
+    _arguments '1:workspace:{_alternative "flags:flag:((--gjallaros\:\"the GjallarOS checkout\"))" "dirs:workspace:_files -/"}'
+    ;;
+  gjallar-agent-tool)
+    _arguments \
+      '--timeout[execution timeout]:duration:' \
+      "1:tool:($agent_tools)" \
+      '*::tool argument:_files'
+    ;;
+  gjallar-ai-approve)
+    _arguments "1:tool:($agent_tools)" '*::tool argument:_files'
+    ;;
+  gjallar-research)
+    _arguments '1:approved HTTPS URL:_urls'
+    ;;
+esac

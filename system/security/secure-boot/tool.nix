@@ -44,5 +44,14 @@ in
 {
   environment.systemPackages = [
     secureBootTool
+    (pkgs.writeTextDir "share/zsh/site-functions/_gjallar-secure-boot" ''
+      #compdef gjallar-secure-boot
+      local -a cmds=(
+        'status:boot, key and signed artifact state'
+        'enroll:enroll the GjallarOS Secure Boot keys'
+        'firmware:list firmware devices'
+      )
+      _describe -t commands 'gjallar-secure-boot command' cmds
+    '')
   ];
 }

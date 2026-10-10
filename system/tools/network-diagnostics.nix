@@ -212,5 +212,25 @@ in
 
           whois
     ])
-    ++ [ networkDiagnostics ];
+    ++ [
+      networkDiagnostics
+      (pkgs.writeTextDir "share/zsh/site-functions/_network-diagnostics" ''
+        #compdef network-diagnostics
+        local -a cmds=(
+          'summary:link, address, route, DNS, NetworkManager and socket state'
+          'interfaces:interface, address, Wi-Fi and link information'
+          'sockets:listening TCP/UDP sockets'
+          'dns:query a name'
+          'route:show the route to an address'
+          'tools:list the diagnostic tools'
+        )
+        if (( CURRENT == 2 )); then
+          _describe -t commands 'network-diagnostics command' cmds
+        elif (( CURRENT == 3 )) && [[ $words[2] == dns ]]; then
+          _hosts
+        elif (( CURRENT == 3 )) && [[ $words[2] == route ]]; then
+          _message 'IPv4 or IPv6 address'
+        fi
+      '')
+    ];
 }

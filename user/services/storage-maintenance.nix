@@ -102,6 +102,10 @@ in
     lib.optionals containersEnable
       [
         containerStorageInfo
+        (pkgs.writeTextDir "share/zsh/site-functions/_gjallar-container-storage" ''
+          #compdef gjallar-container-storage
+          _arguments '1:view:(status detailed volumes paths)'
+        '')
       ];
 
   systemd.user.services.podman-storage-maintenance =

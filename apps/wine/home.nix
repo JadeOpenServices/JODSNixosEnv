@@ -145,6 +145,10 @@ lib.mkIf config.gjallar.apps.wine.enable {
       wineInit
       wineWin11
       wineDesktop
+      (pkgs.writeTextDir "share/zsh/site-functions/_wine-win11" ''
+        #compdef wine-win11
+        _arguments '1:Windows program:_files -g "*.(exe|msi|bat|lnk|EXE|MSI|BAT|LNK)"' '*::argument:_files'
+      '')
 
       pkgs.winetricks
       pkgs.dxvk

@@ -98,6 +98,10 @@ lib.mkIf config.gjallar.apps.dolphin.enable {
     kfind
     filelight
     fileManager
+    (pkgs.writeTextDir "share/zsh/site-functions/_file-manager" ''
+      #compdef file-manager
+      _arguments '*:folder or file:_files'
+    '')
   ];
 
   # Stylix supplies the desktop's dark Kvantum palette and fonts.

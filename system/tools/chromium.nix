@@ -60,6 +60,10 @@ in
 
   environment.systemPackages = [
     registerKey
+    (pkgs.writeTextDir "share/zsh/site-functions/_gjallar-register-key" ''
+      #compdef gjallar-register-key
+      _arguments '1:link from the registration page:_urls'
+    '')
     (pkgs.makeDesktopItem {
       name = "gjallar-register-key";
       desktopName = "Register key";

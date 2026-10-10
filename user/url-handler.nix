@@ -61,7 +61,13 @@ in
   };
 
   config = {
-    home.packages = [ handler ];
+    home.packages = [
+      handler
+      (pkgs.writeTextDir "share/zsh/site-functions/_gjallar-open-url" ''
+        #compdef gjallar-open-url
+        _arguments '1:URL:_urls'
+      '')
+    ];
     home.sessionVariables.BROWSER = "${handler}/bin/gjallar-open-url";
 
     xdg.mimeApps = {

@@ -63,6 +63,8 @@ ASKPASS
 exit 0
 AUTH
     chmod 0555 "$out/bin/gjallar-sudo-auth"
+
+    install -Dm444 ${./_gjallarctl} "$out/share/zsh/site-functions/_gjallarctl"
   '';
 
   meta = {

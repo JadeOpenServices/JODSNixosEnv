@@ -288,6 +288,7 @@ lib.mkIf (config.gjallar.apps.opencode.enable && aiEnabled) {
     pkgs.tmux
     gjallarAi
     gjallarAiDesktop
+    (pkgs.writeTextDir "share/zsh/site-functions/_gjallar-ai" (builtins.readFile ./_gjallar-ai))
 
     (pkgs.writeShellScriptBin "gjallar-agent-tool" ''
       set -euo pipefail

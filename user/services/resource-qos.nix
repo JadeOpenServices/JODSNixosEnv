@@ -195,6 +195,12 @@ in
 
   home.packages = [
     gjallarRun
+    (pkgs.writeTextDir "share/zsh/site-functions/_gjallar-run" ''
+      #compdef gjallar-run
+      _arguments \
+        '--family[resource family]:family:(desktop jods ai background)' \
+        '*::command:_normal'
+    '')
   ];
 
   systemd.user.services.interactive-resource-qos = {
