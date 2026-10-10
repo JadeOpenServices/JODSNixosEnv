@@ -13,6 +13,7 @@ import (
 	"os/user"
 	"path/filepath"
 	"runtime"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -2197,22 +2198,46 @@ func collectApps(ctx context.Context, ui prompt.UI, u *config.User) error {
 	return nil
 }
 
+// aiMemoryGB is swapped in tests; the installer runs on the target machine.
+var aiMemoryGB = profile.MemoryGB
+
 func collectAI(ctx context.Context, ui prompt.UI, u *config.User) error {
-	backend, err := ui.Choice(ctx, "AI backend", "local", []string{"local", "central-server"})
+	backend, choices := "local", []string{"local", "central-server"}
+	ramGB, err := aiMemoryGB()
 	if err != nil {
 		return err
+	}
+	lowMemory := !profile.LocalFits(ramGB)
+	if lowMemory {
+		fmt.Fprintf(ui.Out, "No local AI model fits %d GiB RAM; local AI needs 8 GiB. Use a central server, turn AI off, or name a small model yourself.\n", ramGB)
+		backend, choices = "off", []string{"off", "central-server", "local"}
+	}
+	backend, err = ui.Choice(ctx, "AI backend", backend, choices)
+	if err != nil {
+		return err
+	}
+	if backend == "off" {
+		u.Apps = slices.DeleteFunc(u.Apps, func(id string) bool { return id == "ai" })
+		return nil
 	}
 	if backend == "central-server" {
 		if err := collectAIServer(ctx, ui, u); err != nil {
 			return err
 		}
 	} else {
-		u.OverrideAISelection, err = ui.Confirm(ctx, "Override automatic hardware-aware AI model selection?", false)
-		if err != nil {
-			return err
+		u.OverrideAISelection = lowMemory
+		if !lowMemory {
+			u.OverrideAISelection, err = ui.Confirm(ctx, "Override automatic hardware-aware AI model selection?", false)
+			if err != nil {
+				return err
+			}
 		}
 		if u.OverrideAISelection {
-			u.OverrideModelWith, err = ui.Value(ctx, "Exact Ollama model identifier", "qwen2.5-coder:14b")
+			model := "qwen2.5-coder:14b"
+			if lowMemory {
+				model = "qwen2.5-coder:1.5b"
+			}
+			u.OverrideModelWith, err = ui.Value(ctx, "Exact Ollama model identifier", model)
 			if err != nil {
 				return err
 			}
@@ -3040,6 +3065,11 @@ func detectAndRenderState(
 		}())
 		if err != nil {
 			return err
+		}
+		if ai.Model == "" {
+			// Only a preset gets here; collectAI asks instead. Rebuilds sync
+			// apps from user.config.json, so the file itself has to change.
+			return fmt.Errorf("user.config.json enables local AI, but no local model fits %d GiB RAM (8 GiB needed): set aiEndpoint, set overrideAiSelection with overrideModelWith, or remove \"ai\" from apps", ai.RAMGB)
 		}
 	}
 	system, err := detectedNixSystem()

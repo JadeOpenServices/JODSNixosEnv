@@ -47,11 +47,27 @@ type modelProfile struct {
 }
 
 // modelProfiles is the single authoritative automatic-selection table. Order
-// is strongest to weakest; the final entry is the safe fallback.
+// is strongest to weakest. RAMGB is MemTotal rounded down, so an 8 GiB
+// machine reports 7. The 7b model needs about 5 GiB with its context and
+// ollama may use 65% of RAM (apps/ai/nixos.nix): below 8 GiB no profile
+// fits and Select picks none instead of a model that cannot load.
 var modelProfiles = []modelProfile{
 	{Name: "dedicated", Model: "qwen3-coder:30b", ContextTokens: 32768, MinRAMGB: 32, MinCPUCores: 8, MinVRAMMB: 12288, DedicatedGPU: true},
 	{Name: "integrated", Model: "qwen2.5-coder:14b", ContextTokens: 16384, MinRAMGB: 16, MinCPUCores: 4},
-	{Name: "low-memory", Model: "qwen2.5-coder:7b", ContextTokens: 8192},
+	{Name: "low-memory", Model: "qwen2.5-coder:7b", ContextTokens: 8192, MinRAMGB: 7},
+}
+
+// None is the profile when no local model fits; its Model is empty.
+const None = "none"
+
+// LocalFits reports whether any automatic profile fits ramGB.
+func LocalFits(ramGB int) bool {
+	return ramGB >= modelProfiles[len(modelProfiles)-1].MinRAMGB
+}
+
+// MemoryGB returns this machine's MemTotal in whole GiB, rounded down.
+func MemoryGB() (int, error) {
+	return memoryGB("/proc/meminfo")
 }
 
 func Detect(ctx context.Context, configPath string) (Result, error) {
@@ -82,7 +98,7 @@ func accelerationProfileForHardware(h Hardware, selectedProfile string) string {
 }
 
 func Select(hardware Hardware, override Override) Result {
-	selected := modelProfiles[len(modelProfiles)-1]
+	selected := modelProfile{Name: None}
 	for _, candidate := range modelProfiles {
 		if hardware.RAMGB < candidate.MinRAMGB || hardware.CPUCores < candidate.MinCPUCores || hardware.VRAMMB < candidate.MinVRAMMB {
 			continue
@@ -148,7 +164,7 @@ func detectHardware(ctx context.Context) (Hardware, string, error) {
 	}
 	live, err := graphics.Detect(ctx)
 	if err != nil {
-		// Local AI remains usable without lspci; retain the low-memory fallback.
+		// Local AI remains usable without lspci; RAM alone picks the profile.
 		return Hardware{RAMGB: ramGB, CPUCores: runtime.NumCPU(), Arch: runtime.GOARCH, GPUType: "unknown", VRAMMB: vramMB()}, "unknown", nil
 	}
 	gpuType := live.Type

@@ -35,3 +35,33 @@ func TestCollectAIServerRetriesUntilValid(t *testing.T) {
 		t.Fatalf("path rejection not shown:\n%s", output.String())
 	}
 }
+
+func TestCollectAILowMemory(t *testing.T) {
+	defer func(f func() (int, error)) { aiMemoryGB = f }(aiMemoryGB)
+	aiMemoryGB = func() (int, error) { return 3, nil }
+	tests := []struct {
+		name    string
+		answers []string
+		apps    []string
+		model   string
+	}{
+		{"default turns AI off", []string{""}, []string{"git"}, ""},
+		{"local needs a named model", []string{"local", "", ""}, []string{"git", "ai"}, "qwen2.5-coder:1.5b"},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			var output bytes.Buffer
+			user := config.User{Apps: []string{"git", "ai"}}
+			ui := prompt.New(strings.NewReader(strings.Join(test.answers, "\n")+"\n"), &output)
+			if err := collectAI(context.Background(), ui, &user); err != nil {
+				t.Fatal(err)
+			}
+			if strings.Join(user.Apps, ",") != strings.Join(test.apps, ",") || user.OverrideModelWith != test.model {
+				t.Fatalf("apps=%v model=%q\n%s", user.Apps, user.OverrideModelWith, output.String())
+			}
+			if test.model != "" && !user.OverrideAISelection {
+				t.Fatal("local model on low memory not marked as user choice")
+			}
+		})
+	}
+}

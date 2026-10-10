@@ -15,7 +15,9 @@ func TestSelect(t *testing.T) {
 		model    string
 		context  int
 	}{
-		{"low memory", Hardware{RAMGB: 8}, Override{}, "low-memory", "qwen2.5-coder:7b", 8192},
+		{"low memory", Hardware{RAMGB: 7}, Override{}, "low-memory", "qwen2.5-coder:7b", 8192},
+		{"too little memory", Hardware{RAMGB: 3, CPUCores: 4}, Override{}, None, "", 0},
+		{"override on little memory", Hardware{RAMGB: 3}, Override{Enabled: true, Model: "qwen2.5-coder:1.5b"}, "user-override", "qwen2.5-coder:1.5b", 8192},
 		{"integrated", Hardware{RAMGB: 16, CPUCores: 4}, Override{}, "integrated", "qwen2.5-coder:14b", 16384},
 		{"dedicated", Hardware{RAMGB: 32, CPUCores: 8, GPUType: "dedicated", VRAMMB: 12288}, Override{}, "dedicated", "qwen3-coder:30b", 32768},
 		{"override", Hardware{RAMGB: 16, CPUCores: 4}, Override{Enabled: true, Model: "mistral"}, "user-override", "mistral", 16384},

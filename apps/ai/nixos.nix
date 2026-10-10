@@ -1525,6 +1525,10 @@ lib.mkIf config.gjallar.apps.ai.enable (
           assertion = !remote || lib.hasPrefix "https://" upstream;
           message = "aiEndpoint ${upstream} must use https: the system logs in with a bearer token.";
         }
+        {
+          assertion = remote || baseModel != "";
+          message = "Local AI needs aiModel; the installer leaves it empty when no model fits this machine's RAM. Set aiEndpoint, or turn the ai app off.";
+        }
       ];
 
       environment.etc."opencode/opencode.json".source = managedOpencodeConfig;
