@@ -25,6 +25,7 @@
     ./security/local-hardening.nix
     ./security/console-lockdown.nix
     ./security/disk-unlock.nix
+    ./security/touch-unlock.nix
     ./security/keyring.nix
     ./maintenance/storage.nix
     ./maintenance/installer-resume.nix
