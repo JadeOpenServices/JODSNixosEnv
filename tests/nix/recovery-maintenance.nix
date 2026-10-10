@@ -36,6 +36,11 @@ let
   evaluated = evaluate {
     boot.initrd.luks.devices.cryptroot.device = "/dev/disk/by-partlabel/root";
   };
+  splash = evaluate {
+    boot.initrd.luks.devices.cryptroot.device = "/dev/disk/by-partlabel/root";
+    boot.plymouth.enable = true;
+  };
+  splashMaintenance = splash.config.specialisation.gjallar-recovery-maintenance.configuration;
   plain = evaluate {
     fileSystems."/".device = nixpkgs.lib.mkForce "/dev/disk/by-partlabel/root";
   };
@@ -60,6 +65,9 @@ assert pkgs.lib.hasInfix "Rebooting to the normal GjallarOS boot path" script;
 # Plymouth hides console text; the retry and reboot notices must reach it.
 assert pkgs.lib.hasInfix "did not unlock storage (try" script;
 assert pkgs.lib.hasInfix "plymouth display-message" script;
+# The unit PATH is only its path list; the initrd /bin plymouth is not on it.
+assert builtins.elem splashMaintenance.boot.plymouth.package
+  splashMaintenance.boot.initrd.systemd.services.recovery-storage-setup.path;
 # Without LUKS there is nothing to unlock, so no maintenance entry at all.
 assert !(plain.config.specialisation ? gjallar-recovery-maintenance);
 pkgs.runCommand "gjallar-recovery-maintenance-check"

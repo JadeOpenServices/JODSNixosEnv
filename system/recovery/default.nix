@@ -182,7 +182,10 @@ lib.mkMerge [
           pkgs.systemd
           pkgs.util-linux
           installer
-        ];
+        ]
+        # The unit PATH holds only these packages, not the initrd /bin
+        # where the plymouth module puts its client.
+        ++ lib.optional config.boot.plymouth.enable config.boot.plymouth.package;
 
         script = ''
           set -euo pipefail
@@ -290,7 +293,6 @@ lib.mkMerge [
               "No storage changes were made." \
               "Rebooting to the normal GjallarOS boot path in 15 seconds..." >&2
 
-            # The initrd ships plymouth whenever the splash is on.
             if command -v plymouth >/dev/null && plymouth --ping; then
               plymouth display-message \
                 --text="No storage changes were made. Rebooting to the normal GjallarOS boot in 15 seconds." ||
