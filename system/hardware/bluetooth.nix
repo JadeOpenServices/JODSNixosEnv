@@ -27,6 +27,13 @@ lib.mkIf bluetoothPresent {
     enable = true;
     package = pkgs.bluez;
 
-    settings.General.ControllerMode = "dual";
+    # Both are BlueZ's defaults today; pinned so no later default or
+    # override relaxes them. HID input only from bonded devices
+    # (CVE-2023-45866), and no peer replaces a bond by Just Works re-pairing.
+    settings.General = {
+      ControllerMode = "dual";
+      JustWorksRepairing = "never";
+    };
+    input.General.ClassicBondedOnly = true;
   };
 }
