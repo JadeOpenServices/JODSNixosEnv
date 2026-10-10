@@ -232,5 +232,78 @@ Ideas worth taking:
       part that does not depend on the compositor could live in ODDC's own
       NixOS module: turn on `hardware.sensor.iio` (iio-sensor-proxy) when the
       model has the sensor. GjallarOS would then keep only the Hyprland side
-      (`gjallarctl hyprland-rotate`). Asked the ODDC session on 2026-10-10;
-      waiting for its answer.
+      (`gjallarctl hyprland-rotate`). ODDC agreed and built it as ODDC-95
+      (`oddc.sensors.orientation.enable`, sets `hardware.sensor.iio.enable`
+      with `mkDefault`). When the GjallarOS pin reaches it: `input.nix` sets
+      iio only through `mkIf` on the old installer flag, the rotation unit
+      turns on from `config.hardware.sensor.iio.enable`, and the installer
+      stops writing `orientationSensorEnable`. Open question to ODDC: can a
+      light-sensor-only model get iio, so rotation needs its own flag?
+
+## 11. Releases and channels
+
+Plan agreed 2026-10-10. Nothing in this section is built yet.
+
+- [ ] **Three channels.** `dev` is `main`. `staging` and `stable` are
+      branches that only ever fast-forward to a signed, annotated tag
+      `vYYYY.MM.N` (N counts the releases in that month). A tag never moves;
+      a fix found in staging gets a new tag.
+- [ ] **Release flow.**
+      1. A branch bumps all flake inputs (nixpkgs, Home Manager, Noctalia,
+         the ODDC pin and the rest).
+      2. The full `.vm/installer-e2e/REGRESSION.md` runs in VMs.
+      3. Merge to `main` and tag.
+      4. `staging` moves to the tag. The Framework 13 and the ZBook x2 G4
+         run it for a while.
+      5. `stable` moves to the same tag.
+- [ ] **Picking a channel.** `user.config.json` gets `releaseChannel`
+      (`dev`, `staging` or `stable`). `rebuild --update` fetches that branch
+      and only fast-forwards from the commit that is checked out, after the
+      signature check below. The bar shows a notice when the channel is
+      ahead. `deployment/release-policy.json` (today `updateEndpoint: null`,
+      `updatePolicy: review-and-lock`) is where the channel defaults live.
+      Open: the default channel for new installs, and what existing installs
+      on `main` move to.
+- [ ] **ODDC stays separate.** A release carries whatever ODDC commit its
+      `flake.lock` pins. `rebuild --hardware-update --stage main|staging`
+      keeps working as it does today and is not tied to the GjallarOS
+      channel.
+- [ ] **Verifying updates.** Goes through the research flow again before
+      any code. Ideas so far, from the sources below:
+      - The trust root comes with the install, not from the server: the
+        first commit the rule applies to and the key that signed it, like a
+        Guix channel introduction.
+      - The repo lists the keys allowed to sign, like
+        `.guix-authorizations`. A commit counts only when it is signed by a
+        key listed in its parent, so adding or removing a key is itself a
+        signed commit.
+      - No rollback: an update that is not a fast-forward from the deployed
+        commit stops, unless the user asks for a downgrade on purpose. Guix
+        `guix pull` does the same.
+      - One stolen key must not be enough to push an update to every
+        machine. Options: an offline master key that signs release and
+        developer keys and can revoke them (Qubes), developer keys that
+        expire after a year (Qubes), and two signatures per release tag
+        (TUF thresholds).
+      - A mirror or a stale fork can serve an old `stable` forever (TUF
+        "indefinite freeze"). The release tag carries its date; `rebuild`
+        warns when the newest tag on the channel is very old.
+      - Check signatures locally. GitHub's "Verified" badge is not trusted
+        (Qubes guide).
+- [ ] **GitHub releases.** A tag and release notes built from the `GJAL`
+      commit subjects since the previous tag. No ISO and no other binaries:
+      everyone builds the ISO on their own machine from the tag, so the
+      source and the build can be inspected. README gets the steps to build
+      the ISO from a release. Later, once the ISO build is reproducible,
+      the notes can list the expected ISO hash so builders can compare.
+
+Sources:
+
+- Guix channel authentication:
+  https://guix.gnu.org/manual/en/html_node/Channel-Authentication.html
+- Guix, "Securing updates" (2020):
+  https://guix.gnu.org/en/blog/2020/securing-updates/
+- Qubes, verifying signatures:
+  https://doc.qubes-os.org/en/latest/project-security/verifying-signatures.html
+- The Update Framework, attacks and weaknesses:
+  https://theupdateframework.io/docs/security/
