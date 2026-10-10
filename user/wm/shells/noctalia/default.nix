@@ -3,6 +3,7 @@
   inputs,
   config,
   lib,
+  osConfig ? { },
   settings,
   ...
 }:
@@ -107,6 +108,10 @@ in
         accessibility = {
           ui_scale = 1.4;
         };
+        # battery-guard (system/hardware/battery.nix, same ODDC switch) shows the
+        # low and critical battery dialogs; a second toast for them is clutter.
+        battery.notify_system_battery =
+          !(lib.attrByPath [ "oddc" "resolved" "class" "capabilities" "battery" ] false osConfig);
         shell = {
           clipboard_enabled = false;
           corner_radius_scale = 2.0;

@@ -4,9 +4,9 @@
 # metadata admission and generic tray behavior, let notification cards be
 # swiped away with their timer bar draining from the left, show Bluetooth
 # devices by their advertised name with nameless ones hidden by default,
-# treat a touch long press as a right click, and trust Bluetooth devices
-# after pairing (upstream 27f2e349, drop it once the pin includes that
-# commit).
+# treat a touch long press as a right click, trust Bluetooth devices after
+# pairing (upstream 27f2e349, drop it once the pin includes that commit), and
+# let battery-guard own the laptop battery warnings.
 noctalia.overrideAttrs (old: {
   patches = (old.patches or [ ]) ++ [
     ./media-tray.patch
@@ -15,5 +15,6 @@ noctalia.overrideAttrs (old: {
     ./touch-long-press.patch
     ./bluetooth-trust.patch
     ./notification-progress-left.patch
+    ./battery-notify.patch
   ];
 })
