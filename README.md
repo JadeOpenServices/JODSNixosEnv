@@ -125,8 +125,12 @@ with `systemd-creds` (TPM2-bound when present) into
 
 ## ⌨️ Keybindings
 
-`$mod` is the Super key. The full list lives in
-[`user/wm/hyprland/keybinds.json`](user/wm/hyprland/keybinds.json).
+`$mod` is the Super key. <kbd>Super</kbd> + <kbd>F1</kbd> shows every
+shortcut and gesture of the running session, searchable, also as
+"Keyboard shortcuts" in the launcher and as `gjallar-keybinds --print` in a
+terminal. The binds live in
+[`user/wm/hyprland/keybinds.json`](user/wm/hyprland/keybinds.json); each one
+needs a `desc`, which is what the list shows.
 
 | Keys | Action |
 | --- | --- |
@@ -142,12 +146,14 @@ with `systemd-creds` (TPM2-bound when present) into
 | <kbd>Super</kbd> + <kbd>Shift</kbd> + <kbd>H</kbd> <kbd>J</kbd> <kbd>K</kbd> <kbd>L</kbd> | Move window |
 | <kbd>Super</kbd> + <kbd>Ctrl</kbd> + arrow keys | Resize window (hold to repeat) |
 | <kbd>Super</kbd> + left-drag | Move window |
-| <kbd>Super</kbd> + right-drag | Resize window |
+| Drag the gap between windows | Resize window |
+| <kbd>Super</kbd> + right-drag or <kbd>Super</kbd> + <kbd>Shift</kbd> + left-drag | Resize window (the second is easier on a touchpad) |
 | <kbd>Super</kbd> + <kbd>1</kbd>…<kbd>0</kbd> | Switch workspace |
 | <kbd>Super</kbd> + <kbd>Shift</kbd> + <kbd>1</kbd>…<kbd>0</kbd> | Move window to workspace |
 | <kbd>Super</kbd> + <kbd>S</kbd> | Scratchpad workspace |
 | <kbd>Super</kbd> + <kbd>Shift</kbd> + <kbd>Z</kbd> or <kbd>Print</kbd> | Screenshot region |
 | <kbd>Super</kbd> + <kbd>Escape</kbd> | Lock screen |
+| <kbd>Super</kbd> + <kbd>F1</kbd> | Show all shortcuts |
 | <kbd>Super</kbd> + <kbd>Ctrl</kbd> + <kbd>K</kbd> | On-screen keyboard (touch devices) |
 
 On touch devices the on-screen keyboard also opens when the device folds

@@ -61,6 +61,13 @@ let
   '';
 in
 {
+  gjallar.keybindHelp.gestures = lib.optionals settings.touchpadWorkspaceSwipe [
+    {
+      keys = "Three fingers left or right on the touchpad";
+      description = "Switch workspace";
+    }
+  ];
+
   home.packages = with pkgs; [
     awww
     swaybg
@@ -68,14 +75,14 @@ in
   ];
 
   wayland.windowManager.hyprland.settings = {
-    bind =
+    bindd =
       lib.optionals config.programs.noctalia.enable [
-        "SUPER, C, exec, ${lib.getExe config.programs.noctalia.package} msg status >/dev/null 2>&1 && ${lib.getExe config.programs.noctalia.package} msg panel-toggle control-center >/dev/null 2>&1 || true"
+        "SUPER, C, Open control center, exec, ${lib.getExe config.programs.noctalia.package} msg status >/dev/null 2>&1 && ${lib.getExe config.programs.noctalia.package} msg panel-toggle control-center >/dev/null 2>&1 || true"
       ]
       ++ lib.optionals (settings.touchscreenEnable or false) [
-        "CTRL, V, exec, ${gjallarPasteOnce} ctrl-v"
-        "CTRL SHIFT, V, exec, ${gjallarPasteOnce} ctrl-shift-v"
-        "SHIFT, INSERT, exec, ${gjallarPasteOnce} shift-insert"
+        "CTRL, V, Paste, exec, ${gjallarPasteOnce} ctrl-v"
+        "CTRL SHIFT, V, Paste, exec, ${gjallarPasteOnce} ctrl-shift-v"
+        "SHIFT, INSERT, Paste, exec, ${gjallarPasteOnce} shift-insert"
       ];
 
     monitor = [
@@ -91,14 +98,14 @@ in
       gaps_out = 16;
       border_size = 2;
       allow_tearing = true;
-      # Resize only with Super + right-drag (or Super + Ctrl + arrows), so a
-      # click near a border never resizes a window by accident.
-      resize_on_border = false;
+      # Drag the gap between tiled windows (or a floating window's edge) to
+      # resize it, e.g. narrow a chat column beside a stream.
+      resize_on_border = true;
     };
 
-    # Super + click without moving the mouse starts no drag. Otherwise
-    # Hyprland re-inserts the tiled window on release and its split ratio
-    # falls back to the default.
+    # A drag starts only after the mouse moved 10 px, so a plain click near a
+    # border does not resize, and Super + click does not re-insert a tiled
+    # window (which would reset its split). Applies to border drags too.
     binds.drag_threshold = 10;
 
     cursor = {
@@ -168,6 +175,7 @@ in
       };
     };
 
+    # Also listed in the shortcut list, see gjallar.keybindHelp below.
     gesture = lib.optionals settings.touchpadWorkspaceSwipe [
       "3, horizontal, workspace"
     ];

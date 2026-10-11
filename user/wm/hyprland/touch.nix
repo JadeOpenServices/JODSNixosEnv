@@ -103,6 +103,40 @@ let
     '';
   };
   shell = hyprlandShellDetails.binds;
+
+  # hyprgrass binds with the text the shortcut list (Super+F1) shows for them.
+  gestures = [
+    {
+      bind = ", edge:d:u, exec, ${lib.getExe virtualKeyboard}";
+      keys = "Swipe up from the bottom edge";
+      description = "Show or hide on-screen keyboard";
+    }
+    {
+      bind = ", edge:u:d, exec, ${shell.controlCenter}";
+      keys = "Swipe down from the top edge";
+      description = "Open control center";
+    }
+    {
+      bind = ", swipe:4:u, exec, ${shell.launcher}";
+      keys = "Four fingers up";
+      description = "Open launcher";
+    }
+    {
+      bind = ", swipe:4:l, movetoworkspace, +1";
+      keys = "Four fingers left";
+      description = "Move window to next workspace";
+    }
+    {
+      bind = ", swipe:4:r, movetoworkspace, -1";
+      keys = "Four fingers right";
+      description = "Move window to previous workspace";
+    }
+    {
+      bind = ", tap:3, togglefloating, active";
+      keys = "Three-finger tap";
+      description = "Float or tile window";
+    }
+  ];
   # nixos-26.05 ships hyprgrass from 2025-10-08, which no longer compiles
   # against its Hyprland 0.55.4 (ConfigDataValues.hpp is gone). d094a3e is
   # upstream's hyprpm.toml pin for v0.55.4; drop this once nixpkgs catches up.
@@ -124,6 +158,17 @@ lib.mkIf (settings.touchscreenEnable or false) {
   home.packages = [
     virtualKeyboard
     pkgs.wvkbd
+  ];
+
+  gjallar.keybindHelp.gestures = map (g: { inherit (g) keys description; }) gestures ++ [
+    {
+      keys = "Three fingers left or right";
+      description = "Switch workspace";
+    }
+    {
+      keys = "Hold two fingers on a window and drag";
+      description = "Move window";
+    }
   ];
 
   # Detaching the keyboard or folding the screen back shows the on-screen
@@ -153,13 +198,13 @@ lib.mkIf (settings.touchscreenEnable or false) {
     plugins = [ hyprgrass ];
 
     settings = {
-      bind = [
+      bindd = [
         # Not plain Super+K: that already moves focus up, and Hyprland would
         # run both.
-        "SUPER CTRL, K, exec, ${lib.getExe virtualKeyboard}"
+        "SUPER CTRL, K, Show or hide on-screen keyboard, exec, ${lib.getExe virtualKeyboard}"
         # KEY_KEYBOARD (374, xkb 382): the keyboard key some convertibles and
         # the ZBook Quick Keys send.
-        ", code:382, exec, ${lib.getExe virtualKeyboard}"
+        ", code:382, Show or hide on-screen keyboard, exec, ${lib.getExe virtualKeyboard}"
       ];
 
       # A switch bind from the file above may have started the keyboard already.
@@ -179,19 +224,7 @@ lib.mkIf (settings.touchscreenEnable or false) {
         edge_margin = 20;
       };
 
-      hyprgrass-bind = [
-        # Up from the bottom edge: on-screen keyboard.
-        ", edge:d:u, exec, ${lib.getExe virtualKeyboard}"
-        # Down from the top edge: control center.
-        ", edge:u:d, exec, ${shell.controlCenter}"
-        # Four fingers up: launcher.
-        ", swipe:4:u, exec, ${shell.launcher}"
-        # Four fingers left/right: take the window to the next/previous workspace.
-        ", swipe:4:l, movetoworkspace, +1"
-        ", swipe:4:r, movetoworkspace, -1"
-        # Three-finger tap: toggle floating.
-        ", tap:3, togglefloating, active"
-      ];
+      hyprgrass-bind = map (g: g.bind) gestures;
 
       # Hold two fingers on a window and drag it.
       hyprgrass-bindm = [ ", longpress:2, movewindow" ];
